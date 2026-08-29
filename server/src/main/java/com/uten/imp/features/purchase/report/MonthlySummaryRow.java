@@ -18,4 +18,5 @@ public class MonthlySummaryRow {
     private BigDecimal qty;
     private BigDecimal amt;
     private Long lines;
+    private boolean priceMasked;
 }

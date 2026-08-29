@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.uten.imp.common.validation.RequestLimits;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
@@ -29,6 +30,48 @@ public final class ProcurementArrivalContracts {
             @Size(max = 64) String goodsCode,
             @Size(max = 100) String series,
             @Size(max = 100) String stockPlace) {
+    }
+
+    /**
+     * 仓库到货登记一步完成（登记 + 送检审核）请求体。
+     *
+     * <p>与「登记实际到货」页字段一致：只有数量与库位语义字段，无价格/币族——
+     * 服务端从财务批准的来源订货单权威带出 币种/汇率/结算方式 后建收货单草稿，
+     * 并在同一事务内立即审核（转品质待检）；实到超量时审核被到货控制拦截，
+     * 草稿与 PENDING_FINANCE 异常一并提交，接口以 {@code EXCESS_QUARANTINED} 正常返回。
+     */
+    public record WarehouseArrivalRegisterRequest(
+            @NotBlank @Size(max = 128) String idempotencyKey,
+            @NotBlank String orderType,
+            @NotNull LocalDate billDate,
+            @NotNull UUID supplierId,
+            @NotNull UUID warehouseId,
+            UUID purchaserId,
+            @NotNull UUID receiverEmployeeId,
+            @Size(max = 1000) String remark,
+            @NotNull @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
+                    List<ArrivalLine> items) {
+
+        public record ArrivalLine(
+                @NotNull UUID goodsId,
+                @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal qty,
+                @NotNull UUID orderItemId,
+                UUID colorId,
+                UUID unitId,
+                BigDecimal unitRate,
+                @Size(max = 64) String sourceDocNo) {
+        }
+    }
+
+    /**
+     * 一步登记结果：{@code SUBMITTED_FOR_INSPECTION} = 已审核并转品质待检；
+     * {@code EXCESS_QUARANTINED} = 实到超量，未入库未立应付，已隔离等待财务定案。
+     */
+    public record WarehouseArrivalRegisterResult(
+            String outcome,
+            UUID receiptId,
+            String receiptBillNo,
+            UUID exceptionId) {
     }
 
     public record ArrivalDecisionRequest(
@@ -141,10 +184,17 @@ public final class ProcurementArrivalContracts {
             BigDecimal remainingQty,
             BigDecimal registeredQty,
             List<InboundExpectationItem> items,
-            List<String> allowedActions) {
+            List<String> allowedActions,
+            /** 已登记待审核的草稿收货单（status=0 未删）：任务中心据此提供「继续送检」恢复入口。 */
+            List<UUID> draftReceiptIds,
+            /** 待品质放行的收货单张数（已审核、IQC 未结）：任务卡「待品质检验」步骤。 */
+            int pendingInspectionReceipts,
+            /** 未结到货异常数（超量待财务定案）：任务卡「超量待财务」步骤。 */
+            int openArrivalExceptions) {
         public InboundExpectationTask {
             items = List.copyOf(items);
             allowedActions = List.copyOf(allowedActions);
+            draftReceiptIds = List.copyOf(draftReceiptIds);
         }
     }
 }

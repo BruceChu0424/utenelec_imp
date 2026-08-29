@@ -43,7 +43,7 @@ class ApiExceptionFactory {
       case >= 500:
         return ApiException('INTERNAL', '服务器繁忙，请稍后再试');
       default:
-        return ApiException('UNKNOWN', '请求失败（$status）');
+        return ApiException('UNKNOWN', '请求失败($status)');
     }
   }
 }

@@ -46,6 +46,8 @@ SELECT set_config(
     true
 );
 SELECT set_config('uten.legacy_reference_import', 'legacy-finance-v273', true);
+SELECT pg_advisory_xact_lock(hashtextextended('PAYMENT_STYLE_HIERARCHY',0));
+SELECT pg_advisory_xact_lock(hashtextextended('ACCOUNT_MASTER_POPULATION',0));
 
 DO $$
 BEGIN
@@ -320,8 +322,59 @@ SET category_id = COALESCE(suppliers.category_id, EXCLUDED.category_id);
 --   Bank keyword                 -> BANK             (farm/ICBC/CCB/BCM/CMB/postal/credit
 --                                                     coop/Industrial/Bank of China/CGB/basic)
 --   other                        -> GENERAL
+DO $$
+DECLARE
+    v_match_count BIGINT;
+BEGIN
+    PERFORM 1
+      FROM currencies
+     WHERE legacy_id IN (1,3)
+        OR id IN (
+            SELECT account.currency_id
+            FROM accounts account
+            WHERE account.status=chr(20351) || chr(29992)
+              AND COALESCE(account.is_deleted,FALSE)=FALSE
+              AND account.currency_id IS NOT NULL)
+     ORDER BY id
+     FOR SHARE;
+
+    IF EXISTS (
+        SELECT 1 FROM m_acc_stage s
+        WHERE s.name NOT LIKE '%' || chr(39321) || '%'
+    ) THEN
+        SELECT COUNT(*) INTO v_match_count
+        FROM currencies
+        WHERE legacy_id=1
+          AND status=chr(20351) || chr(29992)
+          AND COALESCE(is_deleted,FALSE)=FALSE;
+        IF v_match_count<>1 THEN
+            RAISE EXCEPTION USING ERRCODE='23514',
+                MESSAGE=format(
+                    'legacy RMB account import requires exactly one active currencies.legacy_id=1 row; found %s',
+                    v_match_count);
+        END IF;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM m_acc_stage s
+        WHERE s.name LIKE '%' || chr(39321) || '%'
+    ) THEN
+        SELECT COUNT(*) INTO v_match_count
+        FROM currencies
+        WHERE legacy_id=3
+          AND status=chr(20351) || chr(29992)
+          AND COALESCE(is_deleted,FALSE)=FALSE;
+        IF v_match_count<>1 THEN
+            RAISE EXCEPTION USING ERRCODE='23514',
+                MESSAGE=format(
+                    'legacy OFFSHORE account import requires exactly one active currencies.legacy_id=3 row; found %s',
+                    v_match_count);
+        END IF;
+    END IF;
+END $$;
+
 INSERT INTO accounts (
     legacy_id, code, name, bank_account_no, account_type,
+    currency_id,
     init_balance, receipts_total, payments_total, balance_current,
     parent_legacy_id, style_legacy_id, status)
 SELECT
@@ -352,6 +405,18 @@ SELECT
              OR s.name LIKE '%' || chr(24191) || chr(21457) || '%'
              OR s.name = chr(22522) || chr(26412) || chr(25143) THEN 'BANK'
         ELSE 'GENERAL'
+    END,
+    CASE
+        WHEN s.name LIKE '%' || chr(39321) || '%' THEN (
+            SELECT currency.id FROM currencies currency
+            WHERE currency.legacy_id=3
+              AND currency.status=chr(20351) || chr(29992)
+              AND COALESCE(currency.is_deleted,FALSE)=FALSE)
+        ELSE (
+            SELECT currency.id FROM currencies currency
+            WHERE currency.legacy_id=1
+              AND currency.status=chr(20351) || chr(29992)
+              AND COALESCE(currency.is_deleted,FALSE)=FALSE)
     END,
     COALESCE(s.init_balance, 0), COALESCE(s.receipts_total, 0),
     COALESCE(s.payments_total, 0), COALESCE(s.balance_current, 0),
@@ -849,10 +914,11 @@ SELECT 'AR rows with NULL client_id (expect 0)          ' ||
 SELECT 'AP rows with NULL supplier_id (expect 0)        ' ||
        COUNT(*) FROM ar_ap_ledger WHERE direction='AP' AND supplier_id IS NULL;
 
--- Account balance conservation: balance_current = init + receipts - payments
+-- Account balance conservation: balance_current = init + receipts - payments + adjustments
 SELECT 'accounts balance conservation broken (expect 0) ' ||
        COUNT(*) FROM accounts
-WHERE balance_current <> init_balance + receipts_total - payments_total;
+WHERE balance_current <> init_balance + receipts_total - payments_total
+                              + balance_adjustments_total;
 
 SELECT '==== Account balance reconciliation (new DB vs legacy M_in/M_out) ====' AS section;
 
@@ -984,7 +1050,8 @@ BEGIN
 
     SELECT COUNT(*) INTO broken_count
     FROM accounts
-    WHERE balance_current <> init_balance + receipts_total - payments_total;
+    WHERE balance_current <> init_balance + receipts_total - payments_total
+                                  + balance_adjustments_total;
     IF broken_count <> 0 THEN
         RAISE EXCEPTION 'finance migration account-balance violations: %', broken_count;
     END IF;

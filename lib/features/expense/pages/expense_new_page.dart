@@ -14,6 +14,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_toast.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -106,7 +107,7 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
                       children: [
                         UtenInput(
                           controller: _remarkController,
-                          label: '备注（可选）',
+                          label: '备注(可选)',
                           hint: '补充说明，如客户名称、项目背景',
                           maxLines: 3,
                         ),
@@ -374,6 +375,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                 const SizedBox(height: UtenSpacing.s16),
                 // 金额
                 TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   controller: _amountController,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
@@ -402,9 +404,10 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                 ),
                 // 说明
                 TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   controller: _descController,
                   decoration: const InputDecoration(
-                    labelText: '说明（可选）',
+                    labelText: '说明(可选)',
                     hintText: '如：客户名称、项目背景',
                   ),
                   maxLines: 2,

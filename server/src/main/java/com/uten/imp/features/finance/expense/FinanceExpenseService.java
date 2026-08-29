@@ -11,6 +11,7 @@ import com.uten.imp.common.finance.EmployeeClaimPostingPort;
 import com.uten.imp.common.finance.EmployeeClaimPostingPort.EmployeeClaimPosting;
 import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseDetail;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemDto;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemInput;
@@ -72,6 +73,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     private final DocNumberService docNumberService;
     private final com.uten.imp.features.finance.gl.GlPostingService glPosting;
     private final FinanceDocumentAccessPolicy access;
+    private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceExpenseListItem> list(FinanceExpenseQueryFilter f, int page, int size, String sort, String order) {
@@ -170,7 +172,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
                 "finance_expense:approve");
         UUID approver = currentUser.requireEmployeeId();
         if (e.getMakerId() != null && e.getMakerId().equals(approver)) {
-            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
+            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同(职责分离)");
         }
         approveInternal(e, approver);
         return detail(id);
@@ -252,9 +254,11 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         }
         e.setApproverId(approverId); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         BigDecimal amountLocal = nz(e.getAmountLocal());
-        if (amountLocal.signum() != 0) {
-            adjustAccount(e.getAccountId(), amountLocal);
+        if (amountLocal.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用单本位币总额必须大于 0");
         }
+        adjustAccount(
+                e.getAccountId(), e.getCurrencyId(), e.getExchangeRate(), amountLocal, true);
         insertReconciliation(e, amountLocal);
         // C6：审核即自动过总账分录（借费用科目/贷付款账户），gl_status 置「已过账待确认」
         expenseRepo.flush();
@@ -278,13 +282,15 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         if (e.getGlStatus() != null && e.getGlStatus() == 2) {
-            throw new ApiException(ErrorCode.CONFLICT, "该费用单已财务确认（gl_status=2），须先撤销确认再红冲");
+            throw new ApiException(ErrorCode.CONFLICT, "该费用单已财务确认(gl_status=2)，须先撤销确认再红冲");
         }
         BigDecimal amountLocal = nz(e.getAmountLocal());
         if (amountLocal.signum() != 0) {
-            adjustAccount(e.getAccountId(), amountLocal.negate());
+            adjustAccount(
+                    e.getAccountId(), e.getCurrencyId(), e.getExchangeRate(),
+                    amountLocal.negate(), false);
         }
-        deleteReconciliation(e.getId());
+        reverseReconciliation(e.getId());
         // C6：红冲对称删总账分录，回到未过账
         glPosting.removeExpenseDoc(e.getId(), e.getBillNo(), e.getBillDate());
         e.setGlVoucherId(null);
@@ -318,7 +324,21 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     // ===================== 账户/流水 =====================
 
     /** 付款账户扣减（money-out）：balance_current -= delta, payments_total += delta（delta 已带符号）。 */
-    private void adjustAccount(UUID accountId, BigDecimal delta) {
+    private void adjustAccount(
+            UUID accountId,
+            UUID documentCurrencyId,
+            BigDecimal exchangeRate,
+            BigDecimal delta,
+            boolean validateDocumentAuthority) {
+        UUID accountCurrencyId = lockActiveBaseCurrencyAccount(accountId, "费用付款账户");
+        if (validateDocumentAuthority
+                && (!Objects.equals(documentCurrencyId, accountCurrencyId)
+                || exchangeRate == null
+                || exchangeRate.compareTo(BigDecimal.ONE) != 0)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "费用单仅支持本位币：单头币种必须等于真实付款账户币种，汇率必须为 1");
+        }
         int rows = em.createNativeQuery("""
                 UPDATE accounts
                 SET balance_current = COALESCE(balance_current, 0) - :amt,
@@ -336,12 +356,38 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         }
     }
 
+    private UUID lockActiveBaseCurrencyAccount(UUID accountId, String label) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> accounts = em.createNativeQuery("""
+                        SELECT account.id, account.currency_id
+                        FROM accounts account
+                        JOIN currencies currency ON currency.id=account.currency_id
+                        WHERE account.id=:id
+                          AND account.status='使用'
+                          AND COALESCE(account.is_deleted,FALSE)=FALSE
+                          AND currency.status='使用'
+                          AND COALESCE(currency.is_deleted,FALSE)=FALSE
+                          AND currency.is_base_currency
+                        FOR UPDATE OF account
+                        """)
+                .setParameter("id", accountId)
+                .getResultList();
+        if (accounts.size() != 1) {
+            throw new ApiException(
+                    ErrorCode.BUSINESS,
+                    label + "必须是启用的本位币账户，不能按名称或参考汇率猜测币种");
+        }
+        return (UUID) accounts.getFirst()[1];
+    }
+
     private void insertReconciliation(FinanceExpense e, BigDecimal amountLocal) {
         em.createNativeQuery("""
                 INSERT INTO finance_reconciliations
                   (bill_no, source_doc_type, source_doc_id, account_id, in_amount, out_amount,
-                   bill_date, settled_date, source_remark, legacy_bstyle, created_at, updated_at, is_deleted)
-                VALUES (:billNo, :src, :sid, :acc, 0, :outAmt, :bd, :sd, :sr, 23, now(), now(), false)
+                   amount_local, bill_date, settled_date, source_remark, legacy_bstyle,
+                   created_at, updated_at, is_deleted)
+                VALUES (:billNo, :src, :sid, :acc, 0, :outAmt, :outAmt,
+                        :bd, :sd, :sr, 23, now(), now(), false)
                 """)
                 .setParameter("billNo", e.getBillNo())
                 .setParameter("src", RECON_SOURCE)
@@ -354,12 +400,9 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
                 .executeUpdate();
     }
 
-    private void deleteReconciliation(UUID expenseId) {
-        em.createNativeQuery(
-                "DELETE FROM finance_reconciliations WHERE source_doc_id = :sid AND source_doc_type = :src")
-                .setParameter("sid", expenseId)
-                .setParameter("src", RECON_SOURCE)
-                .executeUpdate();
+    private void reverseReconciliation(UUID expenseId) {
+        accountFlowLedger.reverse(
+                RECON_SOURCE, expenseId, OffsetDateTime.now(), "一般费用红冲");
     }
 
     // ===================== CRUD 辅助 =====================
@@ -400,7 +443,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         for (FinanceExpenseItemInput l : inputs) {
             // 总账借方按行 expense_style_id 过账，落库前强校验非空（空则借贷不平衡）
             if (l.getExpenseStyleId() == null) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用明细必须指定费用类别（expense_style_id）");
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用明细必须指定费用类别(expense_style_id)");
             }
             requirePostableStyle(l.getExpenseStyleId());
             FinanceExpenseItem it = new FinanceExpenseItem();

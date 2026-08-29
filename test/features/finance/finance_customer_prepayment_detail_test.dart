@@ -40,22 +40,63 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('收款业务'), findsOneWidget);
       expect(find.text('客户订单预收'), findsOneWidget);
+      expect(find.text('历史口径未分层'), findsOneWidget);
       expect(find.text('绑定销售订单 UUID'), findsOneWidget);
       expect(find.text('order-1'), findsWidgets);
-      expect(find.text('本次预收原币金额'), findsOneWidget);
-      expect(find.text('88.1234'), findsOneWidget);
-      expect(find.text('预收到账本币'), findsOneWidget);
+      expect(find.text('本批预收原币金额'), findsOneWidget);
+      expect(find.text('当前批次实际到账汇率'), findsOneWidget);
+      expect(find.text('88.1234'), findsWidgets);
+      expect(find.text('收款账户币种'), findsOneWidget);
+      expect(find.text('本批人民币实际入账'), findsOneWidget);
       expect(find.text('627.6999'), findsOneWidget);
       expect(find.text('资金来源'), findsOneWidget);
       expect(find.text('已审核财务收款单；不是销售订单历史订金'), findsOneWidget);
       expect(find.textContaining('明细 ('), findsNothing);
-      expect(find.text('订单资金状态（财务只读）'), findsOneWidget);
+      expect(find.text('订单资金状态(财务只读)'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'USD prepayment detail separates account original cash from CNY book value',
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _DetailApi(baseCurrency: false);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.financeViewAll,
+              Perm.customerPrepaymentView,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: const MaterialApp(
+            home: FinanceDocDetailPage(
+              docType: FinanceDocType.receipt,
+              id: 'receipt-1',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('本批账户原币实际入账'), findsOneWidget);
+      expect(find.text('本批本位币折算(人民币)'), findsOneWidget);
+      expect(find.text('收款账户币种'), findsOneWidget);
+      expect(find.text('美元'), findsWidgets);
     },
   );
 }
 
 class _DetailApi extends ApiClient {
-  _DetailApi() : super(Dio());
+  _DetailApi({this.baseCurrency = true}) : super(Dio());
+
+  final bool baseCurrency;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -77,8 +118,15 @@ class _DetailApi extends ApiClient {
       ];
     }
     if (path == '/master/accounts/dict') {
-      return const [
-        {'id': 'account-1', 'name': '人民币账户'},
+      return [
+        {
+          'id': 'account-1',
+          'name': baseCurrency ? '人民币账户' : '美元账户',
+          'currencyId': baseCurrency ? 'currency-cny' : 'currency-usd',
+          'currencyCode': baseCurrency ? 'CNY' : 'USD',
+          'currencyName': baseCurrency ? '人民币' : '美元',
+          'baseCurrency': baseCurrency,
+        },
       ];
     }
     if (path == '/master/currencies/dict') {

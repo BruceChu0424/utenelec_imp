@@ -106,7 +106,7 @@ public class SubcontractApplicationService {
         return toDetail(r, items);
     }
 
-    /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 已进待财务审核的订货单数量，避免对尚在审核中的订货单重复分解；强制同批发起项属同一仓库，否则提示分别生成。 */
+    /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 已进待财务审核的订货单数量；ADR-038 后订货不携带仓库，跨仓申请行可同批分解。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:decompose')")
     public List<DecompositionPreviewItem> decompositionPreview(List<UUID> requestedItemIds) {

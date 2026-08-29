@@ -26,7 +26,7 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
     final name = user?.name.trim() ?? '';
     final code = user?.code.trim() ?? '';
     final currentActor = name.isNotEmpty && code.isNotEmpty
-        ? '$name（$code）'
+        ? '$name($code)'
         : name.isNotEmpty
         ? name
         : code.isNotEmpty

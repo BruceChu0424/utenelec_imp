@@ -41,7 +41,7 @@ class ProductionMakeSubplanLifecycleContractTest {
         assertTrue(method.contains("if (make.isEmpty())"));
         assertTrue(method.contains("return List.of();"));
         assertTrue(method.contains("if (existing.intValue() > 0)"));
-        assertTrue(method.contains("该父计划已存在有效的执行分段（EXECUTION_V1）子计划，不能重复生成"));
+        assertTrue(method.contains("该父计划已存在有效的执行分段(EXECUTION_V1)子计划，不能重复生成"));
 
         String command = source(
                 "ProductionExecutionPackageCommandService.java");

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/models/production_execution_planning.dart';
@@ -47,6 +48,8 @@ void main() {
     expect(find.text('当前账号可查看详情，但没有生产操作权限。'), findsOneWidget);
     expect(find.text('调整分配'), findsNothing);
     expect(find.text('派工'), findsNothing);
+    expect(find.textContaining('可开工'), findsNothing);
+    expect(find.text('已齐套·待派工'), findsWidgets);
   });
 
   testWidgets('detail shows only actions allowed by status and permission', (
@@ -91,6 +94,245 @@ void main() {
 
     expect(find.text('派工'), findsOneWidget);
     expect(find.text('调整分配'), findsNothing);
+  });
+
+  testWidgets(
+    'report action requires daily report view and create permissions',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _app(
+          repository: _repository(status: 'IN_PROGRESS'),
+          permissions: const {Perm.productionDailyReportEdit},
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SEG-001'));
+      await tester.pumpAndSettle();
+      expect(find.text('分批报工'), findsNothing);
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(
+        _app(
+          repository: _repository(status: 'IN_PROGRESS'),
+          permissions: const {
+            Perm.productionDailyReportView,
+            Perm.productionDailyReportCreate,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SEG-001'));
+      await tester.pumpAndSettle();
+      expect(find.text('分批报工'), findsOneWidget);
+    },
+  );
+
+  testWidgets('fully reported segment waits for FQC without report action', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(375, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _app(
+        repository: _repository(
+          status: 'IN_PROGRESS',
+          reportedQty: 10,
+          remainingQty: 0,
+          ordinaryRemainingQty: 0,
+          fqcPendingQty: 10,
+        ),
+        permissions: const {
+          Perm.productionDailyReportView,
+          Perm.productionDailyReportCreate,
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('已报完·待品质'), findsOneWidget);
+    await tester.tap(find.text('SEG-001'));
+    await tester.pumpAndSettle();
+    expect(find.text('分批报工'), findsNothing);
+    expect(find.text('待检 10'), findsWidgets);
+    expect(find.textContaining('待品质判定 10'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'all-zero warehouse rejection shows a redelivery task without report action',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(375, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _app(
+          repository: _repository(
+            status: 'IN_PROGRESS',
+            reportedQty: 10,
+            remainingQty: 0,
+            ordinaryRemainingQty: 0,
+            fqcPassedQty: 10,
+            finishedInboundPendingQty: 10,
+            finishedInboundRejectedQty: 10,
+          ),
+          permissions: const {
+            Perm.productionDailyReportView,
+            Perm.productionDailyReportCreate,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('仓库拒收·待重新交付'), findsOneWidget);
+      await tester.tap(find.text('SEG-001'));
+      await tester.pumpAndSettle();
+      expect(find.text('分批报工'), findsNothing);
+      expect(find.textContaining('仓库拒收 10'), findsWidgets);
+      expect(find.textContaining('已保留同源重新交付任务'), findsOneWidget);
+      expect(find.textContaining('待仓库点收 10'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'ordinary remaining keeps normal reporting primary before replacement lot',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(375, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _app(
+          repository: _repository(
+            status: 'IN_PROGRESS',
+            reportedQty: 4,
+            remainingQty: 6,
+            ordinaryRemainingQty: 5,
+            fqcPassedQty: 4,
+            fqcFailedQty: 1,
+            fqcRecoveryAvailableQty: 1,
+            fqcReplacementAvailableQty: 1,
+          ),
+          permissions: const {
+            Perm.productionDailyReportView,
+            Perm.productionDailyReportCreate,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('生产中·可继续报工'), findsOneWidget);
+      await tester.tap(find.text('SEG-001'));
+      await tester.pumpAndSettle();
+      expect(find.text('分批报工'), findsOneWidget);
+      expect(find.text('补产完工报工'), findsNothing);
+      expect(find.textContaining('报废/拒收补产待齐套 1'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('REWORK authorization exposes explicit reinspection reporting', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(375, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _app(
+        repository: _repository(
+          status: 'IN_PROGRESS',
+          reportedQty: 8,
+          remainingQty: 2,
+          ordinaryRemainingQty: 0,
+          fqcFailedQty: 2,
+          fqcRecoveryAvailableQty: 2,
+          fqcReworkAvailableQty: 2,
+        ),
+        permissions: const {
+          Perm.productionDailyReportView,
+          Perm.productionDailyReportCreate,
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('返工再检·待报工'), findsOneWidget);
+    await tester.tap(find.text('SEG-001'));
+    await tester.pumpAndSettle();
+    expect(find.text('返工再检报工'), findsOneWidget);
+    expect(find.textContaining('返工再检待报 2'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('SCRAP replacement stays blocked from ordinary reporting', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(375, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _app(
+        repository: _repository(
+          status: 'IN_PROGRESS',
+          reportedQty: 8,
+          remainingQty: 2,
+          ordinaryRemainingQty: 0,
+          fqcFailedQty: 2,
+          fqcRecoveryAvailableQty: 2,
+          fqcReplacementAvailableQty: 2,
+        ),
+        permissions: const {
+          Perm.productionDailyReportView,
+          Perm.productionDailyReportCreate,
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('补产待齐套/发料'), findsOneWidget);
+    await tester.tap(find.text('SEG-001'));
+    await tester.pumpAndSettle();
+    expect(find.text('分批报工'), findsNothing);
+    expect(find.textContaining('等待重新齐套和发料后才能报工'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('V415 material-ready replacement enables explicit reporting', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(375, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _app(
+        repository: _repository(
+          status: 'IN_PROGRESS',
+          reportedQty: 8,
+          remainingQty: 2,
+          ordinaryRemainingQty: 0,
+          fqcFailedQty: 2,
+          fqcRecoveryAvailableQty: 2,
+          fqcReplacementAvailableQty: 2,
+          fqcReplacementReadyQty: 2,
+        ),
+        permissions: const {
+          Perm.productionDailyReportView,
+          Perm.productionDailyReportCreate,
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('补产物料已发·待报工'), findsOneWidget);
+    await tester.tap(find.text('SEG-001'));
+    await tester.pumpAndSettle();
+    expect(find.text('补产完工报工'), findsOneWidget);
+    expect(find.textContaining('补产物料已发待报 2'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('manual defer can be released and rechecked', (tester) async {
@@ -216,6 +458,69 @@ void main() {
       isNotNull,
     );
   });
+
+  testWidgets('returning from report creation reloads execution status', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var reads = 0;
+    final router = GoRouter(
+      initialLocation: '/plan',
+      routes: [
+        GoRoute(
+          path: '/plan',
+          builder: (context, state) => const Scaffold(
+            body: SingleChildScrollView(
+              child: ProductionExecutionSegmentsCard(
+                planId: 'plan-1',
+                canAssign: false,
+                canReleaseDefer: false,
+                canDispatch: false,
+                canStart: false,
+                canReport: true,
+              ),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/production/daily-reports/new',
+          builder: (context, state) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: context.pop,
+                child: const Text('返回生产计划'),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionPlanRepositoryProvider.overrideWithValue(
+            _repository(status: 'IN_PROGRESS', onRead: () => reads++),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(reads, 1);
+
+    await tester.tap(find.text('SEG-001'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('分批报工'));
+    await tester.pumpAndSettle();
+    expect(find.text('返回生产计划'), findsOneWidget);
+
+    await tester.tap(find.text('返回生产计划'));
+    await tester.pumpAndSettle();
+    expect(reads, 2);
+  });
 }
 
 Widget _app({
@@ -236,7 +541,9 @@ Widget _app({
             ),
             canDispatch: permissions.contains(Perm.productionExecutionDispatch),
             canStart: permissions.contains(Perm.productionExecutionStart),
-            canReport: permissions.contains(Perm.productionDailyReportEdit),
+            canReport:
+                permissions.contains(Perm.productionDailyReportView) &&
+                permissions.contains(Perm.productionDailyReportCreate),
             initialSegmentId: initialSegmentId,
           ),
         ),
@@ -251,13 +558,28 @@ ProductionPlanRepository _repository({
   int materialDemandCount = 2,
   int fullyIssuedDemandCount = 2,
   bool materialIssued = true,
+  double reportedQty = 3,
+  double remainingQty = 7,
+  double? ordinaryRemainingQty,
+  double fqcPendingQty = 0,
+  double fqcPassedQty = 0,
+  double fqcFailedQty = 0,
+  double finishedInboundPendingQty = 0,
+  double inboundQty = 0,
+  double finishedInboundRejectedQty = 0,
+  double fqcRecoveryAvailableQty = 0,
+  double fqcReworkAvailableQty = 0,
+  double fqcReplacementAvailableQty = 0,
+  double fqcReplacementReadyQty = 0,
   void Function(RequestOptions request)? onCommand,
+  void Function()? onRead,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) {
         final isRead = request.method == 'GET';
+        if (isRead) onRead?.call();
         if (!isRead) onCommand?.call(request);
         return handler.resolve(
           Response<dynamic>(
@@ -271,6 +593,20 @@ ProductionPlanRepository _repository({
                       materialDemandCount: materialDemandCount,
                       fullyIssuedDemandCount: fullyIssuedDemandCount,
                       materialIssued: materialIssued,
+                      reportedQty: reportedQty,
+                      remainingQty: remainingQty,
+                      ordinaryRemainingQty:
+                          ordinaryRemainingQty ?? remainingQty,
+                      fqcPendingQty: fqcPendingQty,
+                      fqcPassedQty: fqcPassedQty,
+                      fqcFailedQty: fqcFailedQty,
+                      finishedInboundPendingQty: finishedInboundPendingQty,
+                      inboundQty: inboundQty,
+                      finishedInboundRejectedQty: finishedInboundRejectedQty,
+                      fqcRecoveryAvailableQty: fqcRecoveryAvailableQty,
+                      fqcReworkAvailableQty: fqcReworkAvailableQty,
+                      fqcReplacementAvailableQty: fqcReplacementAvailableQty,
+                      fqcReplacementReadyQty: fqcReplacementReadyQty,
                     ),
                   ]
                 : _segmentJson(
@@ -278,6 +614,19 @@ ProductionPlanRepository _repository({
                     materialDemandCount: materialDemandCount,
                     fullyIssuedDemandCount: fullyIssuedDemandCount,
                     materialIssued: materialIssued,
+                    reportedQty: reportedQty,
+                    remainingQty: remainingQty,
+                    ordinaryRemainingQty: ordinaryRemainingQty ?? remainingQty,
+                    fqcPendingQty: fqcPendingQty,
+                    fqcPassedQty: fqcPassedQty,
+                    fqcFailedQty: fqcFailedQty,
+                    finishedInboundPendingQty: finishedInboundPendingQty,
+                    inboundQty: inboundQty,
+                    finishedInboundRejectedQty: finishedInboundRejectedQty,
+                    fqcRecoveryAvailableQty: fqcRecoveryAvailableQty,
+                    fqcReworkAvailableQty: fqcReworkAvailableQty,
+                    fqcReplacementAvailableQty: fqcReplacementAvailableQty,
+                    fqcReplacementReadyQty: fqcReplacementReadyQty,
                   ),
           ),
         );
@@ -293,6 +642,19 @@ Map<String, dynamic> _segmentJson({
   int materialDemandCount = 2,
   int fullyIssuedDemandCount = 2,
   bool materialIssued = true,
+  double reportedQty = 3,
+  double remainingQty = 7,
+  double ordinaryRemainingQty = 7,
+  double fqcPendingQty = 0,
+  double fqcPassedQty = 0,
+  double fqcFailedQty = 0,
+  double finishedInboundPendingQty = 0,
+  double inboundQty = 0,
+  double finishedInboundRejectedQty = 0,
+  double fqcRecoveryAvailableQty = 0,
+  double fqcReworkAvailableQty = 0,
+  double fqcReplacementAvailableQty = 0,
+  double fqcReplacementReadyQty = 0,
 }) => {
   'id': 'segment-1',
   'packageId': 'package-1',
@@ -306,8 +668,9 @@ Map<String, dynamic> _segmentJson({
   'productColorId': null,
   'productUnitId': 'unit-1',
   'plannedQty': 10,
-  'reportedQty': 3,
-  'remainingQty': 7,
+  'reportedQty': reportedQty,
+  'remainingQty': remainingQty,
+  'ordinaryRemainingQty': ordinaryRemainingQty,
   'status': status,
   'autoPromoteWhenReady': autoPromoteWhenReady,
   'workshopDepartmentId': 'workshop-1',
@@ -324,5 +687,15 @@ Map<String, dynamic> _segmentJson({
   'materialDemandCount': materialDemandCount,
   'fullyIssuedDemandCount': fullyIssuedDemandCount,
   'materialIssued': materialIssued,
+  'fqcPendingQty': fqcPendingQty,
+  'fqcPassedQty': fqcPassedQty,
+  'fqcFailedQty': fqcFailedQty,
+  'finishedInboundPendingQty': finishedInboundPendingQty,
+  'inboundQty': inboundQty,
+  'finishedInboundRejectedQty': finishedInboundRejectedQty,
+  'fqcRecoveryAvailableQty': fqcRecoveryAvailableQty,
+  'fqcReworkAvailableQty': fqcReworkAvailableQty,
+  'fqcReplacementAvailableQty': fqcReplacementAvailableQty,
+  'fqcReplacementReadyQty': fqcReplacementReadyQty,
   'lockVersion': 1,
 };

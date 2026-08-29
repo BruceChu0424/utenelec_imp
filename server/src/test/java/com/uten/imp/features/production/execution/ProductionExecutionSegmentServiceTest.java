@@ -1,6 +1,8 @@
 package com.uten.imp.features.production.execution;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService;
 import com.uten.imp.features.production.mrp.ProductionGoodsWorkshopPreferenceService;
@@ -22,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -32,6 +35,7 @@ class ProductionExecutionSegmentServiceTest {
     private final UUID planId = UUID.randomUUID();
     private final UUID segmentId = UUID.randomUUID();
     private final UUID packageId = UUID.randomUUID();
+    private final UUID planMakerId = UUID.randomUUID();
     private EntityManager em;
     private final UUID goodsId = UUID.randomUUID();
     private SecurityContextCurrentUser currentUser;
@@ -39,6 +43,7 @@ class ProductionExecutionSegmentServiceTest {
     private ProductionExecutionReadinessService readiness;
     private ProductionAssignmentValidator assignmentValidator;
     private ChainNoticeService chainNotice;
+    private ProductionDocumentAccessPolicy access;
     private ProductionExecutionSegmentService service;
 
     @BeforeEach
@@ -49,6 +54,7 @@ class ProductionExecutionSegmentServiceTest {
         readiness = mock(ProductionExecutionReadinessService.class);
         assignmentValidator = mock(ProductionAssignmentValidator.class);
         chainNotice = mock(ChainNoticeService.class);
+        access = mock(ProductionDocumentAccessPolicy.class);
         service = new ProductionExecutionSegmentService(
                 em,
                 workshopPreferences,
@@ -56,7 +62,8 @@ class ProductionExecutionSegmentServiceTest {
                 assignmentValidator,
                 currentUser,
                 mock(TxSessionVars.class),
-                chainNotice);
+                chainNotice,
+                access);
     }
 
     @Test
@@ -93,6 +100,8 @@ class ProductionExecutionSegmentServiceTest {
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
         when(readiness.lockManualReleaseDimensions(planId, segmentId))
                 .thenReturn(warehouseId);
+        Query planOwner = query();
+        when(planOwner.getResultList()).thenReturn(List.of(planMakerId));
         Query lock = locked(
                 "WAITING", 5L, "CONFIRMED", null, false);
         Query replay = query();
@@ -105,7 +114,7 @@ class ProductionExecutionSegmentServiceTest {
         Query event = query();
         when(event.executeUpdate()).thenReturn(1);
         when(em.createNativeQuery(anyString())).thenReturn(
-                lock, replay, update, view, event);
+                planOwner, lock, replay, update, view, event);
 
         ExecutionSegmentView result = service.releaseDefer(
                 planId,
@@ -131,6 +140,29 @@ class ProductionExecutionSegmentServiceTest {
                         new SegmentTransitionRequest(2L, "cancel-key-00001")));
 
         assertTrue(error.getMessage().contains("整包取消"));
+    }
+
+    @Test
+    void objectScopeDenialStopsBeforeReplayAndMutation() {
+        Query lock = locked("READY", 2L, "CONFIRMED");
+        when(em.createNativeQuery(anyString())).thenReturn(lock);
+        doThrow(new ApiException(ErrorCode.FORBIDDEN, "无权操作"))
+                .when(access)
+                .requireScopedOperationWritable(
+                        planMakerId,
+                        "无权操作此生产计划的执行任务",
+                        "production_execution:dispatch");
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.dispatch(
+                        planId,
+                        segmentId,
+                        new SegmentTransitionRequest(
+                                2L, "dispatch-scope-denied")));
+
+        assertTrue(error.getMessage().contains("无权操作"));
+        verifyNoInteractions(chainNotice, readiness);
     }
 
     @Test
@@ -350,7 +382,8 @@ class ProductionExecutionSegmentServiceTest {
                         goodsId,
                         workshopId,
                         autoPromoteWhenReady,
-                        materialRequirementMode
+                        materialRequirementMode,
+                        planMakerId
                 }));
         return lock;
     }
@@ -374,7 +407,13 @@ class ProductionExecutionSegmentServiceTest {
                 status, workshopId, "Workshop",
                 null, null, null, null, null, null,
                 1, 0, true, true,
-                demandCount, fulfilledCount, materialIssued, version
+                demandCount, fulfilledCount, materialIssued,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ONE, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                version
         };
     }
     private void stubLockAndReplay(
@@ -394,7 +433,8 @@ class ProductionExecutionSegmentServiceTest {
                 goodsId,
                 null,
                 true,
-                "DEMANDED"
+                "DEMANDED",
+                planMakerId
         }));
         Query replay = query();
         when(replay.getResultList()).thenReturn(List.of());

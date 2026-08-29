@@ -56,7 +56,7 @@ public class MaterialAnalysisSupplyProgressService {
 
         List<Object[]> materialRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT material.analysis_item_id, material.required_qty, material.shortage_qty,
-                       goods.code, goods.name
+                       goods.code, goods.name, material.goods_id, material.color_id
                 FROM production_material_analysis_materials material
                 JOIN goods goods ON goods.id = material.goods_id
                 WHERE material.id = :materialLineId
@@ -74,19 +74,37 @@ public class MaterialAnalysisSupplyProgressService {
         BigDecimal shortageQty = decimal(material[2]);
         String goodsCode = (String) material[3];
         String goodsName = (String) material[4];
+        UUID goodsId = (UUID) material[5];
+        UUID colorId = (UUID) material[6];
 
         // 该节点最近一次未取消的供给行动（含外部单据锚点与提交人）。
         List<Object[]> actions = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT action.id, action.route, action.external_document_type,
                        action.external_document_id, action.external_document_no,
                        action.created_at, action.created_by
-                FROM preplan_supply_action_allocations allocation
-                JOIN preplan_supply_actions action ON action.id = allocation.action_id
-                WHERE allocation.analysis_material_id = :materialLineId
+                FROM preplan_supply_actions action
+                WHERE action.analysis_id = :analysisId
                   AND action.status <> 'CANCELLED'
+                  AND (
+                      EXISTS (
+                          SELECT 1 FROM preplan_supply_action_allocations allocation
+                          WHERE allocation.action_id = action.id
+                            AND allocation.analysis_material_id = :materialLineId)
+                      OR action.safety_replenishment_qty > 0
+                         AND action.goods_id = :goodsId
+                         AND action.color_id IS NOT DISTINCT FROM
+                             CAST(:colorId AS uuid)
+                         AND action.warehouse_id = (
+                             SELECT analysis.warehouse_id
+                             FROM production_material_analyses analysis
+                             WHERE analysis.id = :analysisId)
+                  )
                 ORDER BY action.created_at DESC, action.id DESC
                 LIMIT 1
-                """).setParameter("materialLineId", materialLineId));
+                """).setParameter("materialLineId", materialLineId)
+                .setParameter("goodsId", goodsId)
+                .setParameter("colorId", colorId)
+                .setParameter("analysisId", analysisId));
 
         List<MaterialAnalysisContracts.SupplyProgressStep> steps = new ArrayList<>();
         if (actions.isEmpty()) {
@@ -122,47 +140,51 @@ public class MaterialAnalysisSupplyProgressService {
             String actorName) {
         String routeLabel = purchase ? "采购" : "委外";
         List<MaterialAnalysisContracts.SupplyProgressStep> steps = new ArrayList<>();
+        String splitDetail = purchase ? buySplitDetail(supplyActionId) : null;
 
         // ① 已提交需求：行动存在即完成；单号取申请/委外申请（行动外部单据）。
         List<Object[]> requestRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT DISTINCT request.bill_no, request.created_at
-                FROM preplan_supply_action_allocations allocation
-                JOIN preplan_supply_actions action ON action.id = allocation.action_id
-                JOIN %s request_item ON request_item.id = allocation.external_item_id
-                JOIN %s request ON request.id = request_item.%s
-                WHERE allocation.analysis_material_id = :materialLineId
+                FROM preplan_supply_actions action
+                JOIN %s request ON request.id = action.external_document_id
+                WHERE action.id = :supplyActionId
                   AND action.status <> 'CANCELLED'
                   AND request.is_deleted = FALSE
                 ORDER BY request.created_at
                 """.formatted(
-                purchase ? "purchase_request_items" : "subcontract_application_items",
-                purchase ? "purchase_requests" : "subcontract_applications",
-                purchase ? "request_id" : "application_id"))
-                .setParameter("materialLineId", materialLineId));
+                purchase ? "purchase_requests" : "subcontract_applications"))
+                .setParameter("supplyActionId", supplyActionId));
         String requestNos = joinColumn(requestRows, 0);
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "REQUEST_SUBMITTED", "已提交" + routeLabel + "需求", DONE,
-                null, requestNos.isEmpty() ? null : requestNos, iso(actionAt), actorName));
+                splitDetail, requestNos.isEmpty() ? null : requestNos,
+                iso(actionAt), actorName));
 
         // ② 下单：申请明细 → 订货明细 → 订货单。
         String orderItemSource = purchase ? "request_item_id" : "application_item_id";
         List<Object[]> orderRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT DISTINCT ord.id, ord.bill_no, ord.status, ord.is_closed, ord.created_at,
                        ord.maker_id, order_item.id
-                FROM preplan_supply_action_allocations allocation
-                JOIN preplan_supply_actions action ON action.id = allocation.action_id
-                JOIN %s order_item ON order_item.%s = allocation.external_item_id
+                FROM %s order_item
                 JOIN %s ord ON ord.id = order_item.order_id
-                WHERE allocation.analysis_material_id = :materialLineId
-                  AND action.status <> 'CANCELLED'
+                WHERE order_item.%s IN (
+                      SELECT allocation.external_item_id
+                      FROM preplan_supply_action_allocations allocation
+                      WHERE allocation.action_id = :supplyActionId
+                        AND allocation.external_item_id IS NOT NULL
+                      UNION
+                      SELECT action.safety_external_item_id
+                      FROM preplan_supply_actions action
+                      WHERE action.id = :supplyActionId
+                        AND action.safety_external_item_id IS NOT NULL)
                   AND order_item.is_deleted = FALSE
                   AND ord.is_deleted = FALSE
                 ORDER BY ord.created_at, ord.id, order_item.id
                 """.formatted(
                 purchase ? "purchase_order_items" : "subcontract_order_items",
-                orderItemSource,
-                purchase ? "purchase_orders" : "subcontract_orders"))
-                .setParameter("materialLineId", materialLineId));
+                purchase ? "purchase_orders" : "subcontract_orders",
+                orderItemSource))
+                .setParameter("supplyActionId", supplyActionId));
 
         if (orderRows.isEmpty()) {
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
@@ -427,7 +449,7 @@ public class MaterialAnalysisSupplyProgressService {
 
         if (planCount == 0 && issueRows.isEmpty()) {
             return new MaterialAnalysisContracts.SupplyProgressStep(
-                    "MATERIAL_ISSUED", "材料出仓", DONE, "无需发料（委外商自备料）", null, null, null);
+                    "MATERIAL_ISSUED", "材料出仓", DONE, "无需发料(委外商自备料)", null, null, null);
         }
         String qtyText = "已出仓 " + issued.stripTrailingZeros().toPlainString()
                 + " / 计划 " + planned.stripTrailingZeros().toPlainString();
@@ -438,7 +460,7 @@ public class MaterialAnalysisSupplyProgressService {
                     iso(lastApprovedAt), approverName);
         }
         String detail = issued.signum() > 0
-                ? qtyText + "（部分出仓）"
+                ? qtyText + "(部分出仓)"
                 : anyDraft ? "出仓单已生成，待仓库审核出仓" : "等待仓库出仓";
         return new MaterialAnalysisContracts.SupplyProgressStep(
                 "MATERIAL_ISSUED", "材料出仓", CURRENT, detail,
@@ -523,11 +545,43 @@ public class MaterialAnalysisSupplyProgressService {
         }
         boolean stocked = shortageQty.compareTo(BigDecimal.ZERO) <= 0;
         BigDecimal covered = requiredQty.subtract(shortageQty).max(BigDecimal.ZERO);
+        String detail = "已备 " + covered.stripTrailingZeros().toPlainString()
+                + " / " + requiredQty.stripTrailingZeros().toPlainString();
+        String split = buySplitDetail(supplyActionId);
+        if (split != null) detail += " · " + split;
         return new MaterialAnalysisContracts.SupplyProgressStep(
                 "STOCKED", "入库齐套", stocked ? DONE : WAITING,
-                "已备 " + covered.stripTrailingZeros().toPlainString()
-                        + " / " + requiredQty.stripTrailingZeros().toPlainString(),
+                detail,
                 null, null, null);
+    }
+
+    private String buySplitDetail(UUID supplyActionId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT progress.demand_requested_qty,
+                       progress.demand_qualified_qty,
+                       progress.demand_future_qty,
+                       progress.safety_requested_qty,
+                       progress.safety_qualified_qty,
+                       progress.safety_future_qty
+                FROM v_preplan_buy_action_slice_progress progress
+                WHERE progress.action_id = :actionId
+                """).setParameter("actionId", supplyActionId));
+        if (rows.isEmpty()) return null;
+        Object[] row = rows.getFirst();
+        BigDecimal demand = decimal(row[0]);
+        BigDecimal demandQualified = decimal(row[1]);
+        BigDecimal demandFuture = decimal(row[2]);
+        BigDecimal safety = decimal(row[3]);
+        BigDecimal safetyQualified = decimal(row[4]);
+        BigDecimal safetyFuture = decimal(row[5]);
+        if (safety.signum() <= 0) return null;
+        return "生产需求绑定 " + demandQualified.stripTrailingZeros().toPlainString()
+                + "/" + demand.stripTrailingZeros().toPlainString()
+                + "(在途 " + demandFuture.stripTrailingZeros().toPlainString() + ")"
+                + "；公共安全补库 "
+                + safetyQualified.stripTrailingZeros().toPlainString()
+                + "/" + safety.stripTrailingZeros().toPlainString()
+                + "(在途 " + safetyFuture.stripTrailingZeros().toPlainString() + ")";
     }
 
     private static String joinColumn(List<Object[]> rows, int index) {

@@ -18,6 +18,11 @@ void main() {
   test('只重试安全读请求的瞬时故障', () {
     final get = RequestOptions(path: '/items', method: 'GET');
     final post = RequestOptions(path: '/items', method: 'POST');
+    final oneShotGet = RequestOptions(
+      path: '/optional-lookup',
+      method: 'GET',
+      extra: const {safeRequestRetryDisabledKey: true},
+    );
 
     expect(
       shouldRetrySafeRequest(
@@ -53,6 +58,15 @@ void main() {
           statusCode: 500,
           requestOptions: get,
           response: Response<void>(requestOptions: get, statusCode: 500),
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      shouldRetrySafeRequest(
+        DioException(
+          requestOptions: oneShotGet,
+          type: DioExceptionType.receiveTimeout,
         ),
       ),
       isFalse,

@@ -231,7 +231,7 @@ public class SalesShipmentService {
                        o.client_id, o.currency_id, o.bill_no,
                        o.owner_employee_id, o.status, o.is_stopped, o.is_closed,
                        o.tax_rate, o.payment_style_id, o.seller_id, o.id,
-                       o.settlement_method_id
+                       o.settlement_method_id, o.finance_rejected
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE i.id IN (:ids) AND COALESCE(i.is_deleted,false) = false AND COALESCE(o.is_deleted,false) = false
@@ -250,14 +250,18 @@ public class SalesShipmentService {
             }
             BigDecimal reserved = r[6] instanceof BigDecimal b ? b : BigDecimal.ZERO;
             if (line.getQty() == null || line.getQty().signum() <= 0) {
-                throw new ApiException(ErrorCode.BUSINESS, "本次数量必须大于 0（订单 " + r[9] + "）");
+                throw new ApiException(ErrorCode.BUSINESS, "本次数量必须大于 0(订单 " + r[9] + ")");
             }
             if (reserved.signum() <= 0 || line.getQty().compareTo(reserved) > 0) {
                 throw new ApiException(ErrorCode.BUSINESS,
-                        "订单 " + r[9] + " 可发预留不足（可发 " + reserved.stripTrailingZeros().toPlainString() + "），请刷新后重试");
+                        "订单 " + r[9] + " 可发预留不足(可发 " + reserved.stripTrailingZeros().toPlainString() + ")，请刷新后重试");
             }
             if (((Number) r[11]).shortValue() != 1 || (boolean) r[12] || (boolean) r[13]) {
                 throw new ApiException(ErrorCode.BUSINESS, "订单 " + r[9] + " 非已审在途状态，不可发货");
+            }
+            if (Boolean.TRUE.equals(r[19])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "订单 " + r[9] + " 已被财务驳回，不可创建出货作业");
             }
             UUID owner = (UUID) r[10];
             accessPolicy.requireWritable(owner, "只能对本人负责的销售订单批量发货", writeScope);
@@ -721,7 +725,7 @@ public class SalesShipmentService {
             if (entry.getValue().compareTo(movable) > 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "出货仓可拣库存不足（已扣安全库存、其它硬预留和在拣任务）：可拣 "
+                        "出货仓可拣库存不足(已扣安全库存、其它硬预留和在拣任务)：可拣 "
                                 + movable.stripTrailingZeros().toPlainString()
                                 + "，本单需要 "
                                 + entry.getValue().stripTrailingZeros().toPlainString());
@@ -1216,7 +1220,7 @@ public class SalesShipmentService {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id, REJECT_AUTHORITY);
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅草稿（待备货）出货单可驳回；已审核请走红冲");
+            throw new ApiException(ErrorCode.BUSINESS, "仅草稿(待备货)出货单可驳回；已审核请走红冲");
         }
         if (s.isRejected()) {
             throw new ApiException(ErrorCode.BUSINESS, "该出货单已驳回");
@@ -1429,13 +1433,13 @@ public class SalesShipmentService {
         BigDecimal deliverable = qty.subtract(toBd(r[1])).add(toBd(r[2])).subtract(toBd(r[3]));
         if (it.getQty().compareTo(deliverable) > 0) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "发货数量超过订单未发数量（剩 " + deliverable.stripTrailingZeros().toPlainString() + "）");
+                    "发货数量超过订单未发数量(剩 " + deliverable.stripTrailingZeros().toPlainString() + ")");
         }
         short chain = r[5] == null ? 0 : ((Number) r[5]).shortValue();
         BigDecimal reserved = toBd(r[4]);
         if (chain > 0 && it.getQty().compareTo(reserved) > 0) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "发货数量超过可发货数量（预留 " + reserved.stripTrailingZeros().toPlainString() + "）");
+                    "发货数量超过可发货数量(预留 " + reserved.stripTrailingZeros().toPlainString() + ")");
         }
     }
 
@@ -1558,7 +1562,7 @@ public class SalesShipmentService {
                        o.seller_id, i.price, i.amount_original, i.qty,
                        i.discount, i.machining_price, i.client_no,
                        i.client_model, i.source_doc_no, o.id,
-                       o.settlement_method_id
+                       o.settlement_method_id, o.finance_rejected
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE i.id IN (:ids)
@@ -1609,6 +1613,10 @@ public class SalesShipmentService {
             if (status != STATUS_APPROVED
                     || (requireOpenSource && (Boolean.TRUE.equals(row[8]) || Boolean.TRUE.equals(row[9])))) {
                 throw new ApiException(ErrorCode.BUSINESS, "来源订单 " + row[10] + " 当前不可发货");
+            }
+            if (Boolean.TRUE.equals(row[25])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "来源订单 " + row[10] + " 已被财务驳回，不可创建出货作业");
             }
             if (enforceCommercialSource) {
                 CommercialTerms terms = commercialTerms(row);
@@ -1755,12 +1763,14 @@ public class SalesShipmentService {
         }
         List<UUID> locked = com.uten.imp.common.util.NativeQueryResults.typedRows(
                 em.createNativeQuery("""
-                SELECT id
-                FROM sales_order_items
-                WHERE order_id IN (:orderIds)
-                  AND COALESCE(is_deleted,false) = false
-                ORDER BY id
-                FOR UPDATE
+                SELECT item.id
+                FROM sales_order_items item
+                JOIN sales_orders sales_order ON sales_order.id = item.order_id
+                WHERE item.order_id IN (:orderIds)
+                  AND COALESCE(item.is_deleted,false) = false
+                  AND COALESCE(sales_order.is_deleted,false) = false
+                ORDER BY sales_order.id, item.id
+                FOR UPDATE OF sales_order, item
                 """).setParameter("orderIds", orderIds), UUID.class);
         if (!locked.containsAll(ids)) {
             throw new ApiException(ErrorCode.CONFLICT, "来源订单行已变化，请刷新后重试");

@@ -40,8 +40,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(clientRepository.searchQueries, ['远洋']);
-    expect(find.text('远洋电器（C-002）'), findsOneWidget);
-    expect(find.text('本地客户（C-001）'), findsNothing);
+    expect(find.text('远洋电器(C-002)'), findsOneWidget);
+    expect(find.text('本地客户(C-001)'), findsNothing);
 
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
@@ -51,7 +51,7 @@ void main() {
     expect(tree.selectedIds, {'southeast-asia'});
 
     // 点击包含客户命中的父分类仍保留左侧查询，并用「分类 + 查询词」刷新右侧。
-    await tester.tap(find.text('海外客户（OVERSEAS）'));
+    await tester.tap(find.text('海外客户(OVERSEAS)'));
     await tester.pumpAndSettle();
     expect(
       tester
@@ -62,10 +62,10 @@ void main() {
     );
     expect(clientRepository.listKeywords.last, '远洋');
 
-    await tester.tap(find.text('远洋电器（C-002）'));
+    await tester.tap(find.text('远洋电器(C-002)'));
     await tester.pumpAndSettle();
     // 二次操作契约：点行仅高亮（底栏显示已选择），还需点「确定」才选中返回。
-    expect(find.text('已选择：远洋电器（C-002）'), findsOneWidget);
+    expect(find.text('已选择：远洋电器(C-002)'), findsOneWidget);
 
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
@@ -92,7 +92,7 @@ void main() {
 
     expect(clientRepository.searchQueries, ['海外客户']);
     expect(clientRepository.listCategoryIds.last, 'overseas');
-    expect(find.text('远洋电器（C-002）'), findsOneWidget);
+    expect(find.text('远洋电器(C-002)'), findsOneWidget);
 
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
@@ -101,7 +101,7 @@ void main() {
     expect(tree.selectedIds, {'overseas'});
 
     // 纯分类命中不退出左树搜索，也不得把分类词当作客户过滤词。
-    await tester.tap(find.text('海外客户（OVERSEAS）'));
+    await tester.tap(find.text('海外客户(OVERSEAS)'));
     await tester.pumpAndSettle();
     expect(
       tester
@@ -154,8 +154,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(clientRepository.searchPages, [1]);
-    expect(find.text('历史财务占位（LEGACY-FIN-CL-001）'), findsNothing);
-    expect(find.text('远洋电器（C-002）'), findsOneWidget);
+    expect(find.text('历史财务占位(LEGACY-FIN-CL-001)'), findsNothing);
+    expect(find.text('远洋电器(C-002)'), findsOneWidget);
     // 服务端过滤在分页前完成；有效结果仅一页时分页条应隐藏。
     expect(find.text('1 / 2'), findsNothing);
     expect(clientRepository.excludeLegacyFlags, everyElement(isTrue));
@@ -183,10 +183,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
-    expect(find.text('远洋电器（C-002）').hitTestable(), findsOneWidget);
+    expect(find.text('远洋电器(C-002)').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('远洋电器（C-002）'));
+    await tester.tap(find.text('远洋电器(C-002)'));
     await tester.pumpAndSettle();
     // 二次操作契约：点行仅高亮，还需点「确定」才选中返回。
     await tester.tap(find.text('确定'));

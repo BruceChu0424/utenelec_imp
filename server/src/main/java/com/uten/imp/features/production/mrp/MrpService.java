@@ -544,8 +544,8 @@ public class MrpService {
         if (buy.isEmpty()) {
             if (!emptyIsError) return null;
             throw new ApiException(ErrorCode.BUSINESS, grossMode
-                    ? "无毛需求外购物料（或全部为自制件）"
-                    : "无新增采购净缺口（当前可用/有效在途已覆盖，晚到在途请走催交或改配）");
+                    ? "无毛需求外购物料(或全部为自制件)"
+                    : "无新增采购净缺口(当前可用/有效在途已覆盖，晚到在途请走催交或改配)");
         }
 
         // 父计划写锁使“查重 + 生成”串行；联动表继续承担业务溯源与历史留痕。
@@ -558,7 +558,7 @@ public class MrpService {
                 """).setParameter("planId", plan.getId()).getResultList();
         if (!dup.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "本计划已生成过采购申请（" + dup.get(0) + "），如需重生成请先删除或红冲该申请");
+                    "本计划已生成过采购申请(" + dup.get(0) + ")，如需重生成请先删除或红冲该申请");
         }
 
         LocalDate today = BusinessTime.today();
@@ -613,7 +613,7 @@ public class MrpService {
             it.setProductionPlanNo(plan.getBillNo());
             it.setSourceDocNo(plan.getBillNo());
             it.setRemark(grossMode
-                    ? "毛需求开单（不扣库存/在途）"
+                    ? "毛需求开单(不扣库存/在途)"
                     : "毛需求 " + row.gross().stripTrailingZeros().toPlainString()
                     + " − 当前可用 " + row.availableNow().stripTrailingZeros().toPlainString()
                     + " − 全部在途 " + row.openPoTotal().stripTrailingZeros().toPlainString()
@@ -673,7 +673,7 @@ public class MrpService {
         if (existing.intValue() > 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "该父计划已存在有效的执行分段（EXECUTION_V1）子计划，不能重复生成");
+                    "该父计划已存在有效的执行分段(EXECUTION_V1)子计划，不能重复生成");
         }
 
         // 子计划交货日：父计划最早开工日；无开工日则取父计划交货日。
@@ -693,7 +693,7 @@ public class MrpService {
         sub.setDepartmentId(plan.getDepartmentId());
         sub.setWorkshopName(plan.getWorkshopName());
         sub.setRemark("父计划 " + plan.getBillNo()
-                + " 直接层自制短缺自动生成（执行分段）");
+                + " 直接层自制短缺自动生成(执行分段)");
         sub.setSourceDocNo(plan.getBillNo());
         sub.setMakerId(currentUser.requireEmployeeId());
         sub.setStatus((short) 0);
@@ -896,7 +896,7 @@ public class MrpService {
         }
         String name = (String) x[2];
         if (name != null && !name.isBlank()) {
-            return name + "（编码为空）";
+            return name + "(编码为空)";
         }
         return "id=" + x[0];
     }

@@ -4,8 +4,10 @@
 // 不把全部物料混在一张大表，也不拆成一堆零散单据（ERPNext Production Plan 形态）。
 // 数据来自当前物料分析视图（页面内存传入，不重算），采购/委外按货品聚合缺口，
 // 状态列直接引用真实下游单号（生产计划号 / 采购申请号 / 委外申请号），可打印成 PDF。
+import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +17,10 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/print/pdf_printer.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -24,9 +29,14 @@ import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 
 class ProductionPlanSummarySheetPage extends ConsumerStatefulWidget {
-  const ProductionPlanSummarySheetPage({super.key, required this.analysis});
+  const ProductionPlanSummarySheetPage({
+    super.key,
+    required this.analysisId,
+    this.initialAnalysis,
+  });
 
-  final ProductionMaterialAnalysisView analysis;
+  final String analysisId;
+  final ProductionMaterialAnalysisView? initialAnalysis;
 
   @override
   ConsumerState<ProductionPlanSummarySheetPage> createState() =>
@@ -37,44 +47,123 @@ class _ProductionPlanSummarySheetPageState
     extends ConsumerState<ProductionPlanSummarySheetPage> {
   /// goodsId → 默认车间名（车间偏好学习值；未维护的进缺车间清单）。
   Map<String, String> _defaultWorkshops = const {};
+  ProductionMaterialAnalysisView? _analysis;
+  bool _analysisLoading = false;
+  String? _analysisError;
+  bool _workshopsLoading = false;
   bool _workshopsLoaded = false;
+  String? _workshopsError;
+  CancelToken? _workshopCancelToken;
+  int _workshopLoadGeneration = 0;
   bool _printing = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadWorkshops());
+    final initial = widget.initialAnalysis;
+    _analysis = initial?.analysisId == widget.analysisId ? initial : null;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());
+  }
+
+  @override
+  void dispose() {
+    _workshopLoadGeneration++;
+    _workshopCancelToken?.cancel('summary page disposed');
+    super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    if (_analysis == null) {
+      await _loadAnalysis();
+      return;
+    }
+    unawaited(_loadWorkshops());
+  }
+
+  Future<void> _loadAnalysis() async {
+    if (!mounted || _analysisLoading) return;
+    setState(() {
+      _analysisLoading = true;
+      _analysisError = null;
+    });
+    try {
+      final analysis = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialAnalysisDetail(widget.analysisId);
+      if (!mounted) return;
+      setState(() {
+        _analysis = analysis;
+        _analysisLoading = false;
+      });
+      unawaited(_loadWorkshops());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _analysisLoading = false;
+        _analysisError = error is ApiException
+            ? error.message
+            : '计划单预览加载失败，请重试';
+      });
+    }
   }
 
   Future<void> _loadWorkshops() async {
+    if (!mounted) return;
+    final analysis = _analysis;
+    if (analysis == null) return;
+    final generation = ++_workshopLoadGeneration;
+    _workshopCancelToken?.cancel('default workshop lookup superseded');
+    final cancelToken = CancelToken();
+    _workshopCancelToken = cancelToken;
     final goodsIds = {
-      for (final product in widget.analysis.products)
+      for (final product in analysis.products)
         if (product.goodsId != null) product.goodsId!,
     };
+    setState(() {
+      _workshopsLoading = true;
+      _workshopsLoaded = false;
+      _workshopsError = null;
+    });
     var result = <String, String>{};
     try {
       final fetched = await ref
           .read(productionPlanRepositoryProvider)
-          .defaultWorkshops(goodsIds);
+          .defaultWorkshops(goodsIds, cancelToken: cancelToken);
       result = {
         for (final entry in fetched.entries)
           entry.key: entry.value.departmentName ?? entry.value.departmentId,
       };
-    } catch (_) {
-      // 预填失败不阻断汇总单：全部按「未维护」列出。
+    } catch (error) {
+      if (!mounted || generation != _workshopLoadGeneration) return;
+      setState(() {
+        _workshopsLoading = false;
+        _workshopsLoaded = false;
+        _workshopsError = error is NetworkTimeoutException
+            ? '默认车间读取超时。汇总内容可继续查看，重试成功后可打印。'
+            : '默认车间读取失败。汇总内容可继续查看，重试成功后可打印。';
+      });
+      return;
     }
-    if (!mounted) return;
+    if (!mounted ||
+        cancelToken.isCancelled ||
+        generation != _workshopLoadGeneration) {
+      return;
+    }
     setState(() {
       _defaultWorkshops = result;
+      _workshopsLoading = false;
       _workshopsLoaded = true;
+      _workshopsError = null;
     });
   }
+
+  ProductionMaterialAnalysisView get _view => _analysis!;
 
   // ===== 数据加工 =====
 
   /// 自制件分区行：一个产品一行（根产品 + MAKE_COMPONENT 子件）。
   List<_MakeRow> get _makeRows => [
-    for (final product in widget.analysis.products)
+    for (final product in _view.products)
       _MakeRow(
         label: product.goodsName ?? product.goodsCode ?? '未命名',
         code: product.goodsCode,
@@ -101,7 +190,7 @@ class _ProductionPlanSummarySheetPageState
   /// 采购/委外分区行：按货品（+颜色）聚合缺口，同货多路径不重复开口。
   List<_SupplyRow> _supplyRows(MaterialSupplyRoute route) {
     final groups = <String, _SupplyRow>{};
-    for (final material in widget.analysis.materials) {
+    for (final material in _view.materials) {
       // 建议路线不是业务事实：未明确采用前不得进入采购/委外执行分区。
       if (material.confirmedRoute != route ||
           material.requiredQty <= 0 ||
@@ -141,7 +230,7 @@ class _ProductionPlanSummarySheetPageState
   /// 路线未确认的缺口必须单独阻断，不能借系统建议偷偷进入执行分区。
   List<_PendingRouteRow> get _pendingRouteRows {
     final groups = <String, _PendingRouteRow>{};
-    for (final material in widget.analysis.materials) {
+    for (final material in _view.materials) {
       if (material.requiredQty <= 0 ||
           material.shortageQty <= 0 ||
           material.confirmedRoute != null) {
@@ -164,14 +253,16 @@ class _ProductionPlanSummarySheetPageState
   }
 
   /// 缺车间清单：有默认车间接口结果后仍无车间的自制件。
-  List<_MakeRow> get _missingWorkshopRows => _makeRows
-      .where((row) => row.workshop == null || row.workshop!.isEmpty)
-      .toList(growable: false);
+  List<_MakeRow> get _missingWorkshopRows => !_workshopsLoaded
+      ? const []
+      : _makeRows
+            .where((row) => row.workshop == null || row.workshop!.isEmpty)
+            .toList(growable: false);
 
   String get _warehouseName {
-    final id = widget.analysis.warehouseId;
+    final id = _view.warehouseId;
     if (id == null) return '未指定';
-    for (final warehouse in widget.analysis.warehouses) {
+    for (final warehouse in _view.warehouses) {
       if (warehouse.warehouseId == id) {
         return warehouse.warehouseName ?? '未命名仓库';
       }
@@ -194,37 +285,147 @@ class _ProductionPlanSummarySheetPageState
 
   @override
   Widget build(BuildContext context) {
-    final buyRows = _supplyRows(MaterialSupplyRoute.buy);
-    final subcontractRows = _supplyRows(MaterialSupplyRoute.subcontract);
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
       appBar: UtenAppBar(
         title: '备料计划汇总单',
-        leading: UtenBackButton(onPressed: () => Navigator.of(context).pop()),
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(
+            context,
+            defaultPath: RouteName.productionMaterialAnalysis,
+          ),
+        ),
       ),
-      body: SafeArea(
-        child: !_workshopsLoaded
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 794),
-                    child: Material(
-                      key: const Key('plan-summary-paper'),
-                      color: Colors.white,
-                      elevation: 3,
-                      borderRadius: UtenRadius.smAll,
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s24),
-                        child: _paperBody(buyRows, subcontractRows),
-                      ),
-                    ),
-                  ),
+      body: SafeArea(child: _body()),
+      bottomNavigationBar: _bottomBar(),
+    );
+  }
+
+  Widget _body() {
+    final analysis = _analysis;
+    if (analysis == null) {
+      if (_analysisLoading) {
+        return const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: UtenSpacing.s12),
+              Text('正在恢复计划单预览…'),
+            ],
+          ),
+        );
+      }
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                color: Theme.of(context).colorScheme.error,
+                size: 36,
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(_analysisError ?? '计划单预览不可用'),
+              const SizedBox(height: UtenSpacing.s12),
+              UtenButton(
+                icon: Icons.refresh_rounded,
+                onPressed: _loadAnalysis,
+                child: const Text('重新加载'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final buyRows = _supplyRows(MaterialSupplyRoute.buy);
+    final subcontractRows = _supplyRows(MaterialSupplyRoute.subcontract);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(UtenSpacing.s16),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_workshopsLoading || _workshopsError != null) ...[
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 794),
+                child: _workshopStatus(),
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+            ],
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 794),
+              child: Material(
+                key: const Key('plan-summary-paper'),
+                color: Colors.white,
+                elevation: 3,
+                borderRadius: UtenRadius.smAll,
+                child: Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s24),
+                  child: _paperBody(buyRows, subcontractRows),
                 ),
               ),
+            ),
+          ],
+        ),
       ),
-      bottomNavigationBar: _bottomBar(),
+    );
+  }
+
+  Widget _workshopStatus() {
+    final theme = Theme.of(context);
+    final failed = _workshopsError != null;
+    final foreground = failed
+        ? theme.colorScheme.onErrorContainer
+        : theme.colorScheme.onSecondaryContainer;
+    return Semantics(
+      liveRegion: true,
+      label: _workshopsError ?? '正在读取默认车间',
+      child: Container(
+        key: Key(
+          failed
+              ? 'plan-summary-workshops-error'
+              : 'plan-summary-workshops-loading',
+        ),
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: failed
+              ? theme.colorScheme.errorContainer
+              : theme.colorScheme.secondaryContainer,
+          borderRadius: UtenRadius.mdAll,
+        ),
+        child: Row(
+          children: [
+            if (failed)
+              Icon(Icons.warning_amber_rounded, color: foreground)
+            else
+              SizedBox(
+                width: UtenSpacing.s20,
+                height: UtenSpacing.s20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: foreground,
+                ),
+              ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                _workshopsError ?? '正在核对默认车间；汇总内容可先查看，核对完成后开放打印。',
+                style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
+              ),
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            UtenButton(
+              size: UtenButtonSize.small,
+              type: UtenButtonType.tonal,
+              onPressed: _loadWorkshops,
+              child: Text(failed ? '重试' : '重新读取'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -269,7 +470,7 @@ class _ProductionPlanSummarySheetPageState
             _headFact('开单日期', _today),
             _headFact('制单人', _makerName),
             _headFact('分析仓库', _warehouseName),
-            _headFact('分析版本', 'v${widget.analysis.version}'),
+            _headFact('分析版本', 'v${_view.version}'),
           ],
         ),
         const SizedBox(height: UtenSpacing.s16),
@@ -283,9 +484,9 @@ class _ProductionPlanSummarySheetPageState
         ],
         _makeSection(),
         const SizedBox(height: UtenSpacing.s16),
-        _supplySection('二、采购件（通知采购部）', buyRows, '采购申请'),
+        _supplySection('二、采购件(通知采购部)', buyRows, '采购申请'),
         const SizedBox(height: UtenSpacing.s16),
-        _supplySection('三、委外件（通知委外商）', subcontractRows, '委外申请'),
+        _supplySection('三、委外件(通知委外商)', subcontractRows, '委外申请'),
         const SizedBox(height: UtenSpacing.s24),
         _signatureRow(),
       ],
@@ -320,16 +521,18 @@ class _ProductionPlanSummarySheetPageState
           children: [
             Icon(Icons.warning_amber_rounded, size: 18, color: _danger),
             SizedBox(width: UtenSpacing.s4),
-            Text(
-              '缺车间清单（生成计划单前必须指定）',
-              style: TextStyle(color: _danger, fontWeight: FontWeight.w800),
+            Expanded(
+              child: Text(
+                '缺车间清单(生成计划单前必须指定)',
+                style: TextStyle(color: _danger, fontWeight: FontWeight.w800),
+              ),
             ),
           ],
         ),
         const SizedBox(height: UtenSpacing.s4),
         for (final row in _missingWorkshopRows)
           Text(
-            '· ${row.label}${row.code == null ? '' : '（${row.code}）'}',
+            '· ${row.label}${row.code == null ? '' : '(${row.code})'}',
             style: const TextStyle(color: _danger, fontSize: 12, height: 1.6),
           ),
         const Text(
@@ -355,16 +558,18 @@ class _ProductionPlanSummarySheetPageState
           children: [
             Icon(Icons.alt_route_rounded, size: 18, color: _danger),
             SizedBox(width: UtenSpacing.s4),
-            Text(
-              '待确认供料路线（确认前不会通知任何部门）',
-              style: TextStyle(color: _danger, fontWeight: FontWeight.w800),
+            Expanded(
+              child: Text(
+                '待确认供料路线(确认前不会通知任何部门)',
+                style: TextStyle(color: _danger, fontWeight: FontWeight.w800),
+              ),
             ),
           ],
         ),
         const SizedBox(height: UtenSpacing.s4),
         for (final row in _pendingRouteRows)
           Text(
-            '· ${row.label}${row.code == null ? '' : '（${row.code}）'}：'
+            '· ${row.label}${row.code == null ? '' : '(${row.code})'}：'
             '缺 ${_qty(row.shortageQty)}${row.unit ?? ''}'
             '${row.suggestion == null ? '' : '，系统建议${_routeLabel(row.suggestion!)}'}',
             style: const TextStyle(color: _danger, fontSize: 12, height: 1.6),
@@ -394,7 +599,7 @@ class _ProductionPlanSummarySheetPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionTitle('一、自制件（按组件安排车间生产）'),
+        _sectionTitle('一、自制件(按组件安排车间生产)'),
         _tableHeader(const ['产品 / 组件', '本批需求', '可生产', '默认车间', '状态', '来源']),
         if (rows.isEmpty)
           _emptyRow('本批没有自制件')
@@ -526,6 +731,11 @@ class _ProductionPlanSummarySheetPageState
               icon: Icons.print_outlined,
               isLoading: _printing,
               onPressed: !_workshopsLoaded || _printing ? null : _print,
+              onDisabledTap: !_workshopsLoaded && !_printing
+                  ? () => context.appWarning(
+                      _workshopsError ?? '正在核对默认车间，请稍候或重新读取',
+                    )
+                  : null,
               child: const Text('打印 / 导出 PDF'),
             ),
           ],
@@ -590,7 +800,7 @@ class _ProductionPlanSummarySheetPageState
           pw.Center(
             child: pw.Text(
               '开单日期：$_today    制单人：$_makerName    '
-              '分析仓库：$_warehouseName    分析版本：v${widget.analysis.version}',
+              '分析仓库：$_warehouseName    分析版本：v${_view.version}',
               style: const pw.TextStyle(fontSize: 9),
             ),
           ),
@@ -605,7 +815,7 @@ class _ProductionPlanSummarySheetPageState
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(
-                    '缺车间清单（生成计划单前必须指定）',
+                    '缺车间清单(生成计划单前必须指定)',
                     style: const pw.TextStyle(
                       fontSize: 10,
                       fontWeight: pw.FontWeight.bold,
@@ -614,7 +824,7 @@ class _ProductionPlanSummarySheetPageState
                   ),
                   for (final row in _missingWorkshopRows)
                     pw.Text(
-                      '· ${row.label}${row.code == null ? '' : '（${row.code}）'}',
+                      '· ${row.label}${row.code == null ? '' : '(${row.code})'}',
                       style: const pw.TextStyle(
                         fontSize: 9,
                         color: PdfColors.red700,
@@ -635,7 +845,7 @@ class _ProductionPlanSummarySheetPageState
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(
-                    '待确认供料路线（确认前不会通知任何部门）',
+                    '待确认供料路线(确认前不会通知任何部门)',
                     style: const pw.TextStyle(
                       fontSize: 10,
                       fontWeight: pw.FontWeight.bold,
@@ -644,7 +854,7 @@ class _ProductionPlanSummarySheetPageState
                   ),
                   for (final row in _pendingRouteRows)
                     pw.Text(
-                      '· ${row.label}${row.code == null ? '' : '（${row.code}）'}：'
+                      '· ${row.label}${row.code == null ? '' : '(${row.code})'}：'
                       '缺 ${_qty(row.shortageQty)}${row.unit ?? ''}'
                       '${row.suggestion == null ? '' : '，系统建议${_routeLabel(row.suggestion!)}'}',
                       style: const pw.TextStyle(
@@ -657,7 +867,7 @@ class _ProductionPlanSummarySheetPageState
             ),
             pw.SizedBox(height: 10),
           ],
-          _pdfSectionTitle('一、自制件（按组件安排车间生产）'),
+          _pdfSectionTitle('一、自制件(按组件安排车间生产)'),
           _pdfTable(
             const ['产品 / 组件', '本批需求', '可生产', '默认车间', '状态', '来源'],
             [
@@ -673,13 +883,13 @@ class _ProductionPlanSummarySheetPageState
             ],
           ),
           pw.SizedBox(height: 10),
-          _pdfSectionTitle('二、采购件（通知采购部）'),
+          _pdfSectionTitle('二、采购件(通知采购部)'),
           _pdfTable(
             const ['物料', '需求', '本批已分配', '缺口', '状态'],
             [for (final row in buyRows) _pdfSupplyCells(row)],
           ),
           pw.SizedBox(height: 10),
-          _pdfSectionTitle('三、委外件（通知委外商）'),
+          _pdfSectionTitle('三、委外件(通知委外商)'),
           _pdfTable(
             const ['物料', '需求', '本批已分配', '缺口', '状态'],
             [for (final row in subcontractRows) _pdfSupplyCells(row)],

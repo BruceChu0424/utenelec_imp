@@ -73,7 +73,7 @@ void main() {
       await tester.tap(find.text('下载表格'));
       await tester.pumpAndSettle();
 
-      expect(find.text('打开密码（可选，1–128 位）'), findsOneWidget);
+      expect(find.text('打开密码(可选，1–128 位)'), findsOneWidget);
       expect(find.text('直接下载'), findsOneWidget);
       expect(find.text('确认密码'), findsNothing);
 

@@ -285,7 +285,7 @@ class _OutboundTaskCard extends StatelessWidget {
                 label: '出仓进度',
                 value:
                     '计划 ${_fmtQty(task.plannedQty)}，已出仓 ${_fmtQty(task.issuedQty)}，'
-                    '待出仓 ${_fmtQty(task.remainingQty)}（${task.lineCount} 行材料）',
+                    '待出仓 ${_fmtQty(task.remainingQty)}(${task.lineCount} 行材料)',
               ),
               if (hasDraft)
                 _InfoLine(

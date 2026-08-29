@@ -90,7 +90,7 @@ void main() {
     c.dispose();
   });
 
-  test('dispose 后 load 不再通知（不抛）', () async {
+  test('dispose 后 load 不再通知(不抛)', () async {
     final c = PagedListController<String>();
     c.dispose();
     await c.load(1, fetch: () async => _page(const ['x']));

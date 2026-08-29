@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/features/finance/models/finance_procurement_workflow.dart';
 import 'package:uten_imp/features/finance/repositories/finance_procurement_workflow_repository.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
   test(
@@ -43,12 +45,17 @@ void main() {
         }),
       );
 
-      final result = await repository.approvalTasks(page: 2, size: 10);
+      final result = await repository.approvalTasks(
+        page: 2,
+        size: 10,
+        keyword: ' PO ',
+      );
 
       expect(captured.path, '/finance/procurement-approvals/tasks');
       expect(captured.queryParameters, <String, dynamic>{
         'page': 2,
         'size': 10,
+        'keyword': 'PO',
       });
       expect(result.page, 2);
       expect(result.total, 12);
@@ -91,6 +98,10 @@ void main() {
     expect(task.submittedAt, '2026-08-02T10:30:00+08:00');
     expect(task.allowedActions, {'APPROVE', 'REJECT'});
     expect(task.detailRoute, '/purchase/orders/order-7');
+    expect(task.decisionItem?.toJson(), {
+      'caseId': 'case-7',
+      'expectedVersion': 5,
+    });
   });
 
   test('count accepts nested aliases and clamps negative values', () async {
@@ -106,6 +117,76 @@ void main() {
     expect(await repository.pendingApprovalCount(), 0);
   });
 
+  test(
+    'approval decisions use exact action paths, versions and reasons',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = DioFinanceProcurementWorkflowRepository(
+        _api((request) {
+          requests.add(request);
+          return <String, dynamic>{};
+        }),
+      );
+
+      await repository.approveOrder(
+        FinanceProcurementOrderType.purchase,
+        'purchase-1',
+        3,
+      );
+      await repository.rejectOrder(
+        FinanceProcurementOrderType.purchase,
+        'purchase-1',
+        4,
+        ' 数量需要复核 ',
+      );
+      await repository.approveOrder(
+        FinanceProcurementOrderType.subcontract,
+        'subcontract-1',
+        5,
+      );
+      await repository.rejectOrder(
+        FinanceProcurementOrderType.subcontract,
+        'subcontract-1',
+        6,
+        ' 工价需要复核 ',
+      );
+      await repository.approveOrdersBatch(const [
+        FinanceProcurementDecisionItem(caseId: 'case-7', expectedVersion: 7),
+      ]);
+      await repository.rejectOrdersBatch(const [
+        FinanceProcurementDecisionItem(caseId: 'case-8', expectedVersion: 8),
+      ], ' 统一退回原因 ');
+
+      expect(requests[0].path, '/purchase/orders/purchase-1/approve');
+      expect(requests[0].data, {'expectedVersion': 3});
+      expect(requests[1].path, '/purchase/orders/purchase-1/reject');
+      expect(requests[1].data, {'expectedVersion': 4, 'reason': '数量需要复核'});
+      expect(requests[2].path, '/subcontract/orders/subcontract-1/approve');
+      expect(requests[2].data, {'expectedVersion': 5});
+      expect(requests[3].path, '/subcontract/orders/subcontract-1/reject');
+      expect(requests[3].data, {'expectedVersion': 6, 'reason': '工价需要复核'});
+      expect(
+        requests[4].path,
+        '/finance/procurement-approvals/tasks/batch-approve',
+      );
+      expect(requests[4].data, {
+        'items': [
+          {'caseId': 'case-7', 'expectedVersion': 7},
+        ],
+      });
+      expect(
+        requests[5].path,
+        '/finance/procurement-approvals/tasks/batch-reject',
+      );
+      expect(requests[5].data, {
+        'items': [
+          {'caseId': 'case-8', 'expectedVersion': 8},
+        ],
+        'reason': '统一退回原因',
+      });
+    },
+  );
+
   test('unknown task type remains fail closed', () {
     final task = FinanceProcurementApprovalTask.fromJson(const {
       'taskId': 'task-unknown',
@@ -117,6 +198,20 @@ void main() {
     expect(task.canOpen, isFalse);
     expect(task.detailRoute, isNull);
   });
+
+  test(
+    'pending order detail routes accept business view or finance task view',
+    () {
+      expect(requiredAnyPermFor('/purchase/orders/order-1'), const [
+        Perm.purchaseOrderView,
+        Perm.financeOrderApprovalView,
+      ]);
+      expect(requiredAnyPermFor('/subcontract/orders/order-1'), const [
+        Perm.subcontractOrderView,
+        Perm.financeOrderApprovalView,
+      ]);
+    },
+  );
 }
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {

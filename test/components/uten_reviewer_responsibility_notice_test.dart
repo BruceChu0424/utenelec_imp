@@ -22,13 +22,13 @@ void main() {
           ),
         );
 
-        expect(find.text('审核员：张三（QA001）'), findsOneWidget);
+        expect(find.text('审核员：张三(QA001)'), findsOneWidget);
         final data = tester
             .getSemantics(
               find.byKey(const Key('reviewer-responsibility-notice')),
             )
             .getSemanticsData();
-        expect(data.label, contains('审核员 张三（QA001）'));
+        expect(data.label, contains('审核员 张三(QA001)'));
         expect(data.label, contains('记录质检责任'));
       } finally {
         semantics.dispose();
@@ -64,7 +64,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('确认审核'), findsWidgets);
-      expect(find.text('审核员：张三（QA001）'), findsOneWidget);
+      expect(find.text('审核员：张三(QA001)'), findsOneWidget);
       expect(find.text('审核后将写入正式库存事实。'), findsOneWidget);
       final noticeTop = tester.getTopLeft(
         find.byKey(const Key('reviewer-responsibility-notice')),

@@ -1,23 +1,117 @@
 package com.uten.imp.features.finance.gl;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GlPostingServiceReceiptAccountingTest {
+
+    @Test
+    void receiptApprovalPostsAndChecksOneBalancedVoucherInCallerTransaction() {
+        EntityManager em=mock(EntityManager.class);
+        TxSessionVars tx=mock(TxSessionVars.class);
+        List<String> statements=new ArrayList<>();
+        UUID receiptId=UUID.randomUUID();
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation->{
+            String sql=invocation.getArgument(0);
+            statements.add(sql);
+            Query query=mock(Query.class);
+            when(query.setParameter(anyString(),any())).thenReturn(query);
+            when(query.executeUpdate()).thenReturn(1);
+            when(query.getSingleResult()).thenReturn(0L);
+            if(sql.contains("SELECT bill_no,bill_date,account_id,remark")){
+                when(query.getResultList()).thenReturn(List.<Object[]>of(
+                        new Object[]{"XS-REALTIME",BusinessTime.today(),UUID.randomUUID(),"审核"}));
+            }else if(sql.contains("SELECT COUNT(*),COALESCE(SUM(direction*amount),0)")){
+                when(query.getResultList()).thenReturn(List.<Object[]>of(
+                        new Object[]{4L,BigDecimal.ZERO}));
+            }
+            return query;
+        });
+
+        UUID voucher=new GlPostingService(em,tx).postReceiptDoc(receiptId);
+
+        assertThat(voucher).isNotNull();
+        assertThat(statements).anySatisfy(sql->assertThat(sql)
+                .contains("INSERT INTO gl_vouchers")
+                .contains("'RECEIPT'")
+                .contains("审核实时过账"));
+        assertThat(statements).anySatisfy(sql->assertThat(sql)
+                .contains("INSERT INTO gl_entries")
+                .contains("receipt.account_amount_local")
+                .contains("receipt.bank_fee")
+                .contains("receipt.other_fee")
+                .contains("receipt.gl_account_style_id")
+                .contains("receipt.gl_counter_style_id")
+                .contains("receipt.gl_bank_fee_style_id")
+                .contains("receipt.gl_fx_style_id")
+                .contains("receipt.gl_fee_payment_style_id")
+                .contains("SUM(line.exchange_diff)"));
+        assertThat(statements).anySatisfy(sql->assertThat(sql)
+                .contains("COUNT(*),COALESCE(SUM(direction*amount),0)"));
+        assertThat(statements).noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers"));
+    }
+
+    @Test
+    void receiptReversalKeepsOriginalVoucherAndAppendsMirroredCurrentPeriodVoucher() {
+        EntityManager em=mock(EntityManager.class);
+        TxSessionVars tx=mock(TxSessionVars.class);
+        List<String> statements=new ArrayList<>();
+        UUID receiptId=UUID.randomUUID();
+        UUID originalId=UUID.randomUUID();
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation->{
+            String sql=invocation.getArgument(0);
+            statements.add(sql);
+            Query query=mock(Query.class);
+            when(query.setParameter(anyString(),any())).thenReturn(query);
+            when(query.getSingleResult()).thenReturn(0L);
+            when(query.executeUpdate()).thenReturn(
+                    sql.contains("INSERT INTO gl_entries") ? 4 : 1);
+            if(sql.contains("SELECT voucher.id,receipt.bill_no")){
+                when(query.getResultList()).thenReturn(List.<Object[]>of(
+                        new Object[]{originalId,"XS-REV"}));
+            }else if(sql.contains("(SELECT COUNT(*) FROM gl_entries")){
+                when(query.getResultList()).thenReturn(List.<Object[]>of(
+                        new Object[]{4L,4L,BigDecimal.ZERO}));
+            }
+            return query;
+        });
+        OffsetDateTime reversedAt=BusinessTime.startOfDay(BusinessTime.today()).plusHours(12);
+
+        UUID reversal=new GlPostingService(em,tx).reverseReceiptDoc(receiptId,reversedAt);
+
+        assertThat(reversal).isNotNull();
+        assertThat(statements).anySatisfy(sql->assertThat(sql)
+                .contains("INSERT INTO gl_vouchers")
+                .contains("'RECEIPT_REV'")
+                .contains("reversal_of_voucher_id"));
+        assertThat(statements).anySatisfy(sql->assertThat(sql)
+                .contains("INSERT INTO gl_entries")
+                .contains("-entry.direction")
+                .contains("'RECEIPT_REV'"));
+        assertThat(statements).anySatisfy(sql->assertThat(sql)
+                .contains("UPDATE gl_vouchers")
+                .contains("reversed_by_voucher_id"));
+        assertThat(statements).noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers"));
+        verify(tx).bind();
+    }
 
     @Test
     void arPostingFailsClosedBeforeDeleteWhenCoreStylesAreUnavailable() {
@@ -47,33 +141,38 @@ class GlPostingServiceReceiptAccountingTest {
     }
 
     @Test
-    void receiptPostingFailsClosedWhenRequiredAccountingStyleIsUnavailable() {
+    void receiptRealtimePostingFailsClosedWhenRequiredAccountingStyleIsUnavailable() {
         EntityManager em = mock(EntityManager.class);
         List<String> sqlStatements = new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             sqlStatements.add(sql);
-            return queryReturning(sql.contains("WITH required_role(role_key)") ? 1L : 0L);
+            Query query=queryReturning(sql.contains("SELECT COUNT(*) FROM finance_receipts receipt")
+                    ? 1L : 0L);
+            if(sql.contains("SELECT bill_no,bill_date,account_id,remark")){
+                when(query.getResultList()).thenReturn(List.<Object[]>of(
+                        new Object[]{"XS-CONFIG",BusinessTime.today(),UUID.randomUUID(),"测试"}));
+            }
+            return query;
         });
 
         assertThatThrownBy(() -> new GlPostingService(em, mock(TxSessionVars.class))
-                .generate("2026-08"))
+                .postReceiptDoc(UUID.randomUUID()))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("系统过账角色")
-                .hasMessageContaining("科目 UUID");
+                .hasMessageContaining("科目不完整");
         assertThat(sqlStatements).anySatisfy(sql -> assertThat(sql)
-                .contains("WITH required_role(role_key)")
                 .contains("FROM finance_receipts receipt")
-                .contains("'AR_CONTROL'")
-                .contains("'BANK_FEE_EXPENSE'")
-                .contains("'FX_GAIN_LOSS'"));
-        assertThat(sqlStatements).hasSize(4);
+                .contains("receipt.gl_account_style_id")
+                .contains("receipt.gl_counter_style_id")
+                .contains("receipt.gl_bank_fee_style_id")
+                .contains("receipt.gl_fx_style_id")
+                .contains("receipt.gl_fee_payment_style_id"));
         assertThat(sqlStatements.stream().noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers")
                 || sql.contains("INSERT INTO gl_vouchers"))).isTrue();
     }
 
     @Test
-    void receiptPostingUsesCarryingArReductionAndBalancesCashFeesAndFx() {
+    void arPostingUsesStableRolesAndReceiptFormulaBalancesCashFeesAndFx() {
         EntityManager em = mock(EntityManager.class);
         TxSessionVars tx = mock(TxSessionVars.class);
         Query query = mock(Query.class);
@@ -102,57 +201,31 @@ class GlPostingServiceReceiptAccountingTest {
                 .contains("system_posting_style_id('AR_CONTROL')")
                 .contains("system_posting_style_id('SALES_REVENUE')"));
 
-        String receiptEntries = sqlStatements.stream()
-                .filter(sql -> sql.contains("INSERT INTO gl_entries"))
-                .filter(sql -> sql.contains("finance_receipt_lines"))
-                .filter(sql -> sql.contains("收款汇兑损益"))
-                .findFirst()
-                .orElseThrow();
-
-        assertThat(receiptEntries)
-                .contains("SELECT v.id, 1, acct.style_id, 1, t.amount_local")
-                .contains("style.id=account_style_id(t.account_id)")
-                .contains("style.status='使用'")
-                .contains("system_posting_style_id('AR_CONTROL')")
-                .contains("SUM(i.applied_amount_local)")
-                .contains("COALESCE(i.is_deleted,false)=false")
-                .contains("SELECT v.id, 3, fee.id, 1, t.bank_fee")
-                .contains("SELECT v.id, 4, t.other_fee_style_id, 1, t.other_fee")
-                .contains("SUM(i.exchange_diff)")
-                .contains("CASE WHEN x.diff>0 THEN -1 ELSE 1 END")
-                .contains("ABS(x.diff)")
-                .contains("system_posting_style_id('BANK_FEE_EXPENSE')")
-                .contains("system_posting_style_id('FX_GAIN_LOSS')")
-                .contains("t.status=1")
-                .contains("COALESCE(t.is_deleted,false)=false")
-                .doesNotContain("THEN (SELECT COALESCE(SUM(i.amount_local),0)");
-
-        assertThat(sqlStatements).anySatisfy(sql -> assertThat(sql)
-                .contains("FROM finance_receipts receipt")
-                .contains("NOT EXISTS")
-                .contains("style.id=account_style_id(receipt.account_id)")
-                .contains("system_posting_style_id('AR_CONTROL')")
-                .contains("system_posting_style_id('BANK_FEE_EXPENSE')")
-                .contains("system_posting_style_id('FX_GAIN_LOSS')")
-                .contains("style.id=receipt.other_fee_style_id"));
         assertThat(sqlStatements).anySatisfy(sql -> assertThat(sql)
                 .contains("invalid_voucher")
                 .contains("HAVING COUNT(entry.id)<2")
                 .contains("SUM(entry.direction*entry.amount)"));
 
-        // Example produced by the service settlement test:
-        // cash 30 USD * 7.2 = 216; fee 2 USD * 7.2 = 14.4;
-        // carrying AR reduction 32 USD * 7.0 = 224; FX gain = 6.4.
-        BigDecimal cashDebit = new BigDecimal("216.0000");
-        BigDecimal feeDebit = new BigDecimal("14.4000");
-        BigDecimal arCredit = new BigDecimal("224.0000");
+        // User workflow: USD 1000 at 7.2 produces CNY 7200 gross.
+        // CNY 72 fee is deducted, so the real bank debit is 7128.
+        // AR carrying value at 7.0 is 7000 and FX gain is 200.
+        BigDecimal cashDebit = new BigDecimal("7128.0000");
+        BigDecimal feeDebit = new BigDecimal("72.0000");
+        BigDecimal arCredit = new BigDecimal("7000.0000");
         BigDecimal exchangeDiff = cashDebit.add(feeDebit).subtract(arCredit);
         BigDecimal fxDebit = exchangeDiff.signum() < 0 ? exchangeDiff.abs() : BigDecimal.ZERO;
         BigDecimal fxCredit = exchangeDiff.signum() > 0 ? exchangeDiff : BigDecimal.ZERO;
 
         assertThat(cashDebit.add(feeDebit).add(fxDebit))
                 .isEqualByComparingTo(arCredit.add(fxCredit));
-        assertThat(exchangeDiff).isEqualByComparingTo("6.4000");
+        assertThat(exchangeDiff).isEqualByComparingTo("200.0000");
+
+        // When the fee is paid separately, the receipt account keeps the gross
+        // 7200 and the real fee-payment account contributes the balancing credit.
+        BigDecimal grossBankDebit = new BigDecimal("7200.0000");
+        BigDecimal separateFeeCredit = new BigDecimal("72.0000");
+        assertThat(grossBankDebit.add(feeDebit))
+                .isEqualByComparingTo(arCredit.add(exchangeDiff).add(separateFeeCredit));
     }
 
     private static Query queryReturning(long result) {

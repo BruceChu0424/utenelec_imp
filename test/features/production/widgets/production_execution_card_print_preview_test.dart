@@ -67,7 +67,7 @@ void main() {
       expect(formatProductionWorkCardMaterialUsage(linear), '单支用量 2');
       expect(
         formatProductionWorkCardMaterialUsage(exact),
-        '按包/批（本段平均） 0.333334',
+        '按包/批(本段平均) 0.333334',
       );
     },
   );

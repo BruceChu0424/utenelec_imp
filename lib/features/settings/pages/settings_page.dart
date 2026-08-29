@@ -181,7 +181,7 @@ class SettingsPage extends ConsumerWidget {
                       subtitle: Text(
                         kIsWeb
                             ? serverEndpoint.startsWith('/')
-                                  ? '同源接口：$serverEndpoint（由访问入口路由）'
+                                  ? '同源接口：$serverEndpoint(由访问入口路由)'
                                   : 'Debug Web 接口：$serverEndpoint'
                             : '${_serverModeLabel(serverMode)} · $serverEndpoint',
                         maxLines: 2,

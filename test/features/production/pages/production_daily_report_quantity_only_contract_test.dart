@@ -22,7 +22,12 @@ void main() {
       expect(source, isNot(contains("label: '单价'")));
       expect(source, isNot(contains("label: '金额'")));
     }
-    expect(detail, contains("label: '合格完工量'"));
+    expect(detail, contains("label: '完工申报量'"));
+    expect(detail, contains('生成生产成品质检任务'));
+    expect(detail, isNot(contains('并生成成品入库草稿')));
+    expect(edit, contains("'fqcRecoveryAuthorizationId'"));
+    expect(columns, contains('返工再检'));
+    expect(edit, isNot(contains('不良品隔离、返工和补产链路')));
     expect(service, contains('line.getPrice() != null'));
     expect(service, contains('客户端单价/金额不是计件工资依据，已停止写入'));
   });

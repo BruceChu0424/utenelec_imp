@@ -32,14 +32,14 @@ class UtenTimeDisplaySwitcher extends ConsumerWidget {
         children: [
           RadioListTile<String>(
             value: TimeDisplayMode.beijing.persistKey,
-            title: const Text('北京时间（默认）'),
+            title: const Text('北京时间(默认)'),
             subtitle: const Text('全平台时间统一按北京时间显示'),
             contentPadding: const EdgeInsets.symmetric(horizontal: 8),
             dense: true,
           ),
           RadioListTile<String>(
             value: TimeDisplayMode.local.persistKey,
-            title: Text('当地时间（$localLabel）'),
+            title: Text('当地时间($localLabel)'),
             subtitle: const Text('按这台设备所在时区换算显示'),
             contentPadding: const EdgeInsets.symmetric(horizontal: 8),
             dense: true,

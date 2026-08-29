@@ -321,7 +321,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String visitorCodeSentDev(Object code) {
-    return '验证码：$code（开发期）';
+    return '验证码：$code(开发期)';
   }
 
   @override
@@ -508,7 +508,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorApprovalRejectReason => '拒绝原因';
 
   @override
-  String get visitorApprovalRejectReasonHint => '请填写拒绝原因（选填）';
+  String get visitorApprovalRejectReasonHint => '请填写拒绝原因(选填)';
 
   @override
   String get visitorApprovalConfirmApprove => '确认批准该访客来访？';
@@ -649,7 +649,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeDetailOrg => '组织与用工';
 
   @override
-  String get employeeDetailContract => '合同 / 薪资（按权限可见）';
+  String get employeeDetailContract => '合同 / 薪资(按权限可见)';
 
   @override
   String get employeeDetailEmergency => '紧急联系人';
@@ -779,7 +779,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String employeeProbationValue(Object end, Object months) {
-    return '$months 个月（至 $end）';
+    return '$months 个月(至 $end)';
   }
 
   @override
@@ -804,7 +804,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String employeeProbationExpiring(Object date, Object days) {
-    return '试用期将于 $date 到期（剩 $days 天），请及时办理转正';
+    return '试用期将于 $date 到期(剩 $days 天)，请及时办理转正';
   }
 
   @override
@@ -814,7 +814,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String employeeContractExpiring(Object date, Object days) {
-    return '劳动合同将于 $date 到期（剩 $days 天），请及时续签';
+    return '劳动合同将于 $date 到期(剩 $days 天)，请及时续签';
   }
 
   @override
@@ -879,7 +879,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOnboardGroupOrg => '组织';
 
   @override
-  String get employeeOnboardGroupPay => '薪资 / 银行（可选，仅 HR/管理员可见）';
+  String get employeeOnboardGroupPay => '薪资 / 银行(可选，仅 HR/管理员可见)';
 
   @override
   String get employeeOnboardSubmit => '提交入职';
@@ -892,10 +892,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      '提交后将自动生成工号（UT 前缀）、以手机号作为登录账号，并生成一次性临时密码（身份证后 6 位）；首次登录必须修改密码。';
+      '提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，并生成一次性临时密码(身份证后 6 位)；首次登录必须修改密码。';
 
   @override
-  String get employeeOnboardCodeAutoNote => '工号提交后自动生成（UT 前缀，唯一递增）';
+  String get employeeOnboardCodeAutoNote => '工号提交后自动生成(UT 前缀，唯一递增)';
 
   @override
   String get positionPickerTitle => '选择或填写岗位';
@@ -1108,7 +1108,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeRehireTitle => '确认复职？';
 
   @override
-  String get employeeRehireBody => '复职后员工状态将恢复为「在职」，其登录账号将重新启用（需重新登录）。';
+  String get employeeRehireBody => '复职后员工状态将恢复为「在职」，其登录账号将重新启用(需重新登录)。';
 
   @override
   String get employeeRehireSuccess => '复职完成';
@@ -1284,11 +1284,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String departmentEmployeesHeader(Object count) {
-    return '员工（$count）';
+    return '员工($count)';
   }
 
   @override
-  String get departmentEmployeesEmpty => '该部门（含子部门）暂无员工';
+  String get departmentEmployeesEmpty => '该部门(含子部门)暂无员工';
 
   @override
   String departmentStatValue(Object label, Object value) {
@@ -1382,7 +1382,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String payrollTableRowName(Object name, Object code) {
-    return '$name（$code）';
+    return '$name($code)';
   }
 
   @override
@@ -1427,7 +1427,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishTopPriority => '置顶';
 
   @override
-  String get noticePublishTitleHint => '通知标题（必填）';
+  String get noticePublishTitleHint => '通知标题(必填)';
 
   @override
   String get noticePublishContentHint => '通知正文……';
@@ -1501,7 +1501,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '部门与人员可以同时选择；部门包含其下级组织，重复接收人会自动去重。';
 
   @override
-  String get noticePublishDepartmentsLabel => '接收部门（可多选）';
+  String get noticePublishDepartmentsLabel => '接收部门(可多选)';
 
   @override
   String get noticePublishDepartmentsHint => '选择一个或多个部门';
@@ -1510,7 +1510,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishEmployeesLabel => '单独添加人员';
 
   @override
-  String get noticePublishEmployeesHint => '选择指定人员（可多选）';
+  String get noticePublishEmployeesHint => '选择指定人员(可多选)';
 
   @override
   String get noticePublishEmployeePickerTitle => '选择接收人员';
@@ -1793,13 +1793,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileChangeEditHrOnlyHint => '以下字段请联系人事修改';
 
   @override
-  String get profileChangeSectionBasic => '基本信息（直改生效）';
+  String get profileChangeSectionBasic => '基本信息(直改生效)';
 
   @override
-  String get profileChangeSectionReview => '联系方式与重要字段（需 HR 审核）';
+  String get profileChangeSectionReview => '联系方式与重要字段(需 HR 审核)';
 
   @override
-  String get profileChangeSectionIdentity => '姓名与紧急联系人（需 HR 审核）';
+  String get profileChangeSectionIdentity => '姓名与紧急联系人(需 HR 审核)';
 
   @override
   String get profileChangeFieldDirect => '可直接修改';
@@ -2001,6 +2001,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileFieldGroupEmergency => '紧急联系人';
 
   @override
+  String get profileFieldGroupOrganization => '组织信息';
+
+  @override
+  String get profileEditPolicyHint =>
+      '绿色「可直接修改」提交后立即生效；黄色「需 HR 审核」由人事核对后生效；其余字段由人事统一维护。';
+
+  @override
+  String profileEditPendingConflictHint(int count) {
+    return '你有 $count 条待审申请；相关字段在审核通过前再次修改，可能与在途申请冲突。';
+  }
+
+  @override
+  String get profileEditFieldAction => '修改';
+
+  @override
   String get profileFieldGroupOrg => '组织与入职';
 
   @override
@@ -2100,7 +2115,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileFieldContractEnd => '合同截止';
 
   @override
-  String get profileFieldProbationMonths => '试用期（月）';
+  String get profileFieldProbationMonths => '试用期(月)';
 
   @override
   String get profileFieldRenewCount => '续签次数';
@@ -2112,7 +2127,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hubSectionTaskCenter => '任务中心';
 
   @override
-  String get hubDisabledDocNotice => '该单据类型暂未启用（老库无数据）';
+  String get hubDisabledDocNotice => '该单据类型暂未启用(老库无数据)';
 
   @override
   String get hubSubDetailPerItem => '一行一货品';
@@ -2250,7 +2265,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get subcontractHubDocInquiry => '委外询价单';
 
   @override
-  String get subcontractHubDocInquirySub => '询价（未启用）';
+  String get subcontractHubDocInquirySub => '询价(未启用)';
 
   @override
   String get subcontractHubDocApplication => '计划下达的委外申请';
@@ -2484,7 +2499,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseHubSectionReports => '仓库报表';
 
   @override
-  String get warehouseHubSectionReportsDesc => '明细（一行一货品）·汇总（一行一单）';
+  String get warehouseHubSectionReportsDesc => '明细(一行一货品)·汇总(一行一单)';
 
   @override
   String get warehouseHubTaskExpected => '预计到货任务中心';
@@ -2663,7 +2678,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String impersonationBannerTitle(String name) {
-    return '正在以 $name 身份查看（只读）';
+    return '正在以 $name 身份查看(只读)';
   }
 
   @override
@@ -2703,7 +2718,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。';
 
   @override
-  String get exportPasswordOptionalLabel => '打开密码（可选，1–128 位）';
+  String get exportPasswordOptionalLabel => '打开密码(可选，1–128 位)';
 
   @override
   String get exportPasswordConfirmLabel => '确认密码';
@@ -2732,4 +2747,110 @@ class AppLocalizationsZh extends AppLocalizations {
   String exportDownloadSaved(String path) {
     return '已保存：$path';
   }
+
+  @override
+  String get profileLoadingMessage => '正在加载员工档案…';
+
+  @override
+  String get profileLoadFailed => '员工档案加载失败';
+
+  @override
+  String get profileUnboundTitle => '当前账号未绑定员工档案';
+
+  @override
+  String get profileUnboundDescription => '请联系管理员或人事完成账号与员工档案绑定。';
+
+  @override
+  String get profileSessionUnavailable => '当前未登录或会话不可用';
+
+  @override
+  String get profileValueNotProvided => '未填写';
+
+  @override
+  String get profileValueNotRegistered => '未登记';
+
+  @override
+  String get profileAlternatePhoneLabel => '备用手机号';
+
+  @override
+  String get profileContractSummaryTitle => '合同摘要';
+
+  @override
+  String get profileTabOrgContract => '组织与合同';
+
+  @override
+  String get profileTabContactVehicle => '联系与车辆';
+
+  @override
+  String get profileTabMyDocuments => '我的文件';
+
+  @override
+  String get profileEmploymentHistoryTitle => '任职记录';
+
+  @override
+  String get profileScopeNoticeTitle => '信息范围说明';
+
+  @override
+  String get profileCompensationBoundaryDescription =>
+      '薪酬与银行信息不会在“我的”页展示；这是有意设置的隐私边界。本人月度收入请从工资条核对，其他问题请联系授权人事。';
+
+  @override
+  String get profileMissingEmergencyContact =>
+      '尚未登记紧急联系人，请先联系人事登记；登记后可在这里申请修改。';
+
+  @override
+  String profileAlternatePhoneCount(int count) {
+    return '已登记 $count 个备用号码';
+  }
+
+  @override
+  String get profileVehiclesPhonesEmptyHint => '登记车辆与备用手机号，按车牌快速找到你';
+
+  @override
+  String get historyEventConfirm => '转正';
+
+  @override
+  String get accountProvisionPermissionDenied => '你没有开通账号权限，请联系账号支持人员处理';
+
+  @override
+  String get accountProvisionAlreadyExists => '该员工已有账号或账号未启用，不能重复开通';
+
+  @override
+  String get accountProvisionConfirmTitle => '开通账号确认';
+
+  @override
+  String get accountProvisionFailed => '开通账号失败，请稍后重试';
+
+  @override
+  String get accountProvisionInProgress => '开通中';
+
+  @override
+  String get accountStatusNotProvisioned => '未开通账号';
+
+  @override
+  String get accountStatusInactive => '账号未启用';
+
+  @override
+  String get pagePermissionAccountNotProvisionedTitle => '此人还未开通账号，暂不能设置权限';
+
+  @override
+  String get pagePermissionAccountNotProvisionedCanProvision =>
+      '请先开通登录账号；一次性凭据确认保存后，将自动加载此人的权限详情。';
+
+  @override
+  String get pagePermissionAccountNotProvisionedNoAccess =>
+      '请联系具备“账号支持”权限的人员开通登录账号。';
+
+  @override
+  String get employeePermissionSettingsTooltip => '设置员工权限';
+
+  @override
+  String get employeeAccountNotProvisionedTooltip => '该员工未开通账号';
+
+  @override
+  String get employeeResignedCannotProvision => '该员工已离职，不能开通登录账号';
+
+  @override
+  String get employeeAccountNotProvisionedContactSupport =>
+      '该员工还未开通账号，请联系账号支持人员处理';
 }

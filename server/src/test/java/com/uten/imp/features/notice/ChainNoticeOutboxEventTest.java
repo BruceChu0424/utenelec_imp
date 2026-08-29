@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,7 +24,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -98,7 +98,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/purchase/requests/" + requestId),
-                isNull());
+                eq(ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED));
         verify(notice).publishForUser(
                 eq(departmentBuyerId),
                 eq("\u65b0\u91c7\u8d2d\u9700\u6c42\uff1aSQ-001"),
@@ -107,7 +107,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/purchase/requests/" + requestId),
-                isNull());
+                eq(ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED));
     }
 
     @Test
@@ -167,7 +167,7 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/subcontract/applications/" + applicationId),
-                isNull());
+                eq(ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_PREPLAN_SUPPLY_ACTION_CREATED,
@@ -352,7 +352,8 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_WORKFLOW),
                 anyString(),
                 eq("/production/plans"),
-                isNull());
+                eq(ChainNoticeService.EVENT_FINISHED_INBOUND),
+                eq("normal"));
     }
 
     @Test
@@ -578,7 +579,85 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/production/material-analysis"),
-                isNull());
+                eq(ChainNoticeService.EVENT_ORDER_APPROVED),
+                eq("normal"));
+    }
+
+    @Test
+    void salesFinanceRejectionCarriesEventActorBusinessTimeAndSourceEvent() {
+        UUID orderId = UUID.randomUUID();
+        UUID ownerEmployeeId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        when(jdbc.queryForList(
+                contains("sales_order.finance_rejected_at"),
+                eq(orderId))).thenReturn(List.of(Map.of(
+                        "bill_no", "SO-REJECT-001",
+                        "owner_employee_id", ownerEmployeeId,
+                        "finance_rejected_at",
+                        OffsetDateTime.parse("2026-08-27T06:32:00Z"),
+                        "reviewer_name", "王会计")));
+        when(users.findByEmployeeId(ownerEmployeeId))
+                .thenReturn(Optional.of(activeUser(ownerUserId)));
+        when(users.findById(ownerUserId))
+                .thenReturn(Optional.of(activeUser(ownerUserId)));
+        ChainNoticeService service = service(
+                notice, users, jdbc, mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_ORDER_FINANCE_REJECTED,
+                orderId,
+                new ObjectMapper().createObjectNode().put("reason", "币种与合同不一致"));
+
+        verify(notice).publishForUser(
+                eq(ownerUserId),
+                eq("订单被财务驳回：SO-REJECT-001"),
+                contains("由财务 王会计 于 2026-08-27 14:32 驳回。驳回原因：币种与合同不一致"),
+                eq(ChainNoticeService.TYPE_URGENT),
+                anyString(),
+                eq("/sales/orders/" + orderId),
+                eq(ChainNoticeService.EVENT_ORDER_FINANCE_REJECTED));
+    }
+
+    @Test
+    void procurementFinanceRejectionCarriesCurrentOutboxSourceEvent() {
+        UUID approvalCaseId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID submitterUserId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        when(jdbc.queryForList(
+                contains("FROM procurement_order_approval_cases approval_case"),
+                eq(approvalCaseId))).thenReturn(List.of(Map.of(
+                        "bill_no_snapshot", "CG-001",
+                        "amount_snapshot", new BigDecimal("1200.00"),
+                        "order_type", "PURCHASE",
+                        "order_id", orderId,
+                        "submitted_by_user_id", submitterUserId,
+                        "rejection_reason", "付款条件不完整",
+                        "decided_at", OffsetDateTime.parse("2026-08-27T07:15:00Z"),
+                        "reviewer_name", "李会计")));
+        when(users.findById(submitterUserId))
+                .thenReturn(Optional.of(activeUser(submitterUserId)));
+        ChainNoticeService service = service(
+                notice, users, jdbc, mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_PROCUREMENT_FINANCE_REJECTED,
+                approvalCaseId,
+                new ObjectMapper().createObjectNode());
+
+        verify(notice).publishForUser(
+                eq(submitterUserId),
+                eq("财务驳回：CG-001"),
+                contains("由财务 李会计 于 2026-08-27 15:15 驳回。原因：付款条件不完整"),
+                eq(ChainNoticeService.TYPE_URGENT),
+                anyString(),
+                eq("/purchase/orders/" + orderId),
+                eq(ChainNoticeService.EVENT_PROCUREMENT_FINANCE_REJECTED));
     }
 
     @Test
@@ -621,7 +700,8 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_URGENT),
                 anyString(),
                 eq("/sales/orders/" + orderId),
-                isNull());
+                eq(ChainNoticeService.EVENT_DELIVERY_DUE),
+                eq("normal"));
         verify(notice).publishForUser(
                 eq(plannerUserId),
                 eq("交货预警：SO-002"),
@@ -629,7 +709,8 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_URGENT),
                 anyString(),
                 eq("/production/material-analysis"),
-                isNull());
+                eq(ChainNoticeService.EVENT_DELIVERY_DUE),
+                eq("normal"));
     }
 
     @Test

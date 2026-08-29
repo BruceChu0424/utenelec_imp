@@ -64,6 +64,14 @@ public class FinanceReconciliation extends SoftDeletableEntity {
     @Column(name = "out_amount", precision = 18, scale = 4)
     private BigDecimal outAmount = BigDecimal.ZERO;
 
+    /** V408 append-only fact kind: POSTING / REVERSAL / ADJUSTMENT. */
+    @Column(name = "entry_kind", nullable = false)
+    private String entryKind;
+
+    /** V408 reversal lineage; populated only for REVERSAL rows. */
+    @Column(name = "reversal_of_id")
+    private UUID reversalOfId;
+
     /** BillDate 发生日期。 */
     @Column(name = "bill_date")
     private OffsetDateTime billDate;

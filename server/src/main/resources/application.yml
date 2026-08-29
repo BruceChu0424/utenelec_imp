@@ -200,7 +200,10 @@ app:
     enabled: ${UTEN_LEGACY_ENABLED:false}
 
 springdoc:
+  api-docs:
+    enabled: false
   swagger-ui:
+    enabled: false
     path: /swagger-ui.html
 
 logging:
@@ -212,6 +215,12 @@ logging:
     org.hibernate.orm.connections.pooling: WARN
 
 management:
+  metrics:
+    web:
+      server:
+        # 项目路由模板远多于 Spring Boot 默认的 100；这是合法模板预算，
+        # 动态 UUID/数字段仍由 MetricsConfig 归一化，避免无界基数。
+        max-uri-tags: ${UTEN_METRICS_MAX_URI_TAGS:1024}
   endpoints:
     web:
       exposure:

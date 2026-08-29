@@ -28,7 +28,7 @@ public class LegacyCategoryCsvSource implements LegacyCategorySource {
             case 3 -> "legacy-migration/supplier_categories.csv";
             case 18 -> "legacy-migration/mould_categories.csv";
             default -> throw new IllegalStateException("无离线 CSV：ItemclassID=" + itemClassId
-                    + "（dev 预置：货品=1、客户=2、供应商=3、模具=18；其他 itemclass 请先补 CSV）");
+                    + "(dev 预置：货品=1、客户=2、供应商=3、模具=18；其他 itemclass 请先补 CSV)");
         };
     }
 

@@ -10,7 +10,7 @@ import 'package:uten_imp/features/basic_data/widgets/goods_detail_body.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
-  testWidgets('货品只读详情隐藏生产 BOM 策略，编辑态保留治理入口', (tester) async {
+  testWidgets('货品编辑态不再出现生产 BOM 策略字段', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1200, 900);
     addTearDown(() {
@@ -35,7 +35,6 @@ void main() {
                 name: '测试货品',
                 status: '使用',
                 sourceType: '自制',
-                productionBomPolicy: 'DIRECT_MAKE',
               ),
               initialCategoryId: null,
               initialTab: 0,
@@ -62,7 +61,7 @@ void main() {
     await tester.tap(find.text('编辑'));
     await tester.pumpAndSettle();
 
-    expect(_productionBomPolicyField(), findsOneWidget);
+    expect(_productionBomPolicyField(), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -160,7 +159,6 @@ void main() {
                 name: 'Legacy-only goods',
                 status: '浣跨敤',
                 sourceType: '鑷埗',
-                productionBomPolicy: 'DIRECT_MAKE',
                 colorLegacyId: 11,
                 unitLegacyId: 12,
                 thicknessUnitLegacyId: 12,

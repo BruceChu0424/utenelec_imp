@@ -60,7 +60,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('物料需求评审'), findsOneWidget);
-      expect(find.text('自动生成采购申请（必需）'), findsOneWidget);
+      expect(find.text('自动生成采购申请(必需)'), findsOneWidget);
       expect(find.textContaining('Direct purchase'), findsOneWidget);
       expect(find.textContaining('Nested purchase'), findsNothing);
       expect(find.text('查看对应详情'), findsWidgets);

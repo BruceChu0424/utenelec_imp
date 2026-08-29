@@ -375,9 +375,9 @@ class _DeptEmployeePickerSheetState
       UtenEmployeePickerItem(
         id: employee.id,
         name: employee.fullName,
+        employeeCode: employee.code,
         departmentName: [
           if (employee.departmentName != null) employee.departmentName!,
-          '工号${employee.code}',
           if (employee.status != null) _employeeStatusLabel(employee.status!),
         ].join(' · '),
       );
@@ -498,11 +498,7 @@ class _DeptEmployeePickerSheetState
         ),
         UtenPickerConfirmBar(
           selectedCount: _picked == null ? 0 : 1,
-          selectedLabel: _picked == null
-              ? null
-              : (_picked!.departmentName == null
-                    ? _picked!.name
-                    : '${_picked!.name}(${_picked!.departmentName})'),
+          selectedLabel: _picked?.displayName,
           onConfirm: () => Navigator.of(context).pop(_picked),
         ),
       ],
@@ -593,7 +589,7 @@ class _DeptEmployeePickerSheetState
         final picked = e.id == _picked?.id;
         return ListTile(
           selected: picked,
-          title: Text(e.name),
+          title: Text(e.displayName),
           subtitle: e.departmentName == null ? null : Text(e.departmentName!),
           trailing: picked
               ? Icon(
@@ -628,6 +624,7 @@ class DepartmentEmployeePickerField extends StatefulWidget {
     required this.initialName,
     required this.onChanged,
     required this.onPick,
+    this.initialLoader,
     this.allowClear = true,
   });
 
@@ -642,6 +639,9 @@ class DepartmentEmployeePickerField extends StatefulWidget {
   /// 打开部门树+员工选择器，取消返回 null。
   final Future<UtenEmployeePickerItem?> Function() onPick;
 
+  /// 历史详情只有员工 id/姓名时，可按 id 补查工号与部门以统一回显。
+  final Future<UtenEmployeePickerItem?> Function(String id)? initialLoader;
+
   final bool allowClear;
 
   @override
@@ -653,6 +653,7 @@ class _DepartmentEmployeePickerFieldState
     extends State<DepartmentEmployeePickerField> {
   late final TextEditingController _ctl;
   String? _id;
+  int _loadSerial = 0;
 
   @override
   void initState() {
@@ -661,6 +662,36 @@ class _DepartmentEmployeePickerFieldState
         ? null
         : widget.initialId;
     _ctl = TextEditingController(text: widget.initialName ?? '');
+    _hydrateInitial();
+  }
+
+  @override
+  void didUpdateWidget(DepartmentEmployeePickerField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialId != oldWidget.initialId ||
+        widget.initialName != oldWidget.initialName) {
+      _id = (widget.initialId == null || widget.initialId!.isEmpty)
+          ? null
+          : widget.initialId;
+      _ctl.text = widget.initialName ?? '';
+      _hydrateInitial();
+    }
+  }
+
+  Future<void> _hydrateInitial() async {
+    final id = _id;
+    final loader = widget.initialLoader;
+    if (id == null || loader == null) return;
+    final request = ++_loadSerial;
+    try {
+      final item = await loader(id);
+      if (!mounted || request != _loadSerial || _id != id || item == null) {
+        return;
+      }
+      setState(() => _ctl.text = item.displayName);
+    } catch (_) {
+      // 历史回显增强失败不影响继续编辑；重新选择时仍返回完整候选。
+    }
   }
 
   @override
@@ -670,9 +701,10 @@ class _DepartmentEmployeePickerFieldState
   }
 
   void _set(UtenEmployeePickerItem? item) {
+    _loadSerial++;
     setState(() {
       _id = item?.id;
-      _ctl.text = item?.name ?? '';
+      _ctl.text = item?.displayName ?? '';
     });
     widget.onChanged(_id);
   }

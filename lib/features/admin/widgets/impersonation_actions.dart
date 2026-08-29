@@ -6,11 +6,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/formatters/employee_display.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../models/impersonation.dart';
 import '../repositories/impersonation_repository.dart';
@@ -105,7 +107,7 @@ Future<String?> showImpersonationPasswordDialog(BuildContext context) async {
                   autofocus: true,
                   decoration: InputDecoration(
                     labelText: l10n.impersonationPasswordLabel,
-                    errorText: errorText,
+                    error: utenFieldError(errorText),
                     border: const OutlineInputBorder(),
                   ),
                   onChanged: (_) {
@@ -132,7 +134,7 @@ Future<String?> showImpersonationPasswordDialog(BuildContext context) async {
   }
 }
 
-/// 目标选择器：搜索 + 列表（姓名 / 部门 · 岗位），高亮「最近」。
+/// 目标选择器：搜索 + 列表（姓名(工号) / 部门 · 岗位），高亮「最近」。
 Future<ImpersonationTarget?> showImpersonationTargetPicker(
   BuildContext context,
   WidgetRef ref,
@@ -310,7 +312,12 @@ class _ImpersonationTargetSheetState extends State<_ImpersonationTargetSheet> {
           ),
           title: Row(
             children: [
-              Flexible(child: Text(t.name, overflow: TextOverflow.ellipsis)),
+              Flexible(
+                child: Text(
+                  formatEmployeeDisplayName(t.name, t.employeeCode),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               if (isRecent) ...[
                 const SizedBox(width: 6),
                 _RecentBadge(label: widget.recentLabel),

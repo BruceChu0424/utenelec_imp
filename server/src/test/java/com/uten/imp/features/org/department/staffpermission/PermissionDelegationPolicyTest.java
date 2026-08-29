@@ -76,6 +76,7 @@ class PermissionDelegationPolicyTest {
             "authorization:manage",
             "user:manage",
             "account:support",
+            "account:balance:adjust",
             "stock:balance:adjust",
             "finance_asset:approve",
             "finance_asset:post",
@@ -83,7 +84,6 @@ class PermissionDelegationPolicyTest {
             "finance_asset:export",
             "finance_asset_period:manage",
             "production_material_analysis:view",
-            "production_material_analysis:bom_override",
             "production_material_analysis:cross_reallocate",
             "sales_order:priority",
             "sales_order:reallocate",
@@ -117,6 +117,14 @@ class PermissionDelegationPolicyTest {
                     "仅保留历史点名授权，当前不可新增或由负责人转授", policy.nonDelegableReason(code));
         }
     }
+
+    @Test
+    void accountBalanceAdjustmentReasonRequiresCentralPersonalGrant() {
+        assertEquals(
+                "账户余额调整属于高风险个人授权",
+                policy.nonDelegableReason("account:balance:adjust"));
+    }
+
     @Test
     void ordinaryBusinessPermissionRemainsDelegable() {
         assertTrue(policy.isDelegable("sales_order:view"));

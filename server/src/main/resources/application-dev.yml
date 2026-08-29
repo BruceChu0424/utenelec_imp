@@ -8,6 +8,12 @@ spring:
     # 启动日志足以说明状态，关掉 ASCII banner
     banner-mode: "off"
 
+springdoc:
+  api-docs:
+    enabled: ${UTEN_SWAGGER_ENABLED:true}
+  swagger-ui:
+    enabled: ${UTEN_SWAGGER_ENABLED:true}
+
 logging:
   # 同步写入文件，供日志监控 Widget 读取；控制台输出不受影响
   file:

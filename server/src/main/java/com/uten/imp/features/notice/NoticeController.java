@@ -49,6 +49,7 @@ import java.util.UUID;
  *   GET  /api/notices/{id}                                   详情
  *   POST /api/notices                                        发布（notice:publish）
  *   POST /api/notices/{id}/read                              标记已读
+ *   POST /api/notices/{id}/popup-ack                         确认强提醒弹窗
  *   POST /api/notices/{id}/complete                          完成待办
  *   POST /api/notices/read-all                               全部已读
  *   POST /api/notices/read-by-source?events=                 按事件来源标记已读
@@ -146,6 +147,12 @@ public class NoticeController {
     @PreAuthorize("hasAuthority('notice:read')")
     public void markRead(@PathVariable UUID id) {
         service.markRead(id);
+    }
+
+    @PostMapping("/{id}/popup-ack")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public void acknowledgePopup(@PathVariable UUID id) {
+        service.acknowledgePopup(id);
     }
 
     @PostMapping("/{id}/complete")

@@ -49,4 +49,33 @@ class ProductionChainHealthContractTest {
                 .contains("segment.material_requirement_mode = 'DEMANDED'")
                 .contains("'READY', 'DISPATCHED', 'IN_PROGRESS', 'COMPLETED'");
     }
+
+    @Test
+    void healthScanUsesObjectScopesAndAuditsQuantityConservation()
+            throws Exception {
+        String source = Files.readString(
+                Path.of("src/main/java/com/uten/imp/features/production/chain/"
+                        + "ProductionChainHealthService.java"),
+                StandardCharsets.UTF_8);
+
+        assertThat(source)
+                .contains("salesAccess.nativeReadScope")
+                .contains("productionAccess.nativeReadScope")
+                .contains("stockAccess.nativeReadScope")
+                .contains("DUPLICATE_ACTIVE_DRAW_LINK")
+                .contains("PLAN_QUANTITY_CACHE_MISMATCH")
+                .contains("REPORT_OR_INBOUND_OVERFLOW")
+                .contains("COMPLETED_SEGMENT_INVALID")
+                .contains("FQC_QUANTITY_MISMATCH")
+                .contains("FQC_RECOVERY_OR_CUTOVER_MISMATCH")
+                .contains("COALESCE(item.iqty, 0) >")
+                .contains("v_production_material_clearance")
+                .contains("production_fqc_release_allocations")
+                .contains("production_fqc_contribution_adjustments")
+                .contains("report_item.qty")
+                .contains("- COALESCE(adjusted.qty, 0)")
+                .contains("v_production_fqc_recovery_balance")
+                .contains("source_allocation_event_id = allocation_event.id")
+                .contains("production_fqc_legacy_exemptions");
+    }
 }

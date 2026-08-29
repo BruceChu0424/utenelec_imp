@@ -6,6 +6,7 @@ import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../models/finance_payable.dart';
 import '../repositories/finance_payables_repository.dart';
 
@@ -221,6 +222,12 @@ class _SupplierCreditApplyPanelState
   @override
   Widget build(BuildContext context) {
     final source = widget.source;
+    final currency =
+        financeCurrencyDisplayLabel(
+          name: source.currencyName,
+          code: source.currencyCode,
+        ) ??
+        '原币';
     return Scaffold(
       appBar: AppBar(
         title: Text('应用${source.openItemKindLabel}'),
@@ -245,7 +252,7 @@ class _SupplierCreditApplyPanelState
                     ),
                   ),
                   Text(
-                    '可用余额 ${source.currencyCode ?? ''} ${source.outstandingOriginal ?? '—'}'
+                    '可用余额 $currency ${source.outstandingOriginal ?? '—'}'
                     ' · 汇率 ${source.bookingRate ?? '—'}',
                   ),
                   const SizedBox(height: UtenSpacing.s8),
@@ -258,7 +265,7 @@ class _SupplierCreditApplyPanelState
                     controller: _reason,
                     maxLength: 2000,
                     maxLines: 2,
-                    decoration: const InputDecoration(labelText: '应用原因（必填）'),
+                    decoration: const InputDecoration(labelText: '应用原因(必填)'),
                   ),
                 ],
               ),
@@ -316,7 +323,7 @@ class _SupplierCreditApplyPanelState
             '${target.sourceDocNo ?? '—'} · ${target.sourceTypeLabel}',
           ),
           subtitle: Text(
-            '未付 ${target.currencyCode ?? ''} ${target.outstandingOriginal ?? '—'}'
+            '未付 ${target.outstandingOriginal ?? '—'}'
             ' · 汇率 ${target.bookingRate ?? '—'}',
           ),
           secondary: SizedBox(

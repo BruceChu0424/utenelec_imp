@@ -97,6 +97,7 @@ class StockDocItem {
     this.baseQty,
     this.price,
     this.amountLocal,
+    this.weight,
     this.surplusQty,
     this.countQty,
     this.place,
@@ -119,6 +120,7 @@ class StockDocItem {
   final double? baseQty;
   final double? price;
   final double? amountLocal;
+  final double? weight;
   final double? surplusQty;
   final double? countQty;
   final String? place;
@@ -147,6 +149,7 @@ class StockDocItem {
     baseQty: (json['baseQty'] as num?)?.toDouble(),
     price: (json['price'] as num?)?.toDouble(),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    weight: (json['weight'] as num?)?.toDouble(),
     surplusQty: (json['surplusQty'] as num?)?.toDouble(),
     countQty: (json['countQty'] as num?)?.toDouble(),
     place: json['place'] as String?,

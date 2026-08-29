@@ -33,6 +33,6 @@ public class SecurityProperties {
     /** 生产是否强制 HTTPS（建议由反向代理终结 TLS）。 */
     private boolean requireHttps = false;
 
-    /** swagger-ui / v3/api-docs 是否放行（dev true、prod false；false 时这些路径回落到认证保护）。 */
-    private boolean swaggerEnabled = true;
+    /** swagger-ui / v3/api-docs 是否放行（默认关闭，dev profile 显式开启）。 */
+    private boolean swaggerEnabled = false;
 }

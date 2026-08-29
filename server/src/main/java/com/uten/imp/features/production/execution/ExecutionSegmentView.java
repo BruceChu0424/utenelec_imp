@@ -36,5 +36,16 @@ public record ExecutionSegmentView(
         int materialDemandCount,
         int fullyIssuedDemandCount,
         boolean materialIssued,
+        BigDecimal fqcPendingQty,
+        BigDecimal fqcPassedQty,
+        BigDecimal fqcFailedQty,
+        BigDecimal finishedInboundPendingQty,
+        BigDecimal inboundQty,
+        BigDecimal finishedInboundRejectedQty,
+        BigDecimal ordinaryRemainingQty,
+        BigDecimal fqcRecoveryAvailableQty,
+        BigDecimal fqcReworkAvailableQty,
+        BigDecimal fqcReplacementAvailableQty,
+        BigDecimal fqcReplacementReadyQty,
         long lockVersion) {
 }

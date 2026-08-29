@@ -356,8 +356,8 @@ public class SalesReturnQualityService {
         String currentStatus = (String) row[10];
         if (!PARTIAL.equals(currentStatus) && !DISPOSED.equals(currentStatus)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该退货质检冻结明细尚无已登记处置可撤回（当前 "
-                            + currentStatus + "）");
+                    "该退货质检冻结明细尚无已登记处置可撤回(当前 "
+                            + currentStatus + ")");
         }
 
         BigDecimal received = decimal(row[6]);
@@ -406,7 +406,7 @@ public class SalesReturnQualityService {
         // 总量守恒：0 ≤ Σ处置 ≤ 收货冻结（撤回不会打穿历史下限，仍显式断言）。
         if (totalDisposed.signum() < 0 || totalDisposed.compareTo(received) > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "退货质检处置撤回将破坏数量守恒，禁止执行（请核对台账）");
+                    "退货质检处置撤回将破坏数量守恒，禁止执行(请核对台账)");
         }
         String nextStatus = totalDisposed.signum() == 0 ? PENDING : PARTIAL;
         int updated = em.createNativeQuery("""
@@ -462,8 +462,8 @@ public class SalesReturnQualityService {
                 .getSingleResult());
         if (free.compareTo(quantity) < 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "撤回的良品释放量在原仓库已被预留或已消耗（可撤回未承诺量 "
-                            + free.stripTrailingZeros().toPlainString() + "），"
+                    "撤回的良品释放量在原仓库已被预留或已消耗(可撤回未承诺量 "
+                            + free.stripTrailingZeros().toPlainString() + ")，"
                             + "请先释放相关订单预留或走盘点/人工处置");
         }
     }

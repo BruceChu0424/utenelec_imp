@@ -16,6 +16,8 @@ class PurchaseDocConfig {
     required this.permissions,
     this.hasSupplier = false,
     this.hasCurrency = false,
+    this.hasSettlement = false,
+    this.settlementRequired = false,
     this.supplierRequired = false,
     this.warehouseRequired = false,
     this.hasWarehouse = true,
@@ -54,6 +56,10 @@ class PurchaseDocConfig {
   // 主表头字段差异
   final bool hasSupplier;
   final bool hasCurrency;
+  final bool hasSettlement;
+
+  /// 结账方式是否必填（仅采购订货单；收货/退货沿用来源快照兼容）。
+  final bool settlementRequired;
   final bool supplierRequired;
 
   /// 仓库是否必填（现仅收货/退货强制；订货/申请可空）。
@@ -94,7 +100,7 @@ class PurchaseDocConfig {
   static const request = PurchaseDocConfig(
     type: PurchaseDocType.request,
     label: '计划下达的采购申请',
-    shortLabel: '申请（只读）',
+    shortLabel: '申请(只读)',
     icon: Icons.request_page_outlined,
     permissions: DocumentPermissionCatalog.purchaseRequest,
     hasApplicant: true,
@@ -111,6 +117,8 @@ class PurchaseDocConfig {
     permissions: DocumentPermissionCatalog.purchaseOrder,
     hasSupplier: true,
     hasCurrency: true,
+    hasSettlement: true,
+    settlementRequired: true,
     supplierRequired: true,
     hasPurchaser: true,
     hasDeliverDate: true,
@@ -131,6 +139,7 @@ class PurchaseDocConfig {
     permissions: DocumentPermissionCatalog.purchaseReceipt,
     hasSupplier: true,
     hasCurrency: true,
+    hasSettlement: true,
     supplierRequired: true,
     warehouseRequired: true,
     hasPurchaser: true,
@@ -149,6 +158,7 @@ class PurchaseDocConfig {
     permissions: DocumentPermissionCatalog.purchaseReturn,
     hasSupplier: true,
     hasCurrency: true,
+    hasSettlement: true,
     supplierRequired: true,
     warehouseRequired: true,
     hasReceiver: true,

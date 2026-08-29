@@ -26,7 +26,7 @@ public class JwtService {
         this.props = props;
         this.settings = settings;
         if (props.getSecret() == null || props.getSecret().isBlank()) {
-            throw new IllegalStateException("缺少 UTEN_JWT_SECRET（在 server/.env 或环境变量配置）");
+            throw new IllegalStateException("缺少 UTEN_JWT_SECRET(在 server/.env 或环境变量配置)");
         }
         if (props.getIssuer() == null || props.getIssuer().isBlank()) {
             throw new IllegalStateException("缺少 UTEN_JWT_ISSUER");
@@ -34,7 +34,7 @@ public class JwtService {
         byte[] secret = props.getSecret().getBytes(StandardCharsets.UTF_8);
         if (secret.length < 32) {
             // fail-fast：HS256 至少 32 字节，绝不静默补齐弱密钥
-            throw new IllegalStateException("UTEN_JWT_SECRET 至少 32 字节（当前 " + secret.length + "）");
+            throw new IllegalStateException("UTEN_JWT_SECRET 至少 32 字节(当前 " + secret.length + ")");
         }
         this.key = Keys.hmacShaKeyFor(secret);
     }

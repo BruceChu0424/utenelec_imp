@@ -174,6 +174,34 @@ void main() {
     },
   );
 
+  testWidgets('approved finance-rejected order exposes modify action', (
+    tester,
+  ) async {
+    await _pumpDetail(
+      tester,
+      type: SalesDocType.order,
+      detail: const {
+        'id': 'order-finance-rejected',
+        'billNo': 'SO-REJECTED',
+        'status': 1,
+        'writable': true,
+        'financeConfirmed': false,
+        'financeRejected': true,
+        'financeRejectedReason': '结账方式错误',
+        'shipmentPolicy': 'ALLOW_PARTIAL',
+        'items': <Map<String, dynamic>>[],
+      },
+      permissions: const {Perm.salesOrderEdit},
+    );
+
+    expect(find.textContaining('结账方式错误'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('sales-order-finance-rejected-edit')),
+      findsOneWidget,
+    );
+    expect(find.text('修改订单'), findsOneWidget);
+  });
+
   testWidgets(
     '"登记客户同意分批" button removed: partial shipment no longer needs customer consent evidence',
     (tester) async {
@@ -229,7 +257,7 @@ void main() {
 
     expect(find.text('币种'), findsOneWidget);
     expect(find.text('汇率'), findsNothing);
-    expect(find.text('订单金额（美元）'), findsOneWidget);
+    expect(find.text('订单金额(美元)'), findsOneWidget);
     expect(find.text('160.00'), findsWidgets);
     expect(find.text('200.00'), findsNothing);
     expect(find.text('合计(本币)'), findsNothing);

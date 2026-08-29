@@ -48,11 +48,14 @@ public class FinanceReceiptLine extends BaseEntity {
     @Column(name = "client_id")
     private UUID clientId;
 
-    /** Actual receipt currency. Applied AR lines must use the AR currency. */
+    /**
+     * AR settlement/original currency, not necessarily the selected account currency.
+     * A USD line may settle into a CNY account through this batch's arrival rate.
+     */
     @Column(name = "currency_id")
     private UUID currencyId;
 
-    /** Receipt-date rate entered by finance; local amounts are server-derived. */
+    /** This batch's actual arrival/settlement rate entered by finance. */
     @Column(name = "exchange_rate", precision = 18, scale = 6)
     private BigDecimal exchangeRate = BigDecimal.ONE;
 

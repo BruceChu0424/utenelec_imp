@@ -16,6 +16,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -42,6 +43,7 @@ import '../widgets/category_tree_search.dart';
 import '../widgets/system_master_category_guard.dart';
 import '../../department/models/department_node.dart';
 import '../../department/widgets/uten_department_picker.dart';
+import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/department_employee_picker.dart';
 import '../providers/mould_workshop_tree.dart';
 
@@ -587,6 +589,17 @@ class _DetailPaneState extends State<_DetailPane> {
             hint: '请选择保管人',
             initialId: id,
             initialName: iv['keeperName'],
+            initialLoader: (employeeId) async {
+              final employee = await widget.ref
+                  .read(employeeRepositoryProvider)
+                  .getById(employeeId);
+              return UtenEmployeePickerItem(
+                id: employee.id,
+                name: employee.fullName ?? '',
+                employeeCode: employee.code,
+                departmentName: employee.departmentName,
+              );
+            },
             onChanged: ctx.onChanged,
             onPick: () => showUtenDepartmentEmployeePicker(
               context,
@@ -1077,7 +1090,7 @@ class _DetailPaneState extends State<_DetailPane> {
             title: d.name,
             icon: Icons.precision_manufacturing_outlined,
             subtitle:
-                '编号前缀 ${d.effectivePrefix ?? 'MJ'}${d.codePrefix == null ? '（继承）' : ''}'
+                '编号前缀 ${d.effectivePrefix ?? 'MJ'}${d.codePrefix == null ? '(继承)' : ''}'
                 '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
             // 详情卡精简（与货品/客户/供应商/收付方式分类卡统一）：不再展示统计行
             // 与路径行——左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
@@ -1130,7 +1143,7 @@ class _DetailPaneState extends State<_DetailPane> {
                     child: UtenSearchBar(
                       // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
                       key: ValueKey('mould-search-${widget.nodeId}-$_kwSeed'),
-                      hint: '搜索模具（名称/编号/位置/备注）', // TODO(l10n): 补 arb
+                      hint: '搜索模具(名称/编号/位置/备注)', // TODO(l10n): 补 arb
                       initialValue: _keyword,
                       onChanged: _onKeywordChanged,
                     ),

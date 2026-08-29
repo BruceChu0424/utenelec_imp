@@ -74,9 +74,15 @@ class CustomerPrepaymentMigrationPostgresTest {
                     WHERE offset_batch_id=?
                     """, fixture.batch(2));
 
-            execute(connection, "UPDATE finance_receipts SET status=-1,updated_at=now() WHERE id=?",
-                    fixture.prepaymentReceipt());
-            execute(connection, "UPDATE sales_orders SET is_stopped=TRUE WHERE id=?", fixture.order());
+            // This legacy V0 prepayment has no provable account flow or GL
+            // voucher. V407 must reject a direct status flip instead of letting
+            // the test manufacture a reversal and unblock order cancellation.
+            assertSqlState(connection, "55000", """
+                    UPDATE finance_receipts SET status=-1,updated_at=now() WHERE id=?
+                    """, fixture.prepaymentReceipt());
+            assertSqlState(connection, "23514", """
+                    UPDATE sales_orders SET is_stopped=TRUE WHERE id=?
+                    """, fixture.order());
             assertThat(singleLong(connection, """
                     SELECT COUNT(*) FROM flyway_schema_history
                     WHERE version='389' AND success=TRUE

@@ -1,7 +1,9 @@
 package com.uten.imp.features.finance.procurement;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
@@ -39,6 +41,29 @@ public final class ProcurementApprovalContracts {
     public record RejectionDecisionRequest(
             @NotNull @Min(1) Long expectedVersion,
             @NotBlank @Size(max = 1000) String reason) {
+    }
+
+    /** 精确绑定一次待审 case，避免驳回重提后相同版本号误命中新 attempt。 */
+    public record BatchDecisionItem(
+            @NotNull UUID caseId,
+            @NotNull @Min(1) Long expectedVersion) {
+    }
+
+    public record BatchApprovalRequest(
+            @NotEmpty @Size(max = 100) List<@Valid BatchDecisionItem> items) {
+    }
+
+    public record BatchRejectionRequest(
+            @NotEmpty @Size(max = 100) List<@Valid BatchDecisionItem> items,
+            @NotBlank @Size(max = 1000) String reason) {
+    }
+
+    public record BatchDecisionResponse(
+            int processed,
+            List<FinanceApproval> decisions) {
+        public BatchDecisionResponse {
+            decisions = List.copyOf(decisions);
+        }
     }
 
     public record ApprovalTask(

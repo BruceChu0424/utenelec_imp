@@ -127,7 +127,7 @@ class _ContractAttachmentsDialogState
                           onChanged: _load,
                           title: '合同附件',
                           emptyHint: widget.ownerCanManage
-                              ? '暂无合同附件，点击上传该份合同的扫描件（PDF 或图片）'
+                              ? '暂无合同附件，点击上传该份合同的扫描件(PDF 或图片)'
                               : '暂无合同附件',
                         ),
                       ),

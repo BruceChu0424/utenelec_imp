@@ -14,6 +14,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -21,6 +22,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_order_finance_confirmation.dart';
@@ -46,9 +48,9 @@ class _FinanceSalesOrderReviewPageState
   String? _error;
 
   bool get _canConfirm =>
-      ref.watch(isSuperAdminProvider) ||
+      ref.read(isSuperAdminProvider) ||
       ref
-          .watch(currentPermissionsProvider)
+          .read(currentPermissionsProvider)
           .contains(Perm.salesOrderFinanceConfirm);
 
   @override
@@ -107,7 +109,7 @@ class _FinanceSalesOrderReviewPageState
                 description: '确认后系统将记录当前审核员，并由该审核员承担本次财务放行责任。',
               ),
               const SizedBox(height: UtenSpacing.s12),
-              const Text('确认通过后，该订单将对计划部可见并可排产。可填写确认备注（选填）：'),
+              const Text('确认通过后，该订单将对计划部可见并可排产。可填写确认备注(选填)：'),
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 key: const Key('finance-review-confirm-remark'),
@@ -115,7 +117,7 @@ class _FinanceSalesOrderReviewPageState
                 maxLength: 500,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  hintText: '确认备注（选填，≤500 字）',
+                  hintText: '确认备注(选填，≤500 字)',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -136,12 +138,14 @@ class _FinanceSalesOrderReviewPageState
         ],
       ),
     );
+    final remark = controller.text;
+    Future<void>.delayed(const Duration(milliseconds: 300), controller.dispose);
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
       await ref
           .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .confirm(widget.id, remark: controller.text);
+          .confirm(widget.id, remark: remark);
       if (!mounted) return;
       context.appSuccess('已确认通过，计划部已可接手排产');
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
@@ -151,7 +155,6 @@ class _FinanceSalesOrderReviewPageState
     } catch (_) {
       if (mounted) context.appError('确认失败，请稍后重试');
     } finally {
-      controller.dispose();
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -190,9 +193,9 @@ class _FinanceSalesOrderReviewPageState
                   maxLength: 500,
                   maxLines: 3,
                   decoration: InputDecoration(
-                    hintText: '驳回原因（必填，如：客户欠款超限 / 价格待复核）',
+                    hintText: '驳回原因(必填，如：客户欠款超限 / 价格待复核)',
                     border: const OutlineInputBorder(),
-                    errorText: errorText,
+                    error: utenFieldError(errorText),
                   ),
                 ),
               ],
@@ -222,12 +225,14 @@ class _FinanceSalesOrderReviewPageState
         ),
       ),
     );
+    final reason = controller.text;
+    Future<void>.delayed(const Duration(milliseconds: 300), controller.dispose);
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
       await ref
           .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .reject(widget.id, reason: controller.text);
+          .reject(widget.id, reason: reason);
       if (!mounted) return;
       context.appSuccess('已驳回，归属销售将收到修正通知');
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
@@ -237,7 +242,6 @@ class _FinanceSalesOrderReviewPageState
     } catch (_) {
       if (mounted) context.appError('驳回失败，请稍后重试');
     } finally {
-      controller.dispose();
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -310,7 +314,10 @@ class _FinanceSalesOrderReviewPageState
               ),
       ),
       bottomNavigationBar:
-          _review == null || _review!.financeConfirmed || !_canConfirm
+          _review == null ||
+              _review!.financeConfirmed ||
+              _review!.financeRejected ||
+              !_canConfirm
           ? null
           : SafeArea(
               child: Container(
@@ -358,10 +365,26 @@ class _FinanceSalesOrderReviewPageState
     );
   }
 
-  /// 顶部状态条：单据号 + 待确认/已驳回状态。
+  /// 顶部状态条：单据号 + 已确认/已驳回/待确认状态。
   Widget _statusStrip(ThemeData theme, SalesOrderFinanceReview r) {
+    final confirmed = r.financeConfirmed;
     final rejected = r.financeRejected;
-    final color = rejected ? theme.colorScheme.error : Colors.orange;
+    final color = confirmed
+        ? theme.colorScheme.primary
+        : rejected
+        ? theme.colorScheme.error
+        : theme.colorScheme.tertiary;
+    final icon = confirmed
+        ? Icons.verified_rounded
+        : rejected
+        ? Icons.undo_rounded
+        : Icons.pending_actions_rounded;
+    final statusText = confirmed
+        ? '已财务确认 · ${r.financeConfirmedByName ?? '当前审核员'}'
+              '${r.financeConfirmedAt == null ? '' : ' · ${utenFmtIsoTime(r.financeConfirmedAt)}'}'
+        : rejected
+        ? '已被财务驳回，等待销售受控修订并重新审核'
+        : '待财务确认 · 确认后计划部才可见并排产';
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
@@ -371,10 +394,7 @@ class _FinanceSalesOrderReviewPageState
       ),
       child: Row(
         children: [
-          Icon(
-            rejected ? Icons.undo_rounded : Icons.pending_actions_rounded,
-            color: color,
-          ),
+          Icon(icon, color: color),
           const SizedBox(width: UtenSpacing.s12),
           Expanded(
             child: Column(
@@ -387,7 +407,7 @@ class _FinanceSalesOrderReviewPageState
                   ),
                 ),
                 Text(
-                  rejected ? '已被财务驳回，待销售修正后可重新确认' : '待财务确认 · 确认后计划部才可见并排产',
+                  statusText,
                   style: theme.textTheme.bodySmall?.copyWith(color: color),
                 ),
               ],
@@ -418,7 +438,7 @@ class _FinanceSalesOrderReviewPageState
                 Expanded(
                   child: Text(
                     '客户财务快照 · ${r.clientName ?? '—'}'
-                    '${r.clientCode != null ? '（${r.clientCode}）' : ''}',
+                    '${r.clientCode != null ? '(${r.clientCode})' : ''}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -432,18 +452,14 @@ class _FinanceSalesOrderReviewPageState
               children: [
                 _metric(
                   theme,
-                  '应收余额（本币）',
+                  '应收余额(本币)',
                   _money(r.clientOutstanding),
                   emphasis: true,
                   danger: over,
                 ),
                 _metric(theme, '信用额度', _money(r.clientCredit)),
                 _metric(theme, '铺底额', _money(r.clientCreditFloor)),
-                _metric(
-                  theme,
-                  '本单金额',
-                  '${_currencyLabel(r)}${_money(r.totalOriginal)}',
-                ),
+                _metric(theme, '本单金额', _money(r.totalOriginal)),
               ],
             ),
             if (over) ...[
@@ -551,7 +567,7 @@ class _FinanceSalesOrderReviewPageState
             kv('制单员', r.makerName),
             kv('制单时间', utenFmtIsoTime(r.createdAt)),
             kv('交货日', r.deliverDate),
-            kv('币种', _currencyLabel(r).trim(), highlight: true),
+            kv('币种', _currencyLabel(r), highlight: true),
             kv('发运策略', r.shipmentPolicyName ?? r.shipmentPolicy),
             kv('结帐方式', r.settlementMethodName),
             kv('合同号', r.contractNo),
@@ -564,14 +580,11 @@ class _FinanceSalesOrderReviewPageState
 
   /// 产品明细：保持全局统一表格（MasterDataTableView 嵌入模式），不另造样式。
   Widget _itemsCard(ThemeData theme, SalesOrderFinanceReview r) {
-    final currency = _currencyLabel(r).trim().isEmpty
-        ? '订单币种'
-        : _currencyLabel(r).trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '产品明细（${r.items.length}）',
+          '产品明细(${r.items.length})',
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w600,
           ),
@@ -594,7 +607,7 @@ class _FinanceSalesOrderReviewPageState
                   if (it.colorName != null) it.colorName!,
                   if (it.unitName != null) it.unitName!,
                 ].join(' · ');
-                final head = suffix.isEmpty ? base : '$base（$suffix）';
+                final head = suffix.isEmpty ? base : '$base($suffix)';
                 return (model != null && model.isNotEmpty)
                     ? '$head · 客型 $model'
                     : head;
@@ -623,7 +636,7 @@ class _FinanceSalesOrderReviewPageState
             ),
             MasterColumnDef(
               key: 'amount',
-              label: '金额（$currency）',
+              label: '金额(${_currencyLabel(r)})',
               width: 120,
               type: 'money',
               value: (it) => _trimNum(it.amountOriginal),
@@ -641,7 +654,7 @@ class _FinanceSalesOrderReviewPageState
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          emptyMessage: '（无明细）',
+          emptyMessage: '(无明细)',
         ),
       ],
     );
@@ -686,16 +699,10 @@ class _FinanceSalesOrderReviewPageState
     );
   }
 
-  /// 币种展示标签：主档名称优先（人民币/美金…），无名称回退编号（001…）。
-  /// 非空时带尾随空格，便于直接拼到金额前；裸用请先 trim。
-  String _currencyLabel(SalesOrderFinanceReview r) {
-    final name = r.currencyName?.isNotEmpty == true
-        ? r.currencyName!
-        : r.currencyCode?.isNotEmpty == true
-        ? r.currencyCode!
-        : '';
-    return name.isEmpty ? '' : '$name ';
-  }
+  /// 币种展示只使用主档名称或可读标准代码，不暴露旧数字编号。
+  String _currencyLabel(SalesOrderFinanceReview r) =>
+      financeCurrencyDisplayLabel(name: r.currencyName, code: r.currencyCode) ??
+      '订单币种';
 
   String _money(String? raw) {
     if (raw == null || raw.isEmpty) return '—';

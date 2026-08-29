@@ -121,6 +121,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       label: '货品',
       width: 220,
       required: true,
+      textOf: (r) => r.goods?.name ?? '',
+      listenableOf: (r) => r.goodsNotifier,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,
@@ -158,6 +160,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         key: 'stockPlace',
         label: '库位号',
         width: 90,
+        textOf: (r) => r.stockPlaceNotifier.value ?? '',
+        listenableOf: (r) => r.stockPlaceNotifier,
         cellBuilder: (context, row) => ValueListenableBuilder<String?>(
           valueListenable: row.stockPlaceNotifier,
           builder: (_, v, _) => Text(

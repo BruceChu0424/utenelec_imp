@@ -506,7 +506,7 @@ class _FinanceReportTablePageState
       toolbarActions: [
         UtenPrintPreviewButton(
           title: '钱流${_variant.label}',
-          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
           loader: _printLoader,
           exportEndpoint: '/finance/reports/export',
           exportPermission: Perm.financeReportExport,

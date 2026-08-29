@@ -64,8 +64,9 @@ class GlPostingServicePaymentAccountingTest {
                 .hasMessageContaining("2 张历史付款")
                 .hasMessageContaining("禁止重生成总账凭证");
 
-        // Customer-advance configuration is now a separate preflight before payment authority.
-        assertThat(sqlStatements).hasSize(8);
+        // Customer-advance and legacy V0 receipt-GL reconciliation are separate
+        // preflights before payment authority; neither may delete vouchers.
+        assertThat(sqlStatements).hasSize(9);
         assertThat(sqlStatements.getLast())
                 .contains("FROM finance_payments payment")
                 .contains("payment.amount_authority_version<>1");

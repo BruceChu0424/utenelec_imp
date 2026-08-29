@@ -1,4 +1,4 @@
-// 账户流水页（只读查询，finance_reconciliation:view）。
+// 账户流水页（只读查询，要求 account:view + account:balance:view + account:flow:view）。
 //
 // 账户下拉过滤 + 关键词 + 来源单据类型。列表展示：单据号/账户/对手方/收入/支出/日期/摘要。
 // 名称解析：账户用 FinanceNameService；账户下拉选项来自 FinanceNameService.accountEntries。
@@ -21,6 +21,24 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
+import '../widgets/finance_table_facets.dart';
+
+String _entryKindLabel(String? value) => switch (value) {
+  'POSTING' => '入账',
+  'REVERSAL' => '反向冲销',
+  'ADJUSTMENT' => '余额调整',
+  _ => value ?? '—',
+};
+
+String _sourceDocTypeLabel(String? value) => switch (value) {
+  'RECEIPT' => '销售收款',
+  'PAYMENT' => '采购付款',
+  'EXPENSE' => '一般费用',
+  'INCOME' => '其它收入',
+  'BANK_TRANSFER' => '银行存取',
+  'BALANCE_ADJUSTMENT' => '余额调整',
+  _ => value ?? '—',
+};
 
 class FinanceReconciliationPage extends ConsumerStatefulWidget {
   const FinanceReconciliationPage({super.key});
@@ -39,6 +57,7 @@ class _FinanceReconciliationPageState
   final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   String? _accountId;
+  String? _sourceDocType;
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
   String? _sortKey;
   bool _sortAsc = true;
@@ -67,6 +86,7 @@ class _FinanceReconciliationPageState
             filter: ReconciliationFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
               accountId: _accountId,
+              sourceDocType: _sourceDocType,
             ),
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
@@ -141,7 +161,19 @@ class _FinanceReconciliationPageState
         key: 'sourceDocType',
         label: '来源',
         width: 120,
-        value: (it) => it.sourceDocType,
+        value: (it) => _sourceDocTypeLabel(it.sourceDocType),
+      ),
+      MasterColumnDef(
+        key: 'entryKind',
+        label: '流水类型',
+        width: 120,
+        value: (it) => _entryKindLabel(it.entryKind),
+      ),
+      MasterColumnDef(
+        key: 'reversalOfId',
+        label: '原流水 UUID',
+        width: 280,
+        value: (it) => it.reversalOfId,
       ),
     ];
   }
@@ -151,6 +183,17 @@ class _FinanceReconciliationPageState
     setState(() {
       _sortKey = column;
       _sortAsc = ascending;
+    });
+    _load(1);
+  }
+
+  void _onColumnFilterChanged(String key, String? value) {
+    setState(() {
+      if (key == 'accountId') {
+        _accountId = value;
+      } else if (key == 'sourceDocType') {
+        _sourceDocType = value;
+      }
     });
     _load(1);
   }
@@ -263,10 +306,16 @@ class _FinanceReconciliationPageState
                   primary: true,
                   columns: _columns(names),
                   items: _page?.items ?? const [],
-                  facets: const {},
+                  facets: {
+                    'accountId': financeDictionaryFacets(names.accountEntries),
+                    'sourceDocType': financeReconciliationSourceFacets,
+                  },
                   nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
+                  filters: {
+                    'accountId': _accountId,
+                    'sourceDocType': _sourceDocType,
+                  },
+                  onFilterChanged: _onColumnFilterChanged,
                   sortColumn: _sortKey,
                   sortAscending: _sortAsc,
                   onSortChange: _onSortChange,

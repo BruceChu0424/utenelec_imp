@@ -24,6 +24,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -65,22 +66,37 @@ class FinanceReportPartyStatementTest {
     }
 
     @Test
+    void supplierPayableStatementSeparatesCompanyScopePredicateFromAnd() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        List<String> sqlStatements = new ArrayList<>();
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            sqlStatements.add(invocation.getArgument(0));
+            return query;
+        });
+
+        service(em).partyStatementFlow(
+                UUID.randomUUID(), "AP", null, null, 1, 50);
+
+        assertThat(sqlStatements).singleElement().satisfies(sql -> {
+            String compact = sql.replaceAll("\\s+", " ").trim();
+            assertThat(compact)
+                    .contains("AND payment.supplier_id IS NOT NULL AND 1=1")
+                    .doesNotContain("AND1=1");
+        });
+    }
+
+    @Test
     void accountStatementFiltersDisplayRowsWithoutDroppingFactsFromRunningBalance() {
         EntityManager em = mock(EntityManager.class);
         Query rowsQuery = mock(Query.class);
-        Query openingQuery = mock(Query.class);
         when(rowsQuery.setParameter(anyString(), any())).thenReturn(rowsQuery);
-        when(openingQuery.setParameter(anyString(), any())).thenReturn(openingQuery);
-        when(openingQuery.getSingleResult()).thenReturn(new BigDecimal("100"));
         when(rowsQuery.getResultList()).thenReturn(List.<Object[]>of(
-                accountRow(LocalDate.of(2026, 1, 5), "OLD", "50", "0", "before"),
-                accountRow(LocalDate.of(2026, 2, 5), "TARGET-1", "0", "20", "shown"),
-                accountRow(LocalDate.of(2026, 2, 6), "OTHER", "10", "0", "hidden"),
-                accountRow(LocalDate.of(2026, 2, 7), "TARGET-2", "0", "5", "shown")));
-        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
-            String sql = invocation.getArgument(0);
-            return sql.contains("SELECT COALESCE(init_balance,0)") ? openingQuery : rowsQuery;
-        });
+                accountRow(LocalDate.of(2026, 2, 5), "TARGET-1", "0", "20", "130", "shown", 2L, 2L),
+                accountRow(LocalDate.of(2026, 2, 7), "TARGET-2", "0", "5", "135", "shown", 4L, 2L)));
+        when(em.createNativeQuery(anyString())).thenReturn(rowsQuery);
 
         ReportTableResponse result = service(em).accountStatement(
                 UUID.randomUUID(), LocalDate.of(2026, 2, 1),
@@ -90,6 +106,14 @@ class FinanceReportPartyStatementTest {
                 .containsExactly("TARGET-1", "TARGET-2");
         assertThat((BigDecimal) result.rows().get(0).get("balance")).isEqualByComparingTo("130");
         assertThat((BigDecimal) result.rows().get(1).get("balance")).isEqualByComparingTo("135");
+        assertThat(result.rows().getFirst().get("balanceText")).isEqualTo("130");
+        verify(rowsQuery).setParameter(eq("toExclusive"), any());
+        verify(em, org.mockito.Mockito.atLeastOnce()).createNativeQuery(argThat(sql ->
+                sql.contains("AT TIME ZONE 'Asia/Shanghai'")
+                        && sql.contains("opening.amount+SUM(flow.in_amount-flow.out_amount) OVER")
+                        && sql.contains("FROM windowed")
+                        && sql.contains("WHERE CAST(:keyword AS text) IS NULL")
+                        && sql.contains("ORDER BY sort_bill_date,sort_posting_seq")));
     }
 
     @Test
@@ -181,6 +205,7 @@ class FinanceReportPartyStatementTest {
         FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
         OwnerScope ownerScope = new OwnerScope(true, Set.of());
         when(access.scope()).thenReturn(ownerScope);
+        when(access.hasAuthority(anyString())).thenReturn(true);
         when(access.nativeReadScope(anyString(), anyString(), eq(ownerScope)))
                 .thenReturn(new NativeReadScope("1=1", null, Set.of()));
         return access;
@@ -207,10 +232,14 @@ class FinanceReportPartyStatementTest {
     }
 
     private static Object[] accountRow(LocalDate date, String billNo,
-                                       String inAmount, String outAmount, String remark) {
+                                       String inAmount, String outAmount, String balance,
+                                       String remark, long postingSeq, long totalCount) {
         return new Object[]{
                 Date.valueOf(date), billNo, "", remark, "客户", "销售收款", null,
-                new BigDecimal(inAmount), new BigDecimal(outAmount)
+                new BigDecimal(inAmount), new BigDecimal(outAmount),
+                new BigDecimal(balance), "RECEIPT", UUID.nameUUIDFromBytes(billNo.getBytes()),
+                "POSTING", null, UUID.nameUUIDFromBytes((billNo + "-entry").getBytes()),
+                postingSeq, totalCount
         };
     }
 }

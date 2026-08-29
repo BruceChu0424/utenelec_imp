@@ -299,12 +299,14 @@ class DataScopeOwner {
     required this.employeeId,
     required this.name,
     required this.count,
+    this.code,
     this.status,
     this.historicalOnly = false,
   });
 
   final String employeeId;
   final String name;
+  final String? code;
   final int count;
   final String? status;
   final bool historicalOnly;
@@ -312,6 +314,7 @@ class DataScopeOwner {
   factory DataScopeOwner.fromJson(Map<String, dynamic> json) => DataScopeOwner(
     employeeId: json['employeeId'] as String? ?? '',
     name: json['name'] as String? ?? '',
+    code: json['code'] as String?,
     count: (json['count'] as num?)?.toInt() ?? 0,
     status: json['status'] as String?,
     historicalOnly: json['historicalOnly'] as bool? ?? false,

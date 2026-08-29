@@ -20,6 +20,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -193,6 +194,7 @@ class _WarehouseSubcontractOutboundEditPageState
           _empCache[id] = UtenEmployeePickerItem(
             id: p.id,
             name: p.fullName ?? '',
+            employeeCode: p.code,
             departmentName: p.departmentName,
           );
         } catch (_) {
@@ -286,7 +288,7 @@ class _WarehouseSubcontractOutboundEditPageState
       responsibilityDescription: '确认后，系统将以此登录员工记录本次委外材料出仓审核责任。',
       message:
           '审核后将：\n'
-          '① 材料从所选发出仓出库，转为委商处保管（公司库存减少）；\n'
+          '① 材料从所选发出仓出库，转为委商处保管(公司库存减少)；\n'
           '② 按批准时 BOM 冻结单耗，回厂进仓按冻结单耗守恒消费；\n'
           '③ 本次未出完的计划余量自动生成下一批出仓草稿。',
     );
@@ -323,13 +325,13 @@ class _WarehouseSubcontractOutboundEditPageState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('关闭后本计划的剩余量不再出仓（委外商料已够/订单变更等）。该操作会留痕。'),
+            const Text('关闭后本计划的剩余量不再出仓(委外商料已够/订单变更等)。该操作会留痕。'),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
               controller: reasonCtl,
               maxLength: 200,
               decoration: const InputDecoration(
-                labelText: '关闭原因（必填）',
+                labelText: '关闭原因(必填)',
                 alignLabelWithHint: true,
               ),
             ),
@@ -429,8 +431,8 @@ class _WarehouseSubcontractOutboundEditPageState
                     label: '计划状态',
                     value: switch (detail.status) {
                       'OPEN' => '出仓中',
-                      'CLOSED' => '已关闭（不再出仓）',
-                      'CANCELED' => '已取消（订货已红冲）',
+                      'CLOSED' => '已关闭(不再出仓)',
+                      'CANCELED' => '已取消(订货已红冲)',
                       _ => detail.status ?? '—',
                     },
                   ),
@@ -457,7 +459,7 @@ class _WarehouseSubcontractOutboundEditPageState
                     DropdownButtonFormField<String>(
                       key: ValueKey('warehouse_$_warehouseId'),
                       initialValue: _warehouseId,
-                      decoration: const InputDecoration(labelText: '发出仓（必选）'),
+                      decoration: const InputDecoration(labelText: '发出仓(必选)'),
                       items: [
                         for (final e in names.warehouseEntries.entries)
                           DropdownMenuItem(value: e.key, child: Text(e.value)),
@@ -490,6 +492,7 @@ class _WarehouseSubcontractOutboundEditPageState
                             UtenEmployeePickerItem(
                               id: e.id,
                               name: e.fullName,
+                              employeeCode: e.code,
                               departmentName: e.departmentName,
                             ),
                         ];
@@ -519,7 +522,7 @@ class _WarehouseSubcontractOutboundEditPageState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '发料明细（按批准时 BOM 展开）',
+                    '发料明细(按批准时 BOM 展开)',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -647,7 +650,7 @@ class _WarehouseSubcontractOutboundEditPageState
               child: TextButton.icon(
                 onPressed: _saving ? null : _onClosePlan,
                 icon: const Icon(Icons.stop_circle_outlined, size: 18),
-                label: const Text('不再出仓（关闭剩余计划）'),
+                label: const Text('不再出仓(关闭剩余计划)'),
               ),
             ),
           ],
@@ -710,7 +713,9 @@ class _WarehouseSubcontractOutboundEditPageState
               ],
               decoration: InputDecoration(
                 labelText: '本次出仓',
-                helperText: '剩 ${_fmtQty(line.plannedQty - line.issuedQty)}',
+                helper: UtenFieldMessage.helper(
+                  '剩 ${_fmtQty(line.plannedQty - line.issuedQty)}',
+                ),
               ),
               onChanged: (_) => setState(() {}),
             ),

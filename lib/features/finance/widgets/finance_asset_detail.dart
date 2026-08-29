@@ -882,6 +882,7 @@ class _FinanceAssetActionInputState
         UtenEmployeePickerItem(
           id: employee.id,
           name: employee.fullName,
+          employeeCode: employee.code,
           departmentName: employee.departmentName,
         ),
     ];
@@ -1040,7 +1041,7 @@ class _FinanceAssetActionInputState
                         label: '生效日期',
                         required: true,
                         value: _effectiveDate,
-                        errorText:
+                        errorMessage:
                             _selectionError != null && _effectiveDate == null
                             ? '请选择生效日期'
                             : null,

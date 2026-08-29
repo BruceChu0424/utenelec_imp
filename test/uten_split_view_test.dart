@@ -35,7 +35,7 @@ Finder _gutter() => find.byType(Tooltip);
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('初始宽度 = initialLeadingWidth（默认 300）', (tester) async {
+  testWidgets('初始宽度 = initialLeadingWidth(默认 300)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(_host());
     expect(_leadingWidth(tester), 300);

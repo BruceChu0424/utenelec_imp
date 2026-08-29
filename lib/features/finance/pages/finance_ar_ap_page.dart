@@ -17,11 +17,13 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
+import '../widgets/finance_table_facets.dart';
 
 const Map<int, String> financeArApSettlementStyleLabels = {
   1: '现金',
@@ -52,6 +54,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   String? _direction; // null=全部 / AR / AP
+  String? _sourceDocType;
+  String? _partyId;
   bool? _settled; // null=全部 / false=未清 / true=已清
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
   String? _sortKey;
@@ -81,6 +85,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
             filter: ArApFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
               direction: _direction,
+              sourceDocType: _sourceDocType,
+              partyId: _partyId,
               settled: _settled,
             ),
             sort: _sortKey,
@@ -204,7 +210,12 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         key: 'currency',
         label: '币别',
         width: 90,
-        value: (it) => it.currencyCode ?? it.currencyName,
+        value: (it) =>
+            financeCurrencyDisplayLabel(
+              name: it.currencyName,
+              code: it.currencyCode,
+            ) ??
+            '—',
       ),
       MasterColumnDef(
         key: 'exchangeRate',
@@ -277,6 +288,27 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
     setState(() {
       _sortKey = column;
       _sortAsc = ascending;
+    });
+    _load(1);
+  }
+
+  void _onColumnFilterChanged(String key, String? value) {
+    setState(() {
+      switch (key) {
+        case 'direction':
+          _direction = value;
+          _partyId = null;
+          break;
+        case 'sourceDocType':
+          _sourceDocType = value;
+          break;
+        case 'party':
+          _partyId = value;
+          break;
+        case 'settled':
+          _settled = value == null ? null : value == 'true';
+          break;
+      }
     });
     _load(1);
   }
@@ -381,10 +413,26 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                   primary: true,
                   columns: _columns(names),
                   items: _page?.items ?? const [],
-                  facets: const {},
+                  facets: {
+                    'direction': financeArApDirectionFacets,
+                    'sourceDocType': financeArApSourceTypeFacets,
+                    'party': financeDictionaryFacets(
+                      _direction == 'AP'
+                          ? names.supplierEntries
+                          : _direction == 'AR'
+                          ? names.clientEntries
+                          : {...names.clientEntries, ...names.supplierEntries},
+                    ),
+                    'settled': financeArApSettledFacets,
+                  },
                   nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
+                  filters: {
+                    'direction': _direction,
+                    'sourceDocType': _sourceDocType,
+                    'party': _partyId,
+                    'settled': _settled?.toString(),
+                  },
+                  onFilterChanged: _onColumnFilterChanged,
                   sortColumn: _sortKey,
                   sortAscending: _sortAsc,
                   onSortChange: _onSortChange,
@@ -426,7 +474,10 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
       label: Text(label),
       selected: selected,
       onSelected: (_) {
-        setState(() => _direction = value);
+        setState(() {
+          _direction = value;
+          _partyId = null;
+        });
         _load(1);
       },
     );

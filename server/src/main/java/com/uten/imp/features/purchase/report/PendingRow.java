@@ -14,4 +14,5 @@ public class PendingRow {
     private UUID colorId;
     private BigDecimal pendingQty;
     private BigDecimal pendingAmt;
+    private boolean priceMasked;
 }

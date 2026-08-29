@@ -21,6 +21,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/progress_timeline_event.dart';
 import '../models/sales_doc.dart';
@@ -163,6 +164,69 @@ class _SalesOrderProgressDetailPageState
                 if (d.makerName != null) _kv(theme, '制单员', d.makerName!),
               ],
             ),
+            if (d.financeRejected) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer.withValues(
+                    alpha: 0.55,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.colorScheme.error.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '驳回原因：${d.financeRejectedReason?.trim().isNotEmpty == true ? d.financeRejectedReason!.trim() : '未注明原因'}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onErrorContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if ((d.financeRejectedByName?.isNotEmpty ?? false) ||
+                        (d.financeRejectedAt?.isNotEmpty ?? false)) ...[
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        [
+                          if (d.financeRejectedByName?.isNotEmpty ?? false)
+                            d.financeRejectedByName!,
+                          if (d.financeRejectedAt?.isNotEmpty ?? false)
+                            DisplayDateTime.beijing(
+                              d.financeRejectedAt,
+                              fallback: d.financeRejectedAt!,
+                            ),
+                        ].join(' · '),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ],
+                    if (d.writable &&
+                        (ref.read(isSuperAdminProvider) ||
+                            ref
+                                .read(currentPermissionsProvider)
+                                .contains(Perm.salesOrderEdit))) ...[
+                      const SizedBox(height: UtenSpacing.s8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(
+                          onPressed: () => context.push(
+                            RoutePath.salesDocEdit('orders', widget.orderId),
+                          ),
+                          icon: const Icon(Icons.edit_outlined),
+                          label: const Text('修改订单'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: UtenSpacing.s8),
             Wrap(
               spacing: UtenSpacing.s8,
@@ -246,6 +310,32 @@ class _SalesOrderProgressDetailPageState
     final theme = Theme.of(context);
     final d = _detail;
     // V300 口径：财务确认前不展示排产/链路进度，仅提示（时间线区仍可见审核轨迹）。
+    if (d != null && d.financeRejected) {
+      return Card(
+        margin: EdgeInsets.zero,
+        color: theme.colorScheme.errorContainer.withValues(alpha: 0.45),
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s16),
+          child: Row(
+            children: [
+              Icon(
+                Icons.assignment_late_outlined,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  '订单已被财务驳回。修改并重新审核提交财务前，不展示排产与产品进度。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onErrorContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (d != null && !d.financeConfirmed) {
       return Card(
         margin: EdgeInsets.zero,

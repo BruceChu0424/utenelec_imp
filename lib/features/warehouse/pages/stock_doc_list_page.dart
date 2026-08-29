@@ -67,18 +67,26 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<StockDocListItem>> _fetch() => ref
-      .read(stockDocRepositoryProvider(widget.docType))
-      .list(
-        page: _list.pageNum,
-        filter: StockDocFilter(
-          keyword: _list.normalizedKeyword,
-          status: _status,
-          issueStatus: _issueStatus,
-        ),
-        sort: _list.sortKey,
-        order: _list.sortOrder,
-      );
+  Future<PagedResult<StockDocListItem>> _fetch() {
+    final canViewCost = ref
+        .read(currentPermissionsProvider)
+        .contains(Perm.goodsCostView);
+    final sort = !canViewCost && _list.sortKey == 'total'
+        ? null
+        : _list.sortKey;
+    return ref
+        .read(stockDocRepositoryProvider(widget.docType))
+        .list(
+          page: _list.pageNum,
+          filter: StockDocFilter(
+            keyword: _list.normalizedKeyword,
+            status: _status,
+            issueStatus: _issueStatus,
+          ),
+          sort: sort,
+          order: sort == null ? null : _list.sortOrder,
+        );
+  }
 
   Future<void> _reload([int? page, bool silent = false]) =>
       _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
@@ -103,7 +111,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     }
   }
 
-  List<MasterColumnDef<StockDocListItem>> get _columns {
+  List<MasterColumnDef<StockDocListItem>> _columns({
+    required bool canViewCost,
+  }) {
     final isTransfer = widget.docType == StockDocType.transfer;
     final isDraw = widget.docType == StockDocType.draw;
     return <MasterColumnDef<StockDocListItem>>[
@@ -148,14 +158,15 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
           value: (it) =>
               ref.read(masterNameServiceProvider).warehouse(it.toWarehouseId),
         ),
-      MasterColumnDef(
-        key: 'total',
-        label: '合计',
-        width: 140,
-        type: 'money',
-        sortable: true,
-        value: (it) => it.totalLocal?.toStringAsFixed(2),
-      ),
+      if (canViewCost)
+        MasterColumnDef(
+          key: 'total',
+          label: '成本合计',
+          width: 140,
+          type: 'money',
+          sortable: true,
+          value: (it) => it.totalLocal?.toStringAsFixed(2),
+        ),
       MasterColumnDef(
         key: 'status',
         label: '状态',
@@ -175,6 +186,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final canViewCost = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.goodsCostView);
     // watch 一下以在 ensureLoaded 完成（虽 Provider 实例不变，但语义上声明依赖）
     ref.watch(masterNameServiceProvider);
     // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
@@ -323,13 +337,15 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                           tablePane: MasterDataTableView<StockDocListItem>(
                             // primary:true → 表体参与「KPI 卡折叠 → 表格内滚」联动。
                             primary: true,
-                            columns: _columns,
+                            columns: _columns(canViewCost: canViewCost),
                             items: _list.page?.items ?? const [],
                             facets: const {},
                             nullCounts: const {},
                             filters: const {},
                             onFilterChanged: (_, _) {},
-                            sortColumn: _list.sortKey,
+                            sortColumn: canViewCost || _list.sortKey != 'total'
+                                ? _list.sortKey
+                                : null,
                             sortAscending: _list.sortAsc,
                             onSortChange: _onSortChange,
                             onRowTap: (it) => context.push(

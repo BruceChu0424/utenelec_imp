@@ -162,7 +162,7 @@ public class FinanceStatementService {
                     UNION ALL
                     SELECT i.bill_date, g.code, g.name,
                            COALESCE(u.name,''), -i.qty, i.price,
-                           -i.amount_original, d.bill_no || '（退货）',
+                           -i.amount_original, d.bill_no || '(退货)',
                            s.name, s.code, d.supplier_id
                     FROM purchase_return_items i
                     JOIN purchase_returns d ON d.id = i.return_id
@@ -274,7 +274,7 @@ public class FinanceStatementService {
                     SELECT i.bill_date, g.name,
                            COALESCE(c.name,''), COALESCE(u.name,''),
                            -i.qty, i.price, -i.amount_original,
-                           d.bill_no || '（退货）', cl.name, cl.code
+                           d.bill_no || '(退货)', cl.name, cl.code
                     FROM sales_return_items i
                     JOIN sales_returns d ON d.id = i.return_id
                     LEFT JOIN goods g ON g.id = i.goods_id

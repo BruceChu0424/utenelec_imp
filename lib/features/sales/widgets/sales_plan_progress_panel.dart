@@ -74,7 +74,7 @@ class _ProgressList extends ConsumerWidget {
         if (lines.isEmpty)
           const Padding(
             padding: EdgeInsets.all(UtenSpacing.s24),
-            child: Center(child: Text('（无明细）')),
+            child: Center(child: Text('(无明细)')),
           ),
         for (final l in lines) _lineCard(context, theme, l, canViewPlan),
       ],

@@ -11,6 +11,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
@@ -180,10 +181,10 @@ class _EmployeeOffboardingWorkflowPageState
           (employee) => UtenEmployeePickerItem(
             id: employee.employeeId,
             name: employee.name,
+            employeeCode: employee.code,
             departmentName: [
               if (employee.departmentName?.isNotEmpty == true)
                 employee.departmentName!,
-              '工号 ${employee.code}',
               _employeeStatusLabel(employee.status),
             ].join(' · '),
           ),
@@ -251,7 +252,7 @@ class _EmployeeOffboardingWorkflowPageState
         '员工：${_employee?.fullName ?? '—'}\n'
         '离职日期：${DateFormat('yyyy-MM-dd').format(_effectiveDate!)}\n'
         '默认接手人：${_successor?.name ?? '无需交接'}\n'
-        '影响项次（分类合计）：${preview.total}\n\n'
+        '影响项次(分类合计)：${preview.total}\n\n'
         '只有交接和离职事务全部成功后，账号才会停用。',
       ),
       confirmLabel: '确认办理离职',
@@ -494,9 +495,11 @@ class _EmployeeOffboardingWorkflowPageState
               decoration: InputDecoration(
                 labelText: '离职日期 *',
                 border: const OutlineInputBorder(),
-                errorText: _showDepartureErrors && _effectiveDate == null
-                    ? '请选择离职日期'
-                    : null,
+                error: utenFieldError(
+                  _showDepartureErrors && _effectiveDate == null
+                      ? '请选择离职日期'
+                      : null,
+                ),
               ),
               child: Text(
                 _effectiveDate == null
@@ -620,7 +623,7 @@ class _EmployeeOffboardingWorkflowPageState
             borderRadius: UtenRadius.mdAll,
           ),
           child: Text(
-            '影响摘要：${preview.total} 项次（分类合计）；默认接手人 ${_successor?.name ?? '无需交接'}。'
+            '影响摘要：${preview.total} 项次(分类合计)；默认接手人 ${_successor?.name ?? '无需交接'}。'
             '以下确认会随离职命令提交并写入任职历史；只有交接和离职事务全部成功后，'
             '系统账号才会自动停用。',
             style: theme.textTheme.bodySmall?.copyWith(height: 1.5),

@@ -16,6 +16,7 @@ public class CurrencyListItem {
     private String code;
     private String name;
     private BigDecimal exchangeRate;
+    private boolean baseCurrency;
     private String status;
     private Integer legacyId;
 }

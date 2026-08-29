@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -383,7 +384,7 @@ class _AuditRetentionNotice extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '每日北京时间 03:17 分批执行。各客户端的本机回执在下次同步公共设置后，也按总月数清理（同时最多 300 条）。永久删除不可恢复；缩短期限前请先完成合规确认和必要备份。',
+                          '每日北京时间 03:17 分批执行。各客户端的本机回执在下次同步公共设置后，也按总月数清理(同时最多 300 条)。永久删除不可恢复；缩短期限前请先完成合规确认和必要备份。',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -536,7 +537,7 @@ class _ConfirmPasswordDialogState extends State<_ConfirmPasswordDialog> {
               labelText: '账号密码',
               border: const OutlineInputBorder(),
               isDense: true,
-              errorText: _error,
+              error: utenFieldError(_error),
             ),
             onSubmitted: (_) => _submit(),
           ),

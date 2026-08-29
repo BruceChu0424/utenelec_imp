@@ -424,7 +424,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         var contentType = guessContentType(f.name);
         if (contentType == null) {
           if (mounted) {
-            context.appError('「${f.name}」类型不支持（仅图片/PDF/Office/zip/txt）');
+            context.appError('「${f.name}」类型不支持(仅图片/PDF/Office/zip/txt)');
           }
           continue;
         }
@@ -462,7 +462,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       }
       if (succeeded > 0) widget.onChanged();
       if (mounted && succeeded > 0) {
-        final note = lastCompressNote == null ? '' : '（$lastCompressNote）';
+        final note = lastCompressNote == null ? '' : '($lastCompressNote)';
         context.appSuccess(
           succeeded == 1
               ? '已上传 ${files.first.name}$note'

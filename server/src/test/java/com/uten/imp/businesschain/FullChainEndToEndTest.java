@@ -35,6 +35,8 @@ import com.uten.imp.features.production.dailyreport.ProductionDailyReportService
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
+import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.features.attachment.AttachmentService;
@@ -53,6 +55,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.access.AccessDeniedException;
@@ -161,6 +164,7 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.purchase.receipt.PurchaseReceiptService purchaseReceiptService;
     @Autowired private com.uten.imp.features.warehouse.inbound.ProcurementInspectionService inspectionService;
     @Autowired private ProductionDailyReportService reportService;
+    @Autowired private ProductionFqcInspectionService fqcService;
     @Autowired private StockDocService stockDocService;
     @Autowired private SalesShipmentService shipmentService;
     @Autowired private GlPostingService glPostingService;
@@ -394,8 +398,8 @@ class FullChainEndToEndTest {
         // 默认调用（status=null, sort=deliverDate）——正是线上崩溃的那次
         assertDoesNotThrow(() -> scheduleService.pending(
                 1, 20, null, null, null, "deliverDate", "asc", null));
-        // 三种状态筛选：urgent/normal 进 :warn，bom_missing 不进
-        for (String status : List.of("urgent", "normal", "bom_missing")) {
+        // 两种状态筛选：urgent/normal 进 :warn
+        for (String status : List.of("urgent", "normal")) {
             assertDoesNotThrow(() -> scheduleService.pending(
                     1, 20, null, null, null, "deliverDate", "asc", status));
         }
@@ -419,10 +423,10 @@ class FullChainEndToEndTest {
         assertNotNull(page);
         assertFalse(page.getItems().isEmpty(),
                 "approved out-of-stock order line should appear in pending list");
-        // facets 返回 status 三桶（BOM缺失/紧急/正常）
+        // facets 返回 status 两桶（紧急/正常）
         var facets = scheduleService.pendingFacets(null, null, null);
         assertNotNull(facets.get("status"));
-        assertEquals(3, facets.get("status").size(), "status facets should have 3 buckets");
+        assertEquals(2, facets.get("status").size(), "status facets should have 2 buckets");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -698,7 +702,7 @@ class FullChainEndToEndTest {
         // is itself planned+confirmed. The bottom-up redesign (#13) will instead explode the full
         // tree so D is purchased from A's confirmation. This documents today's behavior.
         assertNull(result.purchaseRequest(),
-                "D 采购是 B 的下层件；当前一层架构下 A 这层不开采购申请（待 #13 全树展开）");
+                "D 采购是 B 的下层件；当前一层架构下 A 这层不开采购申请(待 #13 全树展开)");
         // direct-layer execution-segment material demands are established (B + E)
         assertTrue(count(
                 "select count(*) from production_material_demands dmd "
@@ -1062,7 +1066,7 @@ class FullChainEndToEndTest {
                         routed.fingerprint(), "notify-make-blocked-" + analysisId, "MAKE",
                         List.of(b.materialLineId()), List.of(), null)));
         assertTrue(makeBlocked.getMessage().contains("下层物料尚未齐套"),
-                "MAKE 下层未齐套应拒绝委派（实际：" + makeBlocked.getMessage() + "）");
+                "MAKE 下层未齐套应拒绝委派(实际：" + makeBlocked.getMessage() + ")");
         assertEquals(0, count("select count(*) from production_material_analysis_items "
                         + "where analysis_id = ? and source_type = 'MAKE_COMPONENT' and is_deleted = false",
                 analysisId), "门禁失败不能留下 MAKE_COMPONENT 子需求");
@@ -1086,16 +1090,16 @@ class FullChainEndToEndTest {
         AnalysisView afterMake = analysisService.detail(analysisId);
         PlanPreview plan = analysisService.planPreview(analysisId, new PlanPreviewRequest(
                 afterMake.version(), afterMake.fingerprint(), w.warehouseId(),
-                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null, null));
+                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null));
         assertFalse(plan.allReady(), "无库存 → 不可立即生产");
         AnalysisView refreshed = analysisService.detail(analysisId);
         ApiException blocked = assertThrows(ApiException.class, () -> analysisCommandService.generatePlan(
                 analysisId, new GeneratePlanRequest(refreshed.version(), refreshed.fingerprint(),
                         plan.previewFingerprint(), "gen-ma1-" + analysisId, w.warehouseId(),
                         LocalDate.of(2026, 8, 8), null, w.departmentId(), null, null, true,
-                        List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null, null)));
+                        List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null)));
         assertTrue(blocked.getMessage().contains("齐套"),
-                "未齐套生成应被拒（实际：" + blocked.getMessage() + "）");
+                "未齐套生成应被拒(实际：" + blocked.getMessage() + ")");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1128,12 +1132,12 @@ class FullChainEndToEndTest {
         UUID analysisId = view.analysisId();
         UUID productLineId = view.products().getFirst().analysisLineId();
         assertEquals(0, new BigDecimal("10").compareTo(view.products().getFirst().readyNowQty()),
-                "B=20 + E=10 在库 → 可立即生产 10（实际：" + view.products().getFirst().readyNowQty() + "）");
+                "B=20 + E=10 在库 → 可立即生产 10(实际：" + view.products().getFirst().readyNowQty() + ")");
 
         AnalysisView refreshed = analysisService.detail(analysisId);
         PlanPreview plan = analysisService.planPreview(analysisId, new PlanPreviewRequest(
                 refreshed.version(), refreshed.fingerprint(), w.warehouseId(),
-                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null, null));
+                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null));
         assertTrue(plan.allReady(), "齐套 → 计划预览通过");
         AnalysisView preGen = analysisService.detail(analysisId);
 
@@ -1141,11 +1145,11 @@ class FullChainEndToEndTest {
                 preGen.version(), preGen.fingerprint(), plan.previewFingerprint(),
                 "gen-ma2-" + analysisId, w.warehouseId(), LocalDate.of(2026, 8, 8), null,
                 null, null, null, true,
-                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null, null));
+                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null));
         assertFalse(result.plans().isEmpty(), "生成了一张生产计划");
         GeneratedPlan g = result.plans().getFirst();
         assertEquals("APPROVED", g.status(), "approveNow=true → 计划已批准");
-        assertEquals(1, planStatus(g.planId()), "production_plans.status=1（已审核）");
+        assertEquals(1, planStatus(g.planId()), "production_plans.status=1(已审核)");
         assertTrue(hasSegmentStatus(g.planId(), "READY"), "生成 READY 执行分段");
         assertFalse(g.drawIds().isEmpty(), "approveNow → 同事务生成 DRAW 领料单");
         assertEquals(0, new BigDecimal("10").compareTo(plannedQty(orderId)),
@@ -1186,7 +1190,7 @@ class FullChainEndToEndTest {
                         w.warehouseId(),
                         List.of(new PlanQuantity(
                                 productLineId, new BigDecimal("10"))),
-                        null, null));
+                        null));
         AnalysisView preGenerate = analysisService.detail(analysisId);
         GeneratePlanRequest request = new GeneratePlanRequest(
                 preGenerate.version(), preGenerate.fingerprint(),
@@ -1196,7 +1200,7 @@ class FullChainEndToEndTest {
                 null, null, null, false,
                 List.of(new PlanQuantity(
                         productLineId, new BigDecimal("10"))),
-                null, null);
+                null);
 
         GeneratedPlan first = analysisCommandService
                 .generatePlan(analysisId, request).plans().getFirst();
@@ -1328,7 +1332,7 @@ class FullChainEndToEndTest {
                 analysisId, new CancelRequest(view.version(), view.fingerprint(),
                         "cancel-other-" + analysisId, "越权尝试")));
         assertTrue(denied.getMessage().contains("本人") || denied.getMessage().contains("无权"),
-                "非归属人不能操作他人物料分析（实际：" + denied.getMessage() + "）");
+                "非归属人不能操作他人物料分析(实际：" + denied.getMessage() + ")");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1361,7 +1365,7 @@ class FullChainEndToEndTest {
         AnalysisView refreshed = analysisService.detail(analysisId);
         PlanPreview plan = analysisService.planPreview(analysisId, new PlanPreviewRequest(
                 refreshed.version(), refreshed.fingerprint(), w.warehouseId(),
-                List.of(new PlanQuantity(productLineId, new BigDecimal("5"))), null, null));
+                List.of(new PlanQuantity(productLineId, new BigDecimal("5"))), null));
         assertTrue(plan.allReady(), "5 ≤ 可立即生产 10 → 本批齐套");
         AnalysisView preGen = analysisService.detail(analysisId);
 
@@ -1369,13 +1373,13 @@ class FullChainEndToEndTest {
                 preGen.version(), preGen.fingerprint(), plan.previewFingerprint(),
                 "gen-ma5-" + analysisId, w.warehouseId(), LocalDate.of(2026, 8, 8), null,
                 null, null, null, true,
-                List.of(new PlanQuantity(productLineId, new BigDecimal("5"))), null, null));
+                List.of(new PlanQuantity(productLineId, new BigDecimal("5"))), null));
         GeneratedPlan g = result.plans().getFirst();
         assertEquals("APPROVED", g.status(), "分批也是 approveNow 一步批准");
         assertEquals(1, planStatus(g.planId()));
         // 销售只回写 5；剩余 5 留待后续分批
         assertEquals(0, new BigDecimal("5").compareTo(plannedQty(orderId)),
-                "分批：销售 planned_qty=5（非 10），剩余可后续下达");
+                "分批：销售 planned_qty=5(非 10)，剩余可后续下达");
         // 分析头 PARTIALLY_PLANNED（10 中已批 5，未全部下达 → 非 COMPLETED）
         assertEquals("PARTIALLY_PLANNED",
                 strFor("select status from production_material_analyses where id=?", analysisId),
@@ -1425,9 +1429,9 @@ class FullChainEndToEndTest {
                         new AllocationPriorityItem(line1, 1),
                         new AllocationPriorityItem(line2, 2))));
         assertEquals(0, new BigDecimal("5").compareTo(productReadyNow(p1First, p1)),
-                "M 划拨给 P1 → P1 可产 5（实际 " + productReadyNow(p1First, p1) + "）");
+                "M 划拨给 P1 → P1 可产 5(实际 " + productReadyNow(p1First, p1) + ")");
         assertEquals(0, BigDecimal.ZERO.compareTo(productReadyNow(p1First, p2)),
-                "P2 无料 → 可产 0（实际 " + productReadyNow(p1First, p2) + "）");
+                "P2 无料 → 可产 0(实际 " + productReadyNow(p1First, p2) + ")");
 
         // 改划拨给 P2（优先级对调）：P2 可产 5，P1 可产 0 —— "让别的产品先生产"
         AnalysisView refreshed = analysisService.detail(analysisId);
@@ -1436,9 +1440,9 @@ class FullChainEndToEndTest {
                         new AllocationPriorityItem(line1, 2),
                         new AllocationPriorityItem(line2, 1))));
         assertEquals(0, BigDecimal.ZERO.compareTo(productReadyNow(p2First, p1)),
-                "改划拨 → P1 可产 0（实际 " + productReadyNow(p2First, p1) + "）");
+                "改划拨 → P1 可产 0(实际 " + productReadyNow(p2First, p1) + ")");
         assertEquals(0, new BigDecimal("5").compareTo(productReadyNow(p2First, p2)),
-                "改划拨 → P2 可产 5（实际 " + productReadyNow(p2First, p2) + "）");
+                "改划拨 → P2 可产 5(实际 " + productReadyNow(p2First, p2) + ")");
     }
 
     private BigDecimal productReadyNow(AnalysisView view, UUID goodsId) {
@@ -1745,7 +1749,7 @@ class FullChainEndToEndTest {
                 strFor("select status from procurement_order_approval_cases "
                         + "where order_type = 'PURCHASE' and order_id = ?", orderId),
                 "提交财务审核 -> PENDING");
-        assertNotNull(reviewer, "财务审核人就位（submit 需至少一名合格审核人）");
+        assertNotNull(reviewer, "财务审核人就位(submit 需至少一名合格审核人)");
 
         // approve as the eligible finance reviewer (override-granted)
         loginAs(reviewer);
@@ -2122,14 +2126,14 @@ class FullChainEndToEndTest {
         // 草稿阶段：不产生待检 / 不回写 / 不入库 / 不立应付，仅在途量出现
         assertEquals(0, jdbc.queryForObject(
                 "select status from purchase_receipts where id = ?", Integer.class, receiptId),
-                "到货登记保存后收货单为草稿（待审核）");
+                "到货登记保存后收货单为草稿(待审核)");
         assertEquals(0, count(
                 "select count(*) from procurement_inspection_items where receipt_id = ?",
                 receiptId), "未审核不产生品质待检任务");
         assertEquals(0, jdbc.queryForObject(
                         "select received_qty from purchase_order_items where id = ?",
                         BigDecimal.class, orderItemId).compareTo(BigDecimal.ZERO),
-                "未审核不回写订货已收（采购订货进度不变）");
+                "未审核不回写订货已收(采购订货进度不变)");
         assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(BigDecimal.ZERO),
                 "未审核不入库");
         assertEquals(0, count(
@@ -2137,7 +2141,7 @@ class FullChainEndToEndTest {
                         + "where source_doc_type = 'PURCHASE_RECEIPT' and source_doc_id = ?",
                 receiptId), "未审核不立应付");
         assertEquals(0, inflightRegisteredQty(orderItemId).compareTo(new BigDecimal("20")),
-                "任务中心在途量（已登记待审核）= 20");
+                "任务中心在途量(已登记待审核)= 20");
         assertEquals(0, count(
                 "select count(*) from business_outbox "
                         + "where event_type = 'PROCUREMENT_IQC_RESOLVED' and aggregate_id = ?",
@@ -2148,11 +2152,11 @@ class FullChainEndToEndTest {
         assertEquals(1, count(
                 "select count(*) from procurement_inspection_items "
                         + "where receipt_id = ? and status = 'PENDING'", receiptId),
-                "审核后生成品质待检明细（品质任务中心列表与工作台角标同源）");
+                "审核后生成品质待检明细(品质任务中心列表与工作台角标同源)");
         assertEquals(0, jdbc.queryForObject(
                         "select received_qty from purchase_order_items where id = ?",
                         BigDecimal.class, orderItemId).compareTo(new BigDecimal("20")),
-                "审核后 received_qty += 20（采购订货进度同步）");
+                "审核后 received_qty += 20(采购订货进度同步)");
         assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(BigDecimal.ZERO),
                 "IQC 待检期间不入可用库存");
         assertEquals(1, count(
@@ -2160,7 +2164,7 @@ class FullChainEndToEndTest {
                         + "where source_doc_type = 'PURCHASE_RECEIPT' and source_doc_id = ?",
                 receiptId), "审核后立应付");
         assertEquals(0, inflightRegisteredQty(orderItemId).compareTo(BigDecimal.ZERO),
-                "审核后在途量清零（转入已收）");
+                "审核后在途量清零(转入已收)");
 
         // ③ 品质部 PASS（整单结案）→ 合格量放行入库 + 唤醒生产 + 投递仓库通知事件
         UUID inspectionItemId = jdbc.queryForObject(
@@ -2180,7 +2184,7 @@ class FullChainEndToEndTest {
                 "select count(*) from procurement_inspection_events e "
                         + "join procurement_inspection_items i on i.id = e.inspection_item_id "
                         + "where i.receipt_id = ? and e.action = 'PRODUCTION_WOKEN'", receiptId),
-                "整单结案唤醒生产（生产进度同步）");
+                "整单结案唤醒生产(生产进度同步)");
         assertEquals(1, count(
                 "select count(*) from business_outbox "
                         + "where event_type = 'PROCUREMENT_IQC_RESOLVED' "
@@ -2309,7 +2313,7 @@ class FullChainEndToEndTest {
                           and qty = 20
                           and released_qty = 0
                         """, analysisA),
-                "IQC PASS 应写分析归属预留（qty=20，生效中）");
+                "IQC PASS 应写分析归属预留(qty=20，生效中)");
         assertEquals(0, publicAvailable(w.warehouseId(), h).compareTo(BigDecimal.ZERO),
                 "公共可用量不得含其它分析已绑定的收货");
 
@@ -2324,7 +2328,7 @@ class FullChainEndToEndTest {
         MaterialView hB = viewB.flatMaterials().stream()
                 .filter(m -> m.goodsId().equals(h)).findFirst().orElseThrow();
         assertEquals(0, hB.availableQty().compareTo(BigDecimal.ZERO),
-                "分析B不得计入分析A已收货绑定的 20（跨分析重复计算回归）");
+                "分析B不得计入分析A已收货绑定的 20(跨分析重复计算回归)");
         assertEquals(0, hB.shortageQty().compareTo(new BigDecimal("20")),
                 "分析B的 H 缺口仍是 20");
 
@@ -2350,7 +2354,7 @@ class FullChainEndToEndTest {
                           and owner_id = ?
                           and status = 0
                         """, analysisA),
-                "红冲后分析A生效预留清零（对称释放）");
+                "红冲后分析A生效预留清零(对称释放)");
         assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(BigDecimal.ZERO),
 
                 "红冲后真实库存回到 0");
@@ -2498,7 +2502,7 @@ class FullChainEndToEndTest {
                         w.warehouseId(),
                         List.of(new PlanQuantity(
                                 sourceProductLineId, new BigDecimal("10"))),
-                        null, null));
+                        null));
         assertTrue(sourcePlanPreview.allReady(),
                 "A 恢复 10 后可以走正式生产计划下达");
         AnalysisView sourceBeforeGenerate = analysisService.detail(source.analysisId());
@@ -2511,7 +2515,7 @@ class FullChainEndToEndTest {
                         null, null, null, true,
                         List.of(new PlanQuantity(
                                 sourceProductLineId, new BigDecimal("10"))),
-                        null, null)).plans().getFirst();
+                        null)).plans().getFirst();
         assertEquals("APPROVED", generated.status(), "approveNow=true 应审核生产计划");
         assertTrue(hasSegmentStatus(generated.planId(), "READY"),
                 "正式计划生成 READY 执行段");
@@ -2953,11 +2957,11 @@ class FullChainEndToEndTest {
         // KEY: before any inbound, sales produced_qty is still 0 — progress is inbound, not
         // the self-reported fqty (which is 10 here). This is the invariant the redesign keeps.
         assertEquals(0, producedQty(orderItemId).compareTo(BigDecimal.ZERO),
-                "报工只写 fqty；入库前 sales_order_items.produced_qty 仍为 0（进度=入库，非自报）");
+                "报工只写 fqty；入库前 sales_order_items.produced_qty 仍为 0(进度=入库，非自报)");
         assertEquals(0, bigDecimalFor(
                 "select fqty from production_plan_items where id = ?", planItemId)
                 .compareTo(new BigDecimal("10")),
-                "报工回写 production_plan_items.fqty = 10（自报量，≠ 销售进度）");
+                "报工回写 production_plan_items.fqty = 10(自报量，≠ 销售进度)");
         assertEquals(5, itemChainStatusByItem(orderItemId),
                 "报工推进订单行 chain_status → 5 生产中");
 
@@ -2985,7 +2989,7 @@ class FullChainEndToEndTest {
         assertEquals(0, bigDecimalFor(
                 "select iqty from production_plan_items where id = ?", planItemId)
                 .compareTo(new BigDecimal("10")),
-                "production_plan_items.iqty = Σ入库 = 10（与 fqty 区分）");
+                "production_plan_items.iqty = Σ入库 = 10(与 fqty 区分)");
         assertEquals(0, bigDecimalFor(
                 "select inbound_qty from plan_order_item_links where plan_item_id = ? "
                         + "and order_item_id = ? and is_deleted = false",
@@ -3027,13 +3031,13 @@ class FullChainEndToEndTest {
         UUID report2 = reportAndApprove(w, planItemId, orderItemId, w.goodsA(), "5");
         confirmFinishedInboundFully(finishedInDocForReport(report2));
         assertEquals(0, producedQty(orderItemId).compareTo(new BigDecimal("10")),
-                "二批入库累加 produced_qty 5+5=10（非覆盖）");
+                "二批入库累加 produced_qty 5+5=10(非覆盖)");
         assertEquals(0, reservedQty(orderItemId).compareTo(new BigDecimal("10")),
                 "预留累加 reserved_qty = 10");
         assertEquals(7, itemChainStatusByItem(orderItemId),
                 "全量入库 → chain_status 6→7 可发货");
         assertEquals(0, stockBalance(w.warehouseId(), w.goodsA()).compareTo(new BigDecimal("10")),
-                "二批入库累加到 10（5+5，非覆盖）");
+                "二批入库累加到 10(5+5，非覆盖)");
     }
 
     @Test
@@ -3108,7 +3112,18 @@ class FullChainEndToEndTest {
                   AND aggregate_id = ?
                 """, finishedIn1) >= 1,
                 "首批报工生成 FINISHED_IN 草稿后形成仓库待审核 outbox 任务");
-        confirmFinishedInboundFully(finishedIn1);
+        UUID residualFinishedIn = confirmFinishedInboundPartially(
+                finishedIn1,
+                new BigDecimal("1"),
+                "首轮实物仅到仓 1 件");
+        assertEquals(
+                0,
+                bigDecimalFor(
+                        "SELECT iqty FROM production_plan_items WHERE id = ?",
+                        planItemId)
+                        .compareTo(BigDecimal.ONE),
+                "计划 10、仓库首轮实收 1，权威入库完成率为 10%");
+        confirmFinishedInboundFully(residualFinishedIn);
 
         assertEquals("IN_PROGRESS", strFor("""
                 SELECT status
@@ -3126,8 +3141,19 @@ class FullChainEndToEndTest {
                   AND source_doc_id = ?
                   AND order_item_id = ?
                   AND is_deleted = FALSE
-                """, finishedIn1, orderItemId).compareTo(new BigDecimal("5")));
-        assertEquals("5", strFor("""
+                """, finishedIn1, orderItemId).compareTo(BigDecimal.ONE),
+                "首张入库单只形成实收 1 的预留");
+        assertEquals(0, bigDecimalFor("""
+                SELECT SUM(qty)
+                FROM stock_reservations
+                WHERE source_doc_type = 'PRODUCTION_INBOUND'
+                  AND source_doc_id = ?
+                  AND order_item_id = ?
+                  AND is_deleted = FALSE
+                """, residualFinishedIn, orderItemId)
+                .compareTo(new BigDecimal("4")),
+                "短收余量单点收 4 后形成独立精确预留");
+        assertEquals("1", strFor("""
                 SELECT payload -> 'allocations' -> 0 ->> 'batchQty'
                 FROM business_outbox
                 WHERE event_type = 'PRODUCTION_FINISHED_INBOUND'
@@ -3135,7 +3161,16 @@ class FullChainEndToEndTest {
                 ORDER BY created_at DESC
                 LIMIT 1
                 """, finishedIn1),
-                "完工通知冻结首批新增可发数量，不在异步投递时重算");
+                "首张完工通知冻结实收 1，不在异步投递时重算");
+        assertEquals("4", strFor("""
+                SELECT payload -> 'allocations' -> 0 ->> 'batchQty'
+                FROM business_outbox
+                WHERE event_type = 'PRODUCTION_FINISHED_INBOUND'
+                  AND aggregate_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """, residualFinishedIn),
+                "余量单完工通知冻结后续实收 4");
         assertFalse(Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT is_closed FROM production_plans WHERE id = ?",
                 Boolean.class, planId)),
@@ -3225,7 +3260,7 @@ class FullChainEndToEndTest {
                 "select count(*) from ar_ap_ledger "
                         + "where direction = 'AR' and source_doc_type = 'SALES_SHIPMENT' "
                         + "and source_doc_id = ?", shipmentId) >= 1,
-                "SHIPPED 内联过账 AR（ar_ap_ledger）");
+                "SHIPPED 内联过账 AR(ar_ap_ledger)");
         // stock movement: sales-out, dir=-1, tied to this shipment
         assertTrue(count(
                 "select count(*) from stock_movements "
@@ -3266,7 +3301,7 @@ class FullChainEndToEndTest {
         UUID ship2 = createShipment(w, orderItemId, w.goodsA(), "5");
         shipThroughWarehouse(ship2);
         assertEquals(0, shippedQty(orderItemId).compareTo(new BigDecimal("10")),
-                "二批发货累加 shipped_qty 5+5=10（非覆盖）");
+                "二批发货累加 shipped_qty 5+5=10(非覆盖)");
         assertEquals(0, reservedQty(orderItemId).compareTo(BigDecimal.ZERO),
                 "reserved_qty → 0");
         assertEquals(0, stockBalance(w.warehouseId(), w.goodsA()).compareTo(BigDecimal.ZERO),
@@ -3328,7 +3363,7 @@ class FullChainEndToEndTest {
         BigDecimal ledger = movementSum(w.warehouseId(), w.goodsA());
         assertEquals(0, balance.compareTo(new BigDecimal("5")), "出库 5 后库存 5");
         assertEquals(0, ledger.compareTo(balance),
-                "事件溯源不变量：stock_balances.qty == Σ(qty×direction)（" + ledger + " vs " + balance + "）");
+                "事件溯源不变量：stock_balances.qty == Σ(qty×direction)(" + ledger + " vs " + balance + ")");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -3352,9 +3387,9 @@ class FullChainEndToEndTest {
 
         // atomic: nothing shipped, stock untouched.
         assertEquals(0, shippedQty(orderItemId).compareTo(BigDecimal.ZERO),
-                "超发被拒 → shipped_qty 仍为 0（无副作用）");
+                "超发被拒 → shipped_qty 仍为 0(无副作用)");
         assertEquals(0, stockBalance(w.warehouseId(), w.goodsA()).compareTo(stockBefore),
-                "超发被拒 → 库存不变（原子回滚，未穿底）");
+                "超发被拒 → 库存不变(原子回滚，未穿底)");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -3390,7 +3425,7 @@ class FullChainEndToEndTest {
                 .compareTo(BigDecimal.ZERO),
                 "红冲 → plan_items.iqty 10→0");
         assertEquals(4, itemChainStatusByItem(orderItemId),
-                "红冲 → chain_status 7→4 已排产（精确回退，非粗重置）");
+                "红冲 → chain_status 7→4 已排产(精确回退，非粗重置)");
         // PRODUCTION_INBOUND reservation released (no active reservation from this inbound)
         assertEquals(0, count(
                 "select count(*) from stock_reservations "
@@ -3455,7 +3490,7 @@ class FullChainEndToEndTest {
         assertEquals(0, bigDecimalFor(
                 "select amount_balance from ar_ap_ledger where source_doc_id = ?", shipmentId)
                 .compareTo(arOriginalLocal),
-                "立账时 amount_balance = amount_original_local（未核销）");
+                "立账时 amount_balance = amount_original_local(未核销)");
         assertEquals(0, bigDecimalFor(
                 "select amount_balance_original from ar_ap_ledger where source_doc_id = ?", shipmentId)
                 .compareTo(arOriginal),
@@ -3541,8 +3576,8 @@ class FullChainEndToEndTest {
                 w, "fin-approver", "finance_receipt:edit",
                 "finance_receipt:approve", "finance_receipt:reverse");
 
-        // (3) receipt #1 (maker=superAdmin): collect ¥600 cash + ¥40 fee write-off.
-        //     手续费 25 + 其它费用 15 = 40 == Σ writeOffLocal (40×到账汇率1).
+        // (3) receipt #1: customer settles CNY 600 gross; CNY 40 fees are
+        //     deducted from proceeds, so the real account posting is CNY 560.
         loginAs(w.superAdminUserId());
         UUID receiptId = receiptService.create(receiptRequest(w, arId, accountId, expenseStyleId,
                 "600", "40", "25", "15", BigDecimal.ONE, BusinessTime.today())).getId();
@@ -3558,19 +3593,19 @@ class FullChainEndToEndTest {
         grantDataScope(approver, "finance", w.employeeId());
         receiptService.approve(receiptId);
 
-        // AR cumulative updated server-side: 原币到账 600 / 冲销 40 / 未收 360.
+        // AR cash settlement stays gross 600; fees never reduce AR separately.
         assertEquals(0, bigDecimalFor("select amount_received_original from ar_ap_ledger where id=?", arId)
                 .compareTo(new BigDecimal("600")), "审核后 AR 原币累计到账 += 600");
         assertEquals(0, bigDecimalFor("select amount_received_local from ar_ap_ledger where id=?", arId)
                 .compareTo(new BigDecimal("600")), "审核后 AR 本币累计到账 += 600");
         assertEquals(0, bigDecimalFor("select amount_write_off_original from ar_ap_ledger where id=?", arId)
-                .compareTo(new BigDecimal("40")), "审核后 AR 原币累计冲销 += 40");
+                .compareTo(BigDecimal.ZERO), "审核后 AR 商业冲销仍为 0");
         assertEquals(0, bigDecimalFor("select amount_write_off_local from ar_ap_ledger where id=?", arId)
-                .compareTo(new BigDecimal("40")), "审核后 AR 本币累计冲销 += 40");
+                .compareTo(BigDecimal.ZERO), "审核后 AR 本币商业冲销仍为 0");
         assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
-                .compareTo(new BigDecimal("360")), "原币未收 = 1000 − 600 − 40 = 360");
+                .compareTo(new BigDecimal("400")), "原币未收 = 1000 − 600 = 400");
         assertEquals(0, bigDecimalFor("select amount_settled from ar_ap_ledger where id=?", arId)
-                .compareTo(new BigDecimal("640")), "本币累计已核销 = (600+40)×开账汇率1 = 640");
+                .compareTo(new BigDecimal("600")), "本币累计已核销 = 600×开账汇率1");
         assertFalse(jdbc.queryForObject("select is_settled from ar_ap_ledger where id=?", Boolean.class, arId),
                 "未收完 → is_settled=false");
         // line before/after balance snapshots
@@ -3579,26 +3614,81 @@ class FullChainEndToEndTest {
                 .compareTo(new BigDecimal("1000")), "明细审核前余额快照 = 1000");
         assertEquals(0, bigDecimalFor(
                 "select balance_after_original from finance_receipt_lines where receipt_id=?", receiptId)
-                .compareTo(new BigDecimal("360")), "明细审核后余额快照 = 360");
-        // account increased by CASH only (600); fees do NOT masquerade as cash
+                .compareTo(new BigDecimal("400")), "明细审核后余额快照 = 400");
+        // account increases only by the bank-posted net amount 600-40=560.
         assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
-                .compareTo(new BigDecimal("600")), "账户只增实际到账 600（费用不冒充现金）");
+                .compareTo(new BigDecimal("560")), "账户只增实际净到账 560");
         assertEquals(0, bigDecimalFor("select receipts_total from accounts where id=?", accountId)
-                .compareTo(new BigDecimal("600")), "账户 receipts_total += 600");
-        // one reconciliation row, in_amount = cash (600)
+                .compareTo(new BigDecimal("560")), "账户 receipts_total += 560");
+        // one receipt posting row, in_amount = bank net 560.
         assertEquals(1, count("select count(*) from finance_reconciliations "
                         + "where source_doc_type='RECEIPT' and source_doc_id=?", receiptId),
                 "收款审核写 1 条账户流水");
         assertEquals(0, bigDecimalFor("select in_amount from finance_reconciliations where source_doc_id=?", receiptId)
-                .compareTo(new BigDecimal("600")), "流水 in_amount = 实际到账 600");
+                .compareTo(new BigDecimal("560")), "流水 in_amount = 实际净到账 560");
         assertEquals(1, intFor("select status from finance_receipts where id=?", receiptId), "收款单 status 0→1 已审");
         assertEquals(0, bigDecimalFor("select amount_local from finance_receipts where id=?", receiptId)
-                .compareTo(new BigDecimal("600")), "收款单头本币 = 现金合计 600（不含费用）");
+                .compareTo(new BigDecimal("600")), "收款单头本币毛额 = 600");
+        assertEquals(1,count("""
+                select count(*) from gl_vouchers
+                where source='AUTO' and source_type='RECEIPT' and source_doc_id=?
+                """,receiptId),"审核事务已生成收款AUTO凭证");
+        assertEquals(0,bigDecimalFor("""
+                select sum(entry.direction*entry.amount)
+                from gl_entries entry join gl_vouchers voucher on voucher.id=entry.voucher_id
+                where voucher.source_type='RECEIPT' and voucher.source_doc_id=?
+                """,receiptId).compareTo(BigDecimal.ZERO),"收款AUTO凭证借贷平衡");
+        assertTrue(jdbc.queryForObject(
+                "select is_consistent from v_receipt_flow_integrity where receipt_id=?",
+                Boolean.class,receiptId),"审核后收款账户流水与冻结金额快照一致");
 
-        // (5) receipt #2: collect the remaining ¥360, no fees → AR fully settled.
+        UUID receiptVoucherId=jdbc.queryForObject("""
+                select id from gl_vouchers
+                where source='AUTO' and source_type='RECEIPT' and source_doc_id=?
+                """,UUID.class,receiptId);
+        UUID receiptStyleId=jdbc.queryForObject("""
+                select style_id from gl_entries where voucher_id=? order by line_no limit 1
+                """,UUID.class,receiptVoucherId);
+        assertThrows(DataAccessException.class,()->jdbc.update("""
+                insert into gl_entries(
+                  voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                  source_doc_type,source_doc_id,source_bill_no,summary)
+                values (?,9999,?,1,1,?,?, 'RECEIPT',?,?, '非法追加')
+                """,receiptVoucherId,receiptStyleId,BusinessTime.today(),
+                BusinessTime.today().toString().substring(0,7),receiptId,
+                strFor("select bill_no from finance_receipts where id=?",receiptId)),
+                "已终态收款凭证禁止直接追加分录");
+        assertThrows(DataAccessException.class,()->jdbc.update(
+                "update finance_receipts set is_deleted=true,deleted_at=now() where id=?",
+                receiptId),"已审收款禁止直接软删以逃避完整性视图");
+
+        UUID ordinaryVoucher=UUID.randomUUID();
+        UUID ordinaryEntry=UUID.randomUUID();
+        jdbc.update("""
+                insert into gl_vouchers(
+                  id,voucher_no,period,voucher_date,source,source_type,remark)
+                values (?,?,?,?,'MANUAL','MANUAL','不可变绕过测试')
+                """,ordinaryVoucher,"MANUAL-"+ordinaryVoucher,
+                BusinessTime.today().toString().substring(0,7),BusinessTime.today());
+        jdbc.update("""
+                insert into gl_entries(
+                  id,voucher_id,line_no,style_id,direction,amount,entry_date,period,summary)
+                values (?,?,1,?,1,1,?,?,'普通分录')
+                """,ordinaryEntry,ordinaryVoucher,receiptStyleId,BusinessTime.today(),
+                BusinessTime.today().toString().substring(0,7));
+        assertThrows(DataAccessException.class,()->jdbc.update("""
+                update gl_vouchers set source='AUTO',source_type='RECEIPT',source_doc_id=?
+                where id=?
+                """,receiptId,ordinaryVoucher),"普通凭证禁止 UPDATE 成收款凭证");
+        assertThrows(DataAccessException.class,()->jdbc.update(
+                "update gl_entries set voucher_id=? where id=?",
+                receiptVoucherId,ordinaryEntry),"普通分录禁止搬入已终态收款凭证");
+        jdbc.update("delete from gl_vouchers where id=?",ordinaryVoucher);
+
+        // (5) receipt #2: collect the remaining ¥400, no fees → AR fully settled.
         loginAs(w.superAdminUserId());
         UUID receipt2Id = receiptService.create(receiptRequest(w, arId, accountId, null,
-                "360", "0", "0", "0", BigDecimal.ONE, BusinessTime.today())).getId();
+                "400", "0", "0", "0", BigDecimal.ONE, BusinessTime.today())).getId();
         loginAs(approver);
         receiptService.approve(receipt2Id);
         assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
@@ -3606,39 +3696,80 @@ class FullChainEndToEndTest {
         assertTrue(jdbc.queryForObject("select is_settled from ar_ap_ledger where id=?", Boolean.class, arId),
                 "收完 → is_settled=true");
         assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
-                .compareTo(new BigDecimal("960")), "账户累加 600+360=960");
+                .compareTo(new BigDecimal("960")), "账户累加净额 560+400=960");
 
-        // (6) 红冲走后进先出：receipt1 有后续 receipt2，必须先反转 receipt2（360），
-        //     再反转 receipt1（600+40 冲销），每步对 AR 累计、账户与流水做对称校验。
+        // (6) 红冲走后进先出：先反转 receipt2 的 400，再反转 receipt1 的
+        //     gross AR 600 / net bank 560；账户流水追加 REVERSAL 而不删除 POSTING。
         receiptService.reverse(receipt2Id);
         assertEquals(0, bigDecimalFor("select amount_received_original from ar_ap_ledger where id=?", arId)
-                .compareTo(new BigDecimal("600")), "红冲receipt2 → 原币到账 960−360=600");
+                .compareTo(new BigDecimal("600")), "红冲receipt2 → 原币到账 1000−400=600");
         assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
-                .compareTo(new BigDecimal("600")), "红冲receipt2 → 账户 960−360=600");
+                .compareTo(new BigDecimal("560")), "红冲receipt2 → 账户 960−400=560");
         assertEquals(-1, intFor("select status from finance_receipts where id=?", receipt2Id),
                 "红冲receipt2 → status=−1");
         receiptService.reverse(receiptId);
         assertEquals(0, bigDecimalFor("select amount_received_original from ar_ap_ledger where id=?", arId)
                 .compareTo(BigDecimal.ZERO), "红冲receipt1 → 原币到账 600−600=0");
         assertEquals(0, bigDecimalFor("select amount_write_off_original from ar_ap_ledger where id=?", arId)
-                .compareTo(BigDecimal.ZERO), "红冲receipt1 → 原币冲销 40−40=0");
+                .compareTo(BigDecimal.ZERO), "红冲receipt1 → 商业冲销保持0");
         assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
                 .compareTo(new BigDecimal("1000")), "红冲receipt1 → 原币未收 1000−0=1000");
         assertFalse(jdbc.queryForObject("select is_settled from ar_ap_ledger where id=?", Boolean.class, arId),
                 "红冲后未清 → is_settled=false");
         assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
-                .compareTo(BigDecimal.ZERO), "红冲receipt1 → 账户 600−600=0");
+                .compareTo(BigDecimal.ZERO), "红冲receipt1 → 账户 560−560=0");
         assertEquals(-1, intFor("select status from finance_receipts where id=?", receiptId), "红冲 → status=−1");
-        assertEquals(0, count("select count(*) from finance_reconciliations "
+        assertEquals(2, count("select count(*) from finance_reconciliations "
                         + "where source_doc_type='RECEIPT' and source_doc_id=?", receiptId),
-                "红冲receipt1 → 删除其账户流水");
+                "红冲receipt1 → 保留POSTING并追加REVERSAL");
+        assertEquals(0, bigDecimalFor("""
+                        select sum(in_amount-out_amount) from finance_reconciliations
+                        where source_doc_type='RECEIPT' and source_doc_id=?
+                        """,receiptId).compareTo(BigDecimal.ZERO),
+                "原始收款与反向流水净额为0");
+        assertEquals(1,count("""
+                select count(*) from gl_vouchers
+                where source='AUTO' and source_type='RECEIPT'
+                  and source_doc_id=? and status=1 and is_deleted=false
+                """,receiptId),"红冲后原始收款凭证仍保留");
+        assertEquals(1,count("""
+                select count(*) from gl_vouchers
+                where source='AUTO' and source_type='RECEIPT_REV'
+                  and source_doc_id=? and status=1 and is_deleted=false
+                """,receiptId),"红冲追加且只追加一张 RECEIPT_REV 凭证");
+        assertEquals(count("""
+                select count(*) from gl_entries entry
+                join gl_vouchers voucher on voucher.id=entry.voucher_id
+                where voucher.source_type='RECEIPT' and voucher.source_doc_id=?
+                  and entry.is_deleted=false
+                """,receiptId),count("""
+                select count(*)
+                from gl_vouchers original
+                join gl_vouchers reversal on reversal.reversal_of_voucher_id=original.id
+                join gl_entries original_entry on original_entry.voucher_id=original.id
+                join gl_entries reversal_entry
+                  on reversal_entry.voucher_id=reversal.id
+                 and reversal_entry.line_no=original_entry.line_no
+                 and reversal_entry.style_id=original_entry.style_id
+                 and reversal_entry.direction=-original_entry.direction
+                 and reversal_entry.amount=original_entry.amount
+                where original.source_type='RECEIPT' and original.source_doc_id=?
+                  and original_entry.is_deleted=false and reversal_entry.is_deleted=false
+                """,receiptId),"总账反向凭证逐行镜像原凭证");
+        assertTrue(jdbc.queryForObject(
+                "select is_consistent from v_receipt_gl_integrity where receipt_id=?",
+                Boolean.class,receiptId),"收款、原凭证与反向凭证完整性视图一致");
+        assertTrue(jdbc.queryForObject(
+                "select is_consistent from v_receipt_flow_integrity where receipt_id=?",
+                Boolean.class,receiptId),"红冲后账户原流水与反向流水完整镜像");
     }
 
     // ---------------------------------------------------------------------------------------------
-    // #27 (receivable settlement guards) Cross-currency line, over-collect and fee mismatch must each
+    // #27 (receivable settlement guards) Cross-currency line, over-collect and
+    // fee/write-off mixing must each
     // be rejected at approval (inside the pessimistic lock), leaving the AR untouched. Proves the
-    // V236 settlement cannot be abused to write off more than owed, settle in the wrong currency, or
-    // post fees that don't reconcile to the line write-off.
+    // V407 settlement cannot be abused to collect more than owed, settle in the
+    // wrong currency, or disguise fees as an AR commercial write-off.
     // ---------------------------------------------------------------------------------------------
     @Test
     void receivableSettlement_rejectsCrossCurrencyOvercollectAndFeeMismatch() {
@@ -3672,32 +3803,59 @@ class FullChainEndToEndTest {
         //     same-currency-as-AR before the receipt is even persisted; approve is never reached).
         loginAs(w.superAdminUserId());
         com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest crossReq = receiptRequest(
-                w, arId, accountId, null, "100", "0", "0", "0", BigDecimal.ONE, LocalDate.of(2026, 3, 5));
+                w, arId, accountId, null, "100", "0", "0", "0",
+                BigDecimal.ONE, BusinessTime.today());
         crossReq.getItems().get(0).setCurrencyId(usdId);
         ApiException cross = assertThrows(ApiException.class, () -> receiptService.create(crossReq));
-        assertTrue(cross.getMessage().contains("跨币种"), "跨币种核销在保存时即被拒: " + cross.getMessage());
+        assertTrue(cross.getMessage().contains("核销原币必须与应收币种一致"),
+                "核销原币与应收币种不一致在保存时即被拒: " + cross.getMessage());
 
-        // (b) over-collect: cash 900 + write-off 200 = 1100 > 未收 1000 → rejected (fees match 200).
+        // (b) over-collect: cash 1100 > 未收 1000 → rejected.
         loginAs(w.superAdminUserId());
-        UUID rOver = receiptService.create(receiptRequest(w, arId, accountId, expenseStyleId,
-                "900", "200", "120", "80", BigDecimal.ONE, LocalDate.of(2026, 3, 5))).getId();
+        UUID rOver = receiptService.create(receiptRequest(w, arId, accountId, null,
+                "1100", "0", "0", "0", BigDecimal.ONE, BusinessTime.today())).getId();
         loginAs(approver);
         ApiException over = assertThrows(ApiException.class, () -> receiptService.approve(rOver));
         assertTrue(over.getMessage().contains("超过应收未收"), "超收被拒: " + over.getMessage());
 
-        // (c) fee mismatch: write-off-local 50 ≠ header fees 999 → rejected.
+        // (c) V1 line write-off is rejected before persistence; fees use header snapshots.
         loginAs(w.superAdminUserId());
-        UUID rMis = receiptService.create(receiptRequest(w, arId, accountId, null,
-                "100", "50", "999", "0", BigDecimal.ONE, LocalDate.of(2026, 3, 5))).getId();
-        loginAs(approver);
-        ApiException mis = assertThrows(ApiException.class, () -> receiptService.approve(rMis));
-        assertTrue(mis.getMessage().contains("冲销人民币合计必须等于"), "费用不平被拒: " + mis.getMessage());
+        var mixed=receiptRequest(w,arId,accountId,null,
+                "100","0","0","0",BigDecimal.ONE,BusinessTime.today());
+        mixed.getItems().getFirst().setWriteOffAmount(new BigDecimal("50"));
+        ApiException mis=assertThrows(ApiException.class,()->receiptService.create(mixed));
+        assertTrue(mis.getMessage().contains("不能把手续费"),"费用/write-off混用被拒: "+mis.getMessage());
 
         // all three rejections left the AR untouched (still wholly outstanding).
         assertEquals(0, bigDecimalFor("select amount_received_original from ar_ap_ledger where id=?", arId)
                 .compareTo(BigDecimal.ZERO), "三次拒绝均未改 AR 累计到账");
         assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
                 .compareTo(new BigDecimal("1000")), "AR 原币未收仍为 1000");
+    }
+
+    @Test
+    void historicalV0ApprovedReceiptWithoutGlIsVisibleAndBlocksRegeneration() {
+        World w=seedWorld("receipt-v0-gl-gap");
+        loginAs(w.superAdminUserId());
+        UUID receiptId=UUID.randomUUID();
+        String billNo=docNumberService.nextNumber(
+                com.uten.imp.common.docnumber.DocNumberPrefix.FIN_RECEIPT);
+        jdbc.update("""
+                insert into finance_receipts(
+                  id,bill_no,bill_date,receipt_kind,client_id,currency_id,
+                  exchange_rate,amount_original,amount_local,bank_fee,other_fee,
+                  status,settlement_authority_version,is_deleted)
+                values (?,?,?,'CUSTOMER_PREPAYMENT',?,?,1,100,100,0,0,1,0,false)
+                """,receiptId,billNo,BusinessTime.today(),w.clientId(),w.currencyId());
+
+        assertEquals("MISSING",strFor("""
+                select reconciliation_state
+                from v_receipt_v0_gl_reconciliation where receipt_id=?
+                """,receiptId),"历史 V0 已审收款缺凭证必须进入异常队列");
+        ApiException blocked=assertThrows(ApiException.class,()->
+                glPostingService.generate(BusinessTime.today().toString().substring(0,7)));
+        assertTrue(blocked.getMessage().contains("历史 V0 已审收款"),blocked.getMessage());
+        assertTrue(blocked.getMessage().contains("禁止按当前科目自动补账"),blocked.getMessage());
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -3743,7 +3901,7 @@ class FullChainEndToEndTest {
         // receipt: collect $600 at 到账汇率 7.2 (≠ 开账 7.0) → 汇兑收益 120, no fees.
         loginAs(w.superAdminUserId());
         UUID receiptId = receiptService.create(receiptRequest(w, arId, accountId, null,
-                "600", "0", "0", "0", new BigDecimal("7.2"), LocalDate.of(2026, 3, 5))).getId();
+                "600", "0", "0", "0", new BigDecimal("7.2"), BusinessTime.today())).getId();
         loginAs(approver);
         receiptService.approve(receiptId);
 
@@ -3765,10 +3923,21 @@ class FullChainEndToEndTest {
         assertEquals(0, bigDecimalFor("select applied_amount_local from finance_receipt_lines where receipt_id=?", receiptId)
                 .compareTo(new BigDecimal("4200")), "明细账面冲减 = 4200");
         assertEquals(0, bigDecimalFor("select exchange_diff from finance_receipt_lines where receipt_id=?", receiptId)
-                .compareTo(new BigDecimal("120")), "明细汇兑差额 = 120（收益）");
+                .compareTo(new BigDecimal("120")), "明细汇兑差额 = 120(收益)");
+        assertEquals(0,bigDecimalFor("""
+                select sum(entry.direction*entry.amount)
+                from gl_entries entry join gl_vouchers voucher on voucher.id=entry.voucher_id
+                where voucher.source_type='RECEIPT' and voucher.source_doc_id=?
+                """,receiptId).compareTo(BigDecimal.ZERO),"外币收款AUTO凭证借贷平衡");
+        assertEquals(0,bigDecimalFor("""
+                select amount from gl_entries
+                where source_doc_type='RECEIPT' and source_doc_id=?
+                  and summary='收款汇兑损益'
+                """,receiptId).compareTo(new BigDecimal("120")),
+                "外币收款AUTO凭证冻结汇兑收益120");
         // USD account (same currency as 到账) accumulates the 原币 actually received, not the local
         assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
-                .compareTo(new BigDecimal("600")), "美元账户按原币累加 $600（非本币4320）");
+                .compareTo(new BigDecimal("600")), "美元账户按原币累加 $600(非本币4320)");
     }
 
     /** Build a single-line sales-receipt save request referencing one AR. */
@@ -3782,8 +3951,25 @@ class FullChainEndToEndTest {
         req.setBillDate(billDate);
         req.setClientId(w.clientId());
         req.setAccountId(accountId);
-        req.setBankFee(new BigDecimal(bankFee));
-        req.setOtherFee(new BigDecimal(otherFee));
+        UUID accountCurrencyId=jdbc.queryForObject(
+                "select currency_id from accounts where id=?",UUID.class,accountId);
+        req.setAccountCurrencyId(accountCurrencyId);
+        req.setCreateIdempotencyKey(UUID.randomUUID().toString());
+        req.setSettlementChannel("DIRECT_ACCOUNT");
+        req.setExchangeRateSource("BANK_STATEMENT");
+        req.setExchangeRateEffectiveAt(
+                billDate.atTime(9,0).atOffset(java.time.ZoneOffset.ofHours(8)));
+        req.setBankBookedAt(
+                billDate.atTime(10,0).atOffset(java.time.ZoneOffset.ofHours(8)));
+        req.setBankReference("FULLCHAIN-"+UUID.randomUUID());
+        req.setBankFeeAccountAmount(new BigDecimal(bankFee));
+        req.setOtherFeeAccountAmount(new BigDecimal(otherFee));
+        req.setFeeSettlementMode(
+                new BigDecimal(bankFee).add(new BigDecimal(otherFee)).signum()==0
+                        ?"NONE":"DEDUCTED_FROM_PROCEEDS");
+        req.setFeeBearer(
+                new BigDecimal(bankFee).add(new BigDecimal(otherFee)).signum()==0
+                        ?"NONE":"COMPANY");
         req.setOtherFeeStyleId(expenseStyleId);
         com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput line =
                 new com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput();
@@ -3791,7 +3977,7 @@ class FullChainEndToEndTest {
         line.setCurrencyId(w.currencyId());
         line.setExchangeRate(rate);
         line.setAmountOriginal(new BigDecimal(cash));
-        line.setWriteOffAmount(new BigDecimal(writeOff));
+        line.setWriteOffAmount(BigDecimal.ZERO);
         req.setItems(List.of(line));
         return req;
     }
@@ -3897,7 +4083,7 @@ class FullChainEndToEndTest {
                 "select count(*) from gl_entries ge join gl_vouchers gv on gv.id = ge.voucher_id "
                         + "where gv.source_type = 'AR_POST' and gv.voucher_no = ?", billNo);
         assertTrue(arEntries >= 2,
-                "AR 凭证至少借/贷两行（got " + arEntries + "）");
+                "AR 凭证至少借/贷两行(got " + arEntries + ")");
         BigDecimal arVoucherBalance = bigDecimalFor(
                 "select coalesce(sum(ge.direction * ge.amount), 0) from gl_entries ge "
                         + "join gl_vouchers gv on gv.id = ge.voucher_id "
@@ -3909,7 +4095,7 @@ class FullChainEndToEndTest {
                 "select count(*) from ("
                         + "  select gv.id from gl_vouchers gv join gl_entries ge on ge.voucher_id = gv.id "
                         + "  group by gv.id having sum(ge.direction * ge.amount) <> 0) unbalanced"),
-                "全局：所有凭证借贷必平（无不平衡凭证）");
+                "全局：所有凭证借贷必平(无不平衡凭证)");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -3936,7 +4122,7 @@ class FullChainEndToEndTest {
                 "select pkg.plan_id from production_material_demands dmd "
                         + "join production_planning_packages pkg on pkg.id = dmd.package_id "
                         + "where dmd.goods_id = ?", UUID.class, h);
-        assertNotNull(planId, "H 的物料需求挂在某生产计划的 CONFIRMED 包下（成品计划 → 原料需求）");
+        assertNotNull(planId, "H 的物料需求挂在某生产计划的 CONFIRMED 包下(成品计划 → 原料需求)");
         UUID demandId = jdbc.queryForObject(
                 "select id from production_material_demands where goods_id = ? and package_id in "
                         + "(select id from production_planning_packages where plan_id = ? and status = 'CONFIRMED') "
@@ -3949,7 +4135,7 @@ class FullChainEndToEndTest {
                         + "where demand_id = ? and supply_type = 'PURCHASE_ORDER_ITEM' and supply_item_id = ? "
                         + "and status = 'EFFECTIVE'",
                 demandId, orderItemId),
-                "supply peg 链接 H 需求 → 采购订货明细（成品→原料→采购 可溯）");
+                "supply peg 链接 H 需求 → 采购订货明细(成品→原料→采购 可溯)");
 
         // the original REQUEST_ITEM peg was released (released = allocated) after order approval
         assertEquals(1, count(
@@ -4002,7 +4188,7 @@ class FullChainEndToEndTest {
         ApiException scopeDenied = assertThrows(ApiException.class,
                 () -> createShipment(w, orderItemId, w.goodsA(), "10"));
         assertTrue(scopeDenied.getMessage().contains("无权"),
-                "对象隔离：非归属销售不能引用该订单行（" + scopeDenied.getMessage() + "）");
+                "对象隔离：非归属销售不能引用该订单行(" + scopeDenied.getMessage() + ")");
 
         // (2) the OWNER sales rep CAN create the shipment
         loginAs(salesOwner);
@@ -4067,7 +4253,7 @@ class FullChainEndToEndTest {
                 new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
                         "PASS", null, "合格", idemKey));
         assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(new BigDecimal("20")),
-                "同 idempotencyKey 重复处置 → 幂等，库存不翻倍（仍 20，非 40）");
+                "同 idempotencyKey 重复处置 → 幂等，库存不翻倍(仍 20，非 40)");
     }
 
     @Test
@@ -4331,9 +4517,9 @@ class FullChainEndToEndTest {
         // second approve (same case) rejected — no double-approval regardless of version
         assertThrows(ApiException.class,
                 () -> financeApproval.approve("PURCHASE", pc.orderId(), v0),
-                "重复审批同一单 → 拒绝（不重复生效）");
+                "重复审批同一单 → 拒绝(不重复生效)");
         assertEquals(1, intFor("select status from purchase_orders where id = ?", pc.orderId()),
-                "重复审批被拒 → 订单状态不变（仍 1，未重复）");
+                "重复审批被拒 → 订单状态不变(仍 1，未重复)");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -4432,17 +4618,17 @@ class FullChainEndToEndTest {
         loginAs(purchaserA);
         assertDoesNotThrow(() -> purchaseOrderService.detail(orderId));
         assertDoesNotThrow(() -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w)),
-                "owner：A 可改自己的采购单（归属 gate 放行）");
+                "owner：A 可改自己的采购单(归属 gate 放行)");
 
         // (5) NULL-maker legacy order: public-readable but unwritable until an owner is assigned
         jdbc.update("update purchase_orders set maker_id = null where id = ?", orderId);
         loginAs(purchaserB);
         assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
-                "NULL owner：老数据公共可读（B 可读）");
+                "NULL owner：老数据公共可读(B 可读)");
         assertEquals(ErrorCode.FORBIDDEN,
                 assertThrows(ApiException.class,
                         () -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w))).getCode(),
-                "NULL owner：老数据普通用户不可写（B → FORBIDDEN）");
+                "NULL owner：老数据普通用户不可写(B → FORBIDDEN)");
         loginAs(supervisor);
         assertEquals(ErrorCode.FORBIDDEN,
                 assertThrows(ApiException.class,
@@ -4546,13 +4732,13 @@ class FullChainEndToEndTest {
                 "生产计划 list 不含非归属计划");
         assertEquals(0,
                 planService.progress(false, "billDate", 1, 10, "", "", null, null).getTotal(),
-                "进度看板 nativeReadScope：非归属者见 0 条（SQL 有效 + 按归属过滤，与 list 同口径）");
+                "进度看板 nativeReadScope：非归属者见 0 条(SQL 有效 + 按归属过滤，与 list 同口径)");
 
         // super-admin — detail ok, progress board includes the plan (seeAll → 1=1, SQL valid)
         loginAs(w.superAdminUserId());
         assertDoesNotThrow(() -> planService.detail(planId));
         assertTrue(planService.progress(false, "billDate", 1, 10, "", "", null, null).getTotal() >= 1,
-                "超管进度看板含该计划（seeAll → 1=1，SQL 有效）");
+                "超管进度看板含该计划(seeAll → 1=1，SQL 有效)");
     }
 
     private com.uten.imp.features.production.plan.dto.PlanQueryFilter emptyPlanFilter() {
@@ -4646,7 +4832,7 @@ class FullChainEndToEndTest {
         ApiException selfDemote = assertThrows(ApiException.class,
                 () -> userAccountAdmin.setSuperAdmin(w.superAdminUserId(), false));
         assertEquals(ErrorCode.FORBIDDEN, selfDemote.getCode(),
-                "超管不能取消本人超管身份（防自锁）");
+                "超管不能取消本人超管身份(防自锁)");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -4666,7 +4852,7 @@ class FullChainEndToEndTest {
                 () -> permissionOverrideAdmin.setPermissionOverrides(
                         w.superAdminUserId(), List.of("sales_order:edit"), List.of()));
         assertEquals(ErrorCode.FORBIDDEN, selfEdit.getCode(),
-                "超管不能修改本人/超管的授权策略（无自我提权路径）");
+                "超管不能修改本人/超管的授权策略(无自我提权路径)");
 
         // super-admin CAN modify another (non-super) user's overrides
         permissionOverrideAdmin.setPermissionOverrides(other, List.of("sales_order:edit"), List.of());
@@ -4970,6 +5156,7 @@ class FullChainEndToEndTest {
     private UUID reportAndApprove(World w, UUID planItemId, UUID orderItemId,
                                   UUID goodsId, String qty) {
         DailyReportSaveRequest req = new DailyReportSaveRequest();
+        req.setIdempotencyKey("e2e-report-" + UUID.randomUUID());
         req.setBillDate(LocalDate.of(2026, 1, 25));
         req.setWarehouseId(w.warehouseId());
         DailyReportItemLine line = new DailyReportItemLine();
@@ -4994,6 +5181,7 @@ class FullChainEndToEndTest {
             UUID salesAllocationId,
             String qty) {
         DailyReportSaveRequest req = new DailyReportSaveRequest();
+        req.setIdempotencyKey("e2e-report-" + UUID.randomUUID());
         req.setBillDate(LocalDate.of(2026, 1, 25));
         req.setWarehouseId(w.warehouseId());
         DailyReportItemLine line = new DailyReportItemLine();
@@ -5008,6 +5196,29 @@ class FullChainEndToEndTest {
         req.setItems(List.of(line));
         DailyReportDetail report = reportService.create(req);
         reportService.approve(report.getId());
+        UUID inspectionId = jdbc.queryForObject("""
+                        SELECT id
+                        FROM production_fqc_inspections
+                        WHERE source_report_id = ?
+                          AND source_report_item_id IN (
+                              SELECT id
+                              FROM production_daily_report_items
+                              WHERE report_id = ?)
+                        """, UUID.class, report.getId(), report.getId());
+        var fqc = fqcService.decide(
+                inspectionId,
+                new DecisionRequest(
+                        "PASS",
+                        new BigDecimal(qty),
+                        null,
+                        null,
+                        null,
+                        "e2e-fqc-" + UUID.randomUUID()));
+        assertFalse(fqc.replay());
+        assertEquals(
+                0,
+                fqc.inspection().authorizedInboundQty()
+                        .compareTo(new BigDecimal(qty)));
         return report.getId();
     }
 
@@ -5048,7 +5259,7 @@ class FullChainEndToEndTest {
                 java.util.UUID.class);
     }
 
-    /** The FINISHED_IN draft auto-generated by approving a daily report (UUID true source). */
+    /** FINISHED_IN draft generated by legacy compatibility or FQC PASS (UUID true source). */
     private UUID finishedInDocForReport(UUID reportId) {
         return jdbc.queryForObject(
                 "select id from stock_documents where doc_type = 'FINISHED_IN' "
@@ -5078,6 +5289,33 @@ class FullChainEndToEndTest {
                 })
                 .toList());
         stockDocService.confirmFinishedInbound(finishedInId, request);
+    }
+
+    private UUID confirmFinishedInboundPartially(
+            UUID finishedInId,
+            BigDecimal acceptedQty,
+            String reason) {
+        var lines = jdbc.queryForList(
+                "select id, qty from stock_document_items "
+                        + "where doc_id = ? and is_deleted = false order by line_no",
+                finishedInId);
+        assertEquals(1, lines.size(), "本测试只处理单行 FQC 入库");
+        var request = new com.uten.imp.features.stock.dto
+                .FinishedInboundConfirmRequest();
+        request.setIdempotencyKey(
+                "e2e-confirm-partial-" + finishedInId);
+        request.setVarianceReason(reason);
+        var line = new com.uten.imp.features.stock.dto
+                .FinishedInboundConfirmRequest.Line();
+        line.setItemId((UUID) lines.getFirst().get("id"));
+        line.setAcceptedQty(acceptedQty);
+        request.setLines(List.of(line));
+        stockDocService.confirmFinishedInbound(finishedInId, request);
+        return jdbc.queryForObject("""
+                        SELECT residual_stock_document_id
+                        FROM production_finished_in_confirmations
+                        WHERE stock_document_id = ?
+                        """, UUID.class, finishedInId);
     }
 
     private BigDecimal producedQty(UUID orderItemId) {
@@ -5228,7 +5466,7 @@ class FullChainEndToEndTest {
                 "select subplan_id from subplan_links where plan_id = ? and source = 'EXECUTION_V1' and is_deleted = false",
                 UUID.class, bPlanId);
         assertNotNull(bPlanId, "A → B 子计划 (EXECUTION_V1)");
-        assertNotNull(cPlanId, "B → C 子计划（整树展开，非仅一层）");
+        assertNotNull(cPlanId, "B → C 子计划(整树展开，非仅一层)");
 
         // auto-generated + depth + auto-approved
         assertTrue(isAutoGenerated(bPlanId), "B auto_generated=true");
@@ -5250,10 +5488,10 @@ class FullChainEndToEndTest {
                 "select count(*) from purchase_request_items pri "
                         + "join purchase_requests pr on pr.id = pri.request_id "
                         + "where pri.goods_id = ? and pr.is_deleted = false", w.goodsD()) >= 1,
-                "D 采购申请（B 层展开，全树非仅顶层）");
+                "D 采购申请(B 层展开，全树非仅顶层)");
         assertTrue(count(
                 "select count(*) from subcontract_applications where is_deleted = false") >= 1,
-                "E 委外申请（A 层）");
+                "E 委外申请(A 层)");
     }
 
     private boolean isAutoGenerated(UUID planId) {
@@ -5297,11 +5535,11 @@ class FullChainEndToEndTest {
         UUID zPlan = subplanOf(yPlan);
         UUID zPlanItem = planItemOfPlan(zPlan);
         // before any production: X & Y WAITING on their MAKE child; Z (leaf) has no segment
-        assertTrue(hasSegmentStatus(planId, "WAITING"), "X 段 WAITING（等 Y 完工）");
-        assertTrue(hasSegmentStatus(yPlan, "WAITING"), "Y 段 WAITING（等 Z 完工）");
+        assertTrue(hasSegmentStatus(planId, "WAITING"), "X 段 WAITING(等 Y 完工)");
+        assertTrue(hasSegmentStatus(yPlan, "WAITING"), "Y 段 WAITING(等 Z 完工)");
         assertEquals(0, count(
                 "select count(*) from production_execution_segments where plan_id = ? and is_deleted = false",
-                zPlan), "Z 是无 BOM 自制叶子件 → 无执行段（直接报工生产）");
+                zPlan), "Z 是无 BOM 自制叶子件 → 无执行段(直接报工生产)");
 
         // produce Z (leaf): old-style report + FINISHED_IN (no segment, no sales link)
         loginAs(w.superAdminUserId());
@@ -5309,9 +5547,9 @@ class FullChainEndToEndTest {
 
         // V194 hook: Z inbound → Y's WAITING segment (MAKE demand pegged to Z's plan item) → READY
         assertTrue(hasSegmentStatus(yPlan, "READY"),
-                "Z 完工入库 → Y 段自动释放为 READY（自底向上，既有 V194 钩子）");
+                "Z 完工入库 → Y 段自动释放为 READY(自底向上，既有 V194 钩子)");
         assertTrue(hasSegmentStatus(planId, "WAITING"),
-                "X 段仍 WAITING（Y 尚未完工）");
+                "X 段仍 WAITING(Y 尚未完工)");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -5383,9 +5621,9 @@ class FullChainEndToEndTest {
         assertEquals(0, count(
                 "select count(*) from production_planning_packages "
                         + "where plan_id = ? and status = 'CONFIRMED' and is_deleted = false", bPlan),
-                "B 包 REVERSED（整树级联）");
-        assertEquals(-1, planStatus(bPlan), "B 子计划 status=-1（红冲级联）");
-        assertEquals(-1, planStatus(cPlan), "C 子计划 status=-1（红冲到叶子）");
+                "B 包 REVERSED(整树级联)");
+        assertEquals(-1, planStatus(bPlan), "B 子计划 status=-1(红冲级联)");
+        assertEquals(-1, planStatus(cPlan), "C 子计划 status=-1(红冲到叶子)");
         assertEquals(0, count(
                 "select count(*) from subplan_links "
                         + "where source = 'EXECUTION_V1' and is_deleted = false and plan_id in (?, ?)",
@@ -5396,13 +5634,14 @@ class FullChainEndToEndTest {
                         + "where peg.supply_type = 'PRODUCTION_PLAN_ITEM' and peg.status <> 'REVERSED' "
                         + "and exists (select 1 from production_plan_items i "
                         + "            where i.id = peg.supply_item_id and i.plan_id in (?, ?))",
-                bPlan, cPlan), "本树 MAKE peg（A→B、B→C）全部 REVERSED（整树回退）");
+                bPlan, cPlan), "本树 MAKE peg(A→B、B→C)全部 REVERSED(整树回退)");
     }
 
     /** Produce an internal (no-sales-link) MAKE subplan via old-style report + FINISHED_IN. For MAKE
      *  leaves (no BOM, no segment) or unconfirmed plans. Fires the V194 auto-release hook on approval. */
     private void produceInternal(World w, UUID planItemId, UUID goodsId, String qty) {
         DailyReportSaveRequest req = new DailyReportSaveRequest();
+        req.setIdempotencyKey("e2e-report-" + UUID.randomUUID());
         req.setBillDate(LocalDate.of(2026, 1, 25));
         req.setWarehouseId(w.warehouseId());
         DailyReportItemLine line = new DailyReportItemLine();

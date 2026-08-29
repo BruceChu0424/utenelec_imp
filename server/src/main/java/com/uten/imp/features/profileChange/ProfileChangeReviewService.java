@@ -119,17 +119,18 @@ public class ProfileChangeReviewService {
             if ("approve".equals(action)) {
                 noticeService.publishForUser(submitterUserId,
                         "个人信息修改已批准",
-                        "您提交的 " + rs.size() + " 项个人信息修改（" + fields + "）已批准并生效。",
+                        "您提交的 " + rs.size() + " 项个人信息修改(" + fields + ")已批准并生效。",
                         "approval", publisher);
             } else {
                 noticeService.publishForUser(submitterUserId,
                         "个人信息修改被驳回",
-                        "您提交的 " + rs.size() + " 项个人信息修改（" + fields + "）已被驳回。"
+                        "您提交的 " + rs.size() + " 项个人信息修改(" + fields + ")已被驳回。"
                                 + (comment == null || comment.isBlank() ? "" : "驳回意见：" + comment),
-                        "approval", publisher);
+                        "approval", publisher, "/profile/edit",
+                        "PROFILE_CHANGE_REJECTED", "important");
             }
         } catch (Exception e) {
-            log.warn("审批结果通知发送失败（不影响审批本身）: {}", e.getMessage());
+            log.warn("审批结果通知发送失败(不影响审批本身): {}", e.getMessage());
         }
     }
 

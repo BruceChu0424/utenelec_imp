@@ -13,6 +13,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +40,8 @@ public class FinanceReconciliationService {
             "outAmount", "outAmount");
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
+            + "and hasAuthority('account:flow:view')")
     public PageResponse<FinanceReconciliationListItem> list(FinanceReconciliationQueryFilter f, int page, int size, String sort, String order) {
         Specification<FinanceReconciliation> spec = (Root<FinanceReconciliation> root,
                                                      jakarta.persistence.criteria.CriteriaQuery<?> q,
@@ -67,6 +70,6 @@ public class FinanceReconciliationService {
         return new FinanceReconciliationListItem(r.getId(), r.getBillNo(), r.getSourceDocType(),
                 r.getSourceDocId(), r.getAccountId(), r.getCheckNo(), r.getCounterpartName(),
                 r.getInAmount(), r.getOutAmount(), r.getBillDate(), r.getSettledDate(),
-                r.getSourceRemark(), r.getLegacyBstyle());
+                r.getSourceRemark(), r.getLegacyBstyle(), r.getEntryKind(), r.getReversalOfId());
     }
 }

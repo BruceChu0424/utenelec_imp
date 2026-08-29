@@ -272,7 +272,7 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
                       ),
                       hintText: _isEdit
                           ? null
-                          : '如 HR-01（创建后不可修改）', // TODO(l10n): 补 arb
+                          : '如 HR-01(创建后不可修改)', // TODO(l10n): 补 arb
                     ),
                     theme,
                     requiredEmpty: requiredEmpty,

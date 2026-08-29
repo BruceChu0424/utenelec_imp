@@ -21,4 +21,8 @@ public interface AccountRepository extends JpaRepository<Account, UUID>, JpaSpec
 
     /** 批量按 legacy_id 取未软删记录（单据账户解析用）。 */
     List<Account> findByLegacyIdInAndDeletedFalse(Collection<Integer> legacyIds);
+
+    boolean existsByCodeIgnoreCaseAndDeletedFalse(String code);
+
+    boolean existsByCodeIgnoreCaseAndDeletedFalseAndIdNot(String code, UUID id);
 }

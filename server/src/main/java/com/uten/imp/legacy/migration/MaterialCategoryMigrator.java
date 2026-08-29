@@ -37,7 +37,7 @@ public class MaterialCategoryMigrator {
 
     private static final int ORPHAN_ROOT_LEGACY_ID = -1;
     private static final String ORPHAN_ROOT_CODE = "LEGACY_ORPHAN";
-    private static final String ORPHAN_ROOT_NAME = "未分类（历史孤儿）";
+    private static final String ORPHAN_ROOT_NAME = "未分类(历史孤儿)";
 
     private final LegacyCategorySource reader;
     private final MaterialCategoryRepository repo;

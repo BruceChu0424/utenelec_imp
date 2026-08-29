@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
 import 'package:uten_imp/features/production/providers/production_department_provider.dart';
@@ -28,7 +29,7 @@ void main() {
       seeded: false,
     );
 
-    expect(find.text('手工计划（返工 / 试制 / 样品 / 备库）'), findsOneWidget);
+    expect(find.text('手工计划(返工 / 试制 / 样品 / 备库)'), findsOneWidget);
     expect(find.text('物料分析记录'), findsOneWidget);
     expect(find.text('生产计划历史'), findsOneWidget);
     expect(find.byKey(const Key('manual-source-ref')), findsOneWidget);
@@ -204,6 +205,32 @@ void main() {
         isTrue,
       );
       expect(requestedPages, containsAllInOrder([1, 2, 1]));
+    },
+  );
+
+  testWidgets(
+    'compact read-only candidates hide selection controls and the floating CTA',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(375, 900),
+        permissions: const {Perm.productionMaterialAnalysisView},
+        seeded: false,
+        responseOverride: (request) =>
+            request.path.endsWith('/sales-candidates')
+            ? _salesCandidatesJson()
+            : null,
+      );
+
+      final mobileList = find.byKey(
+        const Key('material-analysis-candidate-mobile-list'),
+      );
+      expect(mobileList, findsOneWidget);
+      expect(
+        find.descendant(of: mobileList, matching: find.byType(Checkbox)),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('material-analysis-start')), findsNothing);
     },
   );
 
@@ -431,15 +458,15 @@ void main() {
         },
       );
 
-      await tester.tap(find.text('采纳建议路线（2）'));
+      await tester.tap(find.text('采纳建议路线(2)'));
       await tester.pumpAndSettle();
-      expect(find.text('确认路线（2）'), findsOneWidget);
+      expect(find.text('确认路线(2)'), findsOneWidget);
 
       await tester.tap(find.byTooltip('按最新库存刷新分析'));
       await tester.pumpAndSettle();
 
       expect(detailReads, 2);
-      expect(find.text('确认路线（2）'), findsOneWidget);
+      expect(find.text('确认路线(2)'), findsOneWidget);
       await tester.drag(
         find
             .descendant(
@@ -507,6 +534,119 @@ void main() {
   );
 
   testWidgets(
+    'fully transferred product shows execution stage and plan action instead of shortage',
+    (tester) async {
+      final analysis = _analysisJson(const ['VIEW']);
+      final product =
+          (analysis['products']! as List<dynamic>).first
+              as Map<String, dynamic>;
+      product
+        ..['requestedQty'] = 10
+        ..['submittedQty'] = 10
+        ..['approvedQty'] = 0
+        ..['remainingQty'] = 0
+        ..['readyNowQty'] = 0
+        ..['readinessRatio'] = 1
+        ..['planExecutionStatus'] = 'IN_PROGRESS'
+        ..['latestPlanId'] = 'plan-running-1'
+        ..['latestPlanNo'] = 'PP-20260828-001';
+
+      await _pumpPage(
+        tester,
+        size: const Size(375, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisView,
+          Perm.productionPlanView,
+        },
+        allowedActions: const ['VIEW'],
+        analysisId: 'analysis-1',
+        seeded: false,
+        analysisJson: analysis,
+        theme: ThemeData.dark(),
+        textScale: 1.3,
+      );
+
+      expect(find.text('生产执行中'), findsOneWidget);
+      expect(find.text('整套物料未齐，暂不可生产'), findsNothing);
+      expect(find.text('齐套 100%'), findsNothing);
+      expect(
+        find.byKey(
+          const ValueKey('material-analysis-product-select-product-line-1'),
+        ),
+        findsNothing,
+      );
+      final action = find.byKey(
+        const ValueKey('material-analysis-product-plan-product-line-1'),
+      );
+      expect(action, findsOneWidget);
+      expect(tester.getSize(action).height, greaterThanOrEqualTo(48));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'return refresh applies dynamic plan projection with unchanged CAS header',
+    (tester) async {
+      var detailReads = 0;
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisView,
+          Perm.productionPlanView,
+        },
+        allowedActions: const ['VIEW'],
+        analysisId: 'analysis-1',
+        seeded: false,
+        responseOverride: (request) {
+          if (request.method != 'GET' ||
+              request.path != '/production/material-analyses/analysis-1') {
+            return null;
+          }
+          detailReads++;
+          final json = _analysisJson(const ['VIEW']);
+          final product =
+              (json['products']! as List<dynamic>).first
+                  as Map<String, dynamic>;
+          product
+            ..['requestedQty'] = 10
+            ..['submittedQty'] = 10
+            ..['remainingQty'] = 0
+            ..['readyNowQty'] = 0
+            ..['readinessRatio'] = 1
+            ..['planExecutionStatus'] = detailReads == 1
+                ? 'SUBMITTED'
+                : 'IN_PROGRESS'
+            ..['latestPlanId'] = 'plan-running-1'
+            ..['latestPlanNo'] = 'PP-20260828-001';
+          json['version'] = 7;
+          json['fingerprint'] = 'f' * 64;
+          return json;
+        },
+      );
+
+      expect(find.text('计划审批中'), findsOneWidget);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionMaterialAnalysisPage)),
+      );
+      container.read(pageResumeProvider.notifier).state = (
+        location: '/warehouse/DRAW/draw-1',
+        tick: 1,
+      );
+      await tester.pump();
+      container.read(pageResumeProvider.notifier).state = (
+        location: '/production/material-analysis',
+        tick: 2,
+      );
+      await tester.pumpAndSettle();
+
+      expect(detailReads, 2);
+      expect(find.text('生产执行中'), findsOneWidget);
+      expect(find.text('计划审批中'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'analysis poll skips unsaved route editing and timer cancels on dispose',
     (tester) async {
       var detailReads = 0;
@@ -534,14 +674,14 @@ void main() {
         },
       );
 
-      await tester.tap(find.text('采纳建议路线（2）'));
+      await tester.tap(find.text('采纳建议路线(2)'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('确认路线（', skipOffstage: false), findsOneWidget);
+      expect(find.textContaining('确认路线(', skipOffstage: false), findsOneWidget);
 
       await tester.pump(const Duration(seconds: 45));
       await tester.pumpAndSettle();
       expect(detailReads, 1);
-      expect(find.textContaining('确认路线（', skipOffstage: false), findsOneWidget);
+      expect(find.textContaining('确认路线(', skipOffstage: false), findsOneWidget);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 45));
@@ -637,7 +777,7 @@ void main() {
   );
 
   testWidgets(
-    'completed supply shows current transit zero and explains safety stock block',
+    'completed demand separates exact receipt from public safety replenishment',
     (tester) async {
       final analysis = _buySelectionAnalysisJson();
       final firstProduct =
@@ -653,6 +793,7 @@ void main() {
         ..['allocatedAvailableQty'] = 0
         ..['availableQty'] = 0
         ..['shortageQty'] = 1000
+        ..['demandSupplyGapQty'] = 0
         ..['safetyStockQty'] = 100000
         ..['exactPeggedQty'] = 1000
         ..['warehouseBreakdown'] = [
@@ -664,6 +805,9 @@ void main() {
             'reservedQty': 0,
             'availableQty': 0,
             'ownPeggedQty': 2000,
+            'publicAvailableQty': 0,
+            'openSafetySupplyQty': 0,
+            'safetyReplenishmentGapQty': 100000,
           },
         ]
         ..['notifiedTargets'] = [
@@ -698,19 +842,27 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: row, matching: find.text('可动用 0 · 安全库存 100000')),
+        find.descendant(of: row, matching: find.text('本批已保障 1000')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('安全保护 100000')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('公共补库在途 0')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('公共补库待补 100000')),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: row,
-          matching: find.textContaining('当前在途 0 · 还差 1000'),
+          matching: find.textContaining('本批需求已覆盖 · 公共补库在途 0'),
         ),
         findsOneWidget,
-      );
-      expect(
-        find.descendant(of: row, matching: find.textContaining('已提交 0')),
-        findsNothing,
       );
     },
   );
@@ -762,7 +914,7 @@ void main() {
       );
       expect(find.text('合格到货在非分析仓，当前不计入备料'), findsOneWidget);
       expect(find.textContaining('目标仓：主仓'), findsOneWidget);
-      expect(find.text('• 共享紧固件（M-1）：委外收货仓 2 个'), findsOneWidget);
+      expect(find.text('• 共享紧固件(M-1)：委外收货仓 2 个'), findsOneWidget);
       expect(find.textContaining('普通调拨不会迁移这笔分析绑定'), findsOneWidget);
     },
   );
@@ -783,8 +935,14 @@ void main() {
         seeded: false,
       );
       // Same material on two BOM paths is now two independent decisions.
-      final acceptButton = find.text('采纳建议路线（2）');
+      final acceptButton = find.text('采纳建议路线(2)');
       expect(acceptButton, findsOneWidget);
+      final acceptWidget = tester.widget<UtenButton>(
+        find.ancestor(of: acceptButton, matching: find.byType(UtenButton)),
+      );
+      expect(acceptWidget.type, UtenButtonType.success);
+      expect(acceptWidget.icon, isNull);
+      expect(find.byIcon(Icons.done_all_rounded), findsNothing);
       await tester.ensureVisible(acceptButton);
       await tester.pumpAndSettle();
       await tester.tap(acceptButton);
@@ -845,7 +1003,7 @@ void main() {
         },
       );
 
-      final accept = find.text('采纳建议路线（501）');
+      final accept = find.text('采纳建议路线(501)');
       expect(accept, findsOneWidget);
       await tester.tap(accept);
       await tester.pumpAndSettle();
@@ -911,11 +1069,11 @@ void main() {
         },
       );
 
-      await tester.tap(find.text('采纳建议路线（501）'));
+      await tester.tap(find.text('采纳建议路线(501)'));
       await tester.pumpAndSettle();
-      expect(find.text('确认路线（1）'), findsOneWidget);
+      expect(find.text('确认路线(1)'), findsOneWidget);
 
-      await tester.tap(find.text('确认路线（1）'));
+      await tester.tap(find.text('确认路线(1)'));
       await tester.pumpAndSettle();
 
       final writes = harness.requests
@@ -979,8 +1137,8 @@ void main() {
       );
       await tester.tap(selectAll);
       await tester.pump();
-      expect(find.text('提交采购需求（501）'), findsOneWidget);
-      await tester.tap(find.text('提交采购需求（501）'));
+      expect(find.text('提交采购需求(501)'), findsOneWidget);
+      await tester.tap(find.text('提交采购需求(501)'));
       await tester.pumpAndSettle();
       await _confirmSupplyQuantityDialog(tester);
 
@@ -1053,12 +1211,12 @@ void main() {
       );
       await tester.tap(selectAll);
       await tester.pump();
-      await tester.tap(find.text('提交采购需求（501）'));
+      await tester.tap(find.text('提交采购需求(501)'));
       await tester.pumpAndSettle();
       await _confirmSupplyQuantityDialog(tester);
-      expect(find.text('提交采购需求（1）'), findsOneWidget);
+      expect(find.text('提交采购需求(1)'), findsOneWidget);
 
-      await tester.tap(find.text('提交采购需求（1）'));
+      await tester.tap(find.text('提交采购需求(1)'));
       await tester.pumpAndSettle();
       await _confirmSupplyQuantityDialog(tester);
 
@@ -1142,7 +1300,7 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('安排子件生产（1）'), findsOneWidget);
+      expect(find.text('安排子件生产(1)'), findsOneWidget);
     },
   );
 
@@ -1347,7 +1505,7 @@ void main() {
       );
       await tester.tap(buyCheckbox);
       await tester.pump();
-      expect(find.text('提交采购需求（1）'), findsOneWidget);
+      expect(find.text('提交采购需求(1)'), findsOneWidget);
 
       final subcontractGate = find.byKey(
         const ValueKey('material-bom-gate-material-path-2'),
@@ -1376,7 +1534,7 @@ void main() {
       await tester.pumpAndSettle();
       // Refreshing the second route must preserve the already selected BUY
       // node instead of silently dropping a planner's earlier selection.
-      expect(find.text('提交采购需求（1）'), findsOneWidget);
+      expect(find.text('提交采购需求(1)'), findsOneWidget);
       expect(
         harness.requests.where((request) => request.method == 'PUT'),
         hasLength(2),
@@ -1394,7 +1552,7 @@ void main() {
       );
       await tester.tap(subcontractCheckbox);
       await tester.pump();
-      expect(find.text('提交委外需求（1）'), findsOneWidget);
+      expect(find.text('提交委外需求(1)'), findsOneWidget);
     },
   );
 
@@ -1529,6 +1687,43 @@ void main() {
   );
 
   testWidgets(
+    'FQC recovery-only analysis hides ordinary supply and plan actions',
+    (tester) async {
+      final json = _analysisJson(const ['VIEW', 'FQC_REPLENISHMENT_CONFIRM'])
+        ..['fqcReplenishmentOnly'] = true
+        ..['fqcRecoveryAuthorizationId'] = 'authorization-1';
+      await _pumpPage(
+        tester,
+        size: const Size(375, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisView,
+          Perm.productionMaterialAnalysisRoute,
+          Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisGenerate,
+          Perm.productionPlanApprove,
+        },
+        analysisId: 'analysis-1',
+        analysisJson: json,
+      );
+
+      expect(
+        find.textContaining('仅用于冻结 FQC 补产 BOM', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('返回“FQC 补产待办”', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
+      expect(
+        find.byKey(const Key('material-analysis-notify-BUY')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'inactive deep node still shows its own demand allocation and warehouse stock',
     (tester) async {
       await _pumpPage(
@@ -1554,11 +1749,11 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: dependencyRow, matching: find.text('配 4')),
+        find.descendant(of: dependencyRow, matching: find.text('本批已保障 4')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: dependencyRow, matching: find.text('现货 7')),
+        find.descendant(of: dependencyRow, matching: find.text('公共可用 7')),
         findsOneWidget,
       );
       expect(find.textContaining('路径：测试产品'), findsNothing);
@@ -1695,16 +1890,16 @@ void main() {
       findsNothing,
     );
     expect(find.textContaining('需 '), findsWidgets);
-    expect(find.textContaining('配 '), findsWidgets);
-    // 缺口列改为「已备/需求（覆盖%）」：缺 11/需 16 → 5/16（31%）。
-    expect(find.textContaining('5/16（31%）'), findsWidgets);
+    expect(find.textContaining('本批已保障 '), findsWidgets);
+    // 本批覆盖只认 max(已分配, exact)，安全保护单独展示。
+    expect(find.textContaining('3/16(19%)'), findsWidgets);
     expect(find.text('计划日期 未设置'), findsNothing);
     expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'default BOM view hides covered nodes and all view restores the full count',
+    'default BOM view shows all nodes and precedes the shortage filter',
     (tester) async {
       final json = _makeTreeAnalysisJson()..['allowedActions'] = const ['VIEW'];
       final materials = (json['flatMaterials'] as List<dynamic>)
@@ -1729,6 +1924,9 @@ void main() {
       );
 
       final viewAll = find.byKey(const ValueKey('material-bom-view-all'));
+      final viewShortage = find.byKey(
+        const ValueKey('material-bom-view-shortage'),
+      );
       await tester.scrollUntilVisible(
         viewAll,
         300,
@@ -1737,18 +1935,22 @@ void main() {
       expect(find.text('只看缺料 2'), findsOneWidget);
       expect(find.text('待确认路线 0'), findsOneWidget);
       expect(find.text('全部 BOM 3'), findsOneWidget);
-      expect(find.text('筛选命中 2 条；保留上级后共 2 条 / 全部 3 条'), findsOneWidget);
       expect(
-        find.byKey(const ValueKey('material-bom-node-node-buy-child')),
-        findsNothing,
+        tester.getTopLeft(viewAll).dx,
+        lessThan(tester.getTopLeft(viewShortage).dx),
       );
-
-      await tester.tap(viewAll);
-      await tester.pumpAndSettle();
       expect(find.text('筛选命中 3 条；保留上级后共 3 条 / 全部 3 条'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('material-bom-node-node-buy-child')),
         findsOneWidget,
+      );
+
+      await tester.tap(viewShortage);
+      await tester.pumpAndSettle();
+      expect(find.text('筛选命中 2 条；保留上级后共 2 条 / 全部 3 条'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('material-bom-node-node-buy-child')),
+        findsNothing,
       );
     },
   );
@@ -1856,7 +2058,7 @@ void main() {
       final showMore = find.byKey(
         const Key('material-analysis-show-more-products'),
       );
-      expect(find.text('继续显示下一批（还有 1 个）'), findsOneWidget);
+      expect(find.text('继续显示下一批(还有 1 个)'), findsOneWidget);
       final button = tester.widget<UtenButton>(showMore);
       expect(button.onPressed, isNotNull);
       button.onPressed!();
@@ -1957,7 +2159,7 @@ void main() {
       await tester.tap(header);
       await tester.pump();
       expect(tester.widget<Checkbox>(header).value, isTrue);
-      expect(find.text('提交采购需求（2）'), findsOneWidget);
+      expect(find.text('提交采购需求(2)'), findsOneWidget);
 
       final first = find.byKey(
         const ValueKey('material-bom-select-buy-line-1'),
@@ -1965,7 +2167,7 @@ void main() {
       await tester.tap(first);
       await tester.pump();
       expect(tester.widget<Checkbox>(header).value, isNull);
-      expect(find.text('提交采购需求（1）'), findsOneWidget);
+      expect(find.text('提交采购需求(1)'), findsOneWidget);
 
       final selectedRow = tester.widget<Container>(
         find.byKey(const ValueKey('material-bom-node-buy-node-2')),
@@ -1995,7 +2197,7 @@ void main() {
         isTrue,
       );
 
-      final buyNotify = find.text('提交采购需求（1）');
+      final buyNotify = find.text('提交采购需求(1)');
       await tester.ensureVisible(buyNotify);
       await tester.pump();
       await tester.tap(buyNotify);
@@ -2012,7 +2214,11 @@ void main() {
         'actionGroupKeys': ['buy-action-2'],
         // 数量对话框默认按「缺口 − 在途」全量提交：缺口 8、在途 0 → 8。
         'quantities': [
-          {'actionGroupKey': 'buy-action-2', 'qty': 8.0},
+          {
+            'actionGroupKey': 'buy-action-2',
+            'qty': 8.0,
+            'safetyReplenishmentQty': 0.0,
+          },
         ],
       });
       expect(tester.widget<Checkbox>(header).value, isFalse);
@@ -2023,6 +2229,132 @@ void main() {
             )
             .value,
         isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'BUY quantity dialog deduplicates safety gap and submits visible two-slice totals',
+    (tester) async {
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(375, 800),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        allowedActions: const ['NOTIFY_SUPPLY'],
+        analysisJson: _buySafetySplitAnalysisJson(),
+      );
+
+      final selectAll = find.byKey(
+        const ValueKey('material-route-select-all-BUY'),
+      );
+      await tester.scrollUntilVisible(
+        selectAll,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await Scrollable.ensureVisible(tester.element(selectAll), alignment: 0.5);
+      await tester.pump();
+      await tester.tap(selectAll);
+      await tester.pump();
+      await tester.tap(find.text('提交采购需求(2)'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('supply-quantity-dialog')), findsOneWidget);
+      expect(find.text('公共安全库存补库 6 个'), findsOneWidget);
+      expect(find.textContaining('安全缺口已在本批另一行计入'), findsOneWidget);
+      expect(
+        find.textContaining('本批生产需求 16 + 公共安全库存补库 6 = 预计总量 22'),
+        findsOneWidget,
+      );
+      expect(
+        tester.getSize(
+          find.byKey(const ValueKey('supply-qty-step--1-buy-action-1')),
+        ),
+        const Size(48, 48),
+      );
+      expect(tester.takeException(), isNull);
+
+      await _confirmSupplyQuantityDialog(tester);
+      final request = harness.requests.singleWhere(
+        (request) => request.path.endsWith('/notify'),
+      );
+      final data = request.data! as Map<String, dynamic>;
+      expect(data['quantities'], [
+        {
+          'actionGroupKey': 'buy-action-1',
+          'qty': 8.0,
+          'safetyReplenishmentQty': 6.0,
+        },
+        {
+          'actionGroupKey': 'buy-action-2',
+          'qty': 8.0,
+          'safetyReplenishmentQty': 0.0,
+        },
+      ]);
+    },
+  );
+
+  testWidgets(
+    'SUBCONTRACT safety gap is fail-closed with a clear BUY-only reason',
+    (tester) async {
+      final analysis = _buySelectionAnalysisJson();
+      final materials = (analysis['flatMaterials'] as List<dynamic>)
+          .cast<Map<String, dynamic>>();
+      final subcontract = materials.singleWhere(
+        (material) => material['sourceConfirmed'] == 'SUBCONTRACT',
+      );
+      subcontract
+        ..['demandSupplyGapQty'] = 8
+        ..['safetyStockQty'] = 10
+        ..['warehouseBreakdown'] = [
+          {
+            'warehouseId': 'warehouse-1',
+            'publicAvailableQty': 2,
+            'openSafetySupplyQty': 2,
+            'safetyReplenishmentGapQty': 6,
+          },
+        ];
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        allowedActions: const ['NOTIFY_SUPPLY'],
+        analysisJson: analysis,
+      );
+
+      final row = find.byKey(
+        const ValueKey('material-bom-node-subcontract-node-1'),
+      );
+      await tester.scrollUntilVisible(
+        row,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('仅采购可补安全库存')),
+        findsWidgets,
+      );
+      await tester.tap(
+        find.descendant(
+          of: row,
+          matching: find.byKey(
+            const ValueKey('material-bom-gate-subcontract-line-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('本版本仅采购路线支持公共安全补库'), findsWidgets);
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/notify')),
+        isEmpty,
       );
     },
   );
@@ -2148,7 +2480,7 @@ void main() {
             .value,
         isTrue,
       );
-      expect(find.text('提交采购需求（1）'), findsOneWidget);
+      expect(find.text('提交采购需求(1)'), findsOneWidget);
       // 路线操作在右操作区（不在详情里）：depth>1 缺料件同样可换路线——
       // 点「更换路线/选择路线」弹出路线面板（采购/委外/自制三条）。
       var routeButton = find.descendant(
@@ -2294,7 +2626,11 @@ void main() {
         'target': 'MAKE',
         'actionGroupKeys': ['make-action-1'],
         'quantities': [
-          {'actionGroupKey': 'make-action-1', 'qty': 8.0},
+          {
+            'actionGroupKey': 'make-action-1',
+            'qty': 8.0,
+            'safetyReplenishmentQty': 0.0,
+          },
         ],
       });
       expect(find.text('填写生产计划单'), findsWidgets);
@@ -2502,8 +2838,8 @@ void main() {
         find.byKey(const Key('batch-qty-product-line-1')),
         '3',
       );
-      expect(find.text('生成总装计划（1）'), findsOneWidget);
-      await tester.tap(find.text('生成总装计划（1）'));
+      expect(find.text('生成总装计划(1)'), findsOneWidget);
+      await tester.tap(find.text('生成总装计划(1)'));
       await tester.pumpAndSettle();
       expect(find.text('生产计划单'), findsWidgets);
 
@@ -2601,13 +2937,13 @@ void main() {
       );
       await tester.tap(checkbox);
       await tester.pump();
-      await tester.tap(find.text('提交采购需求（1）'));
+      await tester.tap(find.text('提交采购需求(1)'));
       await tester.pumpAndSettle();
 
-      // 默认数量 = 缺口 8；改小成 5 实现分批。
+      // 默认数量 = 本批需求缺口 8；改小成 5 实现分批。
       final qtyField = find.byKey(const Key('supply-qty-input-buy-action-1'));
-      expect(find.textContaining('最多可提交 8'), findsOneWidget);
-      expect(tester.widget<TextField>(qtyField).controller?.text, '8');
+      expect(find.textContaining('本批生产需求上限 8'), findsOneWidget);
+      expect(tester.widget<TextFormField>(qtyField).controller?.text, '8');
       await tester.enterText(qtyField, '5');
       await tester.tap(find.byKey(const Key('supply-quantity-confirm')));
       await tester.pumpAndSettle();
@@ -2619,17 +2955,21 @@ void main() {
                   .data!
               as Map<String, dynamic>;
       expect(first['quantities'], [
-        {'actionGroupKey': 'buy-action-1', 'qty': 5.0},
+        {
+          'actionGroupKey': 'buy-action-1',
+          'qty': 5.0,
+          'safetyReplenishmentQty': 0.0,
+        },
       ]);
 
-      // 当前在途 5、还差 3：行保持可勾选，操作列出现「继续提交」。
+      // 需求在途 5、本批还差 3：行保持可勾选，操作列出现「继续提交」。
       final row = find.byKey(const ValueKey('material-bom-node-buy-node-1'));
       expect(
-        find.descendant(of: row, matching: find.textContaining('当前在途 5')),
+        find.descendant(of: row, matching: find.textContaining('需求在途 5')),
         findsOneWidget,
       );
       expect(
-        find.descendant(of: row, matching: find.textContaining('还差 3')),
+        find.descendant(of: row, matching: find.textContaining('本批还差 3')),
         findsOneWidget,
       );
       expect(
@@ -2647,9 +2987,9 @@ void main() {
 
       // 补交默认 = 剩余 3，直接确认。
       final topUpField = find.byKey(const Key('supply-qty-input-buy-action-1'));
-      expect(find.textContaining('最多可提交 3'), findsOneWidget);
-      expect(find.textContaining('已在途 5'), findsOneWidget);
-      expect(tester.widget<TextField>(topUpField).controller?.text, '3');
+      expect(find.textContaining('本批生产需求上限 3'), findsOneWidget);
+      expect(find.textContaining('本批生产需求上限 3 个 · 需求在途 5 个'), findsOneWidget);
+      expect(tester.widget<TextFormField>(topUpField).controller?.text, '3');
       await tester.tap(find.byKey(const Key('supply-quantity-confirm')));
       await tester.pumpAndSettle();
 
@@ -2660,7 +3000,11 @@ void main() {
                   .data!
               as Map<String, dynamic>;
       expect(second['quantities'], [
-        {'actionGroupKey': 'buy-action-1', 'qty': 3.0},
+        {
+          'actionGroupKey': 'buy-action-1',
+          'qty': 3.0,
+          'safetyReplenishmentQty': 0.0,
+        },
       ]);
       expect(notifyCalls, 2);
     },
@@ -2735,7 +3079,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('生成总装计划（1）'));
+      await tester.tap(find.text('生成总装计划(1)'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('汇总确认'));
       await tester.pumpAndSettle();
@@ -2759,7 +3103,7 @@ void main() {
       expect(find.text('计划单与提货单已生成'), findsOneWidget);
       expect(find.textContaining('PP-20260809-001'), findsOneWidget);
       expect(find.text('已审核下达'), findsOneWidget);
-      expect(find.text('物料提货单（领料单）LL-20260809-001'), findsOneWidget);
+      expect(find.text('物料提货单(领料单)LL-20260809-001'), findsOneWidget);
       await tester.tap(find.text('留在物料分析'));
       await tester.pumpAndSettle();
     },
@@ -2827,10 +3171,9 @@ void main() {
         300,
         scrollable: find.byType(Scrollable).first,
       );
-      // 需 16、缺 11 → 覆盖 5 → 31%。口径与状态文字同源（合格覆盖 ÷ 需求），
-      // 不混用报工/成品入库。数量行直接显示「已备/需求（%）」。
+      // 本批覆盖只认 max(已分配 3, exact 0)，安全/在途不混成本批已到：3/16=19%。
       expect(
-        find.descendant(of: firstRow, matching: find.text('5/16（31%）')),
+        find.descendant(of: firstRow, matching: find.text('3/16(19%)')),
         findsOneWidget,
       );
       // 左侧竖向进度条：点按浮出数字，点其它位置消失。
@@ -2844,7 +3187,7 @@ void main() {
       );
       expect(peek, findsOneWidget);
       expect(
-        find.descendant(of: peek, matching: find.text('备料 31% · 已备 5/16')),
+        find.descendant(of: peek, matching: find.text('备料 19% · 已备 3/16')),
         findsOneWidget,
       );
       await tester.tap(
@@ -2961,7 +3304,7 @@ void main() {
       );
       await tester.tap(secondSelect);
       await tester.pumpAndSettle();
-      expect(find.text('提交采购需求（2）'), findsOneWidget);
+      expect(find.text('提交采购需求(2)'), findsOneWidget);
     },
   );
 
@@ -3509,6 +3852,8 @@ Future<_Harness> _pumpPage(
   String? departmentId,
   String? workshopName,
   String? workerId,
+  ThemeData? theme,
+  double textScale = 1,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -3538,6 +3883,15 @@ Future<_Harness> _pumpPage(
         currentPermissionsProvider.overrideWithValue(permissions),
       ],
       child: MaterialApp(
+        theme: theme,
+        builder: textScale == 1
+            ? null
+            : (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(textScale)),
+                child: child!,
+              ),
         home: ProductionMaterialAnalysisPage(
           seed: ProductionMaterialAnalysisSeed(
             analysisId: analysisId,
@@ -3840,6 +4194,37 @@ Map<String, dynamic> _buySelectionAnalysisJson() {
   return json;
 }
 
+Map<String, dynamic> _buySafetySplitAnalysisJson() {
+  final json = _buySelectionAnalysisJson();
+  final buyMaterials = (json['flatMaterials'] as List<dynamic>)
+      .cast<Map<String, dynamic>>()
+      .where((material) => material['sourceConfirmed'] == 'BUY');
+  for (final material in buyMaterials) {
+    material
+      ..['goodsId'] = 'shared-buy-goods'
+      ..['colorId'] = 'shared-color'
+      ..['unitId'] = 'unit-1'
+      ..['materialKey'] = 'shared-buy-goods|shared-color|unit-1'
+      ..['demandSupplyGapQty'] = 8
+      ..['safetyStockQty'] = 10
+      ..['warehouseBreakdown'] = [
+        {
+          'warehouseId': 'warehouse-1',
+          'warehouseCode': 'WH-01',
+          'warehouseName': '主仓',
+          'onHandQty': 2,
+          'reservedQty': 0,
+          'availableQty': 0,
+          'ownPeggedQty': 0,
+          'publicAvailableQty': 2,
+          'openSafetySupplyQty': 2,
+          'safetyReplenishmentGapQty': 6,
+        },
+      ];
+  }
+  return json;
+}
+
 Map<String, dynamic> _buySelectionNotifiedAnalysisJson() {
   final json = _buySelectionAnalysisJson();
   final materials = (json['flatMaterials'] as List<dynamic>)
@@ -3937,7 +4322,7 @@ Map<String, dynamic> _makeTreeAnalysisJson() {
       nodeKey: 'node-make-2',
       actionGroupKey: 'make-action-2',
       goodsCode: 'MAKE-B',
-      goodsName: '自制组件 A（另一 BOM 路径）',
+      goodsName: '自制组件 A(另一 BOM 路径)',
       route: 'MAKE',
       controlStage: 'ASSEMBLY',
     ),
@@ -3967,7 +4352,7 @@ Map<String, dynamic> _makeReadyChildAnalysisJson() {
     'parentGoodsName': '测试产品',
     'goodsId': 'goods-make-path-1',
     'goodsCode': 'MAKE-A',
-    'goodsName': '自制组件 A（备料任务）',
+    'goodsName': '自制组件 A(备料任务)',
     'unitName': '个',
     'requestedQty': 8,
     'submittedQty': 0,
@@ -4037,7 +4422,7 @@ Map<String, dynamic> _makeStatusAnalysisJson({
       'parentGoodsName': '自制短缺件',
       'goodsId': 'goods-make-short',
       'goodsCode': 'MAKE-SHORT',
-      'goodsName': '自制短缺件（自制备料）',
+      'goodsName': '自制短缺件(自制备料)',
       'requestedQty': 8,
       'submittedQty': childSubmitted,
       'approvedQty': childApproved,

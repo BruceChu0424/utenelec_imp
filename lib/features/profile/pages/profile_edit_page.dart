@@ -1,17 +1,22 @@
 // ProfileEditPage - 员工自助编辑个人信息
 // 文档：docs/03-页面/我的页.md（§编辑）
 //
+// v7.1 分区对齐「我的」页查看 Tab：基本信息 / 地址 / 紧急联系人 / 联系方式 / 组织信息，
+// 只列可编辑字段（hrOnly 锁定行已砍——查看页灰徽章已说明，顶部一行策略图例代替）；
+// 「我的」页字段铅笔经 /profile/edit?field=xxx 进入时滚动定位并聚焦目标字段。
+//
 // 三档字段策略：
 //   * directEdit      → 提交即生效
 //   * requiresReview  → 弹密码框二次确认 → 生成申请，HR 通过后合并
-//   * hrOnly          → 员工页只读，提示"请联系人事"
+//   * hrOnly          → 员工页只读，提示"请联系人事"（不在本页渲染）
 //
 // 提交流程：
 //   1) 收集所有 dirty 字段（按 FieldPolicyKind 分组）
 //   2) 若含 requiresReview 字段 → 弹密码框 → verify-password → 提交
 //   3) 后端原子处理（直改立即生效，需审核进 pending 批次）
-//   4) 成功通知 → 跳回 /profile
+//   4) 成功通知 → 纯直改回 /profile；含审核跳 /profile/me/changes
 //
+// 数据复用 myEmployeeProfileProvider（查看页同源，进编辑页不重复拉取）；
 // 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
 
 import 'package:flutter/material.dart';
@@ -35,8 +40,6 @@ import '../../../core/router/route_names.dart';
 import '../../../core/security/input_validators.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../shared/providers/session_provider.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../field_policy.dart';
 import '../models/profile_change_request.dart';
@@ -44,18 +47,44 @@ import '../providers/profile_change_providers.dart';
 import '../repositories/profile_change_repository.dart';
 
 class ProfileEditPage extends ConsumerStatefulWidget {
-  const ProfileEditPage({super.key});
+  const ProfileEditPage({super.key, this.initialField});
+
+  /// 从「我的」页字段铅笔进入时定位的目标字段 code
+  /// （如 `phone` / `emergencyContact.0.name`）；空 = 整表编辑。
+  final String? initialField;
 
   @override
   ConsumerState<ProfileEditPage> createState() => _ProfileEditPageState();
 }
 
 class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
+  static const _fieldOrder = [
+    ProfileFieldPolicy.fullName,
+    ProfileFieldPolicy.ethnicity,
+    ProfileFieldPolicy.politicalStatus,
+    ProfileFieldPolicy.maritalStatus,
+    ProfileFieldPolicy.phone,
+    ProfileFieldPolicy.officePhone,
+    ProfileFieldPolicy.email,
+    ProfileFieldPolicy.residenceAddress,
+    ProfileFieldPolicy.hujiAddress,
+    ProfileFieldPolicy.seatNo,
+    '${ProfileFieldPolicy.emergencyContactPrefix}0.name',
+    '${ProfileFieldPolicy.emergencyContactPrefix}0.phone',
+    '${ProfileFieldPolicy.emergencyContactPrefix}0.relationship',
+  ];
+
+  final _formKey = GlobalKey<FormState>();
   final Map<String, TextEditingController> _ctrls = {};
+  final Map<String, FocusNode> _focusNodes = {};
+  final Map<String, GlobalKey> _fieldKeys = {};
   final Map<String, String> _initialValues = {};
 
   bool _loading = true;
   bool _saving = false;
+  bool _unbound = false;
+  bool _hasEmergencyContact = false;
+  bool _locatedInitialField = false;
   String? _error;
 
   @override
@@ -69,6 +98,9 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     for (final c in _ctrls.values) {
       c.dispose();
     }
+    for (final f in _focusNodes.values) {
+      f.dispose();
+    }
     super.dispose();
   }
 
@@ -76,15 +108,19 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _unbound = false;
     });
     try {
-      final session = ref.read(sessionProvider);
-      final employeeId = session.user?.employeeId;
-      if (employeeId == null || employeeId.isEmpty) {
-        throw ApiException('401', '当前账号未绑定员工档案');
-      }
-      final p = await ref.read(employeeRepositoryProvider).getById(employeeId);
+      // 复用查看页同源 provider：从「我的」页进入时命中缓存，零额外请求。
+      final p = await ref.read(myEmployeeProfileProvider.future);
       if (!mounted) return;
+      if (p == null) {
+        setState(() {
+          _unbound = true;
+          _loading = false;
+        });
+        return;
+      }
       _initControllers(p);
       setState(() => _loading = false);
     } on ApiException catch (e) {
@@ -108,6 +144,8 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       final initialValue = value ?? '';
       final controller = _ctrls.putIfAbsent(code, TextEditingController.new);
       controller.value = TextEditingValue(text: initialValue);
+      _focusNodes.putIfAbsent(code, FocusNode.new);
+      _fieldKeys.putIfAbsent(code, GlobalKey.new);
       _initialValues[code] = initialValue;
     }
 
@@ -121,6 +159,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     add(ProfileFieldPolicy.officePhone, p.officePhone);
     add(ProfileFieldPolicy.email, p.email);
     add(ProfileFieldPolicy.seatNo, p.seatNo);
+    _hasEmergencyContact = p.emergencyContacts.isNotEmpty;
     if (p.emergencyContacts.isNotEmpty) {
       final ec = p.emergencyContacts.first;
       add('${ProfileFieldPolicy.emergencyContactPrefix}0.name', ec.name);
@@ -130,10 +169,37 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         ec.relationship,
       );
     } else {
-      add('${ProfileFieldPolicy.emergencyContactPrefix}0.name', null);
-      add('${ProfileFieldPolicy.emergencyContactPrefix}0.phone', null);
-      add('${ProfileFieldPolicy.emergencyContactPrefix}0.relationship', null);
+      final emergencyCodes = _ctrls.keys
+          .where(
+            (code) =>
+                code.startsWith(ProfileFieldPolicy.emergencyContactPrefix),
+          )
+          .toList();
+      for (final code in emergencyCodes) {
+        _ctrls.remove(code)?.dispose();
+        _focusNodes.remove(code)?.dispose();
+        _fieldKeys.remove(code);
+      }
     }
+  }
+
+  /// 查看页铅笔带 ?field= 进入：滚动到目标字段并聚焦（只做一次）。
+  /// 由 _buildForm 的 post-frame 回调触发，此时字段已挂载。
+  void _locateInitialField() {
+    if (_locatedInitialField) return;
+    final target = widget.initialField;
+    if (target == null) return;
+    final fieldKey = _fieldKeys[target];
+    final node = _focusNodes[target];
+    final fieldContext = fieldKey?.currentContext;
+    if (fieldContext == null || node == null) return;
+    _locatedInitialField = true;
+    Scrollable.ensureVisible(
+      fieldContext,
+      duration: const Duration(milliseconds: 300),
+      alignment: 0.25,
+    );
+    node.requestFocus();
   }
 
   /// 找出当前 dirty 字段：值与初始值不同。
@@ -159,6 +225,9 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
   Future<void> _submit() async {
     // 防连续点击：重入直接返回；_saving 全程覆盖（提交按钮 loading + disabled）
     if (_saving) {
+      return;
+    }
+    if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
     final l10n = AppLocalizations.of(context);
@@ -261,10 +330,19 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
           ? UtenEmpty.error(
               message: _error,
               actionLabel: l10n.commonRetry,
-              onAction: _load,
+              onAction: () {
+                ref.invalidate(myEmployeeProfileProvider);
+                _load();
+              },
+            )
+          : _unbound
+          ? UtenEmpty(
+              icon: Icons.person_off_outlined,
+              message: l10n.profileUnboundTitle,
+              description: l10n.profileUnboundDescription,
             )
           : _buildForm(context, l10n, theme),
-      bottomNavigationBar: _loading || _error != null
+      bottomNavigationBar: _loading || _error != null || _unbound
           ? null
           : UtenBottomActionBar(
               child: Row(
@@ -300,83 +378,188 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     AppLocalizations l10n,
     ThemeData theme,
   ) {
-    final basic = ProfileFieldPolicy.selfEditableFields
-        .where((f) => f.kind == FieldPolicyKind.directEdit)
-        .toList();
-    final review = ProfileFieldPolicy.selfEditableFields
-        .where((f) => f.kind == FieldPolicyKind.requiresReview)
-        .toList();
-
+    // 铅笔带 ?field= 进入：等字段首帧挂载完成后再定位（仅一次）。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _locateInitialField();
+    });
     // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长
     return UtenContentContainer.narrow(
-      child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+      child: Form(
+        key: _formKey,
+        // 仅五个分区全部保持挂载，确保滚出视口的脏字段也参与 Form.validate。
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _policyHint(l10n, theme),
+              _pendingHint(l10n, theme),
+              const SizedBox(height: UtenSpacing.s16),
+              ..._groupSection(l10n.employeeDetailBasic, 'basic'),
+              ..._groupSection(l10n.profileFieldGroupAddress, 'address'),
+              ..._groupSection(
+                l10n.profileFieldGroupEmergency,
+                'emergency',
+                // 未登记紧急联系人时没有可编辑控制器（HR 补录链路待建），整组只留提示。
+                includeFields: _hasEmergencyContact,
+                emptyMessage: _hasEmergencyContact
+                    ? null
+                    : l10n.profileMissingEmergencyContact,
+              ),
+              ..._groupSection(l10n.profileFieldGroupContact, 'contact'),
+              ..._groupSection(
+                l10n.profileFieldGroupOrganization,
+                'organization',
+              ),
+              const SizedBox(height: 80), // 底部固定操作栏留白
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 顶部策略图例：代替原先散在表单里的 hrOnly 锁定行（查看页灰徽章已说明，
+  /// 编辑页不再重复列只读字段）。
+  Widget _policyHint(AppLocalizations l10n, ThemeData theme) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.info_outline_rounded,
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: UtenSpacing.s8),
+        Expanded(
+          child: Text(
+            l10n.profileEditPolicyHint,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 待审冲突提示：有 pending 申请时置顶提醒，避免提交撞 409 才发现。
+  Widget _pendingHint(AppLocalizations l10n, ThemeData theme) {
+    final count = ref
+        .watch(myProfileChangesProvider((status: 'pending', page: 1)))
+        .maybeWhen(data: (page) => page.total, orElse: () => 0);
+    if (count == 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          UtenSectionHeader(title: l10n.profileChangeSectionBasic),
-          const SizedBox(height: UtenSpacing.s8),
-          UtenCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (int i = 0; i < basic.length; i++) ...[
-                  _buildField(basic[i], l10n, review: false),
-                  if (i < basic.length - 1)
-                    const SizedBox(height: UtenSpacing.s12),
-                ],
-              ],
+          Icon(
+            Icons.hourglass_top_rounded,
+            size: 18,
+            color: theme.colorScheme.tertiary,
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Text(
+              l10n.profileEditPendingConflictHint(count),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.5,
+              ),
             ),
           ),
-          const SizedBox(height: UtenSpacing.s24),
-          UtenSectionHeader(title: l10n.profileChangeSectionReview),
-          const SizedBox(height: UtenSpacing.s8),
-          UtenCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (int i = 0; i < review.length; i++) ...[
-                  _buildField(review[i], l10n, review: true),
-                  if (i < review.length - 1)
-                    const SizedBox(height: UtenSpacing.s12),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s24),
-          UtenSectionHeader(title: l10n.profileChangeEditHrOnlyHint),
-          const SizedBox(height: UtenSpacing.s8),
-          UtenCard(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: Column(
-              children: [
-                for (final def in ProfileFieldPolicy.hrOnlyFields)
-                  ListTile(
-                    dense: true,
-                    leading: Icon(
-                      Icons.lock_outline,
-                      size: 18,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    title: Text(_mapL10n(l10n, def.labelKey)),
-                    subtitle: Text(l10n.profileChangeFieldHrOnly),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 80), // 底部固定操作栏留白
         ],
       ),
     );
   }
 
-  Widget _buildField(
-    ProfileFieldDef def,
-    AppLocalizations l10n, {
-    required bool review,
+  /// 渲染一个分区（标题 + 卡片），返回 [section, 间距] 便于 Column 展开。
+  List<Widget> _groupSection(
+    String title,
+    String group, {
+    bool includeFields = true,
+    String? emptyMessage,
   }) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final fields = includeFields
+        ? _fieldsForGroup(group)
+        : const <ProfileFieldDef>[];
+
+    final children = <Widget>[];
+    for (final field in fields) {
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(height: UtenSpacing.s16));
+      }
+      children.add(_buildField(field, l10n));
+    }
+    if (emptyMessage != null) {
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(height: UtenSpacing.s16));
+      }
+      children.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                emptyMessage,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UtenSectionHeader(title: title),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: UtenSpacing.s24),
+    ];
+  }
+
+  List<ProfileFieldDef> _fieldsForGroup(String group) {
+    final fields = ProfileFieldPolicy.selfEditableFields
+        .where((field) => field.group == group)
+        .toList();
+    fields.sort(
+      (left, right) => _fieldOrder
+          .indexOf(left.code)
+          .compareTo(_fieldOrder.indexOf(right.code)),
+    );
+    return fields;
+  }
+
+  Widget _buildField(ProfileFieldDef def, AppLocalizations l10n) {
     final theme = Theme.of(context);
     final ctrl = _ctrls[def.code]!;
+    final review = def.kind == FieldPolicyKind.requiresReview;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      key: _fieldKeys[def.code],
       children: [
         Row(
           children: [
@@ -390,9 +573,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
             ),
             // 字段策略徽章：需审核 = 警告色，直改生效 = 成功色
             UtenStatusBadge(
-              label: review
-                  ? l10n.profileChangeFieldReview
-                  : l10n.profileChangeFieldDirect,
+              label: ProfileFieldPolicy.policyLabel(l10n, def.kind),
               type: review
                   ? UtenStatusBadgeType.warning
                   : UtenStatusBadgeType.success,
@@ -403,6 +584,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         const SizedBox(height: UtenSpacing.s8),
         UtenInput(
           controller: ctrl,
+          focusNode: _focusNodes[def.code],
           keyboardType:
               def.code == ProfileFieldPolicy.phone ||
                   def.code == ProfileFieldPolicy.officePhone
@@ -428,9 +610,25 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
 
   String? Function(String?) _validatorFor(String code) {
     return (v) {
-      if (v == null) return null;
-      final value = v.trim();
-      if (value.isEmpty) return null;
+      final value = v?.trim() ?? '';
+      final emergencyField = code.startsWith(
+        ProfileFieldPolicy.emergencyContactPrefix,
+      );
+      final initiallyPresent = (_initialValues[code] ?? '').trim().isNotEmpty;
+      if (value.isEmpty) {
+        if (code == ProfileFieldPolicy.fullName ||
+            emergencyField && initiallyPresent ||
+            code == ProfileFieldPolicy.phone && initiallyPresent) {
+          return InputValidators.required(
+            value,
+            label: ProfileFieldPolicy.labelOf(
+              AppLocalizations.of(context),
+              code,
+            ),
+          );
+        }
+        return null;
+      }
       switch (code) {
         case ProfileFieldPolicy.email:
           return InputValidators.email(value);
@@ -438,6 +636,9 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
           return InputValidators.phone(value);
         case ProfileFieldPolicy.officePhone:
           return InputValidators.telephone(value);
+      }
+      if (code.endsWith('.phone') && emergencyField) {
+        return InputValidators.phone(value);
       }
       return null;
     };
@@ -528,12 +729,6 @@ String _mapL10n(AppLocalizations l10n, String key) {
       return l10n.profileChangeFieldEmergencyPhone;
     case 'profileChangeFieldEmergencyRelationship':
       return l10n.profileChangeFieldEmergencyRelationship;
-    case 'profileFieldGender':
-      return l10n.profileFieldGender;
-    case 'profileFieldBirthDate':
-      return l10n.profileFieldBirthDate;
-    case 'profileFieldWorkLocation':
-      return l10n.profileFieldWorkLocation;
     default:
       return key;
   }

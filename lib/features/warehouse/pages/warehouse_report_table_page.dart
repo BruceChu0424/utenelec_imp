@@ -453,7 +453,7 @@ class _WarehouseReportTablePageState
       toolbarActions: [
         UtenPrintPreviewButton(
           title: '仓库${_docType.label}${_kind.shortLabel}报表',
-          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
           loader: _printLoader,
           exportEndpoint: '/stock/reports/export',
           exportPermission: Perm.stockReportExport,

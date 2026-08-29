@@ -45,6 +45,14 @@ public class ProductionMaterialDemand extends SoftDeletableEntity {
     @Column(name = "execution_segment_id")
     private UUID executionSegmentId;
 
+    /** V415 independent SCRAP/REJECT material demand identity. */
+    @Column(name = "fqc_recovery_authorization_id")
+    private UUID fqcRecoveryAuthorizationId;
+
+    /** Immutable planner-confirmed replenishment cycle for the demand. */
+    @Column(name = "fqc_replenishment_cycle_id")
+    private UUID fqcReplenishmentCycleId;
+
     @Column(name = "source_plan_item_id")
     private UUID sourcePlanItemId;
 

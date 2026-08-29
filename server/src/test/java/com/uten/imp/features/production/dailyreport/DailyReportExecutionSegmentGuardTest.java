@@ -1,6 +1,8 @@
 package com.uten.imp.features.production.dailyreport;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -16,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 class DailyReportExecutionSegmentGuardTest {
@@ -78,13 +81,34 @@ class DailyReportExecutionSegmentGuardTest {
                 List.of(fixture.line("2"))));
     }
 
+    @Test
+    void inaccessiblePlanSegmentCannotBeReportedByUuid() {
+        Fixture fixture = fixture("IN_PROGRESS", "10", "0");
+        doThrow(new ApiException(ErrorCode.NOT_FOUND, "执行段不存在"))
+                .when(fixture.access)
+                .requireReadable(
+                        fixture.planMakerId,
+                        "报工关联的执行段不存在");
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> fixture.guard.validateDraft(
+                        UUID.randomUUID(),
+                        List.of(fixture.line("2"))));
+
+        assertTrue(error.getMessage().contains("执行段不存在"));
+    }
+
     private static Fixture fixture(
             String status, String planned, String existing) {
         UUID segmentId = UUID.randomUUID();
         UUID planItemId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
+        UUID planMakerId = UUID.randomUUID();
         EntityManager em = mock(EntityManager.class);
+        ProductionDocumentAccessPolicy access =
+                mock(ProductionDocumentAccessPolicy.class);
 
         Query lock = query();
         when(lock.getResultList()).thenReturn(Collections.singletonList(new Object[]{
@@ -97,17 +121,20 @@ class DailyReportExecutionSegmentGuardTest {
                 new BigDecimal(planned),
                 status,
                 "SEG-001",
-                "CONFIRMED"
+                "CONFIRMED",
+                planMakerId
         }));
         Query cumulative = query();
         when(cumulative.getSingleResult()).thenReturn(new BigDecimal(existing));
         when(em.createNativeQuery(anyString())).thenReturn(lock, cumulative);
         return new Fixture(
-                new DailyReportExecutionSegmentGuard(em),
+                new DailyReportExecutionSegmentGuard(em, access),
                 segmentId,
                 planItemId,
                 goodsId,
-                unitId);
+                unitId,
+                planMakerId,
+                access);
     }
 
     private static Query query() {
@@ -122,7 +149,9 @@ class DailyReportExecutionSegmentGuardTest {
             UUID segmentId,
             UUID planItemId,
             UUID goodsId,
-            UUID unitId) {
+            UUID unitId,
+            UUID planMakerId,
+            ProductionDocumentAccessPolicy access) {
         DailyReportItemLine line(String qty) {
             DailyReportItemLine line = new DailyReportItemLine();
             line.setExecutionSegmentId(segmentId);

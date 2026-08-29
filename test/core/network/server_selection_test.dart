@@ -10,7 +10,7 @@ const _cloud = 'https://cloud.example.com/api';
 
 void main() {
   group('effectiveServerUrl 决策表', () {
-    test('local 模式：恒用本地（忽略可达性与云端）', () {
+    test('local 模式：恒用本地(忽略可达性与云端)', () {
       expect(
         effectiveServerUrl(
           mode: ServerMode.local,
@@ -73,7 +73,7 @@ void main() {
       );
     });
 
-    test('auto 模式：本地不可达且未配云端 → 回落本地（不会误用空云端）', () {
+    test('auto 模式：本地不可达且未配云端 → 回落本地(不会误用空云端)', () {
       expect(
         effectiveServerUrl(
           mode: ServerMode.auto,
@@ -149,7 +149,7 @@ void main() {
     });
   });
 
-  group('模式与云端地址读写（真实 SharedPreferences）', () {
+  group('模式与云端地址读写(真实 SharedPreferences)', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
     test('模式默认 auto；写入后读回', () async {
@@ -194,7 +194,7 @@ void main() {
       expect(readCloudUrl(prefs), isNull);
     });
 
-    test('非法云端地址→null（不抛）', () async {
+    test('非法云端地址→null(不抛)', () async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('uten.server_url_override', 'not-a-url');
       expect(readCloudUrl(prefs), isNull);

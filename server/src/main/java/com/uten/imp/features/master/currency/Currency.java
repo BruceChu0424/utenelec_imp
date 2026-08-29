@@ -38,6 +38,13 @@ public class Currency extends SoftDeletableEntity {
     @Column(name = "exchange_rate", precision = 18, scale = 6)
     private BigDecimal exchangeRate;
 
+    /**
+     * UUID-bound functional-currency authority. It is set only by a reviewed
+     * forward migration; ordinary master-data writes cannot change it.
+     */
+    @Column(name = "is_base_currency", nullable = false, insertable = false, updatable = false)
+    private boolean baseCurrency;
+
     private String status;      // Status（使用/禁用）
 
     /** 单据迁移/运行时自动补录标记。 */

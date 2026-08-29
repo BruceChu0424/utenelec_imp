@@ -29,6 +29,7 @@ class SupplierSettlementSummary {
     this.supplierName,
     required this.currencyId,
     this.currencyCode,
+    this.currencyName,
     this.periodStart,
     this.periodEnd,
     this.dueDate,
@@ -56,6 +57,7 @@ class SupplierSettlementSummary {
   final String? supplierName;
   final String currencyId;
   final String? currencyCode;
+  final String? currencyName;
   final String? periodStart;
   final String? periodEnd;
   final String? dueDate;
@@ -96,6 +98,7 @@ class SupplierSettlementSummary {
         supplierName: _text(json['supplierName']),
         currencyId: json['currencyId']?.toString() ?? '',
         currencyCode: _text(json['currencyCode']),
+        currencyName: _text(json['currencyName']),
         periodStart: _text(json['periodStart']),
         periodEnd: _text(json['periodEnd']),
         dueDate: _text(json['dueDate']),

@@ -60,7 +60,7 @@ public class BootstrapRunner implements ApplicationRunner {
             return;
         }
         Employee adminEmp = employeeRepo.findByCode("ADMIN")
-                .orElseThrow(() -> new IllegalStateException("未找到 admin 员工种子记录（V08 迁移）"));
+                .orElseThrow(() -> new IllegalStateException("未找到 admin 员工种子记录(V08 迁移)"));
         if (!StringUtils.hasText(props.getAdminPassword())
                 || props.getAdminPassword().length() < 12) {
             throw new IllegalStateException(
@@ -84,7 +84,7 @@ public class BootstrapRunner implements ApplicationRunner {
         ur.setId(new UserRoleId(user.getId(), adminRole.getId()));
         userRoleRepo.save(ur);
 
-        log.warn("已创建引导超管账号 [{}]（is_super_admin=true，不设置职务）—— 首次登录必须修改密码（一次性密码请尽快轮换）",
+        log.warn("已创建引导超管账号 [{}](is_super_admin=true，不设置职务)—— 首次登录必须修改密码(一次性密码请尽快轮换)",
                 props.getAdminLogin());
     }
 }

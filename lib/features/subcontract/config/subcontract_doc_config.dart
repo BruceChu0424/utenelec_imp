@@ -95,7 +95,7 @@ class SubcontractDocConfig {
 
   // 主表头字段差异
   final bool hasSupplier; // 委外商（=suppliers）
-  final bool hasCurrency; // 币种+汇率
+  final bool hasCurrency; // 币种（汇率不展示不录入：固定 1 随单保存，保进仓/退货快照一致）
   final bool supplierRequired;
   final bool warehouseRequired;
 
@@ -180,14 +180,14 @@ class SubcontractDocConfig {
     enabled: false,
     hasSupplier: true,
     itemHasWeight: true,
-    approveEffect: '审核仅变更状态（询价为链路起点，无库存/ArAp 联动）。',
+    approveEffect: '审核仅变更状态(询价为链路起点，无库存/ArAp 联动)。',
   );
 
   /// 委外申请单（由计划链以已下达状态生成，委外部门只读查看并在任务中心分解）。
   static const application = SubcontractDocConfig(
     type: SubcontractDocType.application,
     label: '计划下达的委外申请',
-    shortLabel: '申请（只读）',
+    shortLabel: '申请(只读)',
     icon: Icons.assignment_outlined,
     permissions: DocumentPermissionCatalog.subcontractApplication,
     itemHasPrice: false,
@@ -242,7 +242,7 @@ class SubcontractDocConfig {
     itemHasStockPlace: true, // 进仓=实物入库，上架指引
     linkToOrderItem: true,
     approveEffect:
-        '审核后货品进入待检隔离（IQC，不入库存）：品质部在「品质任务中心→待检处置」'
+        '审核后货品进入待检隔离(IQC，不入库存)：品质部在「品质任务中心→待检处置」'
         '检验，合格放行后库存才增加；同时回写订货已收并立应付。单价按订货单自动带入，无需填写。',
     skipListOnCreate: true,
   );
@@ -268,7 +268,7 @@ class SubcontractDocConfig {
     showReturned: true,
     showWasted: true,
     showSupplierLedger: true,
-    approveEffect: '审核将材料出库（转供应商处保管）+ 冻结 BOM 单耗快照 + 建供应商子件台账；回厂按冻结单耗守恒消费。',
+    approveEffect: '审核将材料出库(转供应商处保管)+ 冻结 BOM 单耗快照 + 建供应商子件台账；回厂按冻结单耗守恒消费。',
     skipListOnCreate: true,
   );
 
@@ -292,7 +292,7 @@ class SubcontractDocConfig {
     itemHasStockPlace: true, // 退货=成品出库，拣货指引
     linkToReceiptItem: true,
     linkToOrderItem: true,
-    approveEffect: '审核将出库（成品退）+ 反向立应付。',
+    approveEffect: '审核将出库(成品退)+ 反向立应付。',
     skipListOnCreate: true,
   );
 
@@ -315,7 +315,7 @@ class SubcontractDocConfig {
     linkToMaterialIssueItem: true,
     linkToOrderItem: true,
     showReturned: true,
-    approveEffect: '审核将入库（材料退）并回写来源发料子件已退量，不再回写订货历史累计量。',
+    approveEffect: '审核将入库(材料退)并回写来源发料子件已退量，不再回写订货历史累计量。',
     skipListOnCreate: true,
   );
 
@@ -336,7 +336,7 @@ class SubcontractDocConfig {
     itemHasWasteFields: true,
     linkToMaterialIssueItem: true,
     approveEffect:
-        '审核只登记来源发料子件已损耗量（发料时已转出公司仓，不会再次扣公司库存）；'
+        '审核只登记来源发料子件已损耗量(发料时已转出公司仓，不会再次扣公司库存)；'
         '建议索赔金额仅供后续财务责任决定参考，不自动扣款、抵销或生成负应付。',
     skipListOnCreate: true,
   );

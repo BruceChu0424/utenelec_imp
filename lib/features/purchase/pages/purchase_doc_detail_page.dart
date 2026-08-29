@@ -50,6 +50,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   PurchaseDocDetail? _detail;
   bool _loading = false;
   bool _busy = false;
+
+  bool get _canViewCommercialAmounts =>
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.purchaseReceiptPriceView) &&
+      !(_detail?.priceMasked ?? false);
   String? _error;
 
   @override
@@ -115,7 +121,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
 
   Future<void> _approveDocument() async {
     final message = widget.docType == PurchaseDocType.receipt
-        ? '审核后货品进入待检隔离（IQC，不入库存）：品质部在「品质任务中心→待检处置」'
+        ? '审核后货品进入待检隔离(IQC，不入库存)：品质部在「品质任务中心→待检处置」'
               '检验，合格放行后库存才增加；同时回写订货已收并立应付。'
               '单价按订货单自动带入，无需填写。'
         : '审核后将驱动下游库存和来源回写。';
@@ -322,6 +328,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
 
   Widget _headerCard(ThemeData theme, MasterNameService names) {
     final d = _detail!;
+    final canViewCommercialAmounts = _canViewCommercialAmounts;
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
@@ -331,17 +338,18 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       // 订货单不涉及仓库：入库仓库到收货登记时才产生。
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
       if (_cfg.hasDepartment) _KV('申请部门', names.department(d.departmentId)),
-      if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
-      if (d.exchangeRate != null) _KV('汇率', d.exchangeRate?.toString()),
+      if (canViewCommercialAmounts && _cfg.hasCurrency)
+        _KV('币种', names.currency(d.currencyId)),
+      if (canViewCommercialAmounts && d.exchangeRate != null)
+        _KV('汇率', d.exchangeRate?.toString()),
       if (_cfg.hasApplicant) _KV('申请人', d.applicantId ?? '—'),
       if (_cfg.hasPurchaser) _KV('采购员', d.purchaserId ?? '—'),
       if (_cfg.hasSender) _KV('交货人', d.senderId ?? '—'),
       if (_cfg.hasReceiver) _KV('收货人', d.receiverId ?? '—'),
       if (_cfg.hasNeedDate) _KV('需求日', d.needDate),
       if (_cfg.hasDeliverDate) _KV('交货日', d.deliverDate),
-      if (widget.docType != PurchaseDocType.request)
-        // 价格脱敏（V302）：无收货单价格权限时服务端置 null + priceMasked，渲染 ***。
-        _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
+      if (canViewCommercialAmounts && widget.docType != PurchaseDocType.request)
+        _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       if (widget.docType == PurchaseDocType.order) ...[
         _KV('财务审批', _financeApprovalLabel()),
@@ -442,8 +450,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   /// 表头设置列显隐 + 网格线 + 横滚），不再是卡片式拼凑行。
   Widget _itemsCard(ThemeData theme, MasterNameService names) {
     final items = _detail!.items;
-    // 价格脱敏（V302）：收货单无价格权限时单价/金额列一律渲染 ***（服务端已置 null）。
-    final masked = _detail!.priceMasked;
+    final canViewCommercialAmounts = _canViewCommercialAmounts;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -462,7 +469,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
               label: '货品',
               width: 220,
               value: (it) =>
-                  '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
+                  '${names.goods(it.goodsId)}(${names.color(it.colorId)} · ${names.unit(it.unitId)})',
             ),
             // 收货/退货实物单据：库位号（主档带出，上架/拣货指引）。
             if (widget.docType == PurchaseDocType.receipt ||
@@ -488,13 +495,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
             ),
-            if (widget.docType != PurchaseDocType.request) ...[
+            if (widget.docType != PurchaseDocType.request &&
+                canViewCommercialAmounts) ...[
               MasterColumnDef(
                 key: 'price',
                 label: '单价',
                 width: 90,
                 type: 'money',
-                value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
+                value: (it) => it.price?.toStringAsFixed(2),
               ),
               MasterColumnDef(
                 key: 'amount',
@@ -502,9 +510,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                 width: 100,
                 type: 'money',
                 // 优先服务端权威金额（含舍入口径）；仅历史缺失时才本地乘算兜底。
-                value: (it) => masked
-                    ? '***'
-                    : (it.amountOriginal ?? it.amountLocal) != null
+                value: (it) => (it.amountOriginal ?? it.amountLocal) != null
                     ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(2)
                     : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
               ),

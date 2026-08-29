@@ -69,7 +69,7 @@ void main() {
     expect(find.text('甲客户'), findsWidgets);
     expect(find.text('美元'), findsWidgets);
     expect(
-      find.byKey(const ValueKey('customer-prepayment-receipt-rate')),
+      find.byKey(const ValueKey('finance-receipt-exchange-rate')),
       findsOneWidget,
     );
     expect(
@@ -77,9 +77,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(UtenEditableGrid<FinanceGridRow>), findsNothing);
-    expect(_textField('手续费（人民币）'), findsNothing);
-    expect(_textField('其它费用（人民币）'), findsNothing);
-    expect(find.text('本次预收 美元 88.1234 · 到账汇率 7.123456'), findsOneWidget);
+    expect(_textField('银行手续费(人民币)'), findsOneWidget);
+    expect(_textField('其它费用(人民币)'), findsOneWidget);
+    expect(find.text('本批预收 美元 88.1234 · 汇率 7.123456'), findsOneWidget);
+    expect(find.text('真实账户实际入账 人民币 624.7432'), findsOneWidget);
     expect(find.text('保存').hitTestable(), findsOneWidget);
 
     await tester.tap(find.text('保存'));
@@ -93,6 +94,15 @@ void main() {
     expect(body?['currencyId'], 'currency-usd');
     expect(body?['exchangeRate'], '7.123456');
     expect(body?['amountOriginal'], '88.1234');
+    expect(body?['settlementAuthorityVersion'], 1);
+    expect(body?['settlementChannel'], 'TRADE_AGENT_CONVERSION');
+    expect(body?['settlementAgentSupplierId'], 'agent-1');
+    expect(body?['accountCurrencyId'], 'currency-cny');
+    expect(body?['accountAmount'], '624.7432');
+    expect(body?['bankFeeAccountAmount'], '2.0000');
+    expect(body?['otherFeeAccountAmount'], '1.0000');
+    expect(body?['feeSettlementMode'], 'DEDUCTED_FROM_PROCEEDS');
+    expect(body?['feeBearer'], 'COMPANY');
     expect(body?['items'], isEmpty);
     expect(body?.containsKey('bankFee'), isFalse);
     expect(body?.containsKey('otherFee'), isFalse);
@@ -134,7 +144,21 @@ class _PrepaymentReceiptApi extends ApiClient {
     }
     if (path == '/master/accounts/dict') {
       return const [
-        {'id': 'account-1', 'name': '人民币账户'},
+        {
+          'id': 'account-1',
+          'code': 'ZH000001',
+          'name': '人民币账户',
+          'currencyId': 'currency-cny',
+          'currencyCode': 'CNY',
+          'currencyName': '人民币',
+          'baseCurrency': true,
+          'status': '使用',
+        },
+      ];
+    }
+    if (path == '/master/suppliers/dict') {
+      return const [
+        {'id': 'agent-1', 'name': '测试外贸代理'},
       ];
     }
     if (path == '/master/currencies/dict') {
@@ -149,6 +173,18 @@ class _PrepaymentReceiptApi extends ApiClient {
           'code': 'BANK',
           'name': '银行转账',
           'legacyNameConfirmed': true,
+        },
+      ];
+    }
+    if (path == '/master/payment-styles/tree' &&
+        query?['category'] == 'EXPENSE') {
+      return const [
+        {
+          'id': 'expense-1',
+          'code': 'AGENT_FEE',
+          'name': '外贸代理费',
+          'category': 'EXPENSE',
+          'children': <Map<String, dynamic>>[],
         },
       ];
     }
@@ -169,6 +205,7 @@ class _PrepaymentReceiptApi extends ApiClient {
 
 const _prepaymentDetail = <String, dynamic>{
   'id': 'receipt-1',
+  'version': 2,
   'makerId': 'maker-1',
   'billNo': 'YS-001',
   'billDate': '2026-08-23',
@@ -179,7 +216,29 @@ const _prepaymentDetail = <String, dynamic>{
   'currencyId': 'currency-usd',
   'exchangeRate': 7.123456,
   'amountOriginal': 88.1234,
-  'amountLocal': 627.6999,
+  'amountLocal': 627.7432,
+  'settlementAuthorityVersion': 1,
+  'settlementChannel': 'TRADE_AGENT_CONVERSION',
+  'settlementAgentSupplierId': 'agent-1',
+  'exchangeRateSource': 'TRADE_AGENT_STATEMENT',
+  'exchangeRateEffectiveAt': '2026-08-23T01:00:00Z',
+  'bankBookedAt': '2026-08-23T02:00:00Z',
+  'bankReference': 'BANK-PREPAY-001',
+  'agentStatementNo': 'AGENT-PREPAY-001',
+  'accountCurrencyId': 'currency-cny',
+  'accountExchangeRate': 1,
+  'accountAmount': 624.7432,
+  'accountAmountLocal': 624.7432,
+  'bankFeeAccountAmount': 2,
+  'otherFeeAccountAmount': 1,
+  'feeSettlementMode': 'DEDUCTED_FROM_PROCEEDS',
+  'feeBearer': 'COMPANY',
+  'feeAccountCurrencyId': 'currency-cny',
+  'feeAccountExchangeRate': 1,
+  'settlementGrossLocal': 627.7432,
+  'bankFee': 2,
+  'otherFee': 1,
+  'otherFeeStyleId': 'expense-1',
   'receiptMethodId': 'receipt-method-1',
   'status': 0,
   'items': <Object>[],

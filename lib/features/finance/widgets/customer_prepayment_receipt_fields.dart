@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
@@ -16,6 +17,7 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
     required this.currencyLabel,
     required this.exchangeRateController,
     required this.amountController,
+    this.showSettlementFields = true,
     required this.enabled,
     required this.onOrderSelected,
   });
@@ -26,6 +28,7 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
   final String currencyLabel;
   final TextEditingController exchangeRateController;
   final TextEditingController amountController;
+  final bool showSettlementFields;
   final bool enabled;
   final ValueChanged<SalesDocListItem> onOrderSelected;
 
@@ -58,7 +61,7 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
         UtenFormGrid(
           children: [
             InputDecorator(
-              decoration: const InputDecoration(labelText: '销售订单（必选）'),
+              decoration: const InputDecoration(labelText: '销售订单(必选)'),
               child: Row(
                 children: [
                   Expanded(
@@ -79,34 +82,36 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
               ),
             ),
             InputDecorator(
-              decoration: const InputDecoration(labelText: '客户（订单锁定）'),
+              decoration: const InputDecoration(labelText: '客户(订单锁定)'),
               child: Text(clientLabel),
             ),
             InputDecorator(
-              decoration: const InputDecoration(labelText: '币种（订单锁定）'),
+              decoration: const InputDecoration(labelText: '币种(订单锁定)'),
               child: Text(currencyLabel),
             ),
-            TextField(
-              key: const ValueKey('customer-prepayment-receipt-rate'),
-              controller: exchangeRateController,
-              enabled: enabled && salesOrderId != null,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+            if (showSettlementFields) ...[
+              TextField(
+                key: const ValueKey('customer-prepayment-receipt-rate'),
+                controller: exchangeRateController,
+                enabled: enabled && salesOrderId != null,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: '当前批次实际到账汇率(必填)',
+                  helper: UtenFieldMessage.helper('每一批预收单独填写当批实际汇率；服务端以六位精度校验'),
+                ),
               ),
-              decoration: const InputDecoration(
-                labelText: '到账汇率（必填）',
-                helperText: '按本次实际到账汇率填写；服务端以六位精度校验',
+              TextField(
+                key: const ValueKey('customer-prepayment-receipt-amount'),
+                controller: amountController,
+                enabled: enabled && salesOrderId != null,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(labelText: '本批预收原币金额(必填)'),
               ),
-            ),
-            TextField(
-              key: const ValueKey('customer-prepayment-receipt-amount'),
-              controller: amountController,
-              enabled: enabled && salesOrderId != null,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(labelText: '本次预收原币金额（必填）'),
-            ),
+            ],
           ],
         ),
         if (salesOrderId case final orderId?) ...[

@@ -40,6 +40,12 @@ void main() {
       ),
       isTrue,
     );
+    expect(
+      productionRoutes.whereType<GoRoute>().any(
+        (entry) => entry.path == '/production/material-analyses/:id/summary',
+      ),
+      isTrue,
+    );
   });
 
   testWidgets('where-used-only user sees only the where-used production card', (

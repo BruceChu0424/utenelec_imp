@@ -437,6 +437,7 @@ public class ProductionSubcontractSupplyTransitionService
             UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
         materialAnalysisWakeup.afterSubcontractInspectionPassed(
                 receiptId, inspectionItemId, dispositionEventId);
+        onSubcontractReceiptApproved(receiptId);
     }
 
     @Override

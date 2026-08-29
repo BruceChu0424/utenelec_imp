@@ -164,6 +164,13 @@ class CategoryDrivenCodeServicePostgresTest {
         UUID uuidStyle = UUID.randomUUID();
         UUID legacyStyle = UUID.randomUUID();
         UUID account = UUID.randomUUID();
+        UUID currency = jdbc.queryForObject("""
+                SELECT id
+                FROM currencies
+                WHERE is_base_currency
+                  AND status = '使用'
+                  AND COALESCE(is_deleted, false) = false
+                """, UUID.class);
         jdbc.update("""
                 INSERT INTO payment_styles (
                     id, legacy_id, code, name, category, level, path, status, is_deleted)
@@ -174,11 +181,11 @@ class CategoryDrivenCodeServicePostgresTest {
                 """, uuidStyle, legacyStyle);
         jdbc.update("""
                 INSERT INTO accounts (
-                    id, code, name, account_type, status, style_id,
-                    style_legacy_id, is_deleted)
-                VALUES (?, 'AC-T910001', 'UUID关系测试账户', 'BANK', '使用', ?, NULL,
-                        false)
-                """, account, uuidStyle);
+                    id, code, name, account_type, status, currency_id,
+                    style_id, style_legacy_id, is_deleted)
+                VALUES (?, 'AC-T910001', 'UUID关系测试账户', 'BANK', '使用', ?,
+                        ?, NULL, false)
+                """, account, currency, uuidStyle);
 
         UUID resolved = jdbc.queryForObject(
                 "SELECT account_style_id(?)", UUID.class, account);

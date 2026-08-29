@@ -150,7 +150,7 @@ public class DepartmentService {
                 throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
             }
             if (deptRepo.isDescendant(id, requestedParentId)) {
-                throw new ApiException(ErrorCode.CONFLICT, "不能将部门挂到其子部门下（会成环）");
+                throw new ApiException(ErrorCode.CONFLICT, "不能将部门挂到其子部门下(会成环)");
             }
             d.setParent(requireDept(requestedParentId));
         }

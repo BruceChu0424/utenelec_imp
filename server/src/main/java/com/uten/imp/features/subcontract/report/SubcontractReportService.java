@@ -7,8 +7,10 @@ import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.security.CommercialPriceVisibility;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,6 +59,9 @@ public class SubcontractReportService {
     private final EntityManager em;
     private final SystemSettingsService settings;
 
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
+
     // ======================== 通用执行器（8 张明细/汇总共用） ========================
 
     @Transactional(readOnly = true)
@@ -64,6 +69,8 @@ public class SubcontractReportService {
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                        Map<String, String> activeFacets, int page, int size,
                                        String sort, String order) {
+        boolean priceMasked = subcontractPriceMasked();
+        List<ReportColumn> safeColumns = responseColumns(columns, priceMasked);
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -72,7 +79,8 @@ public class SubcontractReportService {
         if (activeFacets != null) {
             for (Map.Entry<String, String> e : activeFacets.entrySet()) {
                 FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
-                if (spec != null && e.getValue() != null && !e.getValue().isBlank()) {
+                if (spec != null && (!priceMasked || !isCommercialKey(spec.key()))
+                        && e.getValue() != null && !e.getValue().isBlank()) {
                     facetClauses.add(facetClause(spec, e.getValue()));
                 }
             }
@@ -82,7 +90,7 @@ public class SubcontractReportService {
 
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
-        for (ReportColumn c : columns) sortKeys.add(c.key());
+        for (ReportColumn c : safeColumns) sortKeys.add(c.key());
         String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
 
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
@@ -94,9 +102,7 @@ public class SubcontractReportService {
         List<Object[]> rows = dataQ.getResultList();
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            for (int i = 0; i < columns.size(); i++) m.put(columns.get(i).key(), norm(r[i], columns.get(i)));
-            items.add(m);
+            items.add(responseRow(columns, r, priceMasked));
         }
 
         var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
@@ -106,6 +112,7 @@ public class SubcontractReportService {
 
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
         for (FacetSpec spec : specs) {
+            if (priceMasked && isCommercialKey(spec.key())) continue;
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
                     + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
             baseB.params().forEach(fq::setParameter);
@@ -127,8 +134,38 @@ public class SubcontractReportService {
 
         // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
         // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
-        List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
+        List<ReportColumn> visible = safeColumns.stream().filter(c -> !c.key().startsWith("__")).toList();
         return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
+    }
+
+    private boolean subcontractPriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+    }
+
+    static List<ReportColumn> responseColumns(List<ReportColumn> columns, boolean priceMasked) {
+        return priceMasked
+                ? columns.stream().filter(c -> !isCommercialColumn(c)).toList()
+                : columns;
+    }
+
+    static Map<String, Object> responseRow(
+            List<ReportColumn> columns, Object[] row, boolean priceMasked) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int i = 0; i < columns.size(); i++) {
+            ReportColumn column = columns.get(i);
+            if (!priceMasked || !isCommercialColumn(column)) {
+                result.put(column.key(), norm(row[i], column));
+            }
+        }
+        return result;
+    }
+
+    static boolean isCommercialColumn(ReportColumn column) {
+        return "money".equals(column.type()) || isCommercialKey(column.key());
+    }
+
+    static boolean isCommercialKey(String key) {
+        return "settlementStyle".equals(key);
     }
 
     private static int toInt(Object v) {
@@ -551,6 +588,7 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse inOutStatus(UUID supplierId, LocalDate dateFrom, LocalDate dateTo, String kw,
                                            int page, int size) {
+        boolean priceMasked = subcontractPriceMasked();
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -566,6 +604,7 @@ public class SubcontractReportService {
                 ReportColumn.number("receiptQty", "收货数量"),
                 ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
                 ReportColumn.number("closingQty", "期末结存"));
+        List<ReportColumn> safeCols = responseColumns(cols, priceMasked);
 
         // flow：5 类源明细 UNION，带 signed_qty（方向）+ movement_type + 日期 + 单价/金额
         String sql = """
@@ -653,9 +692,7 @@ public class SubcontractReportService {
         List<Object[]> rows = q.getResultList();
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            for (int i = 0; i < cols.size(); i++) m.put(cols.get(i).key(), norm(r[i], cols.get(i)));
-            items.add(m);
+            items.add(responseRow(cols, r, priceMasked));
         }
 
         String countSql = """
@@ -704,7 +741,7 @@ public class SubcontractReportService {
         long total = ((Number) cq.getSingleResult()).longValue();
         int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
 
-        return new ReportTableResponse(cols, items, Map.of(), safePage, safeSize, total, totalPages);
+        return new ReportTableResponse(safeCols, items, Map.of(), safePage, safeSize, total, totalPages);
     }
 
     // ======================== facet 复用 ========================
@@ -794,6 +831,7 @@ public class SubcontractReportService {
 
     @Transactional(readOnly = true)
     public List<SubcontractMonthlyRow> monthly(String docType, LocalDate dateFrom, LocalDate dateTo, int limit) {
+        boolean priceMasked = subcontractPriceMasked();
         int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
                 SELECT doc_type, ym, goods_id, goods_code_snapshot, goods_name_snapshot, supplier_id,
@@ -803,16 +841,22 @@ public class SubcontractReportService {
                   AND (CAST(:from AS date) IS NULL OR ym >= :from)
                   AND (CAST(:to AS date) IS NULL OR ym <= :to)
                 GROUP BY doc_type, ym, goods_id, goods_code_snapshot, goods_name_snapshot, supplier_id
-                ORDER BY amt DESC NULLS LAST
+                ORDER BY %s
                 LIMIT :limit
-                """);
+                """.formatted(priceMasked
+                ? "ym DESC, doc_type, goods_id"
+                : "amt DESC NULLS LAST"));
         q.setParameter("docType", docType);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
         q.setParameter("limit", safeLimit);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
-        return rows.stream().map(r -> new SubcontractMonthlyRow(
+        return rows.stream().map(r -> monthlyRow(r, priceMasked)).toList();
+    }
+
+    static SubcontractMonthlyRow monthlyRow(Object[] r, boolean priceMasked) {
+        return new SubcontractMonthlyRow(
                 (String) r[0],
                 NativeValueConverters.toLocalDate(r[1]),
                 (java.util.UUID) r[2],
@@ -820,9 +864,10 @@ public class SubcontractReportService {
                 (String) r[4],
                 NIL.equals(r[5]) ? null : (java.util.UUID) r[5],
                 (BigDecimal) r[6],
-                (BigDecimal) r[7],
-                ((Number) r[8]).longValue()
-        )).toList();
+                priceMasked ? null : (BigDecimal) r[7],
+                ((Number) r[8]).longValue(),
+                priceMasked
+        );
     }
 
     // ======================== 内部结构 ========================

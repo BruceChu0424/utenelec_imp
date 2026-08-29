@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Applies an accepted supplier credit/claim/prepayment to positive AP with exact snapshots. */
+/** Applies an accepted supplier credit or claim to positive AP with exact snapshots. */
 @Service
 @RequiredArgsConstructor
 public class SupplierOpenItemOffsetService {
@@ -77,18 +77,21 @@ public class SupplierOpenItemOffsetService {
                 .distinct().sorted().toList();
         Map<UUID, OpenItem> locked = lock(ids);
         OpenItem source = require(locked, sourceLedgerId);
+        if ("PREPAYMENT".equals(source.kind())) {
+            throw conflict(
+                    "供应商预付款是资产；专用资产科目、应用、退款和总账链完成前禁止自动核销");
+        }
         if (!Objects.equals(source.supplierId(), supplierId)
                 || !Objects.equals(source.currencyId(), currencyId)
-                || !(source.kind().equals("CREDIT") || source.kind().equals("CLAIM_CREDIT")
-                || source.kind().equals("PREPAYMENT"))
+                || !(source.kind().equals("CREDIT") || source.kind().equals("CLAIM_CREDIT"))
                 || source.balanceOriginal() == null || source.balanceOriginal().signum() >= 0
                 || source.balanceLocal().signum() >= 0) {
-            throw conflict("抵销来源必须是同供应商、同币种且仍有负余额的贷项/索赔/预付款");
+            throw conflict("抵销来源必须是同供应商、同币种且仍有负余额的贷项或索赔");
         }
         BigDecimal requested = targets.stream().map(Target::amountOriginal)
                 .map(SupplierOpenItemOffsetService::money).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (requested.compareTo(source.balanceOriginal().abs()) > 0) {
-            throw conflict("抵销金额超过贷项/索赔/预付款可用余额");
+            throw conflict("抵销金额超过贷项或索赔可用余额");
         }
 
         BigDecimal sourceOriginalRemaining = source.balanceOriginal();
@@ -106,7 +109,7 @@ public class SupplierOpenItemOffsetService {
             }
             if (source.rate() == null || target.rate() == null
                     || source.rate().compareTo(target.rate()) != 0) {
-                throw conflict("不同开账汇率的贷项/预付款抵销会产生汇兑差额；专用汇兑过账未完成前禁止自动抵销");
+                throw conflict("不同开账汇率的贷项或索赔抵销会产生汇兑差额；专用汇兑过账未完成前禁止自动抵销");
             }
             if (amount.compareTo(target.balanceOriginal()) > 0) {
                 throw conflict("抵销金额超过目标应付未付原币余额：" + target.billNo());

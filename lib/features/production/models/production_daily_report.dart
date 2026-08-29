@@ -98,6 +98,7 @@ class ProductionDailyReportItem {
     this.planItemId,
     this.executionSegmentId,
     this.executionSegmentSalesAllocationId,
+    this.fqcRecoveryAuthorizationId,
     this.planNo,
     this.outboundNo,
     this.outboundQty,
@@ -128,6 +129,7 @@ class ProductionDailyReportItem {
   final String? planItemId; // → production_plan_items.id
   final String? executionSegmentId; // → production_execution_segments.id
   final String? executionSegmentSalesAllocationId;
+  final String? fqcRecoveryAuthorizationId;
   final String? planNo;
   final String? outboundNo;
   final double? outboundQty;
@@ -140,7 +142,9 @@ class ProductionDailyReportItem {
   final String? clientName;
   final String? sourceDocNo;
   final String? remark;
-  final bool isFinal; // 报工完结标记：合格不足自动补产
+
+  /// 本批普通完工申报终结；不代表品质合格，后续按 FQC 结果封顶、恢复或补产。
+  final bool isFinal;
 
   factory ProductionDailyReportItem.fromJson(Map<String, dynamic> json) =>
       ProductionDailyReportItem(
@@ -160,6 +164,8 @@ class ProductionDailyReportItem {
         executionSegmentId: json['executionSegmentId'] as String?,
         executionSegmentSalesAllocationId:
             json['executionSegmentSalesAllocationId'] as String?,
+        fqcRecoveryAuthorizationId:
+            json['fqcRecoveryAuthorizationId'] as String?,
         planNo: json['planNo'] as String?,
         outboundNo: json['outboundNo'] as String?,
         outboundQty: _asDouble(json['outboundQty']),
@@ -199,6 +205,7 @@ class ProductionDailyReportDetail {
     this.closed = false,
     this.canceled = false,
     this.sourceDocNo,
+    this.rowVersion = 0,
     this.items = const [],
   });
 
@@ -226,6 +233,7 @@ class ProductionDailyReportDetail {
   final bool closed;
   final bool canceled;
   final String? sourceDocNo;
+  final int rowVersion;
   final List<ProductionDailyReportItem> items;
 
   factory ProductionDailyReportDetail.fromJson(Map<String, dynamic> json) =>
@@ -250,6 +258,7 @@ class ProductionDailyReportDetail {
         closed: (json['closed'] as bool?) ?? false,
         canceled: (json['canceled'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
+        rowVersion: _asInt(json['rowVersion']) ?? 0,
         items:
             (json['items'] as List?)
                 ?.map(

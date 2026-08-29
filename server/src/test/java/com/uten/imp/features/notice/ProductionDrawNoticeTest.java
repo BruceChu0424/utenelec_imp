@@ -257,7 +257,8 @@ class ProductionDrawNoticeTest {
                 eq(ChainNoticeService.TYPE_URGENT),
                 anyString(),
                 eq("/production/daily-reports/" + reportId),
-                eq(ChainNoticeService.EVENT_FINISHED_INBOUND_REJECTED));
+                eq(ChainNoticeService.EVENT_FINISHED_INBOUND_REJECTED),
+                eq("normal"));
         verify(notices, never()).publishForUser(
                 eq(readOnlyId), anyString(), anyString(), anyString(),
                 anyString(), anyString(), anyString());

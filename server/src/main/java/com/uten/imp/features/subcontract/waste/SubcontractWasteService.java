@@ -13,6 +13,7 @@ import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
@@ -28,6 +29,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -89,8 +91,12 @@ public class SubcontractWasteService {
     private final SubcontractLossClaimPort lossClaimPort;
     private final GlPostingService glPostingService;
 
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
+
     @Transactional(readOnly = true)
     public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size, String sort, String order) {
+        boolean priceMasked = subcontractPriceMasked();
         var readScope = access.scope();
         Specification<SubcontractWaste> spec = (Root<SubcontractWaste> root,
                                                 jakarta.persistence.criteria.CriteriaQuery<?> q,
@@ -112,7 +118,8 @@ public class SubcontractWasteService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractWaste> p = wasteRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
@@ -228,7 +235,7 @@ public class SubcontractWasteService {
                         .executeUpdate();
                 if (updated != 1) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外损耗量超过可损耗余量（在供应商处 − 已消费 − 已退 − 已损耗），禁止超损耗");
+                            "委外损耗量超过可损耗余量(在供应商处 − 已消费 − 已退 − 已损耗)，禁止超损耗");
                 }
             }
         }
@@ -290,7 +297,7 @@ public class SubcontractWasteService {
                         .executeUpdate();
                 if (updated != 1) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外损耗红冲量超过已损耗量（可能已被其它单据改动），禁止负数");
+                            "委外损耗红冲量超过已损耗量(可能已被其它单据改动)，禁止负数");
                 }
             }
         }
@@ -467,9 +474,10 @@ public class SubcontractWasteService {
         wasteRepo.save(r);
     }
 
-    private WasteListItem toList(SubcontractWaste r) {
+    private WasteListItem toList(SubcontractWaste r, boolean priceMasked) {
         return new WasteListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getSupplierId(),
-                r.getWarehouseId(), r.getTotalWeight(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getLegacyId());
+                r.getWarehouseId(), r.getTotalWeight(), priceMasked ? null : r.getTotalLocal(),
+                r.getStatus(), r.isClosed(), r.getLegacyId(), priceMasked);
     }
 
     private WasteItemDto toItemDto(SubcontractWasteItem it) {
@@ -482,11 +490,30 @@ public class SubcontractWasteService {
     }
 
     private WasteDetail toDetail(SubcontractWaste r, List<WasteItemDto> items) {
+        boolean priceMasked = subcontractPriceMasked();
+        List<WasteItemDto> safeItems = priceMasked
+                ? items.stream().map(SubcontractWasteService::maskItemPrices).toList()
+                : items;
         return new WasteDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
-                r.getTotalWeight(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), r.getSourceDocNo(), r.getDeductAmount(), r.isDeductPosted(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                r.getTotalWeight(), r.getRemark(), priceMasked ? null : r.getTotalOriginal(),
+                priceMasked ? null : r.getTotalLocal(), r.getStatus(),
+                r.isClosed(), r.getSourceDocNo(), priceMasked ? null : r.getDeductAmount(),
+                r.isDeductPosted(), safeItems,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), priceMasked);
+    }
+
+    private boolean subcontractPriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+    }
+
+    private static WasteItemDto maskItemPrices(WasteItemDto it) {
+        return new WasteItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
+                it.getQty(), it.getEndingQty(), it.getStandardQty(), it.getWasteRate(), it.getCause(),
+                it.getMaterialIssueItemId(), null, null, null, it.getWeight(),
+                it.getSourceDocNo(), it.getRemark());
     }
 
     private SubcontractWaste requireWaste(UUID id) {

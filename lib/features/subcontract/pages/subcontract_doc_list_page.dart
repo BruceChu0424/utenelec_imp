@@ -120,8 +120,9 @@ class _SubcontractDocListPageState
   }
 
   List<MasterColumnDef<SubcontractDocListItem>> _columns(
-    mn.MasterNameService names,
-  ) {
+    mn.MasterNameService names, {
+    required bool canViewCommercialAmounts,
+  }) {
     return <MasterColumnDef<SubcontractDocListItem>>[
       MasterColumnDef(
         key: 'billNo',
@@ -151,16 +152,14 @@ class _SubcontractDocListPageState
           width: 160,
           value: (it) => names.warehouse(it.warehouseId),
         ),
-      if (_cfg.hasAmount)
+      if (_cfg.hasAmount && canViewCommercialAmounts)
         MasterColumnDef(
           key: 'total',
           label: '合计',
           width: 140,
           type: 'money',
           sortable: true,
-          // 价格脱敏（V302）：无进仓单价格权限时服务端置 null + priceMasked，渲染 ***。
-          value: (it) =>
-              it.priceMasked ? '***' : it.totalLocal?.toStringAsFixed(2),
+          value: (it) => it.totalLocal?.toStringAsFixed(2),
         ),
       if (_cfg.hasTotalWeight)
         MasterColumnDef(
@@ -223,6 +222,12 @@ class _SubcontractDocListPageState
               listenable: _list,
               builder: (context, _) {
                 final total = _list.total;
+                final canViewCommercialAmounts =
+                    ref
+                        .watch(currentPermissionsProvider)
+                        .contains(Perm.subcontractReceiptPriceView) &&
+                    !(_list.page?.items.any((item) => item.priceMasked) ??
+                        false);
                 // 「顶部折叠 + 表格吸顶内滚」：禁用横幅与标题行随上滑收起，
                 // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
                 return UtenCollapsingHeaderScrollView(
@@ -343,7 +348,10 @@ class _SubcontractDocListPageState
                     tablePane: MasterDataTableView<SubcontractDocListItem>(
                       // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
                       primary: true,
-                      columns: _columns(names),
+                      columns: _columns(
+                        names,
+                        canViewCommercialAmounts: canViewCommercialAmounts,
+                      ),
                       items: _list.page?.items ?? const [],
                       facets: const {},
                       nullCounts: const {},
@@ -396,7 +404,7 @@ class _SubcontractDocListPageState
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '该单据类型老库无数据（仅建结构），可新建但不参与链路。',
+              '该单据类型老库无数据(仅建结构)，可新建但不参与链路。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

@@ -51,7 +51,7 @@ class UtenFontScaler extends ConsumerWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                '字号档：${current.persistKey}（${(current.factor * 100).round()}%）',
+                '字号档：${current.persistKey}(${(current.factor * 100).round()}%)',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             ],

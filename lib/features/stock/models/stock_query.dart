@@ -9,6 +9,7 @@ class BalanceRow {
     this.colorId,
     this.qty,
     this.amountLocal,
+    this.weight,
     this.lastMovementDate,
   });
 
@@ -18,6 +19,7 @@ class BalanceRow {
   final String? colorId;
   final double? qty;
   final double? amountLocal;
+  final double? weight;
   final String? lastMovementDate;
 
   factory BalanceRow.fromJson(Map<String, dynamic> json) => BalanceRow(
@@ -27,6 +29,7 @@ class BalanceRow {
     colorId: json['colorId'] as String?,
     qty: (json['qty'] as num?)?.toDouble(),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    weight: (json['weight'] as num?)?.toDouble(),
     lastMovementDate: json['lastMovementDate'] as String?,
   );
 }
@@ -168,7 +171,10 @@ class InstantInventoryRow {
   final String? remark; // 备注（老库 B_Goods.Paper，如 外购）
   final double? weight; // 库存重量
   final double? qty; // 库存数量
-  final double? costAmount; // 成本金额
+  /// 当前筛选仓范围内 stock_balances.amount_local 的库存台账金额聚合。
+  ///
+  /// 不是 goods.c_total × qty 的标准成本估算。
+  final double? costAmount;
   final double? moreQty; // 多排数量
   final String? goodsCode; // 物料编码（goods.code）
   final String? series; // 物料系列（goods.series）

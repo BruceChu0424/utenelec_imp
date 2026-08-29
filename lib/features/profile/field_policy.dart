@@ -30,6 +30,9 @@ abstract final class ProfileFieldPolicy {
   static const emergencyContactPrefix = 'emergencyContact.';
 
   // ----- 字段定义（i18n key + 策略 + 分组） -----
+  // 分组对齐「我的」页 v7 查看分区：basic(基本信息) / address(地址) /
+  // emergency(紧急联系人) / contact(联系方式) / organization(组织信息)。
+  // group 仅驱动编辑页分区渲染；后端存储的 fieldGroup 与此独立、不再展示。
 
   static const List<ProfileFieldDef> selfEditableFields = [
     // 直改
@@ -37,19 +40,19 @@ abstract final class ProfileFieldPolicy {
       code: ethnicity,
       labelKey: 'profileFieldEthnicity',
       kind: FieldPolicyKind.directEdit,
-      group: 'identity',
+      group: 'basic',
     ),
     ProfileFieldDef(
       code: politicalStatus,
       labelKey: 'profileFieldPoliticalStatus',
       kind: FieldPolicyKind.directEdit,
-      group: 'identity',
+      group: 'basic',
     ),
     ProfileFieldDef(
       code: maritalStatus,
       labelKey: 'profileFieldMaritalStatus',
       kind: FieldPolicyKind.directEdit,
-      group: 'identity',
+      group: 'basic',
     ),
     ProfileFieldDef(
       code: residenceAddress,
@@ -73,14 +76,14 @@ abstract final class ProfileFieldPolicy {
       code: seatNo,
       labelKey: 'profileFieldSeatNo',
       kind: FieldPolicyKind.directEdit,
-      group: 'address',
+      group: 'organization',
     ),
     // 需审核
     ProfileFieldDef(
       code: fullName,
       labelKey: 'profileChangeFieldFullName',
       kind: FieldPolicyKind.requiresReview,
-      group: 'identity',
+      group: 'basic',
     ),
     ProfileFieldDef(
       code: hujiAddress,
@@ -121,19 +124,19 @@ abstract final class ProfileFieldPolicy {
       code: gender,
       labelKey: 'profileFieldGender',
       kind: FieldPolicyKind.hrOnly,
-      group: 'identity',
+      group: 'basic',
     ),
     ProfileFieldDef(
       code: birthDate,
       labelKey: 'profileFieldBirthDate',
       kind: FieldPolicyKind.hrOnly,
-      group: 'identity',
+      group: 'basic',
     ),
     ProfileFieldDef(
       code: workLocation,
       labelKey: 'profileFieldWorkLocation',
       kind: FieldPolicyKind.hrOnly,
-      group: 'address',
+      group: 'organization',
     ),
   ];
 
@@ -156,6 +159,19 @@ abstract final class ProfileFieldPolicy {
   );
 
   static bool isHrOnly(String code) => hrOnlyFields.any((f) => f.code == code);
+
+  static FieldPolicyKind policyKindOf(String code) =>
+      findByCode(code)?.kind ?? FieldPolicyKind.hrOnly;
+
+  static String policyLabelOf(AppLocalizations l10n, String code) =>
+      policyLabel(l10n, policyKindOf(code));
+
+  static String policyLabel(AppLocalizations l10n, FieldPolicyKind kind) =>
+      switch (kind) {
+        FieldPolicyKind.directEdit => l10n.profileChangeFieldDirect,
+        FieldPolicyKind.requiresReview => l10n.profileChangeFieldReview,
+        FieldPolicyKind.hrOnly => l10n.profileChangeFieldHrOnly,
+      };
 
   /// 当前用户至少有一个可编辑字段（不论直改还是需审核）。
   static bool hasAnyEditable() => selfEditableFields.isNotEmpty;

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -24,6 +25,7 @@ import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../providers/production_draw_count_provider.dart';
+import '../providers/production_finished_inbound_task_count_provider.dart';
 import '../repositories/stock_doc_repository.dart';
 
 class StockDocDetailPage extends ConsumerStatefulWidget {
@@ -132,6 +134,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       context.appSuccess(ok);
       bumpListRefresh(ref, widget.docType.refreshKey);
       ref.invalidate(warehouseProductionDrawPendingCountProvider);
+      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
       await _load();
     } catch (_) {
       if (mounted) context.appError('操作失败');
@@ -157,7 +160,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(reverse ? '反出库（退回数量）' : '出库（本次数量）'),
+        title: Text(reverse ? '反出库(退回数量)' : '出库(本次数量)'),
         content: SizedBox(
           width: 420,
           child: ListView(
@@ -255,6 +258,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       context.appSuccess(reverse ? '已反出库' : '已出库');
       bumpListRefresh(ref, widget.docType.refreshKey);
       ref.invalidate(warehouseProductionDrawPendingCountProvider);
+      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
@@ -265,7 +269,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
   }
 
-  /// 生产报工只提供“申报待入库量”；仓库逐行点收后，实收量才成为库存/iqty 权威。
+  /// FQC PASS 只形成“待点收上限”；仓库逐行点收后，实收量才成为库存/iqty 权威。
   Future<void> _confirmFinishedInboundDialog() async {
     if (_busy || _d == null || _d!.items.isEmpty) return;
     final detail = _d!;
@@ -291,7 +295,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '报工数量只是生产申报。请仓库按实物逐行点收；少收部分会自动保留为新的待点收余量单。',
+                    '当前数量是已审核报工或 FQC PASS 形成的待点收上限，并不等于仓库已收。'
+                    '请按实物逐行确认；少收部分会自动保留为新的待点收余量单。',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: UtenSpacing.s12),
@@ -307,7 +312,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                               padding: const EdgeInsets.only(top: 10),
                               child: Text(
                                 '${names.goods(item.goodsId)}\n'
-                                '报工申报 ${_quantityInputText(item.reportedQty ?? item.qty ?? 0)} '
+                                '待点收上限 ${_quantityInputText(item.reportedQty ?? item.qty ?? 0)} '
                                 '${names.unit(item.unitId)}',
                               ),
                             ),
@@ -323,7 +328,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                   ),
                               decoration: const InputDecoration(
                                 labelText: '仓库实收',
-                                helperText: '不超过申报量；整单全部填 0 表示拒收退回生产',
+                                helper: UtenFieldMessage.helper(
+                                  '不超过待点收上限；整单全部填 0 表示拒收退回生产',
+                                ),
                                 border: OutlineInputBorder(),
                               ),
                             ),
@@ -337,7 +344,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                     maxLines: 4,
                     decoration: const InputDecoration(
                       labelText: '少收差异原因',
-                      helperText: '任一行实收少于申报量时必填，例如：本次只交接 80 件，余量待下批。',
+                      helper: UtenFieldMessage.helper(
+                        '任一行实收少于申报量时必填，例如：本次只交接 80 件，余量待下批。',
+                      ),
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -377,7 +386,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                     return;
                   }
                   if (accepted > proposed + 0.0000001) {
-                    setDialogState(() => dialogError = '实收数量不能超过报工申报量');
+                    setDialogState(() => dialogError = '实收数量不能超过待点收上限');
                     return;
                   }
                   hasVariance = hasVariance || accepted < proposed - 0.0000001;
@@ -439,6 +448,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             : '仓库实收已确认，库存与入库累计已按实收量更新',
       );
       bumpListRefresh(ref, widget.docType.refreshKey);
+      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
@@ -522,7 +532,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     child: Text(
-                      _error == null ? '单据不存在' : '加载失败：$_error（可能是无权限或单据已被删除）',
+                      _error == null ? '单据不存在' : '加载失败：$_error(可能是无权限或单据已被删除)',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
@@ -700,6 +710,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                             width: 64,
                             value: (it) => names.unit(it.unitId),
                           ),
+                          MasterColumnDef(
+                            key: 'weight',
+                            label: '重量',
+                            width: 90,
+                            type: 'number',
+                            value: (it) => it.weight?.toStringAsFixed(2) ?? '—',
+                          ),
                           if (widget.docType == StockDocType.check) ...[
                             MasterColumnDef(
                               key: 'bookQty',
@@ -749,7 +766,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                               StockDocType.finishedIn) ...[
                             MasterColumnDef(
                               key: 'reportedQty',
-                              label: '报工申报',
+                              label: '待点收上限',
                               width: 100,
                               type: 'number',
                               value: (it) => (it.reportedQty ?? it.qty ?? 0)

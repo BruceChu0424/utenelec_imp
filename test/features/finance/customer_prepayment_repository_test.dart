@@ -23,6 +23,7 @@ void main() {
     expect(page.items.single.receivedOriginal, '100.1234');
     expect(page.items.single.availableOriginal, '70.1000');
     expect(page.items.single.hasAvailable, isTrue);
+    expect(page.items.single.currencyName, '美金');
     expect(page.summary.appliedOriginal, '30.0234');
     expect(
       api.gets.last.path,
@@ -142,6 +143,7 @@ const _prepaymentPage = <String, dynamic>{
       'clientName': '甲客户',
       'currencyId': 'currency-usd',
       'currencyCode': 'USD',
+      'currencyName': '美金',
       'exchangeRate': '7.200000',
       'receivedOriginal': '100.1234',
       'receivedLocal': '720.8885',

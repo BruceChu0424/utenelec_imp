@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -59,6 +61,12 @@ public class ChainNoticeService {
             "PRODUCTION_FINISHED_INBOUND_REVERSED";
     static final String EVENT_PRODUCTION_DRAW_PENDING =
             "PRODUCTION_DRAW_PENDING";
+    static final String EVENT_PRODUCTION_FQC_PENDING =
+            "PRODUCTION_FQC_PENDING";
+    static final String EVENT_PRODUCTION_FQC_RELEASED =
+            "PRODUCTION_FQC_RELEASED";
+    static final String EVENT_PRODUCTION_FQC_RESOLVED =
+            "PRODUCTION_FQC_RESOLVED";
     static final String EVENT_PRODUCTION_DRAW_ISSUED =
             "PRODUCTION_DRAW_ISSUED";
     static final String EVENT_PRODUCTION_DRAW_ISSUE_REVERSED =
@@ -103,7 +111,6 @@ public class ChainNoticeService {
     static final String EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED =
             "PROCUREMENT_ARRIVAL_RECEIPT_POSTED";
     static final String EVENT_BOM_UPDATED = "GOODS_BOM_UPDATED";
-    static final String EVENT_RD_TASK_FORWARDED = "RD_TASK_FORWARDED";
     static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
     static final String EVENT_IQC_PENDING = "PROCUREMENT_IQC_PENDING";
     static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
@@ -114,6 +121,10 @@ public class ChainNoticeService {
             "subcontract_application:view";
     private static final ThreadLocal<Boolean> OUTBOX_DELIVERY =
             ThreadLocal.withInitial(() -> false);
+    /** 当前锁定 Outbox 事件；用于给未显式传 sourceEvent 的通知补齐可靠事件来源。 */
+    private static final ThreadLocal<String> OUTBOX_EVENT = new ThreadLocal<>();
+    private static final DateTimeFormatter EVENT_TIME_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
 
     private final NoticeService noticeService;
@@ -149,6 +160,7 @@ public class ChainNoticeService {
     /** Called only by the locked outbox processor inside its delivery transaction. */
     public void deliverOutboxEvent(String eventType, UUID aggregateId, JsonNode payload) {
         OUTBOX_DELIVERY.set(true);
+        OUTBOX_EVENT.set(eventType);
         try {
             switch (eventType) {
                 case EVENT_PLAN_SCHEDULED ->
@@ -172,6 +184,13 @@ public class ChainNoticeService {
                         notifyProductionDrawIssued(aggregateId, null);
                 case EVENT_PRODUCTION_DRAW_ISSUE_REVERSED ->
                         notifyProductionDrawIssueReversed(aggregateId, null);
+                case EVENT_PRODUCTION_FQC_PENDING,
+                     EVENT_PRODUCTION_FQC_RELEASED,
+                     EVENT_PRODUCTION_FQC_RESOLVED -> {
+                    // FQC and warehouse queues are authoritative database
+                    // projections. These durable events intentionally require
+                    // no notice row to make the task discoverable.
+                }
                 case EVENT_REMAKE_CREATED ->
                         notifyRemakeCreated(aggregateId);
                 case EVENT_SEGMENT_READY ->
@@ -229,7 +248,6 @@ public class ChainNoticeService {
                      EVENT_PROCUREMENT_RETURN_COMPLETED,
                      EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED ->
                         notifyProcurementArrivalEvent(eventType, aggregateId);
-                case EVENT_RD_TASK_FORWARDED -> notifyRdTaskForwarded(aggregateId);
                 case EVENT_RD_TASK_RESOLVED -> notifyRdTaskResolved(aggregateId);
                 case EVENT_IQC_PENDING ->
                         notifyIqcPendingForQuality(
@@ -242,6 +260,7 @@ public class ChainNoticeService {
                         "Unsupported business outbox event: " + eventType);
             }
         } finally {
+            OUTBOX_EVENT.remove();
             OUTBOX_DELIVERY.remove();
         }
     }
@@ -278,21 +297,21 @@ public class ChainNoticeService {
                 notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
                         "排产通知：" + o.billNo(),
                         "订单 " + o.billNo() + " 货品 " + goodsByOrder.get(e.getKey())
-                                + " 已排产 " + qty(e.getValue()) + "（计划单 " + planNo + "）。",
+                                + " 已排产 " + qty(e.getValue()) + "(计划单 " + planNo + ")。",
                         o.route());
                 if (shortage) {
-                    notifyUser(o.ownerUserId(), TYPE_URGENT,
+                    sendToUser(o.ownerUserId(), TYPE_URGENT,
                             "生产缺料：" + o.billNo(),
                             "订单 " + o.billNo() + " 的计划单 " + planNo
                                     + " 已核验存在及时物料缺口，采购/调度已收到处理任务；"
                                     + "销售端排产进度会随到料、开工和完工继续更新。",
-                            o.route());
+                            o.route(), null, "normal");
                 }
             }
             if (shortage) {
                 notifyRoles(List.of("buyer", "planner"), TYPE_TASK,
                         "缺料提醒：" + planNo,
-                        "计划单 " + planNo + " 审核后 BOM 净需求不足（订单行状态=待物料），请采购/调度跟进备料。",
+                        "计划单 " + planNo + " 审核后 BOM 净需求不足(订单行状态=待物料)，请采购/调度跟进备料。",
                         "/production/plans/" + planId);
             }
         });
@@ -355,12 +374,12 @@ public class ChainNoticeService {
                 boolean reportedComplete =
                         planned.signum() > 0 && produced.compareTo(planned) >= 0;
                 notifyUser(order.ownerUserId(), TYPE_WORKFLOW,
-                        (reportedComplete ? "生产报工完成（待入库）：" : "生产进度更新：")
+                        (reportedComplete ? "生产报工完成(待入库)：" : "生产进度更新：")
                                 + order.billNo(),
                         "订单 " + order.billNo() + " 货品 " + str(r.get("goods"))
                                 + " 的报工单 " + reportNo + " 已审核，累计合格 "
                                 + qty(produced) + "/已排产 " + qty(planned)
-                                + "（订单数量 " + qty(bd(r.get("order_qty"))) + "）。"
+                                + "(订单数量 " + qty(bd(r.get("order_qty"))) + ")。"
                                 + (reportedComplete ? "成品入库审核后会再次通知可发货状态。" : ""),
                         order.route(), EVENT_PRODUCTION_REPORTED);
             }
@@ -409,8 +428,8 @@ public class ChainNoticeService {
                         : "本批新增可发数量 " + qty(allocation.batchQty())
                                 + "，可按订单策略安排分批发货。";
                 String content = "订单 " + orderNo + " 货品 "
-                        + allocation.goods() + " 已完成成品入库（入库单 "
-                        + allocation.documentNo() + "）。" + availability
+                        + allocation.goods() + " 已完成成品入库(入库单 "
+                        + allocation.documentNo() + ")。" + availability
                         + " 累计成品入库 " + qty(allocation.producedQty())
                         + "/订货 " + qty(allocation.orderQty()) + "。";
                 notifyUser(
@@ -555,7 +574,7 @@ public class ChainNoticeService {
             String sourceNo = str(document.get("source_doc_no"));
             String warehouse = str(document.get("warehouse_name"));
             String content = "成品入库单 " + billNo
-                    + (sourceNo.isBlank() ? "" : "（来源报工 " + sourceNo + "）")
+                    + (sourceNo.isBlank() ? "" : "(来源报工 " + sourceNo + ")")
                     + " 已生成并等待仓库审核"
                     + (warehouse.isBlank() ? "。" : "，目标仓库 " + warehouse + "。")
                     + "请核对实物、数量和库位后处理；通知不代替库存审核。";
@@ -617,18 +636,15 @@ public class ChainNoticeService {
             String reportNo = str(document.get("source_doc_no"));
             UUID reportId = (UUID) document.get("source_daily_report_id");
             String content = "仓库点收成品入库单 " + billNo + " 时确认整单实收为 0"
-                    + (reportNo.isBlank() ? "" : "（来源报工 " + reportNo + "）")
+                    + (reportNo.isBlank() ? "" : "(来源报工 " + reportNo + ")")
                     + (planNo.isBlank() ? "" : "，生产计划 " + planNo)
                     + "。拒收原因：" + (reason == null || reason.isBlank()
                             ? "未填写"
                             : reason)
                     + "。本次未增加库存或入库累计，请生产主管核对实物并更正/红冲报工。";
-            Set<UUID> recipients = new LinkedHashSet<>();
             UUID reportMakerUserId = (UUID) document.get(
                     "report_maker_user_id");
-            if (reportMakerUserId != null) {
-                recipients.add(reportMakerUserId);
-            }
+            Set<UUID> recipients = new LinkedHashSet<>();
             recipients.addAll(departmentUserIdsWithAuthority(
                     "DEPT_PROD", "production_daily_report:approve"));
             recipients.addAll(departmentUserIdsWithAuthority(
@@ -640,6 +656,16 @@ public class ChainNoticeService {
             String route = reportId == null
                     ? "/production/daily-reports"
                     : "/production/daily-reports/" + reportId;
+            if (reportMakerUserId != null) {
+                sendToUser(
+                        reportMakerUserId,
+                        TYPE_URGENT,
+                        "成品入库被仓库拒收：" + billNo,
+                        content,
+                        route,
+                        EVENT_FINISHED_INBOUND_REJECTED);
+                recipients.remove(reportMakerUserId);
+            }
             for (UUID recipient : recipients) {
                 sendToUser(
                         recipient,
@@ -647,7 +673,8 @@ public class ChainNoticeService {
                         "成品入库被仓库拒收：" + billNo,
                         content,
                         route,
-                        EVENT_FINISHED_INBOUND_REJECTED);
+                        EVENT_FINISHED_INBOUND_REJECTED,
+                        "normal");
             }
         });
     }
@@ -698,12 +725,9 @@ public class ChainNoticeService {
             String replacementNo = str(document.get("replacement_bill_no"));
             String reportNo = str(document.get("source_doc_no"));
             UUID reportId = (UUID) document.get("source_daily_report_id");
-            Set<UUID> recipients = new LinkedHashSet<>();
             UUID reportMakerUserId = (UUID) document.get(
                     "report_maker_user_id");
-            if (reportMakerUserId != null) {
-                recipients.add(reportMakerUserId);
-            }
+            Set<UUID> recipients = new LinkedHashSet<>();
             recipients.addAll(departmentUserIdsWithAuthority(
                     "DEPT_PROD", "production_daily_report:approve"));
             recipients.addAll(departmentUserIdsWithAuthority(
@@ -716,10 +740,20 @@ public class ChainNoticeService {
                     ? "/production/daily-reports"
                     : "/production/daily-reports/" + reportId;
             String content = "仓库已红冲成品入库单 " + sourceNo
-                    + (reportNo.isBlank() ? "" : "（来源报工 " + reportNo + "）")
+                    + (reportNo.isBlank() ? "" : "(来源报工 " + reportNo + ")")
                     + "，原实收数量已从库存和入库累计回退，并重建待点收单 "
                     + replacementNo
                     + "。请核对生产实物与报工；通知不代替仓库重新点收。";
+            if (reportMakerUserId != null) {
+                sendToUser(
+                        reportMakerUserId,
+                        TYPE_URGENT,
+                        "成品点收已红冲：" + sourceNo,
+                        content,
+                        route,
+                        EVENT_FINISHED_INBOUND_REVERSED);
+                recipients.remove(reportMakerUserId);
+            }
             for (UUID recipient : recipients) {
                 sendToUser(
                         recipient,
@@ -727,7 +761,8 @@ public class ChainNoticeService {
                         "成品点收已红冲：" + sourceNo,
                         content,
                         route,
-                        EVENT_FINISHED_INBOUND_REVERSED);
+                        EVENT_FINISHED_INBOUND_REVERSED,
+                        "normal");
             }
         });
     }
@@ -770,7 +805,7 @@ public class ChainNoticeService {
             String warehouse = str(document.get("warehouse_name"));
             String department = str(document.get("department_name"));
             String content = "计划部已下达生产领料单 " + billNo
-                    + (planNo.isBlank() ? "" : "（生产计划 " + planNo + "）")
+                    + (planNo.isBlank() ? "" : "(生产计划 " + planNo + ")")
                     + "，共 " + str(document.get("line_count")) + " 行物料"
                     + (warehouse.isBlank() ? "" : "，发料仓库「" + warehouse + "」")
                     + (department.isBlank() ? "" : "，领料车间「" + department + "」")
@@ -840,7 +875,7 @@ public class ChainNoticeService {
                                 + "已完成领料单 " + billNo + " 的全部实物出库"
                                 + (planNo.isBlank()
                                         ? "。"
-                                        : "（生产计划 " + planNo + "）。")
+                                        : "(生产计划 " + planNo + ")。")
                                 + "对应执行子计划现可办理正式开工。",
                         "/production/schedule",
                         EVENT_PRODUCTION_DRAW_ISSUED);
@@ -897,10 +932,11 @@ public class ChainNoticeService {
                                 + "已反向领料单 " + billNo + " 的部分实物出库"
                                 + (planNo.isBlank()
                                         ? "。"
-                                        : "（生产计划 " + planNo + "）。")
+                                        : "(生产计划 " + planNo + ")。")
                                 + "执行子计划恢复为待发料，重新全量发料前不得开工。",
                         "/production/schedule",
-                        EVENT_PRODUCTION_DRAW_ISSUE_REVERSED);
+                        EVENT_PRODUCTION_DRAW_ISSUE_REVERSED,
+                        "normal");
             }
         });
     }
@@ -958,9 +994,9 @@ public class ChainNoticeService {
             String warehouse = str(receipt.get("warehouse_name"));
             String documentLabel = purchase ? "采购收货单 " : "委外进仓单 ";
             String content = documentLabel + billNo
-                    + (supplier.isBlank() ? "" : "（" + supplier + "）")
+                    + (supplier.isBlank() ? "" : "(" + supplier + ")")
                     + " 已由仓库审核并进入待检，共 " + pendingLines + " 行、待检 "
-                    + qty(pendingQty) + "（基本单位）"
+                    + qty(pendingQty) + "(基本单位)"
                     + (warehouse.isBlank() ? "。" : "，目标仓库「" + warehouse + "」。")
                     + "请到品质任务中心核验；角标和待检数量以任务中心实时数据为准。";
             for (UUID qualityUser : qualityInspectionViewerUserIds()) {
@@ -1022,7 +1058,7 @@ public class ChainNoticeService {
             String supplier = str(receipt.get("supplier_name"));
             String warehouse = str(receipt.get("warehouse_name"));
             String content = (purchase ? "采购收货单 " : "委外进仓单 ") + billNo
-                    + (supplier.isBlank() ? "" : "（" + supplier + "）")
+                    + (supplier.isBlank() ? "" : "(" + supplier + ")")
                     + " 品质部检验已结案：合格 " + qty(passed) + " 已放行入库"
                     + (warehouse.isBlank() ? "" : " 至「" + warehouse + "」")
                     + (failed.signum() > 0
@@ -1270,7 +1306,7 @@ public class ChainNoticeService {
                             + qty(readyQty)
                             + (sourceDocumentNo.isBlank()
                                     ? "。"
-                                    : "（来源单据 " + sourceDocumentNo + "）。")
+                                    : "(来源单据 " + sourceDocumentNo + ")。")
                             + "请打开物料分析复核后，再生成下一批正式生产计划。",
                     "/production/material-analysis",
                     EVENT_MATERIAL_ANALYSIS_READY);
@@ -1332,8 +1368,8 @@ public class ChainNoticeService {
                 notifyUser(o.ownerUserId(), TYPE_TASK,
                         "数量不足·已补产：" + o.billNo(),
                         "订单 " + o.billNo() + " 报工完结缺额 " + qty(bd(r.get("qty")))
-                                + "，已自动生成补产计划 " + str(r.get("plan_no")) + "（报工单 " + reportBillNo
-                                + "），待调度审核排产。",
+                                + "，已自动生成补产计划 " + str(r.get("plan_no")) + "(报工单 " + reportBillNo
+                                + ")，待调度审核排产。",
                         o.route());
             }
         });
@@ -1382,9 +1418,9 @@ public class ChainNoticeService {
                         "订单 " + order.billNo() + " 的货品 "
                                 + str(segment.get("goods")) + " " + node
                                 + " " + qty(bd(owner.get("allocated_qty")))
-                                + "（计划 " + str(segment.get("plan_no"))
+                                + "(计划 " + str(segment.get("plan_no"))
                                 + "，子任务 " + str(segment.get("segment_code"))
-                                + "，计划 " + begin + " 至 " + end + "）。",
+                                + "，计划 " + begin + " 至 " + end + ")。",
                         order.route());
             }
         });
@@ -1483,8 +1519,8 @@ public class ChainNoticeService {
                 if (o == null) continue;
                 notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
                         "发货通知：" + o.billNo(),
-                        "订单 " + o.billNo() + " 已发货 " + qty(e.getValue()) + "（出货单 " + str(h.get("bill_no"))
-                                + (wh.isEmpty() ? "" : "，仓库 " + wh) + "）。",
+                        "订单 " + o.billNo() + " 已发货 " + qty(e.getValue()) + "(出货单 " + str(h.get("bill_no"))
+                                + (wh.isEmpty() ? "" : "，仓库 " + wh) + ")。",
                         "/sales/shipments/" + shipmentId);
             }
         });
@@ -1510,8 +1546,8 @@ public class ChainNoticeService {
                 if (o == null) continue;
                 notifyUser(o.ownerUserId(), TYPE_URGENT,
                         "出货驳回：" + o.billNo(),
-                        "出货单 " + billNo + " 被仓库驳回（" + (reason == null || reason.isBlank() ? "备货异常" : reason)
-                                + "），订单 " + o.billNo() + " 缺口 " + qty(bd(r.get("qty")))
+                        "出货单 " + billNo + " 被仓库驳回(" + (reason == null || reason.isBlank() ? "备货异常" : reason)
+                                + ")，订单 " + o.billNo() + " 缺口 " + qty(bd(r.get("qty")))
                                 + " 已释放预留并回到调度待排产。",
                         "/sales/shipments/" + shipmentId);
             }
@@ -1563,8 +1599,8 @@ public class ChainNoticeService {
             String goods = agg == null || agg.get("goods") == null ? "" : str(agg.get("goods"));
             notifyRoles(List.of("planner"), TYPE_TASK,
                     "新订单待物料分析：" + o.billNo(),
-                    "订单 " + o.billNo() + " 已审核并通过财务确认，共 " + lines + " 行货品（" + goods
-                            + "）待分析，最早交货日 " + deliver
+                    "订单 " + o.billNo() + " 已审核并通过财务确认，共 " + lines + " 行货品(" + goods
+                            + ")待分析，最早交货日 " + deliver
                             + "。请先核对库存并按采购、委外、自制拆分需求，再下达生产计划。",
                     "/production/material-analysis");
         });
@@ -1606,14 +1642,37 @@ public class ChainNoticeService {
             return;
         }
         deliverAtomically(() -> {
-            OrderRef o = orderRef(orderId);
-            if (o == null || o.ownerUserId() == null) return;
+            Map<String, Object> rejection = one("""
+                    SELECT sales_order.bill_no,
+                           sales_order.owner_employee_id,
+                           sales_order.seller_id,
+                           sales_order.finance_rejected_at,
+                           COALESCE(reviewer.full_name, '财务人员') AS reviewer_name
+                    FROM sales_orders sales_order
+                    LEFT JOIN employees reviewer
+                      ON reviewer.id = sales_order.finance_rejected_by
+                    WHERE sales_order.id = ?
+                    """, orderId);
+            if (rejection == null) return;
+            UUID ownerUserId = userIdOfEmployee(
+                    (UUID) rejection.get("owner_employee_id"));
+            if (ownerUserId == null) {
+                ownerUserId = userIdOfEmployee((UUID) rejection.get("seller_id"));
+            }
+            if (ownerUserId == null) return;
+            String billNo = str(rejection.get("bill_no"));
+            String reviewerName = str(rejection.get("reviewer_name"));
+            String rejectedAt = businessEventTime(
+                    rejection.get("finance_rejected_at"));
             String why = reason == null || reason.isBlank() ? "未填写原因" : reason.trim();
-            sendToUser(o.ownerUserId(), TYPE_URGENT,
-                    "订单被财务驳回：" + o.billNo(),
-                    "销售订货单 " + o.billNo() + " 未通过财务确认。驳回原因：" + why
-                            + "。请核对修正后联系财务重新确认。",
-                    o.route());
+            sendToUser(ownerUserId, TYPE_URGENT,
+                    "订单被财务驳回：" + billNo,
+                    "销售订货单 " + billNo + " 未通过财务确认，由财务 "
+                            + (reviewerName.isBlank() ? "人员" : reviewerName)
+                            + (rejectedAt.isBlank() ? "" : " 于 " + rejectedAt)
+                            + " 驳回。驳回原因：" + why
+                            + "。请修改订单并重新完成销售审核，系统会再次提交财务确认。",
+                    "/sales/orders/" + orderId);
         });
     }
 
@@ -1637,7 +1696,18 @@ public class ChainNoticeService {
             // owner 跳订单详情跟进；planner 先到物料分析工作台查看待料缺口。
             String route = uid.equals(o.ownerUserId())
                     ? o.route() : "/production/material-analysis";
-            sendToUser(uid, TYPE_URGENT, title, content, route);
+            if (uid.equals(o.ownerUserId())) {
+                sendToUser(
+                        uid,
+                        TYPE_URGENT,
+                        title,
+                        content,
+                        route,
+                        null,
+                        daysLeft < 0 ? "important" : "normal");
+            } else {
+                sendToUser(uid, TYPE_URGENT, title, content, route, null, "normal");
+            }
         }
     }
 
@@ -1667,7 +1737,18 @@ public class ChainNoticeService {
                 if (Boolean.TRUE.equals(sent)) continue;
                 String route = uid.equals(o.ownerUserId())
                         ? o.route() : "/production/material-analysis";
-                sendToUser(uid, TYPE_URGENT, title, content, route);
+                if (uid.equals(o.ownerUserId())) {
+                    sendToUser(
+                            uid,
+                            TYPE_URGENT,
+                            title,
+                            content,
+                            route,
+                            null,
+                            daysLeft < 0 ? "important" : "normal");
+                } else {
+                    sendToUser(uid, TYPE_URGENT, title, content, route, null, "normal");
+                }
             }
         } catch (Exception error) {
             throw new IllegalStateException("Failed to deliver due-date warning for " + orderId, error);
@@ -1718,7 +1799,14 @@ public class ChainNoticeService {
                 + (overdueDays <= 0 ? "" : " " + overdueDays + " 天")
                 + "，仍未发货。请尽快安排出货；若客户暂不需要，请改量或取消以释放库存，"
                 + "或由主管做稀缺让单重排。长期不处理将影响可承诺量。";
-        sendToUser(o.ownerUserId(), TYPE_URGENT, title, content, o.route());
+        sendToUser(
+                o.ownerUserId(),
+                TYPE_URGENT,
+                title,
+                content,
+                o.route(),
+                null,
+                "important");
     }
 
     /**
@@ -1744,13 +1832,13 @@ public class ChainNoticeService {
         OrderRef o = orderRef((UUID) row.get("order_id"));
         if (o == null) return;
         String why = reason == null || reason.isBlank() ? "急单优先" : reason.trim();
-        notifyUser(o.ownerUserId(), TYPE_URGENT,
+        sendToUser(o.ownerUserId(), TYPE_URGENT,
                 "库存被让单重排：" + o.billNo(),
                 "订单 " + o.billNo() + " 货品 " + str(row.get("goods")) + " 的现货预留 "
                         + (qtyText == null || qtyText.isBlank() ? "" : qtyText + " ")
                         + "已被主管让单给" + (yielderOrderNo == null || yielderOrderNo.isBlank() ? "急单" : "订单 " + yielderOrderNo)
-                        + "（原因：" + why + "）。缺口已自动回到调度待排产，将转生产补足，进度会在排产后更新。",
-                o.route());
+                        + "(原因：" + why + ")。缺口已自动回到调度待排产，将转生产补足，进度会在排产后更新。",
+                o.route(), null, "important");
     }
 
     private void notifyProcurementFinanceEvent(
@@ -1760,12 +1848,17 @@ public class ChainNoticeService {
                     SELECT approval_case.bill_no_snapshot,
                            approval_case.amount_snapshot,
                            approval_case.order_type,
+                           approval_case.order_id,
                            approval_case.assignee_user_id,
                            approval_case.submitted_by_user_id,
                            approval_case.rejection_reason,
+                           approval_case.decided_at,
+                           COALESCE(decider.full_name, '财务人员') AS reviewer_name,
                            expectation.expected_date,
                            warehouse.name AS warehouse_name
                     FROM procurement_order_approval_cases approval_case
+                    LEFT JOIN employees decider
+                      ON decider.id = approval_case.decided_by_employee_id
                     LEFT JOIN inbound_expectations expectation
                       ON expectation.approval_case_id = approval_case.id
                     LEFT JOIN warehouses warehouse
@@ -1792,14 +1885,24 @@ public class ChainNoticeService {
                 return;
             }
             if (EVENT_PROCUREMENT_FINANCE_REJECTED.equals(eventType)) {
+                UUID orderId = (UUID) approval.get("order_id");
+                String actionRoute = "SUBCONTRACT".equals(
+                        str(approval.get("order_type")))
+                        ? "/subcontract/orders/" + orderId
+                        : "/purchase/orders/" + orderId;
+                String reviewerName = str(approval.get("reviewer_name"));
+                String decidedAt = businessEventTime(approval.get("decided_at"));
                 notifyUser(
                         (UUID) approval.get("submitted_by_user_id"),
                         TYPE_URGENT,
                         "财务驳回：" + billNo,
-                        orderLabel + " " + billNo + " 未通过财务审核。原因："
+                        orderLabel + " " + billNo + " 未通过财务审核，由财务 "
+                                + (reviewerName.isBlank() ? "人员" : reviewerName)
+                                + (decidedAt.isBlank() ? "" : " 于 " + decidedAt)
+                                + " 驳回。原因："
                                 + str(approval.get("rejection_reason"))
                                 + "。请修改后重新提交。",
-                        "/finance/procurement-approvals");
+                        actionRoute);
                 return;
             }
             notifyUser(
@@ -1866,9 +1969,16 @@ public class ChainNoticeService {
                         + " 超过当前财务批准剩余可收量 "
                         + str(arrival.get("approved_remaining_qty"))
                         + "。本次未入库、未立应付；请财务持权人员到仓库到货异常任务中心审核。";
-                for (UUID reviewer : financeReviewerUserIds()) {
-                    sendToUser(reviewer, TYPE_URGENT, title, content,
+                UUID assignee = (UUID) arrival.get("finance_assignee_user_id");
+                Set<UUID> reviewers = new LinkedHashSet<>(financeReviewerUserIds());
+                if (assignee != null) {
+                    sendToUser(assignee, TYPE_URGENT, title, content,
                             "/finance/procurement-arrival-exceptions");
+                    reviewers.remove(assignee);
+                }
+                for (UUID reviewer : reviewers) {
+                    sendToUser(reviewer, TYPE_URGENT, title, content,
+                            "/finance/procurement-arrival-exceptions", null, "normal");
                 }
                 return;
             }
@@ -1943,7 +2053,7 @@ public class ChainNoticeService {
                                          String title, String content, String route) {
         for (UUID uid : departmentUserIds("SUB_PURCHASE")) {
             if (excludeUser != null && excludeUser.equals(uid)) continue;
-            sendToUser(uid, type, title, content, route);
+            sendToUser(uid, type, title, content, route, null, "normal");
         }
     }
 
@@ -2011,7 +2121,8 @@ public class ChainNoticeService {
             }
         }
         for (UUID uid : targets) {
-            sendToUser(uid, type, title, content, actionRoute);
+            // 角色/部门池是公共任务广播，即使事件本身重要，也不得阻塞每个成员。
+            sendToUser(uid, type, title, content, actionRoute, null, "normal");
         }
     }
 
@@ -2148,9 +2259,38 @@ public class ChainNoticeService {
 
     private void sendToUser(UUID userId, String type, String title, String content,
                             String actionRoute, String sourceEvent) {
+        sendToUser(userId, type, title, content, actionRoute, sourceEvent, null);
+    }
+
+    private void sendToUser(UUID userId, String type, String title, String content,
+                            String actionRoute, String sourceEvent,
+                            String explicitPriority) {
         UserAccount u = userRepo.findById(userId).orElse(null);
         if (u == null || !"active".equals(u.getStatus()) || u.isDeleted()) return;
-        noticeService.publishForUser(userId, title, content, type, PUBLISHER, actionRoute, sourceEvent);
+        String effectiveSourceEvent = sourceEvent;
+        if (effectiveSourceEvent == null || effectiveSourceEvent.isBlank()) {
+            effectiveSourceEvent = OUTBOX_EVENT.get();
+        }
+        if (explicitPriority == null) {
+            noticeService.publishForUser(
+                    userId,
+                    title,
+                    content,
+                    type,
+                    PUBLISHER,
+                    actionRoute,
+                    effectiveSourceEvent);
+        } else {
+            noticeService.publishForUser(
+                    userId,
+                    title,
+                    content,
+                    type,
+                    PUBLISHER,
+                    actionRoute,
+                    effectiveSourceEvent,
+                    explicitPriority);
+        }
     }
 
     // ---------- 研发任务 / BOM 维护 通知 ----------
@@ -2177,25 +2317,6 @@ public class ChainNoticeService {
                             "工程研发部已维护该货品的组装物料，可继续排产。",
                             "/production/schedule");
                 }
-            }
-        });
-    }
-
-    /** 生产转发 BOM 缺失（RdTaskService.forwardBomGap 发）：通知工程研发部（DEPT_ENG 子树）。 */
-    public void notifyRdTaskForwarded(UUID taskId) {
-        deliverAtomically(() -> {
-            Map<String, Object> t = one("""
-                    SELECT r.title, g.code AS goods_code, g.name AS goods_name
-                    FROM rd_tasks r LEFT JOIN goods g ON g.id = r.goods_id
-                    WHERE r.id = ? AND r.is_deleted = false
-                    """, taskId);
-            if (t == null) return;
-            String goodsLabel = str(t.get("goods_code")) + " " + str(t.get("goods_name"));
-            String title = "新 BOM 维护任务：" + goodsLabel;
-            String content = "生产排产转发了该货品的 BOM 缺失请求：" + str(t.get("title"))
-                    + "，请尽快维护组装物料。";
-            for (UUID uid : departmentUserIds("DEPT_ENG")) {
-                sendToUser(uid, TYPE_TASK, title, content, "/rd/tasks");
             }
         });
     }
@@ -2244,6 +2365,20 @@ public class ChainNoticeService {
 
     private static String str(Object v) {
         return v == null ? "" : v.toString();
+    }
+
+    /** 将持久化的业务发生时间统一展示为 Asia/Shanghai，而不是通知异步投递时间。 */
+    private static String businessEventTime(Object value) {
+        if (value instanceof OffsetDateTime time) {
+            return EVENT_TIME_FORMAT.format(time.atZoneSameInstant(BusinessTime.ZONE));
+        }
+        if (value instanceof Instant time) {
+            return EVENT_TIME_FORMAT.format(time.atZone(BusinessTime.ZONE));
+        }
+        if (value instanceof java.sql.Timestamp time) {
+            return EVENT_TIME_FORMAT.format(time.toInstant().atZone(BusinessTime.ZONE));
+        }
+        return str(value);
     }
 
     /**

@@ -41,9 +41,15 @@ void main() {
       expect(overview.todos.single.count, 26);
       expect(overview.todos.single.title, '你有 26 个产品待生产');
       expect(
-        overview.metrics.any((metric) => metric.id == 'cash-balance'),
+        overview.metrics.any(
+          (metric) => const {
+            'cash-balance',
+            'ar-balance',
+            'ap-balance',
+          }.contains(metric.id),
+        ),
         isFalse,
-        reason: '没有权限时服务端不会返回余额指标',
+        reason: '工作台首页不再承载账户余额或应收应付金额指标',
       );
     },
   );

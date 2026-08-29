@@ -39,7 +39,9 @@ class DataScopeOwnerCandidateSqlContractTest {
         org.mockito.Mockito.verify(em, org.mockito.Mockito.times(8))
                 .createNativeQuery(sql.capture());
         assertThat(sql.getAllValues()).allSatisfy(statement ->
-                assertThat(statement).contains("is_deleted=FALSE"));
+                assertThat(statement)
+                        .contains("is_deleted=FALSE")
+                        .contains("e.code"));
 
         String clients = sql.getAllValues().get(1);
         assertThat(clients)

@@ -2,6 +2,7 @@ package com.uten.imp.features.production.dailyreport;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,6 +35,7 @@ public class ReportablePlanLineQueryService {
                 JOIN production_daily_reports report
                   ON report.id = item.report_id
                 WHERE item.execution_segment_id IS NOT NULL
+                  AND item.fqc_recovery_authorization_id IS NULL
                   AND item.is_deleted = FALSE
                   AND report.is_deleted = FALSE
                   AND report.status IN (0, 1)
@@ -48,6 +50,7 @@ public class ReportablePlanLineQueryService {
                 JOIN production_daily_reports report
                   ON report.id = item.report_id
                 WHERE item.execution_segment_sales_allocation_id IS NOT NULL
+                  AND item.fqc_recovery_authorization_id IS NULL
                   AND item.is_deleted = FALSE
                   AND report.is_deleted = FALSE
                   AND report.status IN (0, 1)
@@ -90,6 +93,13 @@ public class ReportablePlanLineQueryService {
                          ELSE COALESCE(l.produced_qty, 0)
                     END AS linked_produced_qty,
                     CASE
+                        WHEN recovery.authorization_id IS NOT NULL
+                            THEN CASE
+                                WHEN recovery.disposition_code = 'REWORK'
+                                     OR recovery.material_ready
+                                    THEN recovery.available_qty
+                                ELSE 0
+                            END
                         WHEN l.id IS NULL
                             THEN GREATEST(
                                 COALESCE(segment.planned_qty, i.qty, 0)
@@ -121,12 +131,20 @@ public class ReportablePlanLineQueryService {
                     COALESCE(segment_workshop.name, p.workshop_name) AS workshop_name,
                     COALESCE(segment.plan_begin_date, i.plan_begin_date) AS plan_begin_date,
                     COALESCE(segment.plan_end_date, i.plan_end_date) AS plan_end_date,
-                    COALESCE(i.outbound_date, p.delivery_date, oi.deliver_date, so.deliver_date) AS delivery_date
+                    COALESCE(i.outbound_date, p.delivery_date, oi.deliver_date, so.deliver_date) AS delivery_date,
+                    recovery.authorization_id AS fqc_recovery_authorization_id,
+                    recovery.disposition_code AS fqc_recovery_disposition_code,
+                    COALESCE(recovery.available_qty, 0) AS fqc_recovery_available_qty,
+                    recovery.source_inspection_id AS fqc_source_inspection_id,
+                    recovery.source_report_item_id AS fqc_source_report_item_id,
+                    recovery.source_report_no AS fqc_source_report_no,
+                    COALESCE(recovery.requires_material, FALSE)
+                        AS fqc_recovery_requires_material
                 FROM production_plan_items i
                 LEFT JOIN production_execution_segments segment
                   ON segment.source_plan_item_id = i.id
                  AND segment.is_deleted = FALSE
-                 AND segment.status IN ('DISPATCHED', 'IN_PROGRESS')
+                 AND segment.status = 'IN_PROGRESS'
                 LEFT JOIN segment_progress segment_done
                   ON segment_done.execution_segment_id = segment.id
                 LEFT JOIN departments segment_workshop
@@ -141,6 +159,43 @@ public class ReportablePlanLineQueryService {
                 LEFT JOIN allocation_progress allocation_done
                   ON allocation_done.execution_segment_sales_allocation_id =
                      sales_allocation.id
+                LEFT JOIN LATERAL (
+                    SELECT recovery_auth.id AS authorization_id,
+                           recovery_auth.disposition_code,
+                           balance.available_qty,
+                           recovery_auth.source_inspection_id,
+                           recovery_auth.source_report_item_id,
+                           source_report.bill_no AS source_report_no,
+                           fn_fqc_replenishment_material_ready(
+                               recovery_auth.id) AS material_ready,
+                           recovery_auth.disposition_code IN ('SCRAP','REJECT')
+                               AND NOT fn_fqc_replenishment_material_ready(
+                                   recovery_auth.id) AS requires_material
+                    FROM production_fqc_recovery_authorizations recovery_auth
+                    JOIN v_production_fqc_recovery_balance balance
+                      ON balance.authorization_id = recovery_auth.id
+                     AND balance.available_qty > 0
+                     AND balance.cancelled = FALSE
+                    JOIN production_fqc_inspections source_inspection
+                      ON source_inspection.id = recovery_auth.source_inspection_id
+                    JOIN production_daily_reports source_report
+                      ON source_report.id = source_inspection.source_report_id
+                    WHERE recovery_auth.execution_segment_id = segment.id
+                      AND recovery_auth.execution_segment_sales_allocation_id
+                          IS NOT DISTINCT FROM sales_allocation.id
+                      AND COALESCE(segment_done.active_qty, 0)
+                          >= COALESCE(segment.planned_qty, 0)
+                    ORDER BY CASE
+                                 WHEN recovery_auth.disposition_code = 'REWORK'
+                                     THEN 0
+                                 WHEN fn_fqc_replenishment_material_ready(
+                                          recovery_auth.id)
+                                     THEN 1
+                                 ELSE 2
+                             END,
+                             recovery_auth.created_at, recovery_auth.id
+                    LIMIT 1
+                ) recovery ON TRUE
                 LEFT JOIN plan_order_item_links l
                   ON (
                        (
@@ -158,15 +213,17 @@ public class ReportablePlanLineQueryService {
                 LEFT JOIN sales_orders so ON so.id = oi.order_id
                 LEFT JOIN clients cl ON cl.id = so.client_id
                 WHERE p.status = 1
+                  AND /*OWNER_SCOPE*/
                   AND COALESCE(p.is_deleted, false) = false
                   AND COALESCE(p.is_stopped, false) = false
                   AND COALESCE(p.is_canceled, false) = false
                   AND COALESCE(i.is_deleted, false) = false
-                  AND COALESCE(segment.planned_qty, i.qty, 0) >
-                      CASE WHEN segment.id IS NULL
-                           THEN COALESCE(i.fqty, 0)
-                           ELSE COALESCE(segment_done.active_qty, 0)
-                      END
+                  AND segment.id IS NOT NULL
+                  AND (
+                      COALESCE(segment.planned_qty, i.qty, 0) >
+                          COALESCE(segment_done.active_qty, 0)
+                      OR recovery.authorization_id IS NOT NULL
+                  )
                   AND (
                       segment.id IS NOT NULL
                       OR NOT EXISTS (
@@ -213,9 +270,13 @@ public class ReportablePlanLineQueryService {
             """;
 
     private final JdbcTemplate jdbc;
+    private final ProductionDocumentAccessPolicy access;
 
-    public ReportablePlanLineQueryService(JdbcTemplate jdbc) {
+    public ReportablePlanLineQueryService(
+            JdbcTemplate jdbc,
+            ProductionDocumentAccessPolicy access) {
         this.jdbc = jdbc;
+        this.access = access;
     }
 
     @Transactional(readOnly = true)
@@ -239,11 +300,33 @@ public class ReportablePlanLineQueryService {
         int page = pageable.getPageNumber() + 1;
         int size = pageable.getPageSize();
 
+        var readScope = access.scope();
+        List<UUID> visibleOwners = readScope.visibleOwners().stream()
+                .sorted()
+                .toList();
+        List<Object> ownerArgs = new ArrayList<>();
+        String ownerPredicate;
+        if (readScope.seeAll()) {
+            ownerPredicate = "1=1";
+        } else if (visibleOwners.isEmpty()) {
+            ownerPredicate = "p.maker_id IS NULL";
+        } else {
+            ownerPredicate = "(p.maker_id IS NULL OR p.maker_id IN ("
+                    + String.join(
+                            ",", java.util.Collections.nCopies(
+                                    visibleOwners.size(), "?"))
+                    + "))";
+            ownerArgs.addAll(visibleOwners);
+        }
+        String scopedSql = BASE_SQL.replace(
+                "/*OWNER_SCOPE*/", ownerPredicate);
+
         String normalized = keyword == null || keyword.isBlank()
                 ? null
                 : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
-        List<Object> args = new ArrayList<>();
-        StringBuilder filter = new StringBuilder(" WHERE max_report_qty > 0");
+        List<Object> args = new ArrayList<>(ownerArgs);
+        StringBuilder filter = new StringBuilder(
+                " WHERE (max_report_qty > 0 OR fqc_recovery_requires_material)");
         if (normalized != null) {
             filter.append("""
                      AND (
@@ -269,7 +352,7 @@ public class ReportablePlanLineQueryService {
         }
 
         Long totalValue = jdbc.queryForObject(
-                BASE_SQL + " SELECT COUNT(*) FROM reportable" + filter,
+                scopedSql + " SELECT COUNT(*) FROM reportable" + filter,
                 Long.class,
                 args.toArray());
         long total = totalValue == null ? 0 : totalValue;
@@ -278,7 +361,7 @@ public class ReportablePlanLineQueryService {
         dataArgs.add(size);
         dataArgs.add(pageable.getOffset());
         List<ReportablePlanLine> items = jdbc.query(
-                BASE_SQL + """
+                scopedSql + """
                          SELECT *
                          FROM reportable
                         """ + filter + """
@@ -327,7 +410,14 @@ public class ReportablePlanLineQueryService {
                         rs.getString("workshop_name"),
                         rs.getObject("plan_begin_date", LocalDate.class),
                         rs.getObject("plan_end_date", LocalDate.class),
-                        rs.getObject("delivery_date", LocalDate.class)),
+                        rs.getObject("delivery_date", LocalDate.class),
+                        rs.getObject("fqc_recovery_authorization_id", UUID.class),
+                        rs.getString("fqc_recovery_disposition_code"),
+                        rs.getBigDecimal("fqc_recovery_available_qty"),
+                        rs.getObject("fqc_source_inspection_id", UUID.class),
+                        rs.getObject("fqc_source_report_item_id", UUID.class),
+                        rs.getString("fqc_source_report_no"),
+                        rs.getBoolean("fqc_recovery_requires_material")),
                 dataArgs.toArray());
 
         int totalPages = total == 0 ? 0 : (int) ((total + size - 1) / size);

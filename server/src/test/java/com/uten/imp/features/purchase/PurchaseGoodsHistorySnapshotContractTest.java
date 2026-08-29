@@ -178,7 +178,10 @@ class PurchaseGoodsHistorySnapshotContractTest {
                 assertThat(matcher.group(1)).containsIgnoringCase("goods_snapshot_source");
             }
         }
-        assertThat(inserts).isEqualTo(15);
+        // V420/V422 BUY split coverage adds one request/order/receipt fixture
+        // for the independent public-safety line; all three carry frozen goods
+        // snapshots and are intentionally included in the exact inventory.
+        assertThat(inserts).isEqualTo(18);
     }
 
     private static String source(String relative) throws IOException {

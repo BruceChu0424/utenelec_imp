@@ -26,6 +26,7 @@ import com.uten.imp.features.purchase.order.dto.OrderItemLine;
 import com.uten.imp.features.purchase.order.dto.OrderListItem;
 import com.uten.imp.features.purchase.order.dto.OrderQueryFilter;
 import com.uten.imp.features.purchase.order.dto.OrderSaveRequest;
+import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -33,6 +34,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -84,8 +86,13 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private final ProcurementArrivalControlPort arrivalControl;
     private final PurchaseDocumentAccessPolicy access;
 
+    /** Spring injects this in production; direct-construction tests fail closed. */
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
+
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
+        boolean priceMasked = purchasePriceMasked();
         var readScope = access.scope();
         Specification<PurchaseOrder> spec = (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
@@ -103,7 +110,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
         Page<PurchaseOrder> p = orderRepo.findAll(spec, pageable);
         Map<UUID, FinanceApproval> approvals = approvalProjection.latestForOrders(
                 orderType(),
@@ -111,7 +119,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         PurchaseOrder::getId,
                         row -> row.getStatus())));
         List<OrderListItem> items = p.getContent().stream()
-                .map(row -> toList(row, approvals.get(row.getId())))
+                .map(row -> toList(row, approvals.get(row.getId()), priceMasked))
                 .toList();
         return new PageResponse<>(
                 items, page, size, p.getTotalElements(), p.getTotalPages());
@@ -184,7 +192,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             if (supplier == null) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "每一行都必须指定供应商（明细级或表头）");
+                        "每一行都必须指定供应商(明细级或表头)");
             }
             groups.computeIfAbsent(supplier, k -> new ArrayList<>()).add(item);
         }
@@ -712,17 +720,18 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     private OrderListItem toList(
-            PurchaseOrder order, FinanceApproval approval) {
+            PurchaseOrder order, FinanceApproval approval, boolean priceMasked) {
         return new OrderListItem(
                 order.getId(),
                 order.getBillNo(),
                 order.getBillDate(),
                 order.getSupplierId(),
-                order.getTotalLocal(),
+                priceMasked ? null : order.getTotalLocal(),
                 order.getStatus(),
                 order.isClosed(),
                 order.getLegacyId(),
-                approval);
+                approval,
+                priceMasked);
     }
 
     /** 原生查询 DATE 列（驱动返回 java.sql.Date）安全转 LocalDate。 */
@@ -772,6 +781,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             PurchaseOrder order,
             List<OrderItemDto> items,
             FinanceApproval approval) {
+        boolean priceMasked = purchasePriceMasked();
         boolean productionLinked =
                 productionSourceGuard.isPurchaseOrderLinked(order.getId());
         boolean pending = approval != null
@@ -779,22 +789,41 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         boolean canEdit = order.getStatus() == STATUS_DRAFT
                 && !pending;
         OrderSourceRef sourceRequest = singleRequestSource(items);
+        List<OrderItemDto> safeItems = priceMasked
+                ? items.stream().map(PurchaseOrderService::maskItemPrices).toList()
+                : items;
         return new OrderDetail(
                 order.getId(), order.getLegacyId(), order.getBillNo(), order.getBillDate(),
-                order.getSupplierId(), order.getWarehouseId(), order.getCurrencyId(),
-                order.getExchangeRate(), order.getTaxRate(), order.getPurchaserId(),
-                order.getSettlementMethodId(),
-                order.getSettlementStyleLegacy() == null ? null : order.getSettlementStyleLegacy().intValue(),
+                order.getSupplierId(), order.getWarehouseId(), priceMasked ? null : order.getCurrencyId(),
+                priceMasked ? null : order.getExchangeRate(), priceMasked ? null : order.getTaxRate(),
+                order.getPurchaserId(), priceMasked ? null : order.getSettlementMethodId(),
+                priceMasked || order.getSettlementStyleLegacy() == null
+                        ? null : order.getSettlementStyleLegacy().intValue(),
                 order.getMakerId(), order.getApproverId(), order.getDeliverDate(),
-                order.getRemark(), order.getTotalOriginal(), order.getTotalLocal(),
-                order.getStatus(), order.isClosed(), order.getSourceDocNo(), items,
+                order.getRemark(), priceMasked ? null : order.getTotalOriginal(),
+                priceMasked ? null : order.getTotalLocal(),
+                order.getStatus(), order.isClosed(), order.getSourceDocNo(), safeItems,
                 nameResolver.nameOf(order.getMakerId()), order.getCreatedAt(),
                 productionLinked, canEdit, canEdit,
                 order.getStatus() == STATUS_APPROVED,
                 restrictionReason(pending),
                 approval,
                 sourceRequest == null ? null : sourceRequest.id(),
-                sourceRequest == null ? null : sourceRequest.billNo());
+                sourceRequest == null ? null : sourceRequest.billNo(),
+                priceMasked);
+    }
+
+    private boolean purchasePriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewPurchase();
+    }
+
+    private static OrderItemDto maskItemPrices(OrderItemDto it) {
+        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
+                it.getQty(), null, null, null, it.getReceivedQty(), it.getReturnedQty(),
+                it.getGiftQty(), it.getRequestItemId(), it.getDeliverDate(), it.getWeight(),
+                it.getSourceDocNo(), it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark());
     }
 
     /** 全部明细同属一张采购申请时返回该申请 (id, billNo)；否则 null（跨申请部分分解）。 */

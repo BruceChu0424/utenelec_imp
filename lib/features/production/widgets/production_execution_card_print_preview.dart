@@ -797,7 +797,7 @@ String formatProductionWorkCardMaterialUsage(
 ) {
   final value = formatProductionPlanningUsage(material.perProductQty);
   return material.requirementMode == 'EXACT_SNAPSHOT'
-      ? '按包/批（本段平均） $value'
+      ? '按包/批(本段平均) $value'
       : '单支用量 $value';
 }
 

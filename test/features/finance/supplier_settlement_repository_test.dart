@@ -19,6 +19,7 @@ void main() {
         size: 40,
       );
       expect(page.items.single.snapshotHash, 'sha256-value');
+      expect(page.items.single.currencyName, '人民币');
       expect(api.requests.removeAt(0).query, {
         'supplierId': 'supplier-1',
         'periodStart': '2026-07-01',
@@ -82,6 +83,7 @@ const _summary = <String, dynamic>{
   'supplierName': '示例供应商',
   'currencyId': 'currency-cny',
   'currencyCode': 'CNY',
+  'currencyName': '人民币',
   'periodStart': '2026-07-01',
   'periodEnd': '2026-07-31',
   'dueDate': '2026-08-30',

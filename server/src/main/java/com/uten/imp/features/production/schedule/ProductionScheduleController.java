@@ -3,9 +3,6 @@ package com.uten.imp.features.production.schedule;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchRequest;
-import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchResult;
-import com.uten.imp.features.production.schedule.dto.ForwardBomGapRequest;
 import com.uten.imp.features.production.schedule.dto.MergePlanRequest;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import jakarta.validation.Valid;
@@ -41,7 +38,7 @@ public class ProductionScheduleController {
     private final ProductionScheduleService service;
 
     /** 待排产订单行（服务端分页；keyword 模糊单号/客户/货品；dateFrom/dateTo 交货日期范围；
-     *  sort/order 表头排序；status 表头值筛选 bom_missing/urgent/normal）。 */
+     *  sort/order 表头排序；status 表头值筛选 urgent/normal）。 */
     @GetMapping("/pending")
     @PreAuthorize("hasAuthority('production_plan:view')")
     public com.uten.imp.common.web.PageResponse<PendingPlanRow> pending(
@@ -56,7 +53,7 @@ public class ProductionScheduleController {
         return service.pending(page, size, keyword, dateFrom, dateTo, sort, order, status);
     }
 
-    /** 待排产状态 facets（表头值筛选下拉用）：{status:[{value,count,label}]}（BOM缺失/紧急/正常）。 */
+    /** 待排产状态 facets（表头值筛选下拉用）：{status:[{value,count,label}]}（紧急/正常）。 */
     @GetMapping("/pending/facets")
     @PreAuthorize("hasAuthority('production_plan:view')")
     public Map<String, List<Map<String, Object>>> pendingFacets(
@@ -95,20 +92,6 @@ public class ProductionScheduleController {
         throw new com.uten.imp.common.web.ApiException(
                 com.uten.imp.common.web.ErrorCode.CONFLICT,
                 "合并排产已迁移到物料分析联合预览，请使用 /api/production/material-analyses");
-    }
-
-    /** 待排产 BOM 缺失转发工程研发部（建研发任务 + 通知）。返回 {"taskId": "..."}。 */
-    @PostMapping("/forward-rd")
-    @PreAuthorize("hasAuthority('production_plan:forward_rd')")
-    public Map<String, UUID> forwardRd(@Valid @RequestBody ForwardBomGapRequest req) {
-        return Map.of("taskId", service.forwardToRd(req));
-    }
-
-    /** 一键批量转发 BOM 缺失（成品 + 自制组件）给工程研发部。返回 {created, reused, items:[{goodsId, taskId, isNew}]}。 */
-    @PostMapping("/forward-rd-batch")
-    @PreAuthorize("hasAuthority('production_plan:forward_rd')")
-    public ForwardBomGapBatchResult forwardRdBatch(@Valid @RequestBody ForwardBomGapBatchRequest req) {
-        return service.forwardBomGapsBatch(req);
     }
 
     /** D2 建议完工日期：body {items:[{goodsId,qty}], startDate?} → suggestedDate + 逐货品依据。 */

@@ -573,7 +573,7 @@ class _FinanceAssetPostingPanelState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '$title（${messages.length}）',
+              '$title(${messages.length})',
               style: TextStyle(color: color, fontWeight: FontWeight.w700),
             ),
             for (final message in messages)

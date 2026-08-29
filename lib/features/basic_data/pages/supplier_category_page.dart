@@ -28,6 +28,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
+import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/department_employee_picker.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
@@ -452,6 +454,17 @@ class _DetailPaneState extends State<_DetailPane> {
         hint: '选择在职员工',
         initialId: ctx.initialValue,
         initialName: iv['ownerEmployeeName'],
+        initialLoader: (employeeId) async {
+          final employee = await widget.ref
+              .read(employeeRepositoryProvider)
+              .getById(employeeId);
+          return UtenEmployeePickerItem(
+            id: employee.id,
+            name: employee.fullName ?? '',
+            employeeCode: employee.code,
+            departmentName: employee.departmentName,
+          );
+        },
         onChanged: ctx.onChanged,
         onPick: () => showUtenDepartmentEmployeePicker(
           context,
@@ -977,7 +990,7 @@ class _DetailPaneState extends State<_DetailPane> {
             title: d.name,
             icon: Icons.local_shipping_outlined,
             subtitle:
-                '编号前缀 ${d.effectivePrefix ?? 'GY'}${d.codePrefix == null ? '（继承）' : ''}'
+                '编号前缀 ${d.effectivePrefix ?? 'GY'}${d.codePrefix == null ? '(继承)' : ''}'
                 '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
             // 详情卡精简（与货品/客户/模具/收付方式分类卡统一）：不再展示统计行
             // 与路径行——左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
@@ -1032,7 +1045,7 @@ class _DetailPaneState extends State<_DetailPane> {
                       key: ValueKey(
                         'supplier-search-${widget.nodeId}-$_kwSeed',
                       ),
-                      hint: '搜索供应商（简称/全称/联系人/法人/地区/手机）', // TODO(l10n): 补 arb
+                      hint: '搜索供应商(简称/全称/联系人/法人/地区/手机)', // TODO(l10n): 补 arb
                       initialValue: _keyword,
                       onChanged: _onKeywordChanged,
                     ),

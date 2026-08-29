@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 
@@ -110,7 +111,7 @@ class _SetTemporaryPasswordDialogState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                '员工忘记密码时，为「${widget.displayName}（${widget.loginAccount}）」'
+                '员工忘记密码时，为「${widget.displayName}(${widget.loginAccount})」'
                 '设置一次性临时密码。员工用临时密码登录后，系统会强制其设置新密码。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -121,7 +122,7 @@ class _SetTemporaryPasswordDialogState
               _modeTile(
                 icon: Icons.auto_awesome_rounded,
                 title: '系统生成安全密码',
-                subtitle: '20 位随机密码，含大小写字母、数字与符号（推荐）',
+                subtitle: '20 位随机密码，含大小写字母、数字与符号(推荐)',
                 selected: !_customMode,
                 onTap: () => setState(() => _customMode = false),
               ),
@@ -146,7 +147,7 @@ class _SetTemporaryPasswordDialogState
                     isDense: true,
                     counterText: '',
                     border: const OutlineInputBorder(),
-                    errorText: _customError,
+                    error: utenFieldError(_customError),
                     suffixIcon: IconButton(
                       tooltip: _obscure ? '显示密码' : '隐藏密码',
                       icon: Icon(

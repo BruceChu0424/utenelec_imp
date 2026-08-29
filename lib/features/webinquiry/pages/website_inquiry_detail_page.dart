@@ -282,7 +282,7 @@ class _ActionPanel extends ConsumerWidget {
               UtenActionButton(
                 key: const ValueKey('webinquiry-follow'),
                 icon: Icons.play_arrow_rounded,
-                label: const Text('开始跟进（记为我的）'),
+                label: const Text('开始跟进(记为我的)'),
                 loadingLabel: const Text('处理中…'),
                 onAction: () => _run(
                   context,
@@ -330,7 +330,7 @@ class _ActionPanel extends ConsumerWidget {
         ),
         const SizedBox(height: UtenSpacing.s8),
         Text(
-          '转客户会按询盘信息创建最小客户主档（归属当前账号），此后可在客户资料中补全。',
+          '转客户会按询盘信息创建最小客户主档(归属当前账号)，此后可在客户资料中补全。',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

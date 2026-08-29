@@ -14,8 +14,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -26,12 +28,11 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/progress_ratio.dart';
-import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../models/production_material_analysis.dart';
 import '../providers/production_board_sort_provider.dart';
-import '../providers/production_pending_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/progress_ring.dart';
+import '../widgets/production_fqc_replenishment_banner.dart';
 
 class ProductionBoardPage extends ConsumerStatefulWidget {
   const ProductionBoardPage({super.key, this.initialTab = 0});
@@ -141,10 +142,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   Timer? _debounce;
   bool _hasLoaded = false;
 
-  /// 表头值筛选（当前仅 status：BOM缺失/紧急/正常）。
+  /// 表头值筛选（当前仅 status：紧急/正常）。
   Map<String, String?> _filters = {};
 
-  /// 表头值筛选 facets（status 三桶 + 计数）。
+  /// 表头值筛选 facets（status 两桶 + 计数）。
   SchedulePendingFacets? _facets;
 
   /// 表头排序：列 key（deliverDate/qty/needQty/orderBillNo），null=后端默认（交货升序）。
@@ -212,45 +213,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     }
     return (!needsCreate || _canCreateAnalysis) &&
         (!needsRefresh || _canRefreshAnalysis);
-  }
-
-  bool get _canForward =>
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.productionPlanForwardRd) ||
-      ref.read(isSuperAdminProvider);
-
-  bool _batchForwarding = false;
-
-  /// 一键批量转发当前页所有 BOM 缺失且我未登记的行（成品，按货品去重，研发每件只收一条）。
-  Future<void> _forwardAllBomGaps(List<SchedulePendingRow> rows) async {
-    if (_batchForwarding) return;
-    setState(() => _batchForwarding = true);
-    try {
-      final items = <({String goodsId, String? orderItemId})>[
-        for (final r in rows)
-          if (r.goodsId != null)
-            (goodsId: r.goodsId!, orderItemId: r.orderItemId),
-      ];
-      final result = await ref
-          .read(productionPlanRepositoryProvider)
-          .forwardToRdBatch(items);
-      final created = (result['created'] as num?)?.toInt() ?? 0;
-      final reused = (result['reused'] as num?)?.toInt() ?? 0;
-      if (!mounted) return;
-      context.appSuccess(
-        '已登记 ${items.length} 行等待研发维护'
-        '${created > 0 ? '（新建 $created）' : ''}'
-        '${reused > 0 ? '（复用 $reused）' : ''}',
-      );
-      ref.read(productionPendingCountProvider.notifier).refresh();
-      ref.read(rdTaskCountProvider.notifier).refresh();
-      await _load();
-    } catch (_) {
-      if (mounted) context.appWarning('批量转发失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _batchForwarding = false);
-    }
   }
 
   String _fmtDate(DateTime d) =>
@@ -430,7 +392,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     }
     setState(() => _endDate = DateTime.tryParse(s));
     context.appInfo(
-      '建议完工 $s（${res['planDays']} 天，含 BOM 缓冲 ${res['bomBufferDays']} 天）',
+      '建议完工 $s(${res['planDays']} 天，含 BOM 缓冲 ${res['bomBufferDays']} 天)',
     );
   }
 
@@ -585,93 +547,113 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return UtenContentContainer.wide(
-      child: Column(
-        children: [
-          // 工具行：搜索 + 交货日期范围 + 建议计划 + 刷新
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SizedBox(
-                  width: 240,
-                  child: TextField(
-                    controller: _searchCtrl,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                      hintText: '搜索订单号 / 客户 / 货品',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
+    final compact = context.breakpoint.isCompact;
+    return Scaffold(
+      body: UtenContentContainer.wide(
+        child: Column(
+          children: [
+            // 工具行：搜索 + 交货日期范围 + 建议计划 + 刷新
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+              child: Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 240,
+                    child: TextField(
+                      controller: _searchCtrl,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                        hintText: '搜索订单号 / 客户 / 货品',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
+                      onChanged: (v) {
+                        // 服务端筛选：400ms 防抖，避免逐字打请求
+                        _debounce?.cancel();
+                        _debounce = Timer(
+                          const Duration(milliseconds: 400),
+                          () {
+                            _keyword = v;
+                            _reload();
+                          },
+                        );
+                      },
                     ),
-                    onChanged: (v) {
-                      // 服务端筛选：400ms 防抖，避免逐字打请求
-                      _debounce?.cancel();
-                      _debounce = Timer(const Duration(milliseconds: 400), () {
-                        _keyword = v;
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _pickDeliverDate(true),
+                    icon: const Icon(Icons.date_range_rounded, size: 16),
+                    label: Text(
+                      _deliverFrom == null ? '交货从' : _fmtDate(_deliverFrom!),
+                    ),
+                    style: _deliverFrom != null
+                        ? OutlinedButton.styleFrom(
+                            foregroundColor: theme.colorScheme.primary,
+                          )
+                        : null,
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _pickDeliverDate(false),
+                    icon: const Icon(Icons.event_rounded, size: 16),
+                    label: Text(
+                      _deliverTo == null ? '交货至' : _fmtDate(_deliverTo!),
+                    ),
+                    style: _deliverTo != null
+                        ? OutlinedButton.styleFrom(
+                            foregroundColor: theme.colorScheme.primary,
+                          )
+                        : null,
+                  ),
+                  if (_deliverFrom != null || _deliverTo != null)
+                    IconButton(
+                      icon: const Icon(Icons.clear_rounded, size: 18),
+                      tooltip: '清除时间筛选',
+                      onPressed: () {
+                        _deliverFrom = null;
+                        _deliverTo = null;
                         _reload();
-                      });
-                    },
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _pickDeliverDate(true),
-                  icon: const Icon(Icons.date_range_rounded, size: 16),
-                  label: Text(
-                    _deliverFrom == null ? '交货从' : _fmtDate(_deliverFrom!),
-                  ),
-                  style: _deliverFrom != null
-                      ? OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.primary,
-                        )
-                      : null,
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _pickDeliverDate(false),
-                  icon: const Icon(Icons.event_rounded, size: 16),
-                  label: Text(
-                    _deliverTo == null ? '交货至' : _fmtDate(_deliverTo!),
-                  ),
-                  style: _deliverTo != null
-                      ? OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.primary,
-                        )
-                      : null,
-                ),
-                if (_deliverFrom != null || _deliverTo != null)
+                      },
+                    ),
+                  if (_canCreateAnalysis)
+                    TextButton.icon(
+                      icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                      label: Text('建议联合分析(本页 ${_rows.length} 行)'),
+                      onPressed: _rows.isEmpty || _submitting
+                          ? null
+                          : _suggestAllAndSubmit,
+                    ),
                   IconButton(
-                    icon: const Icon(Icons.clear_rounded, size: 18),
-                    tooltip: '清除时间筛选',
-                    onPressed: () {
-                      _deliverFrom = null;
-                      _deliverTo = null;
-                      _reload();
-                    },
+                    icon: const Icon(Icons.refresh_rounded),
+                    tooltip: '刷新',
+                    onPressed: _load,
                   ),
-                if (_canCreateAnalysis)
-                  TextButton.icon(
-                    icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                    label: Text('建议联合分析（本页 ${_rows.length} 行）'),
-                    onPressed: _rows.isEmpty || _submitting
-                        ? null
-                        : _suggestAllAndSubmit,
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded),
-                  tooltip: '刷新',
-                  onPressed: _load,
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Expanded(child: _list(theme)),
-          if (_canShowAnalysisFooter) _footer(theme),
-        ],
+            if (widget.active) const ProductionFqcReplenishmentBanner(),
+            if (_selected.isNotEmpty) ...[
+              _selectionBar(theme),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: compact && _canUseAnalysis ? 96 : 0,
+                ),
+                child: _list(theme),
+              ),
+            ),
+          ],
+        ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _canUseAnalysis ? _floatingAnalysisAction() : null,
     );
   }
 
@@ -679,42 +661,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   Widget _list(ThemeData theme) {
     final rows = _rows;
-    final forwardable = _canForward
-        ? rows
-              .where((r) => !r.bomReady && !r.myForward && r.goodsId != null)
-              .toList()
-        : const <SchedulePendingRow>[];
     // 空态/错误/加载三态交给 MasterDataTableView 渲染。
     return Column(
       children: [
-        if (forwardable.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.forward_to_inbox_outlined,
-                  size: 16,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    '当前页 ${forwardable.length} 行 BOM 缺失，一键转发工程研发部维护',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  size: UtenButtonSize.small,
-                  onPressed: _batchForwarding
-                      ? null
-                      : () => _forwardAllBomGaps(forwardable),
-                  child: Text(_batchForwarding ? '转发中…' : '一键转发研发'),
-                ),
-              ],
-            ),
-          ),
         Expanded(
           child: context.breakpoint.isCompact
               ? _pendingMobileList(theme, rows)
@@ -731,11 +680,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   filters: _filters,
                   onFilterChanged: _onFilterChanged,
                   rowColor: (r) {
-                    if (!r.bomReady) {
-                      return theme.colorScheme.errorContainer.withValues(
-                        alpha: 0.45,
-                      );
-                    }
                     if (r.materialAnalysisId != null &&
                         (r.readyNowQty ?? 0) <= 0) {
                       return theme.colorScheme.errorContainer.withValues(
@@ -813,7 +757,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         final ready = row.readyNowQty ?? 0;
         final awaitingApproval =
             (row.submittedPlanQty ?? 0) > (row.approvedPlannedQty ?? 0);
-        final statusColor = !row.bomReady || (analyzed && ready <= 0)
+        final statusColor = (analyzed && ready <= 0)
             ? theme.colorScheme.error
             : awaitingApproval
             ? theme.colorScheme.tertiary
@@ -823,7 +767,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         return Card(
           margin: EdgeInsets.zero,
           elevation: 0,
-          color: !row.bomReady || (analyzed && ready <= 0)
+          color: (analyzed && ready <= 0)
               ? theme.colorScheme.errorContainer.withValues(alpha: 0.32)
               : null,
           shape: RoundedRectangleBorder(
@@ -841,17 +785,19 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: Checkbox(
-                          value: selected,
-                          onChanged: !canSelect
-                              ? null
-                              : (value) => _toggle(row, value ?? false),
+                      if (_canUseAnalysis) ...[
+                        SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Checkbox(
+                            value: selected,
+                            onChanged: !canSelect
+                                ? null
+                                : (value) => _toggle(row, value ?? false),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
+                        const SizedBox(width: UtenSpacing.s8),
+                      ],
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -985,7 +931,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       type: 'number',
       value: (r) => r.readyNowQty == null && r.materialAnalysisId == null
           ? '未分析'
-          : '${_qtyText(r.readyNowQty)}（${_ratioText(r.readinessRatio)}）',
+          : '${_qtyText(r.readyNowQty)}(${_ratioText(r.readinessRatio)})',
     ),
     MasterColumnDef(
       key: 'readyByDateQty',
@@ -1008,7 +954,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       label: '状态',
       width: 110,
       value: (r) {
-        if (!r.bomReady) return 'BOM资料异常';
         if ((r.submittedPlanQty ?? 0) > (r.approvedPlannedQty ?? 0)) {
           return '已提交·待审批';
         }
@@ -1023,12 +968,15 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   ];
 
   Widget _selectedQtyField(SchedulePendingRow row) => TextFormField(
+    errorBuilder: utenTextFieldErrorBuilder,
     key: ValueKey('pending-qty-${row.orderItemId}'),
     initialValue: _selected[row.orderItemId]?.toString(),
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
     decoration: InputDecoration(
       labelText: '本次联合分析数量',
-      helperText: '待排上限 ${_qtyText(row.needQty)}；最终可生产量由服务端预览确认',
+      helper: UtenFieldMessage.helper(
+        '待排上限 ${_qtyText(row.needQty)}；最终可生产量由服务端预览确认',
+      ),
     ),
     onChanged: (value) {
       final parsed = double.tryParse(value.trim());
@@ -1063,31 +1011,15 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   // 旧的待排产卡片行（_pendingRow/_num，含勾选框+手填排产量）已由 MasterDataTableView 取代（见 _list）。
 
-  Widget _footer(ThemeData theme) {
+  Widget _selectionBar(ThemeData theme) {
     final compact = context.breakpoint.isCompact;
-    // 唯一主入口：此处只进入/恢复物料分析，正式写单仍在分析页经过
-    // 路线确认、齐套预览和计划单向导，文案不能提前承诺“已生成计划”。
-    final generateButton = UtenButton(
-      key: const Key('pending-enter-analysis-to-generate'),
-      size: UtenButtonSize.large,
-      icon: _selected.isEmpty
-          ? Icons.insights_rounded
-          : Icons.playlist_add_check_rounded,
-      isLoading: _submitting,
-      onPressed: _submitting || !_canShowAnalysisFooter
-          ? null
-          : () => _openMaterialAnalysis(allowEmpty: true),
-      child: Text(
-        _selected.isEmpty ? '新建物料分析' : '联合分析所选 ${_selected.length} 项',
-      ),
-    );
     return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s8),
+      key: const Key('production-pending-selection-bar'),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
+        borderRadius: UtenRadius.lgAll,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1098,7 +1030,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
               children: [
                 Expanded(
                   child: Text(
-                    '已选 ${_selected.length} 项（最多 500 项，可跨页选择）',
+                    compact
+                        ? '已选 ${_selected.length} 项(本页最多显示 100 项)'
+                        : '已选 ${_selected.length} 项(最多 500 项，可跨页选择)',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -1133,9 +1067,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
             ),
             const SizedBox(height: UtenSpacing.s8),
           ],
-          if (compact) ...[
-            SizedBox(width: double.infinity, child: generateButton),
-          ] else
+          if (!compact)
             Row(
               children: [
                 Expanded(
@@ -1158,12 +1090,40 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                     ],
                   ),
                 ),
-                const SizedBox(width: UtenSpacing.s8),
-                generateButton,
               ],
             ),
         ],
       ),
+    );
+  }
+
+  Widget _floatingAnalysisAction() {
+    final canRun = _canShowAnalysisFooter && !_submitting;
+    final label = _selected.isEmpty ? '新建物料分析' : '联合分析所选 ${_selected.length} 项';
+    final disabledReason = _selected.isEmpty
+        ? '没有新建物料分析权限'
+        : '当前选择缺少新建或刷新分析权限，请调整选择';
+    return UtenFloatingActionGroup(
+      children: [
+        Tooltip(
+          message: canRun ? '进入物料分析，不会直接生成业务单据' : disabledReason,
+          child: UtenButton(
+            key: const Key('pending-enter-analysis-to-generate'),
+            size: UtenButtonSize.large,
+            icon: _selected.isEmpty
+                ? Icons.insights_rounded
+                : Icons.playlist_add_check_rounded,
+            isLoading: _submitting,
+            onPressed: canRun
+                ? () => _openMaterialAnalysis(allowEmpty: true)
+                : null,
+            onDisabledTap: canRun
+                ? null
+                : () => context.appWarning(disabledReason),
+            child: Text(label),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1777,7 +1737,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                         _workshop == null &&
                         _from == null &&
                         _to == null
-                    ? '暂无在产计划（已审未结案的计划会出现在这里）'
+                    ? '暂无在产计划(已审未结案的计划会出现在这里)'
                     : '没有匹配的计划'),
         ),
       );
@@ -2020,7 +1980,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '子计划 ${r.subplans.length} 张（点开展示进度）',
+                        '子计划 ${r.subplans.length} 张(点开展示进度)',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -2178,6 +2138,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     }
     try {
       await context.push(RoutePath.productionPlanDetail(planId));
+      if (mounted) await _load();
     } catch (_) {
       if (mounted) context.appError('无法打开生产计划，请刷新后重试', force: true);
     }
@@ -2268,20 +2229,20 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     final IconData icon;
     switch (state) {
       case 'READY':
-        text = canStartNow ? '物料已齐套 · 可开工' : '物料已齐套';
+        text = canStartNow ? '物料已齐套 · 待派工/发料' : '物料已齐套';
         color = Colors.green.shade700;
         icon = Icons.check_circle_outline_rounded;
         break;
       case 'PARTIAL':
         text =
             '物料已齐 ${_fmt(readyQty)} / ${_fmt(totalQty)}'
-            '（$readySegments/$totalSegments 段）'
-            '${canStartNow ? ' · 可开工' : ''}';
+            '($readySegments/$totalSegments 段)'
+            '${canStartNow ? ' · 部分段待派工/发料' : ''}';
         color = Colors.orange.shade800;
         icon = Icons.inventory_2_outlined;
         break;
       case 'WAITING':
-        text = '物料待齐套（0/$totalSegments 段）';
+        text = '物料待齐套(0/$totalSegments 段)';
         color = Colors.orange.shade800;
         icon = Icons.hourglass_bottom_rounded;
         break;

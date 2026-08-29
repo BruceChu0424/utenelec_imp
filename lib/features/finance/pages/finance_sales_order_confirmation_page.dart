@@ -4,26 +4,31 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../basic_data/models/master_facet.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_order_finance_confirmation.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
 
-/// 销售订货单财务确认任务页（V294 闸门，V300 重设计）。
+/// 销售订货单财务确认工作台（V294 闸门，V300 驳回，批量确认）。
 ///
-/// 对齐大公司审批中心（审批收件箱）范式：
-///  - 顶部摘要条：当前视图待办笔数 + 说明；
-///  - 分段 Tab：待确认（未驳回，可办）/ 已驳回（待销售修正）；
-///  - 卡片即决策：金额/客户应收余额/交货紧迫度一眼可见，卡上直接 确认/驳回，
-///    点卡进入财务审核详情页（客户财务快照 + 产品明细）；
-///  - 驳回必填原因并通知归属销售；确认后计划部才可见并排产。
+/// 桌面端使用系统自研表格：单击选择、双击进入审核详情、复选多选和批量确认；
+/// 紧凑端使用可勾选的密集列表，并保留显式详情按钮，不把双击作为唯一入口。
 class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
   const FinanceSalesOrderConfirmationPage({super.key});
 
@@ -34,10 +39,18 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
 
 class _FinanceSalesOrderConfirmationPageState
     extends ConsumerState<FinanceSalesOrderConfirmationPage> {
+  static const int _maxBatchSize = 100;
+
   SalesOrderFinancePendingPage? _result;
   bool _loading = false;
+  bool _batchBusy = false;
   String? _error;
+  String _keyword = '';
   int _requestVersion = 0;
+  final Set<String> _selectedIds = <String>{};
+  final Map<String, SalesOrderFinancePendingItem> _selectedItems =
+      <String, SalesOrderFinancePendingItem>{};
+  SalesOrderFinancePendingItem? _activeItem;
 
   /// 分段视图：false=待确认（默认）；true=已驳回。
   bool _showRejected = false;
@@ -47,6 +60,13 @@ class _FinanceSalesOrderConfirmationPageState
         ref
             .read(currentPermissionsProvider)
             .contains(Perm.salesOrderFinanceView);
+  }
+
+  bool get _canConfirm {
+    return ref.read(isSuperAdminProvider) ||
+        ref
+            .read(currentPermissionsProvider)
+            .contains(Perm.salesOrderFinanceConfirm);
   }
 
   @override
@@ -65,11 +85,24 @@ class _FinanceSalesOrderConfirmationPageState
     try {
       final result = await ref
           .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .pending(page: page, rejected: _showRejected);
+          .pending(
+            page: page,
+            rejected: _showRejected,
+            keyword: _keyword.isEmpty ? null : _keyword,
+          );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
         _loading = false;
+        for (final item in result.items) {
+          if (_selectedIds.contains(item.orderId)) {
+            _selectedItems[item.orderId] = item;
+          }
+        }
+        if (_activeItem != null &&
+            !result.items.any((item) => item.orderId == _activeItem!.orderId)) {
+          _activeItem = null;
+        }
       });
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
     } on ApiException catch (error) {
@@ -89,18 +122,235 @@ class _FinanceSalesOrderConfirmationPageState
 
   void _switchTab(bool rejected) {
     if (rejected == _showRejected) return;
+    ++_requestVersion;
     setState(() {
       _showRejected = rejected;
       _result = null;
+      _error = null;
+      _clearSelectionState();
     });
     _load(1);
+  }
+
+  void _clearSelectionState() {
+    _selectedIds.clear();
+    _selectedItems.clear();
+    _activeItem = null;
+  }
+
+  void _clearSelection() {
+    if (_selectedIds.isEmpty) return;
+    setState(_clearSelectionState);
+  }
+
+  Future<void> _refreshCurrent() async {
+    setState(_clearSelectionState);
+    await _load(_result?.page ?? 1);
+  }
+
+  void _invalidateSearchRequest(String _) {
+    ++_requestVersion;
+  }
+
+  void _applyKeyword(String value) {
+    final next = value.trim();
+    if (next == _keyword) return;
+    setState(() {
+      _keyword = next;
+      _result = null;
+      _error = null;
+      _clearSelectionState();
+    });
+    _load(1);
+  }
+
+  void _setSelectedIds(Set<String> next) {
+    if (next.length > _maxBatchSize) {
+      context.appWarning('单次最多选择 $_maxBatchSize 笔订单');
+      return;
+    }
+    final pageItems = {
+      for (final item
+          in _result?.items ?? const <SalesOrderFinancePendingItem>[])
+        item.orderId: item,
+    };
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(next);
+      _selectedItems.removeWhere((id, _) => !next.contains(id));
+      for (final id in next) {
+        final item = pageItems[id];
+        if (item != null) _selectedItems[id] = item;
+      }
+    });
+  }
+
+  void _toggleSelected(SalesOrderFinancePendingItem item) {
+    final next = Set<String>.of(_selectedIds);
+    if (!next.add(item.orderId)) next.remove(item.orderId);
+    _setSelectedIds(next);
+  }
+
+  void _selectCurrentPage() {
+    final next = Set<String>.of(_selectedIds)
+      ..addAll(
+        (_result?.items ?? const <SalesOrderFinancePendingItem>[])
+            .where((item) => item.canConfirm)
+            .map((item) => item.orderId),
+      );
+    _setSelectedIds(next);
   }
 
   /// 打开财务审核详情页；确认/驳回后返回 true → 刷新当前视图。
   Future<void> _open(SalesOrderFinancePendingItem item) async {
     final changed = await context.push<bool>(item.detailRoute);
     if (changed == true && mounted) {
+      setState(() {
+        _selectedIds.remove(item.orderId);
+        _selectedItems.remove(item.orderId);
+      });
       _load(_result?.page ?? 1);
+    }
+  }
+
+  List<SalesOrderFinancePendingItem> get _selectedTasks {
+    final tasks = _selectedItems.values.toList(growable: false);
+    tasks.sort((a, b) => a.billNo.compareTo(b.billNo));
+    return tasks;
+  }
+
+  Future<void> _confirmSelected() async {
+    if (_showRejected) {
+      context.appWarning('已驳回订单须由销售修订并重新审核后才能确认');
+      return;
+    }
+    if (!_canConfirm) {
+      context.appWarning('您没有销售订单财务确认权限');
+      return;
+    }
+    final tasks = _selectedTasks;
+    if (tasks.isEmpty) {
+      context.appWarning('请先选择需要确认的订单');
+      return;
+    }
+
+    final controller = TextEditingController();
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('批量确认 ${tasks.length} 笔销售订单'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const UtenReviewerResponsibilityNotice(
+                  actionLabel: '销售订单批量财务确认',
+                  description: '本次选择将作为一个原子审核事务提交；任一订单校验失败时全部不放行。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                const Text(
+                  '确认只放行计划部可见与排产，不代表已收款，也不会在此建立正式应收。'
+                  '请确认下列订单已逐笔核对金额、客户应收和发运策略：',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Theme.of(
+                          dialogContext,
+                        ).colorScheme.outlineVariant,
+                      ),
+                      borderRadius: UtenRadius.mdAll,
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: tasks.length,
+                      separatorBuilder: (_, _) => Divider(
+                        height: 1,
+                        color: Theme.of(
+                          dialogContext,
+                        ).colorScheme.outlineVariant,
+                      ),
+                      itemBuilder: (context, index) {
+                        final item = tasks[index];
+                        return ListTile(
+                          dense: true,
+                          title: Text(
+                            item.billNo,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(item.clientName ?? '未标注客户'),
+                          trailing: Text(
+                            _orderAmount(item),
+                            textAlign: TextAlign.end,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                TextField(
+                  key: const Key('sales-order-finance-batch-remark'),
+                  controller: controller,
+                  maxLength: 500,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: '统一确认备注（选填）',
+                    hintText: '该备注将写入本次选中的每一笔订单',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            key: const Key('sales-order-finance-batch-submit'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.fact_check_outlined),
+            label: Text('确认通过 ${tasks.length} 笔'),
+          ),
+        ],
+      ),
+    );
+    final remark = controller.text;
+    Future<void>.delayed(const Duration(milliseconds: 300), controller.dispose);
+    if (approved != true || !mounted) return;
+
+    setState(() => _batchBusy = true);
+    try {
+      await ref
+          .read(salesOrderFinanceConfirmationRepositoryProvider)
+          .confirmBatch(tasks.map((item) => item.orderId), remark: remark);
+      if (!mounted) return;
+      context.appSuccess('已批量确认 ${tasks.length} 笔，计划部可接手排产');
+      final page = _result?.page ?? 1;
+      setState(_clearSelectionState);
+      ref.invalidate(salesOrderFinanceConfirmationCountProvider);
+      await _load(page);
+    } on ApiException catch (error) {
+      if (mounted) {
+        context.appError('批量确认未提交，所有订单保持原状态：${error.message}');
+      }
+    } catch (_) {
+      if (mounted) {
+        context.appError('批量确认失败，所有订单保持原状态，请稍后重试');
+      }
+    } finally {
+      if (mounted) setState(() => _batchBusy = false);
     }
   }
 
@@ -110,6 +360,9 @@ class _FinanceSalesOrderConfirmationPageState
     final allowed =
         ref.watch(isSuperAdminProvider) ||
         permissions.contains(Perm.salesOrderFinanceView);
+    final canConfirm =
+        ref.watch(isSuperAdminProvider) ||
+        permissions.contains(Perm.salesOrderFinanceConfirm);
     return Scaffold(
       appBar: UtenAppBar(
         title: '销售订单财务确认',
@@ -125,10 +378,8 @@ class _FinanceSalesOrderConfirmationPageState
                     size: UtenButtonSize.large,
                     type: UtenButtonType.tonal,
                     icon: Icons.refresh_rounded,
-                    isLoading: _loading && _result != null,
-                    onPressed: _loading
-                        ? null
-                        : () => _load(_result?.page ?? 1),
+                    isLoading: _loading || _batchBusy,
+                    onPressed: _loading || _batchBusy ? null : _refreshCurrent,
                     child: const Text('刷新'),
                   ),
                 ),
@@ -139,7 +390,8 @@ class _FinanceSalesOrderConfirmationPageState
         child: !allowed
             ? UtenEmpty.error(
                 message: '无权查看销售订单财务确认任务',
-                description: '只有被授权的财务人员可以进入（权限设置中授予 sales_order_finance 权限）。',
+                description:
+                    '只有被授权的财务人员可以进入（权限设置中授予 sales_order_finance:view）。',
               )
             : _loading && _result == null
             ? const UtenSkeletonList()
@@ -149,13 +401,57 @@ class _FinanceSalesOrderConfirmationPageState
                 actionLabel: '重新加载',
                 onAction: () => _load(1),
               )
-            : _buildBody(context),
+            : _buildBody(context, canConfirm: canConfirm),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: allowed && canConfirm && !_showRejected
+          ? _floatingSelectionActions()
+          : null,
     );
   }
 
-  Widget _buildBody(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget _floatingSelectionActions() {
+    final selectedCount = _selectedIds.length;
+    final selectedItem = selectedCount == 1
+        ? _selectedItems[_selectedIds.single]
+        : null;
+    final canConfirmNow = selectedCount > 0 && !_loading && !_batchBusy;
+    const disabledReason = '请先选择至少一笔待确认订单';
+    return UtenFloatingActionGroup(
+      children: [
+        UtenButton(
+          key: const Key('sales-order-finance-open-selected'),
+          size: UtenButtonSize.large,
+          type: UtenButtonType.secondary,
+          icon: Icons.open_in_new_rounded,
+          onPressed: selectedItem == null || _batchBusy
+              ? null
+              : () => _open(selectedItem),
+          onDisabledTap: selectedCount > 1
+              ? () => context.appWarning('查看详情时只能选择一笔订单')
+              : null,
+          child: const Text('查看详情'),
+        ),
+        Tooltip(
+          message: canConfirmNow ? '批量确认所选订单' : disabledReason,
+          child: UtenButton(
+            key: const Key('sales-order-finance-batch-confirm'),
+            size: UtenButtonSize.large,
+            icon: Icons.fact_check_outlined,
+            isLoading: _batchBusy,
+            onPressed: canConfirmNow ? _confirmSelected : null,
+            onDisabledTap: canConfirmNow
+                ? null
+                : () => context.appWarning(disabledReason),
+            child: Text(selectedCount == 0 ? '批量确认' : '批量确认($selectedCount)'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBody(BuildContext context, {required bool canConfirm}) {
     final result =
         _result ??
         const SalesOrderFinancePendingPage(
@@ -165,70 +461,261 @@ class _FinanceSalesOrderConfirmationPageState
           total: 0,
           totalPages: 1,
         );
-    return UtenContentContainer.narrow(
-      child: RefreshIndicator(
-        onRefresh: () => _load(result.page),
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-          children: [
-            _summaryStrip(theme, result),
-            const SizedBox(height: UtenSpacing.s12),
-            _tabs(theme),
-            const SizedBox(height: UtenSpacing.s12),
-            if (_error != null) ...[
-              _InlineError(message: _error!, onRetry: () => _load(result.page)),
-              const SizedBox(height: UtenSpacing.s12),
-            ],
-            if (result.items.isEmpty)
-              SizedBox(
-                height: 420,
-                child: UtenEmpty(
-                  icon: _showRejected
-                      ? Icons.undo_rounded
-                      : Icons.task_alt_rounded,
-                  message: _showRejected ? '没有被财务驳回的销售订货单' : '目前没有待财务确认的销售订货单',
-                  description: _showRejected
-                      ? '被驳回的订单会出现在这里，销售修正后可重新确认。'
-                      : '销售订货单审核后会出现在这里；确认后计划部才可见并排产。',
-                ),
-              )
-            else
-              for (var i = 0; i < result.items.length; i++) ...[
-                _ConfirmationTaskCard(
-                  key: Key(
-                    'sales-order-finance-task-${result.items[i].orderId}',
-                  ),
-                  item: result.items[i],
-                  onTap: () => _open(result.items[i]),
-                ),
-                if (i != result.items.length - 1)
-                  const SizedBox(height: UtenSpacing.s12),
-              ],
-            if (result.totalPages > 1) ...[
-              const SizedBox(height: UtenSpacing.s20),
-              _Pager(
-                page: result.page,
-                totalPages: result.totalPages,
-                loading: _loading,
-                onPage: _load,
-              ),
-            ],
-            const SizedBox(height: UtenSpacing.s24),
-          ],
+    return UtenContentContainer.wide(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final expanded = breakpointForWidth(
+              constraints.maxWidth,
+            ).isExpanded;
+            return expanded
+                ? _desktopWorkbench(context, result, canConfirm: canConfirm)
+                : _compactWorkbench(context, result, canConfirm: canConfirm);
+          },
         ),
       ),
     );
   }
 
-  /// 顶部摘要条：当前视图笔数 + 流程说明。
+  Widget _desktopWorkbench(
+    BuildContext context,
+    SalesOrderFinancePendingPage result, {
+    required bool canConfirm,
+  }) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _summaryStrip(theme, result),
+        const SizedBox(height: UtenSpacing.s12),
+        _filters(theme),
+        if (_error != null) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          _InlineError(message: _error!, onRetry: () => _load(result.page)),
+        ],
+        if (_batchBusy) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          const LinearProgressIndicator(
+            key: Key('sales-order-finance-batch-progress'),
+          ),
+        ],
+        const SizedBox(height: UtenSpacing.s12),
+        Expanded(
+          child: AbsorbPointer(
+            absorbing: _batchBusy,
+            child: MasterDataTableView<SalesOrderFinancePendingItem>(
+              key: const Key('sales-order-finance-desktop-table'),
+              selectable: !_showRejected && canConfirm,
+              idOf: (item) => item.orderId,
+              selectedIds: _selectedIds,
+              onSelectedIdsChanged: _setSelectedIds,
+              // 传空动作只启用共享选择摘要；真正业务动作由页面右下 FAB 渲染。
+              batchActionsBuilder: !_showRejected && canConfirm
+                  ? (_, _) => const <Widget>[]
+                  : null,
+              columns: _columns(),
+              items: result.items,
+              facets: const <String, List<MasterFacetBucket>>{},
+              nullCounts: const <String, int>{},
+              filters: const <String, String?>{},
+              onFilterChanged: (_, _) {},
+              onRowTap: _open,
+              onSelectionChanged: canConfirm
+                  ? null
+                  : (item) => setState(() => _activeItem = item),
+              rowMenuBuilder: (item) => [
+                UtenMenuItem(
+                  label: '查看审核详情',
+                  icon: Icons.open_in_new_rounded,
+                  onTap: () => _open(item),
+                ),
+              ],
+              rowColor: (item) => _rowColor(theme, item),
+              isLoading: _loading,
+              emptyMessage: _emptyMessage,
+              currentPage: result.page,
+              totalPages: result.totalPages,
+              onPageChange: _load,
+              toolbarActions: canConfirm
+                  ? null
+                  : [
+                      UtenButton(
+                        key: const Key('sales-order-finance-open-selected'),
+                        size: UtenButtonSize.large,
+                        type: UtenButtonType.secondary,
+                        icon: Icons.open_in_new_rounded,
+                        onPressed: _activeItem == null || _batchBusy
+                            ? null
+                            : () => _open(_activeItem!),
+                        child: const Text('查看选中详情'),
+                      ),
+                    ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _compactWorkbench(
+    BuildContext context,
+    SalesOrderFinancePendingPage result, {
+    required bool canConfirm,
+  }) {
+    final selectable = !_showRejected && canConfirm;
+    return RefreshIndicator(
+      onRefresh: () async => _refreshCurrent(),
+      child: ListView(
+        key: const Key('sales-order-finance-mobile-list'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.only(bottom: selectable ? 96 : UtenSpacing.s24),
+        children: [
+          _summaryStrip(Theme.of(context), result),
+          const SizedBox(height: UtenSpacing.s12),
+          _filters(Theme.of(context)),
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            _InlineError(message: _error!, onRetry: () => _load(result.page)),
+          ],
+          if (selectable) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            _mobileSelectionBar(result),
+          ],
+          if (_batchBusy)
+            const Padding(
+              padding: EdgeInsets.only(top: UtenSpacing.s8),
+              child: LinearProgressIndicator(
+                key: Key('sales-order-finance-batch-progress'),
+              ),
+            ),
+          const SizedBox(height: UtenSpacing.s12),
+          if (result.items.isEmpty)
+            SizedBox(
+              height: 320,
+              child: UtenEmpty(
+                icon: _showRejected
+                    ? Icons.undo_rounded
+                    : Icons.task_alt_rounded,
+                message: _emptyMessage,
+                description: _emptyDescription,
+              ),
+            )
+          else
+            for (final item in result.items) ...[
+              AbsorbPointer(
+                absorbing: _batchBusy,
+                child: _CompactTaskRow(
+                  key: Key('sales-order-finance-task-${item.orderId}'),
+                  item: item,
+                  selected: selectable && _selectedIds.contains(item.orderId),
+                  onSelected: selectable ? () => _toggleSelected(item) : null,
+                  onOpen: () => _open(item),
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
+          if (result.totalPages > 1)
+            _Pager(
+              page: result.page,
+              totalPages: result.totalPages,
+              loading: _loading || _batchBusy,
+              onPage: _load,
+            ),
+        ],
+      ),
+    );
+  }
+
+  List<MasterColumnDef<SalesOrderFinancePendingItem>> _columns() => [
+    MasterColumnDef(
+      key: 'billNo',
+      label: '销售单号',
+      width: 172,
+      value: (item) => item.billNo,
+    ),
+    MasterColumnDef(
+      key: 'clientName',
+      label: '客户',
+      width: 180,
+      value: (item) => item.clientName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'sellerName',
+      label: '业务员',
+      width: 112,
+      value: (item) => item.sellerName ?? '—',
+    ),
+    const MasterColumnDef(
+      key: 'totalOriginal',
+      label: '订单金额',
+      width: 150,
+      type: 'money',
+      value: _orderAmount,
+    ),
+    MasterColumnDef(
+      key: 'clientOutstanding',
+      label: '客户应收（本币）',
+      width: 150,
+      type: 'money',
+      value: (item) => item.clientOutstanding ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'deliverDate',
+      label: '交货日期',
+      width: 120,
+      type: 'date',
+      value: (item) => item.deliverDate ?? '未定',
+    ),
+    MasterColumnDef(
+      key: 'shipmentPolicy',
+      label: '发运策略',
+      width: 148,
+      value: (item) => _shipmentPolicyLabel(item.shipmentPolicy),
+    ),
+    MasterColumnDef(
+      key: 'urgency',
+      label: '紧迫度',
+      width: 104,
+      value: (item) => _urgencyLabel(_urgencyFor(item)),
+    ),
+    MasterColumnDef(
+      key: 'itemCount',
+      label: '明细行',
+      width: 84,
+      type: 'number',
+      value: (item) => '${item.itemCount}',
+    ),
+    MasterColumnDef(
+      key: 'billDate',
+      label: '开单日期',
+      width: 120,
+      type: 'date',
+      value: (item) => item.billDate ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '审核状态 / 原因',
+      width: 260,
+      value: (item) => item.financeRejected
+          ? '已驳回：${item.financeRejectedReason ?? '未注明原因'}'
+          : '待财务确认',
+    ),
+  ];
+
   Widget _summaryStrip(ThemeData theme, SalesOrderFinancePendingPage result) {
     return Container(
       key: const Key('sales-order-finance-summary'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s16,
+        vertical: UtenSpacing.s12,
+      ),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.34),
         borderRadius: UtenRadius.lgAll,
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.18),
+        ),
       ),
       child: Row(
         children: [
@@ -241,238 +728,283 @@ class _FinanceSalesOrderConfirmationPageState
                 Text(
                   _showRejected
                       ? '已驳回 ${result.total} 笔'
-                      : '待确认 ${result.total} 笔',
+                      : '待财务放行 ${result.total} 笔',
                   style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                Text(
-                  _showRejected
-                      ? '驳回件待销售修正；修正后财务再次确认即放行计划部'
-                      : '点卡片进审核详情：核对金额、发运策略与客户应收后再确认',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 分段 Tab：待确认 / 已驳回。
-  Widget _tabs(ThemeData theme) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: SegmentedButton<bool>(
-        key: const Key('sales-order-finance-tabs'),
-        segments: const [
-          ButtonSegment(
-            value: false,
-            label: Text('待确认'),
-            icon: Icon(Icons.pending_actions_rounded, size: 18),
-          ),
-          ButtonSegment(
-            value: true,
-            label: Text('已驳回'),
-            icon: Icon(Icons.undo_rounded, size: 18),
-          ),
-        ],
-        selected: {_showRejected},
-        onSelectionChanged: (selection) => _switchTab(selection.first),
-      ),
-    );
-  }
-}
-
-class _ConfirmationTaskCard extends StatelessWidget {
-  const _ConfirmationTaskCard({
-    super.key,
-    required this.item,
-    required this.onTap,
-  });
-
-  final SalesOrderFinancePendingItem item;
-  final VoidCallback onTap;
-
-  /// 交货紧迫度：已逾期/今日/≤3 天 → 红色提示（与销售列表延期预警同口径）。
-  _DeliverUrgency get _urgency {
-    final raw = item.deliverDate;
-    if (raw == null || raw.isEmpty) return _DeliverUrgency.none;
-    final date = DateTime.tryParse(raw);
-    if (date == null) return _DeliverUrgency.none;
-    final today = DateTime.now();
-    final diff = DateTime(
-      date.year,
-      date.month,
-      date.day,
-    ).difference(DateTime(today.year, today.month, today.day)).inDays;
-    if (diff < 0) return _DeliverUrgency.overdue;
-    if (diff <= 3) return _DeliverUrgency.soon;
-    return _DeliverUrgency.normal;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // 币种展示优先用主档名称（人民币/美金…），无名称时回退编号（001…）。
-    final currency = item.currencyName?.isNotEmpty == true
-        ? item.currencyName!
-        : item.currencyCode?.isNotEmpty == true
-        ? item.currencyCode!
-        : '';
-    final amount = item.totalOriginal == null
-        ? null
-        : '${currency.isEmpty ? '' : '$currency '}${item.totalOriginal}';
-    final urgency = _urgency;
-    return Material(
-      color: theme.colorScheme.surface,
-      borderRadius: UtenRadius.lgAll,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(
-              // 驳回件左侧红条：收件箱式一眼区分。
-              left: BorderSide(
-                width: 3,
-                color: item.financeRejected
-                    ? theme.colorScheme.error
-                    : Colors.transparent,
-              ),
-            ),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      item.billNo,
-                      style: theme.textTheme.titleMedium,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s12),
-                  // 右上角决策区：金额在上、审核入口在下，不再单独占一整行。
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      if (amount != null) ...[
-                        Text(
-                          amount,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: UtenSpacing.s8),
-                      ],
-                      UtenButton(
-                        key: Key('sales-order-finance-review-${item.orderId}'),
-                        size: UtenButtonSize.small,
-                        type: UtenButtonType.secondary,
-                        icon: Icons.fact_check_outlined,
-                        onPressed: onTap,
-                        child: Text(item.financeRejected ? '查看并处理' : '审核'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '客户：${item.clientName ?? '—'}　业务员：${item.sellerName ?? '—'}',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '交货日期：${item.deliverDate ?? '未定'}'
-                      '　明细：${item.itemCount} 行'
-                      '　开单：${item.billDate ?? '—'}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color:
-                            urgency == _DeliverUrgency.overdue ||
-                                urgency == _DeliverUrgency.soon
-                            ? theme.colorScheme.error
-                            : null,
-                        fontWeight: urgency == _DeliverUrgency.normal
-                            ? null
-                            : FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  if (urgency == _DeliverUrgency.overdue)
-                    _urgencyTag(theme, '已逾期')
-                  else if (urgency == _DeliverUrgency.soon)
-                    _urgencyTag(theme, '临近交货'),
-                ],
-              ),
-              if (item.clientOutstanding != null) ...[
                 const SizedBox(height: UtenSpacing.s4),
                 Text(
-                  '客户应收余额：${item.clientOutstanding}',
+                  _showRejected
+                      ? '等待销售受控修订并重新审核；当前页面只读，不可越过整改直接确认。'
+                      : '确认仅放行计划部可见与排产，不代表收款或正式应收；请核对金额、应收与发运策略。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
-              if (item.financeRejected) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                Container(
-                  padding: const EdgeInsets.all(UtenSpacing.s8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer.withValues(
-                      alpha: 0.5,
-                    ),
-                    borderRadius: BorderRadius.circular(UtenRadius.md),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.undo_rounded,
-                        size: 16,
-                        color: theme.colorScheme.error,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Expanded(
-                        child: Text(
-                          '已驳回：${item.financeRejectedReason ?? '未注明原因'}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filters(ThemeData theme) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < UtenBreakpoints.mediumStart;
+        final tabs = SegmentedButton<bool>(
+          key: const Key('sales-order-finance-tabs'),
+          segments: const [
+            ButtonSegment(
+              value: false,
+              label: Text('待确认'),
+              icon: Icon(Icons.pending_actions_rounded, size: 18),
+            ),
+            ButtonSegment(
+              value: true,
+              label: Text('已驳回'),
+              icon: Icon(Icons.undo_rounded, size: 18),
+            ),
+          ],
+          selected: {_showRejected},
+          onSelectionChanged: _batchBusy
+              ? null
+              : (selection) => _switchTab(selection.first),
+        );
+        final search = UtenSearchBar(
+          key: const Key('sales-order-finance-search'),
+          initialValue: _keyword,
+          hint: '搜索单号 / 客户 / 业务员',
+          onInputChanged: _invalidateSearchRequest,
+          onChanged: _applyKeyword,
+        );
+        if (compact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(alignment: Alignment.centerLeft, child: tabs),
+              const SizedBox(height: UtenSpacing.s8),
+              search,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            tabs,
+            const SizedBox(width: UtenSpacing.s12),
+            SizedBox(width: 360, child: search),
+            const Spacer(),
+            Text(
+              '单击选择 · 双击查看详情',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _mobileSelectionBar(SalesOrderFinancePendingPage result) {
+    final theme = Theme.of(context);
+    final selectedCount = _selectedIds.length;
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: '已选择 $selectedCount 笔订单',
+      child: Container(
+        padding: const EdgeInsets.all(UtenSpacing.s8),
+        decoration: BoxDecoration(
+          color: selectedCount == 0
+              ? theme.colorScheme.surfaceContainerHighest
+              : theme.colorScheme.primaryContainer.withValues(alpha: 0.42),
+          borderRadius: UtenRadius.mdAll,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+              child: Text(
+                '已选 $selectedCount 笔',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            UtenButton(
+              size: UtenButtonSize.small,
+              type: UtenButtonType.secondary,
+              onPressed: _batchBusy || result.items.isEmpty
+                  ? null
+                  : _selectCurrentPage,
+              child: const Text('全选本页'),
+            ),
+            UtenButton(
+              size: UtenButtonSize.small,
+              type: UtenButtonType.ghost,
+              onPressed: _batchBusy || selectedCount == 0
+                  ? null
+                  : _clearSelection,
+              child: const Text('清空'),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _urgencyTag(ThemeData theme, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.error.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
+  Color? _rowColor(ThemeData theme, SalesOrderFinancePendingItem item) {
+    if (item.financeRejected) {
+      return theme.colorScheme.errorContainer.withValues(alpha: 0.30);
+    }
+    return switch (_urgencyFor(item)) {
+      _DeliverUrgency.overdue => theme.colorScheme.errorContainer.withValues(
+        alpha: 0.24,
       ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.error,
-          fontWeight: FontWeight.w700,
+      _DeliverUrgency.soon => theme.colorScheme.tertiaryContainer.withValues(
+        alpha: 0.24,
+      ),
+      _ => null,
+    };
+  }
+
+  String get _emptyMessage {
+    if (_keyword.isNotEmpty) return '没有匹配“$_keyword”的订单';
+    return _showRejected ? '没有被财务驳回的销售订单' : '目前没有待财务确认的销售订单';
+  }
+
+  String get _emptyDescription => _showRejected
+      ? '被驳回的订单会出现在这里；销售修订并重新审核后会回到待确认。'
+      : '销售订单审核后会进入这里；确认后计划部才可见并排产。';
+}
+
+class _CompactTaskRow extends StatelessWidget {
+  const _CompactTaskRow({
+    super.key,
+    required this.item,
+    required this.selected,
+    required this.onSelected,
+    required this.onOpen,
+  });
+
+  final SalesOrderFinancePendingItem item;
+  final bool selected;
+  final VoidCallback? onSelected;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final urgency = _urgencyFor(item);
+    final accent = item.financeRejected || urgency == _DeliverUrgency.overdue
+        ? theme.colorScheme.error
+        : urgency == _DeliverUrgency.soon
+        ? theme.colorScheme.tertiary
+        : theme.colorScheme.outlineVariant;
+    return Semantics(
+      container: true,
+      selected: selected,
+      label:
+          '${item.billNo}，客户 ${item.clientName ?? '未标注'}，${_orderAmount(item)}',
+      child: Material(
+        color: selected
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.40)
+            : theme.colorScheme.surface,
+        borderRadius: UtenRadius.mdAll,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onSelected ?? onOpen,
+          child: Container(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            decoration: BoxDecoration(
+              borderRadius: UtenRadius.mdAll,
+              border: Border(
+                left: BorderSide(width: 3, color: accent),
+                top: BorderSide(color: theme.colorScheme.outlineVariant),
+                right: BorderSide(color: theme.colorScheme.outlineVariant),
+                bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (onSelected != null) ...[
+                  Checkbox(
+                    value: selected,
+                    semanticLabel: '选择订单 ${item.billNo}',
+                    onChanged: (_) => onSelected!(),
+                  ),
+                  const SizedBox(width: UtenSpacing.s4),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.billNo,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            _orderAmount(item),
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        '${item.clientName ?? '未标注客户'} · ${item.sellerName ?? '未标注业务员'}',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        '交货 ${item.deliverDate ?? '未定'} · '
+                        '${_urgencyLabel(urgency)} · '
+                        '${item.itemCount} 行明细 · '
+                        '应收（本币）${item.clientOutstanding ?? '—'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (item.financeRejected) ...[
+                        const SizedBox(height: UtenSpacing.s4),
+                        Text(
+                          '驳回原因：${item.financeRejectedReason ?? '未注明原因'}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                UtenButton(
+                  key: Key('sales-order-finance-review-${item.orderId}'),
+                  size: UtenButtonSize.small,
+                  type: UtenButtonType.secondary,
+                  icon: Icons.open_in_new_rounded,
+                  onPressed: onOpen,
+                  child: const Text('详情'),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -480,6 +1012,47 @@ class _ConfirmationTaskCard extends StatelessWidget {
 }
 
 enum _DeliverUrgency { none, normal, soon, overdue }
+
+_DeliverUrgency _urgencyFor(SalesOrderFinancePendingItem item) {
+  final raw = item.deliverDate;
+  if (raw == null || raw.isEmpty) return _DeliverUrgency.none;
+  final date = DateTime.tryParse(raw);
+  if (date == null) return _DeliverUrgency.none;
+  final today = DateTime.now();
+  final diff = DateTime(
+    date.year,
+    date.month,
+    date.day,
+  ).difference(DateTime(today.year, today.month, today.day)).inDays;
+  if (diff < 0) return _DeliverUrgency.overdue;
+  if (diff <= 3) return _DeliverUrgency.soon;
+  return _DeliverUrgency.normal;
+}
+
+String _urgencyLabel(_DeliverUrgency urgency) => switch (urgency) {
+  _DeliverUrgency.overdue => '已逾期',
+  _DeliverUrgency.soon => '临近交货',
+  _DeliverUrgency.normal => '正常',
+  _DeliverUrgency.none => '未定',
+};
+
+String _orderAmount(SalesOrderFinancePendingItem item) {
+  final currency =
+      financeCurrencyDisplayLabel(
+        name: item.currencyName,
+        code: item.currencyCode,
+      ) ??
+      '订单币种';
+  return '$currency ${item.totalOriginal ?? '—'}';
+}
+
+String _shipmentPolicyLabel(String? policy) => switch (policy) {
+  'ALLOW_PARTIAL' => '允许分批发货',
+  'REQUIRE_COMPLETE' => '整单齐套后发货',
+  'CUSTOMER_CONFIRM' => '客户确认后分批',
+  'LEGACY' || null || '' => '历史未指定',
+  _ => '未知策略（$policy）',
+};
 
 class _InlineError extends StatelessWidget {
   const _InlineError({required this.message, required this.onRetry});
@@ -490,21 +1063,26 @@ class _InlineError extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.errorContainer,
-      borderRadius: UtenRadius.lgAll,
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                message,
-                style: TextStyle(color: theme.colorScheme.onErrorContainer),
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: message,
+      child: Material(
+        color: theme.colorScheme.errorContainer,
+        borderRadius: UtenRadius.lgAll,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(color: theme.colorScheme.onErrorContainer),
+                ),
               ),
-            ),
-            TextButton(onPressed: onRetry, child: const Text('重试')),
-          ],
+              TextButton(onPressed: onRetry, child: const Text('重试')),
+            ],
+          ),
         ),
       ),
     );
@@ -530,11 +1108,13 @@ class _Pager extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         IconButton(
+          tooltip: '上一页',
           onPressed: loading || page <= 1 ? null : () => onPage(page - 1),
           icon: const Icon(Icons.chevron_left_rounded),
         ),
         Text('$page / $totalPages'),
         IconButton(
+          tooltip: '下一页',
           onPressed: loading || page >= totalPages
               ? null
               : () => onPage(page + 1),

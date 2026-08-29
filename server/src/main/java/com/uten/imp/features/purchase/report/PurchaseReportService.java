@@ -7,8 +7,10 @@ import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.security.CommercialPriceVisibility;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,6 +60,9 @@ public class PurchaseReportService {
     private final EntityManager em;
     private final SystemSettingsService settings;
 
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
+
     // ======================== 通用执行器 ========================
 
     /**
@@ -76,6 +81,10 @@ public class PurchaseReportService {
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                        Map<String, String> activeFacets, int page, int size,
                                        String sort, String order) {
+        boolean priceMasked = purchasePriceMasked();
+        List<ReportColumn> safeColumns = priceMasked
+                ? columns.stream().filter(c -> !isCommercialColumn(c)).toList()
+                : columns;
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -84,7 +93,8 @@ public class PurchaseReportService {
         if (activeFacets != null) {
             for (Map.Entry<String, String> e : activeFacets.entrySet()) {
                 FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
-                if (spec != null && e.getValue() != null && !e.getValue().isBlank()) {
+                if (spec != null && (!priceMasked || !isCommercialKey(spec.key()))
+                        && e.getValue() != null && !e.getValue().isBlank()) {
                     facetClauses.add(facetClause(spec, e.getValue()));
                 }
             }
@@ -94,7 +104,7 @@ public class PurchaseReportService {
 
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
-        for (ReportColumn c : columns) sortKeys.add(c.key());
+        for (ReportColumn c : safeColumns) sortKeys.add(c.key());
         String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
 
         // data
@@ -108,7 +118,12 @@ public class PurchaseReportService {
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
-            for (int i = 0; i < columns.size(); i++) m.put(columns.get(i).key(), norm(r[i], columns.get(i)));
+            for (int i = 0; i < columns.size(); i++) {
+                ReportColumn column = columns.get(i);
+                if (!priceMasked || !isCommercialColumn(column)) {
+                    m.put(column.key(), norm(r[i], column));
+                }
+            }
             items.add(m);
         }
 
@@ -121,6 +136,7 @@ public class PurchaseReportService {
         // facets（用主过滤 baseB，不含列自身筛选）
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
         for (FacetSpec spec : specs) {
+            if (priceMasked && isCommercialKey(spec.key())) continue;
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
                     + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY " + spec.orderExpr() + " LIMIT 50");
             baseB.params().forEach(fq::setParameter);
@@ -142,8 +158,20 @@ public class PurchaseReportService {
 
         // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
         // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
-        List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
+        List<ReportColumn> visible = safeColumns.stream().filter(c -> !c.key().startsWith("__")).toList();
         return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
+    }
+
+    private boolean purchasePriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewPurchase();
+    }
+
+    private static boolean isCommercialColumn(ReportColumn column) {
+        return "money".equals(column.type()) || isCommercialKey(column.key());
+    }
+
+    private static boolean isCommercialKey(String key) {
+        return "settlementStyle".equals(key);
     }
 
     private static int toInt(Object v) {
@@ -718,6 +746,7 @@ public class PurchaseReportService {
 
     @Transactional(readOnly = true)
     public List<MonthlySummaryRow> monthly(String docType, LocalDate dateFrom, LocalDate dateTo, int limit) {
+        boolean priceMasked = purchasePriceMasked();
         int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
                 SELECT doc_type, ym, goods_id, supplier_id,
@@ -727,9 +756,11 @@ public class PurchaseReportService {
                   AND (CAST(:from AS date) IS NULL OR ym >= :from)
                   AND (CAST(:to AS date) IS NULL OR ym <= :to)
                 GROUP BY doc_type, ym, goods_id, supplier_id
-                ORDER BY amt DESC NULLS LAST
+                ORDER BY %s
                 LIMIT :limit
-                """);
+                """.formatted(priceMasked
+                ? "ym DESC, doc_type, goods_id"
+                : "amt DESC NULLS LAST"));
         q.setParameter("docType", docType);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
@@ -742,13 +773,15 @@ public class PurchaseReportService {
                 (java.util.UUID) r[2],
                 NIL.equals(r[3]) ? null : (java.util.UUID) r[3],
                 (BigDecimal) r[4],
-                (BigDecimal) r[5],
-                ((Number) r[6]).longValue()
+                priceMasked ? null : (BigDecimal) r[5],
+                ((Number) r[6]).longValue(),
+                priceMasked
         )).toList();
     }
 
     @Transactional(readOnly = true)
     public List<PendingRow> pending(int limit) {
+        boolean priceMasked = purchasePriceMasked();
         int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
                 SELECT goods_id, color_id, pending_qty, pending_amt
@@ -763,7 +796,8 @@ public class PurchaseReportService {
                 (java.util.UUID) r[0],
                 (java.util.UUID) r[1],
                 (BigDecimal) r[2],
-                (BigDecimal) r[3]
+                priceMasked ? null : (BigDecimal) r[3],
+                priceMasked
         )).toList();
     }
 

@@ -633,13 +633,11 @@ public class GoodsService {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
         }
         ensurePriceEditIfTouched(null, req);   // 新建：oldGoods=null，提交了价/折扣即视为触碰
+        boolean canWriteCosts = costMasker.canView();
+        ensureCostWriteAllowed(req, canWriteCosts);
+        GoodsCostValuePolicy.validateRequest(req);
         Goods g = new Goods();
-        if (req.getProductionBomPolicy() == null
-                || req.getProductionBomPolicy().isBlank()) {
-            g.setProductionBomPolicy(defaultProductionBomPolicy(
-                    req.getSourceType()));
-        }
-        apply(req, g);
+        apply(req, g, canWriteCosts);
         applyCodeAllocation(g, categoryCodes.allocate(
                 CategoryDrivenCodeService.MasterType.GOODS,
                 g.getCategory().getId(), req.getCode()));
@@ -655,11 +653,9 @@ public class GoodsService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID saveImported(GoodsSaveRequest req) {
+        GoodsCostValuePolicy.validateRequest(req);
         Goods g = new Goods();
-        if (req.getProductionBomPolicy() == null || req.getProductionBomPolicy().isBlank()) {
-            g.setProductionBomPolicy(defaultProductionBomPolicy(req.getSourceType()));
-        }
-        apply(req, g);
+        apply(req, g, true);
         applyCodeAllocation(g, categoryCodes.allocate(
                 CategoryDrivenCodeService.MasterType.GOODS,
                 g.getCategory().getId(), req.getCode()));
@@ -681,8 +677,11 @@ public class GoodsService {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:status");
         }
         ensurePriceEditIfTouched(g, req);      // 编辑：与既有值比对，未改价/折扣则放行
+        boolean canWriteCosts = costMasker.canView();
+        ensureCostWriteAllowed(req, canWriteCosts);
+        GoodsCostValuePolicy.validateRequest(req);
         CategoryCodeAllocation currentCode = currentCodeAllocation(g);
-        apply(req, g);
+        apply(req, g, canWriteCosts);
         applyCodeAllocation(g, categoryCodes.allocateForUpdate(
                 CategoryDrivenCodeService.MasterType.GOODS,
                 g.getId(), g.getCategory().getId(), req.getCode(), currentCode));
@@ -700,13 +699,13 @@ public class GoodsService {
         BigDecimal oldDiscount = oldGoods == null ? null : oldGoods.getDiscount();
         // 售价人人可见，触碰恒判。
         if (bigDecimalChanged(oldPrice, req.getPrice())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限（goods:price:edit）");
+            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限(goods:price:edit)");
         }
         // 折扣仅可查看者（goods:discount:view）才参与触碰判定——不可查看者前端隐藏折扣字段、
         // 不提交折扣（req.discount=null 是脱敏产物而非改价意图），若仍判触碰会把他们改名字等
         // 正常编辑一并 403。apply 同步对不可查看者保留原折扣（见 apply）。
         if (canViewDiscount() && bigDecimalChanged(oldDiscount, req.getDiscount())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限（goods:price:edit）");
+            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限(goods:price:edit)");
         }
     }
 
@@ -723,6 +722,37 @@ public class GoodsService {
                 .map(AuthUser::getPermissions)
                 .map(p -> p.contains("goods:discount:view"))
                 .orElse(false);
+    }
+
+    /**
+     * 成本字段与读权限同源：无 goods:cost:view 的普通货品编辑者只能提交脱敏后的 null，
+     * Service 会保留实体原值；显式提交任一非空成本字段按越权写入拒绝。
+     */
+    private static void ensureCostWriteAllowed(GoodsSaveRequest req, boolean canWriteCosts) {
+        if (canWriteCosts) return;
+        boolean submitted = req.getSourceE() != null
+                || req.getMachiningE() != null
+                || req.getIncidentalE() != null
+                || req.getLacquerE() != null
+                || req.getPlatingE() != null
+                || req.getCasingE() != null
+                || req.getPolishE() != null
+                || req.getTotal() != null
+                || req.getWorkRate() != null
+                || req.getWorkE() != null
+                || req.getLostRate() != null
+                || req.getLostE() != null
+                || req.getRentRate() != null
+                || req.getRentE() != null
+                || req.getMakeRate() != null
+                || req.getMakeE() != null
+                || req.getCTotal() != null
+                || req.getGTotal() != null;
+        if (submitted) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "无编辑货品成本权限(goods:cost:view)");
+        }
     }
 
     /** BigDecimal 变更判定用 compareTo，避免 1.0 vs 1.00 的 scale 差异误判触碰。 */
@@ -840,7 +870,7 @@ public class GoodsService {
         goods.setCodeManaged(allocation.managed());
     }
 
-    private void apply(GoodsSaveRequest req, Goods g) {
+    private void apply(GoodsSaveRequest req, Goods g, boolean writeCosts) {
         g.setCategory(requireCategory(req.getCategoryId()));
         g.setName(req.getName());
         g.setShortName(req.getShortName());
@@ -915,30 +945,29 @@ public class GoodsService {
             }
         }
         g.setSourceType(req.getSourceType());
-        if (req.getProductionBomPolicy() != null
-                && !req.getProductionBomPolicy().isBlank()) {
-            g.setProductionBomPolicy(normalizeProductionBomPolicy(
-                    req.getProductionBomPolicy()));
+        // 成本预算：无 goods:cost:view 的普通编辑保留实体原值，避免脱敏 null 覆盖历史成本。
+        // 导入是独立特权入口，显式传 writeCosts=true 保持批量导入能力。
+        if (writeCosts) {
+            g.setSourceE(req.getSourceE());
+            g.setMachiningE(req.getMachiningE());
+            g.setIncidentalE(req.getIncidentalE());
+            g.setLacquerE(req.getLacquerE());
+            g.setPlatingE(req.getPlatingE());
+            g.setCasingE(req.getCasingE());
+            g.setPolishE(req.getPolishE());
+            g.setTotal(req.getTotal());
+            g.setWorkRate(req.getWorkRate());
+            g.setWorkE(req.getWorkE());
+            g.setLostRate(req.getLostRate());
+            g.setLostE(req.getLostE());
+            g.setRentRate(req.getRentRate());
+            g.setRentE(req.getRentE());
+            g.setMakeRate(req.getMakeRate());
+            g.setMakeE(req.getMakeE());
+            g.setCTotal(req.getCTotal());
+            g.setGTotal(req.getGTotal());
         }
-        // 成本预算（「成本预算」页签字段；前端表单全量回传，null 即清空）
-        g.setSourceE(req.getSourceE());
-        g.setMachiningE(req.getMachiningE());
-        g.setIncidentalE(req.getIncidentalE());
-        g.setLacquerE(req.getLacquerE());
-        g.setPlatingE(req.getPlatingE());
-        g.setCasingE(req.getCasingE());
-        g.setPolishE(req.getPolishE());
-        g.setTotal(req.getTotal());
-        g.setWorkRate(req.getWorkRate());
-        g.setWorkE(req.getWorkE());
-        g.setLostRate(req.getLostRate());
-        g.setLostE(req.getLostE());
-        g.setRentRate(req.getRentRate());
-        g.setRentE(req.getRentE());
-        g.setMakeRate(req.getMakeRate());
-        g.setMakeE(req.getMakeE());
-        g.setCTotal(req.getCTotal());
-        g.setGTotal(req.getGTotal());
+        GoodsCostValuePolicy.validateEntity(g);
     }
 
     private GoodsDetail toDetail(Goods g, String colorName, String unitName) {
@@ -968,7 +997,6 @@ public class GoodsService {
                 g.getWorkRate(), g.getWorkE(), g.getLostRate(), g.getLostE(),
                 g.getRentRate(), g.getRentE(), g.getMakeRate(), g.getMakeE(),
                 g.getCTotal(), g.getGTotal(), g.getSourceType(),
-                g.getProductionBomPolicy(),
                 g.getThicknessUnit() == null
                         ? g.getThicknessUnitLegacyId() : g.getThicknessUnit().getLegacyId(),
                 g.getMWeightUnit() == null
@@ -1011,7 +1039,6 @@ public class GoodsService {
                         ? (g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()))
                         : (g.getUnit().isDeleted() ? null : g.getUnit().getName()),
                 g.getSourceType(),
-                g.getProductionBomPolicy(),
                 g.getCategory() == null ? null : g.getCategory().getId(),
                 g.isAutoCreated(),
                 stockByGoods.getOrDefault(g.getId(), BigDecimal.ZERO),
@@ -1028,23 +1055,5 @@ public class GoodsService {
         return repo.findById(id)
                 .filter(g -> !g.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "货品不存在"));
-    }
-
-    private static String normalizeProductionBomPolicy(String rawPolicy) {
-        String policy = rawPolicy.strip().toUpperCase(java.util.Locale.ROOT);
-        if (!java.util.Set.of(
-                "BOM_REQUIRED", "DIRECT_MAKE", "NOT_PRODUCED").contains(policy)) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "生产 BOM 策略必须为 BOM_REQUIRED、DIRECT_MAKE 或 NOT_PRODUCED");
-        }
-        return policy;
-    }
-
-    private static String defaultProductionBomPolicy(String sourceType) {
-        String normalized = sourceType == null ? "" : sourceType.strip();
-        return "采购".equals(normalized) || "委外".equals(normalized)
-                ? "NOT_PRODUCED"
-                : "BOM_REQUIRED";
     }
 }

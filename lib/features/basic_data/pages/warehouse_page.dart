@@ -156,8 +156,8 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       group: '基础',
       type: MasterFieldType.select,
       options: [
-        MasterSelectOption(value: 'true', label: '使用（参与核算）'),
-        MasterSelectOption(value: 'false', label: '不使用（不核算）'),
+        MasterSelectOption(value: 'true', label: '使用(参与核算)'),
+        MasterSelectOption(value: 'false', label: '不使用(不核算)'),
       ],
     ),
     MasterFieldDef(
@@ -419,7 +419,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
                         child: UtenSearchBar(
-                          hint: '搜索仓库（名称/编号）',
+                          hint: '搜索仓库(名称/编号)',
                           initialValue: _keyword,
                           onChanged: _onKeywordChanged,
                         ),
@@ -510,7 +510,7 @@ class _WarehouseWorkshopFieldState
         value: _value,
         items: [
           for (final row in rows)
-            UtenDropdownItem(value: row.id, label: '${row.name}（${row.code}）'),
+            UtenDropdownItem(value: row.id, label: '${row.name}(${row.code})'),
         ],
         onChanged: (value) {
           setState(() => _value = value);

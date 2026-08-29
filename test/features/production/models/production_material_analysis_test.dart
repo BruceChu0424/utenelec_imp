@@ -30,10 +30,6 @@ void main() {
           'readyShipQty': 8,
           'readyByDateQty': 40,
           'readinessRatio': 25,
-          'productionBomPolicy': 'BOM_REQUIRED',
-          'missingBom': true,
-          'bomOverrideRequired': true,
-          'hasActiveBom': false,
           'allocationPriority': 2,
           'planExecutionStatus': 'IN_PROGRESS',
           'latestPlanId': 'plan-1',
@@ -60,6 +56,7 @@ void main() {
           'allocatedAvailableQty': 3,
           'exactPeggedQty': 2,
           'shortageQty': 16,
+          'demandSupplyGapQty': 17,
           'sourceSuggestion': 'BUY',
           'sourceConfirmed': null,
           'routeConfirmed': false,
@@ -77,6 +74,9 @@ void main() {
               'reservedQty': 1,
               'availableQty': 6,
               'ownPeggedQty': 2,
+              'publicAvailableQty': 4,
+              'openSafetySupplyQty': 1,
+              'safetyReplenishmentGapQty': 3,
             },
           ],
           'downstreamReferences': [
@@ -88,6 +88,22 @@ void main() {
               'status': 'OPEN',
             },
           ],
+        },
+      ],
+      'supplyActions': [
+        {
+          'actionId': 'action-1',
+          'actionGroupKey': 'action-material-1',
+          'generation': 2,
+          'route': 'BUY',
+          'status': 'IN_PROGRESS',
+          'requestedQty': 7,
+          'safetyReplenishmentQty': 3,
+          'totalRequestedQty': 10,
+          'safetyStockSnapshotQty': 8,
+          'publicAvailableSnapshotQty': 4,
+          'openSafetySupplySnapshotQty': 1,
+          'documentNo': 'PR-1',
         },
       ],
     });
@@ -106,7 +122,6 @@ void main() {
     expect(view.products.single.planExecutionStatus, 'IN_PROGRESS');
     expect(view.products.single.latestPlanId, 'plan-1');
     expect(view.products.single.latestPlanNo, 'SC26080001');
-    expect(view.products.single.hasBomPolicyError, isTrue);
     final material = view.materials.single;
     expect(material.actionGroupKey, 'action-material-1');
     expect(material.path, ['产品', '组件A', '共享紧固件']);
@@ -116,6 +131,7 @@ void main() {
     expect(material.availableQty, 4);
     expect(material.allocatedAvailableQty, 3);
     expect(material.exactPeggedQty, 2);
+    expect(material.demandSupplyGapQty, 17);
     expect(material.actionable, isFalse);
     expect(material.sourceSuggestion, MaterialSupplyRoute.buy);
     expect(material.confirmedRoute, isNull);
@@ -125,7 +141,32 @@ void main() {
     expect(material.allowPartialPackage, isTrue);
     expect(material.hardGate, isTrue);
     expect(material.warehouseStocks.single.ownPeggedQty, 2);
+    expect(material.warehouseStocks.single.publicAvailableQty, 4);
+    expect(material.warehouseStocks.single.openSafetySupplyQty, 1);
+    expect(material.warehouseStocks.single.safetyReplenishmentGapQty, 3);
     expect(material.notifiedTargets.single.documentNo, 'PR-1');
+    final action = view.supplyActions.single;
+    expect(action.route, MaterialSupplyRoute.buy);
+    expect(action.requestedQty, 7);
+    expect(action.safetyReplenishmentQty, 3);
+    expect(action.totalRequestedQty, 10);
+    expect(action.safetyStockSnapshotQty, 8);
+    expect(action.publicAvailableSnapshotQty, 4);
+    expect(action.openSafetySupplySnapshotQty, 1);
+  });
+
+  test('supply quantity always serializes the explicit safety slice', () {
+    const input = MaterialSupplyQuantityInput(
+      actionGroupKey: 'group-1',
+      qty: 0,
+      safetyReplenishmentQty: 6,
+    );
+
+    expect(input.toJson(), {
+      'actionGroupKey': 'group-1',
+      'qty': 0.0,
+      'safetyReplenishmentQty': 6.0,
+    });
   });
 
   test('missing actionable defaults to level one only', () {

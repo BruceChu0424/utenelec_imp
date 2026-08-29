@@ -120,12 +120,6 @@ void main() {
             productNo: 'V6-0001',
           ),
         ],
-        bomOverrides: const [
-          MaterialBomOverride(
-            analysisLineId: 'product-line-1',
-            reason: '试制特批，后续补录 BOM',
-          ),
-        ],
       );
       await repository.generateMaterialAnalysisPlan(
         preview: planPreview,
@@ -147,12 +141,6 @@ void main() {
             workerId: 'worker-1',
             teamDepartmentId: 'team-1',
             productNo: 'V6-0001',
-          ),
-        ],
-        bomOverrides: const [
-          MaterialBomOverride(
-            analysisLineId: 'product-line-1',
-            reason: '试制特批，后续补录 BOM',
           ),
         ],
       );
@@ -221,9 +209,6 @@ void main() {
             'productNo': 'V6-0001',
           },
         ],
-        'bomOverrides': [
-          {'analysisLineId': 'product-line-1', 'reason': '试制特批，后续补录 BOM'},
-        ],
       });
       expect(requests[4].data, {
         'version': 7,
@@ -249,9 +234,6 @@ void main() {
             'teamDepartmentId': 'team-1',
             'productNo': 'V6-0001',
           },
-        ],
-        'bomOverrides': [
-          {'analysisLineId': 'product-line-1', 'reason': '试制特批，后续补录 BOM'},
         ],
       });
       expect(requests[5].method, 'PUT');
@@ -372,6 +354,50 @@ void main() {
         'targetFingerprint': 'c' * 64,
         'reason': '交期调整',
         'idempotencyKey': 'cross-reallocation-revoke-1',
+      });
+    },
+  );
+
+  test(
+    'notify sends demand and safety replenishment as explicit slices',
+    () async {
+      RequestOptions? captured;
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          captured = request;
+          return _analysisJson;
+        }),
+      );
+      final analysis = ProductionMaterialAnalysisView.fromJson(_analysisJson);
+
+      await repository.notifyMaterialAnalysis(
+        analysis: analysis,
+        idempotencyKey: 'notify-safety-split-1',
+        target: MaterialSupplyRoute.buy,
+        actionGroupKeys: const ['action-group-1'],
+        quantities: const [
+          MaterialSupplyQuantityInput(
+            actionGroupKey: 'action-group-1',
+            qty: 0,
+            safetyReplenishmentQty: 6,
+          ),
+        ],
+      );
+
+      expect(captured?.method, 'POST');
+      expect(captured?.data, {
+        'version': 7,
+        'fingerprint': 'b' * 64,
+        'idempotencyKey': 'notify-safety-split-1',
+        'target': 'BUY',
+        'actionGroupKeys': ['action-group-1'],
+        'quantities': [
+          {
+            'actionGroupKey': 'action-group-1',
+            'qty': 0.0,
+            'safetyReplenishmentQty': 6.0,
+          },
+        ],
       });
     },
   );

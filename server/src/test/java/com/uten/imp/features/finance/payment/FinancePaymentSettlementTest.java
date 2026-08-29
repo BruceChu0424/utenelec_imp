@@ -5,9 +5,9 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
-import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentDetail;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentSaveRequest;
@@ -23,6 +23,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -60,8 +61,9 @@ class FinancePaymentSettlementTest {
     private Query accountLock;
     private Query accountUpdate;
     private Query reconciliationInsert;
-    private Query reconciliationDelete;
+    private Query createReplay;
     private GlPostingService glPostingService;
+    private AccountFlowLedgerService accountFlowLedger;
     private final ArrayDeque<Long> postingCounts = new ArrayDeque<>();
     private final Map<UUID, FinancePayment> payments = new HashMap<>();
     private final Map<UUID, List<FinancePaymentLine>> linesByPayment = new HashMap<>();
@@ -73,13 +75,13 @@ class FinancePaymentSettlementTest {
         paymentRepo = mock(FinancePaymentRepository.class);
         lineRepo = mock(FinancePaymentLineRepository.class);
         ledgerRepo = mock(ArApLedgerRepository.class);
-        ArApLedgerService arApService = mock(ArApLedgerService.class);
         TxSessionVars tx = mock(TxSessionVars.class);
         currentUser = mock(SecurityContextCurrentUser.class);
         EmployeeNameResolver names = mock(EmployeeNameResolver.class);
         DocNumberService numbers = mock(DocNumberService.class);
         FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
         glPostingService = mock(GlPostingService.class);
+        accountFlowLedger = mock(AccountFlowLedgerService.class);
         em = mock(EntityManager.class);
 
         when(paymentRepo.save(any(FinancePayment.class))).thenAnswer(invocation -> {
@@ -122,18 +124,27 @@ class FinancePaymentSettlementTest {
         accountLock = query();
         accountUpdate = query();
         reconciliationInsert = query();
-        reconciliationDelete = query();
+        Query idempotencyLock = query();
+        createReplay = query();
         Query supplierLookup = query();
         when(postingCount.getSingleResult()).thenAnswer(ignored ->
                 postingCounts.isEmpty() ? 0L : postingCounts.removeFirst());
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
-                new Object[] {CURRENCY_ID, "USD", "美元"}));
+                new Object[] {CURRENCY_ID, "USD", "美元", false}));
         when(accountUpdate.executeUpdate()).thenReturn(1);
         when(reconciliationInsert.executeUpdate()).thenReturn(1);
-        when(reconciliationDelete.executeUpdate()).thenReturn(1);
+        when(idempotencyLock.getSingleResult()).thenReturn(1L);
+        when(createReplay.getResultList()).thenReturn(List.of());
         when(supplierLookup.getSingleResult()).thenReturn("测试供应商");
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
+            if (sql.contains("pg_advisory_xact_lock(hashtextextended")) {
+                return idempotencyLock;
+            }
+            if (sql.contains("SELECT id FROM finance_payments")
+                    && sql.contains("create_idempotency_key")) {
+                return createReplay;
+            }
             if (sql.contains("FROM finance_reconciliations") && sql.contains("COUNT(*)")) {
                 return postingCount;
             }
@@ -146,9 +157,6 @@ class FinancePaymentSettlementTest {
             if (sql.contains("INSERT INTO finance_reconciliations")) {
                 return reconciliationInsert;
             }
-            if (sql.contains("DELETE FROM finance_reconciliations")) {
-                return reconciliationDelete;
-            }
             if (sql.contains("SELECT name FROM suppliers")) {
                 return supplierLookup;
             }
@@ -159,8 +167,9 @@ class FinancePaymentSettlementTest {
         when(currentUser.requireEmployeeId()).thenReturn(MAKER_ID);
         service = new FinancePaymentService(
                 mock(com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard.class),
-                paymentRepo, lineRepo, ledgerRepo, arApService, tx,
-                currentUser, names, em, numbers, access, glPostingService);
+                paymentRepo, lineRepo, ledgerRepo, tx,
+                currentUser, names, em, numbers, access, glPostingService,
+                accountFlowLedger);
     }
 
     @Test
@@ -191,6 +200,97 @@ class FinancePaymentSettlementTest {
                 .hasMessageContaining("付款汇率不能为空");
 
         verify(paymentRepo, never()).save(any());
+    }
+
+    @Test
+    void createRejectsAMissingIdempotencyKeyBeforeSaving() {
+        ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
+        FinancePaymentSaveRequest request = request(
+                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000");
+        request.setCreateIdempotencyKey(null);
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("付款创建幂等键格式不正确");
+        verify(paymentRepo, never()).save(any());
+    }
+
+    @Test
+    void createIdempotencyReplaysTheSameCanonicalRequest() {
+        ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
+        FinancePaymentSaveRequest firstRequest = request(
+                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000");
+        firstRequest.setCreateIdempotencyKey("payment-retry-001");
+        FinancePaymentDetail first = service.create(firstRequest);
+        when(createReplay.getResultList()).thenReturn(List.of(first.getId()));
+
+        FinancePaymentSaveRequest retry = request(
+                payable, CURRENCY_ID, "7.2", "30.0", "9999.0000", "-8888.0000");
+        retry.setCreateIdempotencyKey("payment-retry-001");
+        FinancePaymentDetail replay = service.create(retry);
+
+        assertThat(replay.getId()).isEqualTo(first.getId());
+        assertThat(payments).hasSize(1);
+        assertThat(replay.getCreateIdempotencyKey()).isEqualTo("payment-retry-001");
+    }
+
+    @Test
+    void createIdempotencyRejectsDifferentEffectiveContent() {
+        ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
+        FinancePaymentSaveRequest firstRequest = request(
+                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000");
+        firstRequest.setCreateIdempotencyKey("payment-retry-002");
+        FinancePaymentDetail first = service.create(firstRequest);
+        when(createReplay.getResultList()).thenReturn(List.of(first.getId()));
+        FinancePaymentSaveRequest changed = request(
+                payable, CURRENCY_ID, "7.200000", "31.0000", "223.2000", "6.2000");
+        changed.setCreateIdempotencyKey("payment-retry-002");
+
+        assertThatThrownBy(() -> service.create(changed))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("幂等键已用于不同内容");
+        assertThat(payments).hasSize(1);
+    }
+
+    @Test
+    void draftUpdateRequiresTheCurrentOptimisticVersion() {
+        ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
+        FinancePaymentDetail draft = service.create(request(
+                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000"));
+        payments.get(draft.getId()).setVersion(4L);
+        FinancePaymentSaveRequest stale = request(
+                payable, CURRENCY_ID, "7.200000", "30.0000", "216.0000", "6.0000");
+        stale.setExpectedVersion(3L);
+
+        assertThatThrownBy(() -> service.update(draft.getId(), stale))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("付款草稿已被其他操作更新");
+        verify(lineRepo, never()).deleteByPaymentId(any(UUID.class));
+    }
+
+    @Test
+    void approvalRejectsDirectPaymentUntilSupplierPrepaymentAssetChainExists() {
+        FinancePaymentSaveRequest request = new FinancePaymentSaveRequest();
+        request.setBillDate(LocalDate.of(2026, 8, 9));
+        request.setSupplierId(SUPPLIER_ID);
+        request.setAccountId(ACCOUNT_ID);
+        request.setCurrencyId(CURRENCY_ID);
+        request.setExchangeRate(new BigDecimal("7.200000"));
+        request.setAmountOriginal(new BigDecimal("30.0000"));
+        request.setCreateIdempotencyKey(UUID.randomUUID().toString());
+        request.setItems(List.of());
+        FinancePaymentDetail draft = service.create(request);
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.add(0L);
+
+        assertThatThrownBy(() -> service.approve(draft.getId()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("供应商预付资产科目")
+                .hasMessageContaining("当前禁止审核");
+
+        assertThat(payments.get(draft.getId()).getStatus()).isZero();
+        verify(accountUpdate, never()).executeUpdate();
+        verify(reconciliationInsert, never()).executeUpdate();
     }
 
     @Test
@@ -277,6 +377,43 @@ class FinancePaymentSettlementTest {
         verify(glPostingService).removePaymentDoc(
                 draft.getId(), draft.getBillNo(), LocalDate.of(2026, 8, 9));
         verify(accountUpdate).setParameter("amount", new BigDecimal("-30.0000"));
+        verify(accountFlowLedger).reverse(
+                org.mockito.ArgumentMatchers.eq(FinancePaymentService.RECON_SOURCE),
+                org.mockito.ArgumentMatchers.eq(draft.getId()),
+                any(OffsetDateTime.class),
+                org.mockito.ArgumentMatchers.eq("采购付款红冲"));
+    }
+
+    @Test
+    void baseCurrencyUuidUsesLocalAmountEvenWhenLabelsPretendUsd() {
+        ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
+        FinancePaymentDetail draft = service.create(request(
+                payable, CURRENCY_ID, "7.200000", "30.0000", "9999.0000", "-8888.0000"));
+        when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[] {UUID.randomUUID(), "USD", "美元", true}));
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.add(0L);
+
+        service.approve(draft.getId());
+
+        verify(accountUpdate).setParameter("amount", new BigDecimal("216.0000"));
+        verify(reconciliationInsert).setParameter("outAmt", new BigDecimal("216.0000"));
+    }
+
+    @Test
+    void foreignCurrencyUuidCannotMasqueradeAsRmbByEditableLabels() {
+        ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
+        FinancePaymentDetail draft = service.create(request(
+                payable, CURRENCY_ID, "7.200000", "30.0000", "9999.0000", "-8888.0000"));
+        when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[] {CURRENCY_ID, "CNY", "人民币", false}));
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.add(0L);
+
+        service.approve(draft.getId());
+
+        verify(accountUpdate).setParameter("amount", new BigDecimal("30.0000"));
+        verify(reconciliationInsert).setParameter("outAmt", new BigDecimal("30.0000"));
     }
 
     @ParameterizedTest
@@ -295,7 +432,7 @@ class FinancePaymentSettlementTest {
             default -> throw new AssertionError("unexpected corruption: " + corruption);
         }
         postingCounts.add(1L);
-        clearInvocations(accountUpdate, reconciliationDelete);
+        clearInvocations(accountUpdate, accountFlowLedger);
 
         assertThatThrownBy(() -> service.reverse(draft.getId()))
                 .isInstanceOf(ApiException.class)
@@ -303,7 +440,8 @@ class FinancePaymentSettlementTest {
 
         assertMoney(payable.getAmountSettled(), "210.0000");
         verify(accountUpdate, never()).executeUpdate();
-        verify(reconciliationDelete, never()).executeUpdate();
+        verify(accountFlowLedger, never()).reverse(
+                anyString(), any(UUID.class), any(OffsetDateTime.class), anyString());
     }
 
     @Test
@@ -315,7 +453,7 @@ class FinancePaymentSettlementTest {
         postingCounts.add(0L);
         service.approve(draft.getId());
         payments.get(draft.getId()).setAmountAuthorityVersion((short) 0);
-        clearInvocations(accountUpdate, reconciliationDelete);
+        clearInvocations(accountUpdate, accountFlowLedger);
 
         assertThatThrownBy(() -> service.reverse(draft.getId()))
                 .isInstanceOf(ApiException.class)
@@ -323,7 +461,8 @@ class FinancePaymentSettlementTest {
 
         assertMoney(payable.getAmountSettled(), "210.0000");
         verify(accountUpdate, never()).executeUpdate();
-        verify(reconciliationDelete, never()).executeUpdate();
+        verify(accountFlowLedger, never()).reverse(
+                anyString(), any(UUID.class), any(OffsetDateTime.class), anyString());
     }
 
     @Test
@@ -388,6 +527,7 @@ class FinancePaymentSettlementTest {
         request.setExchangeRate(new BigDecimal(paymentRate));
         request.setAmountOriginal(new BigDecimal("999.0000"));
         request.setAmountLocal(new BigDecimal("9999.0000"));
+        request.setCreateIdempotencyKey(UUID.randomUUID().toString());
         request.setItems(List.of(line));
         return request;
     }

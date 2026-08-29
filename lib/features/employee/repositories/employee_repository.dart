@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/employee_api_models.dart';
 
@@ -31,7 +32,30 @@ abstract interface class EmployeeRepository {
   Future<void> setAvatar(String id, String attachmentId);
 }
 
-class DioEmployeeRepository implements EmployeeRepository {
+/// 本人档案读取能力。
+///
+/// 单独建能力接口并通过 [EmployeeRepositorySelfProfile] 暴露，避免给只服务于员工
+/// 列表/选择器的既有测试仓库强加一个无关实现；生产仓库实现该能力，调用端仍可直接在
+/// [EmployeeRepository] 上调用 `getMe()`。
+abstract interface class EmployeeSelfProfileRepository {
+  Future<EmployeeProfile?> getMe();
+}
+
+extension EmployeeRepositorySelfProfile on EmployeeRepository {
+  Future<EmployeeProfile?> getMe() {
+    final repository = this;
+    if (repository is EmployeeSelfProfileRepository) {
+      // 显式 cast 到能力接口，避免交集类型上再次静态命中本 extension。
+      return (repository as EmployeeSelfProfileRepository).getMe();
+    }
+    throw UnsupportedError(
+      'EmployeeRepository does not support GET /profile/me',
+    );
+  }
+}
+
+class DioEmployeeRepository
+    implements EmployeeRepository, EmployeeSelfProfileRepository {
   DioEmployeeRepository(this.api);
   final ApiClient api;
 
@@ -61,6 +85,20 @@ class DioEmployeeRepository implements EmployeeRepository {
   Future<EmployeeProfile> getById(String id) async {
     final json = await api.get(ApiEndpoints.employee(id));
     return EmployeeProfile.fromJson(json);
+  }
+
+  @override
+  Future<EmployeeProfile?> getMe() async {
+    try {
+      final json = await api.get(ApiEndpoints.myProfile);
+      if (json.isEmpty) return null;
+      return EmployeeProfile.fromJson(json);
+    } on ApiException catch (error) {
+      // 本人端点把“当前账号没有可用员工档案”视为明确空状态；网络、鉴权和服务端
+      // 错误仍向上传递，交给页面展示失败与重试。
+      if (error.code == 'NOT_FOUND') return null;
+      rethrow;
+    }
   }
 
   @override

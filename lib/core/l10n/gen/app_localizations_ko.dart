@@ -2007,6 +2007,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileFieldGroupEmergency => '비상 연락처';
 
   @override
+  String get profileFieldGroupOrganization => '조직 정보';
+
+  @override
+  String get profileEditPolicyHint =>
+      '녹색 \'직접 수정\' 필드는 제출 즉시 적용되고, 노란색 필드는 인사 검토 후 적용됩니다. 나머지 필드는 인사에서 관리합니다.';
+
+  @override
+  String profileEditPendingConflictHint(int count) {
+    return '대기 중인 신청이 $count건 있습니다. 승인 전 같은 필드를 다시 수정하면 충돌할 수 있습니다.';
+  }
+
+  @override
+  String get profileEditFieldAction => '수정';
+
+  @override
   String get profileFieldGroupOrg => '조직 및 입사';
 
   @override
@@ -2738,4 +2753,114 @@ class AppLocalizationsKo extends AppLocalizations {
   String exportDownloadSaved(String path) {
     return '저장 위치: $path';
   }
+
+  @override
+  String get profileLoadingMessage => '직원 기록을 불러오는 중…';
+
+  @override
+  String get profileLoadFailed => '직원 기록을 불러오지 못했습니다';
+
+  @override
+  String get profileUnboundTitle => '현재 계정에 직원 기록이 연결되어 있지 않습니다';
+
+  @override
+  String get profileUnboundDescription =>
+      '관리자 또는 인사 담당자에게 계정과 직원 기록 연결을 요청하세요.';
+
+  @override
+  String get profileSessionUnavailable => '로그인하지 않았거나 세션을 사용할 수 없습니다';
+
+  @override
+  String get profileValueNotProvided => '미입력';
+
+  @override
+  String get profileValueNotRegistered => '미등록';
+
+  @override
+  String get profileAlternatePhoneLabel => '보조 전화번호';
+
+  @override
+  String get profileContractSummaryTitle => '계약 요약';
+
+  @override
+  String get profileTabOrgContract => '조직 및 계약';
+
+  @override
+  String get profileTabContactVehicle => '연락처 및 차량';
+
+  @override
+  String get profileTabMyDocuments => '내 문서';
+
+  @override
+  String get profileEmploymentHistoryTitle => '재직 이력';
+
+  @override
+  String get profileScopeNoticeTitle => '정보 범위 안내';
+
+  @override
+  String get profileCompensationBoundaryDescription =>
+      '급여와 은행 정보는 개인정보 보호를 위해 내 정보 화면에 표시하지 않습니다. 월별 소득은 급여명세서에서 확인하고, 그 밖의 문의는 권한이 있는 인사 담당자에게 하세요.';
+
+  @override
+  String get profileMissingEmergencyContact =>
+      '등록된 비상 연락처가 없습니다. 먼저 인사 담당자에게 등록을 요청한 뒤 여기에서 변경을 신청하세요.';
+
+  @override
+  String profileAlternatePhoneCount(int count) {
+    return '보조 전화번호 $count개 등록';
+  }
+
+  @override
+  String get profileVehiclesPhonesEmptyHint => '차량과 보조 전화번호를 등록하여 번호판으로 빠르게 찾기';
+
+  @override
+  String get historyEventConfirm => '정규 전환';
+
+  @override
+  String get accountProvisionPermissionDenied =>
+      '계정 개통 권한이 없습니다. 계정 지원 담당자에게 문의하세요.';
+
+  @override
+  String get accountProvisionAlreadyExists =>
+      '이미 계정이 있거나 계정이 비활성 상태이므로 다시 개통할 수 없습니다.';
+
+  @override
+  String get accountProvisionConfirmTitle => '계정 개통 확인';
+
+  @override
+  String get accountProvisionFailed => '계정 개통에 실패했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get accountProvisionInProgress => '개통 중';
+
+  @override
+  String get accountStatusNotProvisioned => '미개통';
+
+  @override
+  String get accountStatusInactive => '계정 비활성';
+
+  @override
+  String get pagePermissionAccountNotProvisionedTitle =>
+      '이 직원은 아직 계정이 없어 권한을 설정할 수 없습니다';
+
+  @override
+  String get pagePermissionAccountNotProvisionedCanProvision =>
+      '먼저 로그인 계정을 개통하세요. 일회성 자격 증명을 저장하면 권한 상세가 자동으로 로드됩니다.';
+
+  @override
+  String get pagePermissionAccountNotProvisionedNoAccess =>
+      '계정 지원 권한이 있는 담당자에게 로그인 계정 개통을 요청하세요.';
+
+  @override
+  String get employeePermissionSettingsTooltip => '직원 권한 설정';
+
+  @override
+  String get employeeAccountNotProvisionedTooltip => '직원 계정 미개통';
+
+  @override
+  String get employeeResignedCannotProvision => '퇴사한 직원에게는 로그인 계정을 개통할 수 없습니다';
+
+  @override
+  String get employeeAccountNotProvisionedContactSupport =>
+      '이 직원은 아직 계정이 없습니다. 계정 지원 담당자에게 문의하세요.';
 }

@@ -103,8 +103,8 @@ class _ProductionDailyReportDetailPageState
   }
 
   Future<void> _approve() => _doAction(
-    '审核后只按“合格完工量”累计生产进度，并生成成品入库草稿；'
-        '不良品不得填写在该数量中。确认继续？',
+    '审核后只累计完工申报量 fqty，并为每条明细生成生产成品质检任务；'
+        '此时不会增加库存或 iqty，只有品质 PASS 后才生成仓库待点收单。确认继续？',
     (repo) => repo.approve(widget.id),
     '已审核',
     reviewerResponsibility: true,
@@ -326,12 +326,12 @@ class _ProductionDailyReportDetailPageState
                   names.unit(it.unitId),
                 ].where((s) => s != '—').join(' · ');
                 return '${names.goods(it.goodsId)}'
-                    '${sub.isEmpty ? '' : '（$sub）'}';
+                    '${sub.isEmpty ? '' : '($sub)'}';
               },
             ),
             MasterColumnDef(
               key: 'qty',
-              label: '合格完工量',
+              label: '完工申报量',
               width: 112,
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),

@@ -753,7 +753,7 @@ class _FinanceAssetPolicySurfaceState
             label: '${style.code} · ${style.name}',
           ),
       ],
-      errorText: _showStyleErrors && controller.text.isEmpty
+      errorMessage: _showStyleErrors && controller.text.isEmpty
           ? '请选择$label'
           : null,
       onChanged: (value) {

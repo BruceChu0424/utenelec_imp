@@ -4,6 +4,7 @@ import com.uten.imp.common.domain.SoftDeletableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -26,6 +27,11 @@ import java.util.UUID;
 @Entity
 @Table(name = "production_daily_reports")
 public class ProductionDailyReport extends SoftDeletableEntity {
+
+    /** Monotonic optimistic-lock version shared by edit and lifecycle writes. */
+    @Version
+    @Column(name = "row_version", nullable = false)
+    private long rowVersion;
 
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;

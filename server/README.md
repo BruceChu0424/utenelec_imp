@@ -53,6 +53,17 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 时必须连接 `jdbc:postgresql://localhost:5433/uten_imp`；`.env.example` 已与该映射保持一致。若改用
 本机原生 PostgreSQL，需在私有 `.env` 中显式改成实际端口，不要修改共享模板来适配个人环境。
 
+> **V400 非空库启动门禁**：Flyway 会先对 `legacy_id` 非空且 `currency_id` 为空的旧账户按已审规则桥接：
+> `OFFSHORE` → 唯一使用中、未删除的 `currencies.legacy_id=3` 美金 UUID，其它 legacy 账户 →
+> 唯一使用中、未删除的 `currencies.legacy_id=1` 人民币 UUID。已有显式 UUID 和 `legacy_id` 为空的
+> 在线/手工账户不会被推断。目标币种缺失/多匹配，或桥接后活动账户仍为空币种、悬空、禁用或删除时，
+> 启动/独立 migrator 会以 SQLSTATE `23514` 失败并回滚。当前本地候选数据实测 27 行（26 人民币 +
+> 1 境外美金），不能作为目标库事实；目标库必须先做备份、可恢复非空副本演练及映射前后对账。
+> 当前美金币种参考汇率为 0 不影响账户原币余额、流水或余额核对：美元账户记美元，人民币账户记人民币，
+> 不同币种不直接相加。外币非零余额调整的本位币 `localDelta` 由财务在该调整中显式提供，不读取主档率。
+> 修复前置数据后原样重跑迁移，
+> 禁止修改 V400–V405、篡改 checksum 或使用 `flyway repair`。
+
 以上命令**只用于本地开发**。生产不得复制开发 `.env` 或直接运行 `spring-boot:run`；应使用不可变 JAR、
 受控密钥注入、Nginx/systemd 和维护窗口迁移，见 Cloud Runbook。
 
@@ -66,7 +77,7 @@ mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 
 | 脚本 | 作用 |
 |---|---|
-| `ops/reset_business_data.sql` | V328 全表白名单式业务重置：业务流程与库存归零，保留主档、人事、用户权限、安全审计、人事附件、导入/迁移证据和编号流水；需 `confirm + expected_database + expected_system_identifier` 三重确认，且应用/worker 已停、无其它连接、Outbox 已排空。仅用于可丢弃的本地/测试库；范围与恢复步骤见脚本头部及 [docs/数据迁移/README.md](../docs/数据迁移/README.md) 顶部。 |
+| `ops/reset_business_data.sql` | V422 全表白名单式零基线重置：业务流程、库存、账户期初/累计收付/累计调整/当前余额，以及客户/供应商期初往来、货品 legacy 期初库存、`min_qty` 安全库存、20 项成本金额/费率和结算类别期初金额归字面 `0`（不保留 NULL）；货品 UUID/编号/名称/分类/单位/BOM、`max_qty`、业务售价 `price/a_price/price2` 与其它主档身份、人事、用户权限、安全审计、人事附件、导入/迁移证据和编号流水保留。主档 UPDATE 不停审计，以 `ops:reset_business_data` 标识并共享一次 request ID；客户/供应商/货品的 `version`、`updated_at` 随真实变化推进，提交前分别断言遗留期初及货品安全库存/成本预算均为零。当前 283 张 public 非分区普通表/分区父表精确分类为 `CLEAR 191` / `PRESERVE 92`；V420–V422 只新增 action 列/只读视图、货品 CHECK、审计修复与触发器前向修正，不新增永久表，分类计数不变。需 `confirm + expected_database + expected_system_identifier` 三重确认，且应用/worker 已停、无其它连接、Outbox 已排空。仅用于可丢弃的本地/测试库；范围与恢复步骤见脚本头部及 [docs/数据迁移/README.md](../docs/数据迁移/README.md) 顶部。 |
 | `ops/audit_retention.sql` | 审计日志 180 天热保留 + 归档冷存，幂等，可手动或定时执行 |
 
 ### 本地/云端生产 profile
@@ -129,7 +140,7 @@ SSL factory/hostname verifier。明确的本机回环继续允许开发、内部
    主构造器必须显式 `@Autowired`（否则启动报 "No default constructor found"）。
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前共享工作树目录最高 V375，共 337 个迁移文件、337 个唯一版本且无重号）。V251–V306 是货品导入、官网询盘、UUID/编号、人员与附件、物料分析及采购委外治理的历史候选段；V307–V338 收口 exact entitlement、页面权限、供应商往来、V337 MAKE child 权益交接与 V338 生产 FINISHED_IN 点收/专用红冲；V339–V375 为并行委外损耗与供应商结算/审计候选。上述都不增加第二份生产默认车间字段，生产车间偏好继续复用 V192；各阶段细目与当前头以[迁移总索引](../docs/数据迁移/README.md)顶部为准。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前共享工作树目录最高 V422，共 384 个迁移文件、384 个唯一版本且无重号）。V251–V306 是货品导入、官网询盘、UUID/编号、人员与附件、物料分析及采购委外治理的历史候选段；V307–V338 收口 exact entitlement、页面权限、供应商往来、V337 MAKE child 权益交接与 V338 生产 FINISHED_IN 点收/专用红冲；V339–V399 为委外损耗、供应商结算、客户预收、访问/交接与账号 CAS 候选；V400–V419 收口账户/通知/生产 FQC/到货幂等；V420 为已授权的 BUY 需求 exact 与公共安全库存补库分账，V421 为库存台账金额权威和货品成本完整性，V422 前向冻结安全 action 单位快照并阻止 safety item 进入 demand allocation。上述都不增加第二份生产默认车间字段，生产车间偏好继续复用 V192；各阶段细目与当前头以[迁移总索引](../docs/数据迁移/README.md)顶部为准。
   2026-08-09 只读证据确认公司原库仍为 `V238 / installed_rank 219`；隔离克隆
   `uten_imp_cloud_audit_20260809` 已从原库 V238 连续成功升到 `V244 / installed_rank 225`。源码、编译、空库或克隆
   迁移通过都不等于公司目标库已升级，实际版本始终以该库 `flyway_schema_history` 为准；禁止用 SQL
@@ -281,6 +292,18 @@ com.uten.imp
 | `disabled` | 停用 | 拒绝 |
 
 锁定检查同时覆盖登录（LoginService）与令牌刷新（TokenIssuer.refresh），防止被锁用户持 refresh token 续期。
+
+### 本人资料与账号开通对象边界（2026-08-27）
+
+- `GET /api/profile/me` 要求 `profile:edit:self`，不接受 employeeId；服务端只从当前
+  `AuthUser.employeeId` 解析本人。访客拒绝，账号未绑定档案返回 `404 NOT_FOUND`。
+- 本人可见自己的证件、主/备用手机号、人口属性、住址和紧急联系人明文；这不产生
+  `employee:pii:view`，不能查看同事。银行与薪酬仍分别要求
+  `employee:pii:view` / `employee:compensation:view`。
+- 补开账号仍只由 `POST /api/org/employees/{id}/account` 执行，并要求 `account:support`；
+  组织负责人或 `authorization:manage` 不自动获得该能力。业务页可按负责人范围列出未开户员工，
+  但开户端点自身当前是全局账号支持权限，不能把页面裁剪误写成服务端负责人子树限制。
+- 开户成功响应中的初始凭据只展示一次；前端确认保存并关闭凭据弹窗后才刷新账号状态和加载权限。
 
 ## 安全要点（见顶层计划文档 §四、§十三）
 Argon2id 密码 · access JWT（源码默认 15 分钟，运行值可由系统设置覆盖；V133 只把未改过的旧默认 480 收敛到 15）+ 不透明轮换 refresh(7d, 哈希入库, 重用检测) · JWT 签发和解析都绑定非空 issuer（生产必须显式 `UTEN_JWT_ISSUER`，即使误用同一密钥也拒绝跨环境 token）· 登录采用账号/规范手机号低阈值 + IP 高阈值双桶并按员工/访客用途隔离 · 锁定 5/15min · 首登强制改密 · 密码历史最近 5 · DTO 按权限点脱敏（`employee:pii:view` / `employee:compensation:view`，V30 起不再按角色） · HTTPS 强制(prod) · 严格 CORS · 无堆栈泄露 · **每请求一次账号/授权版本投影复查**（锁定、停用或 V135 `auth_version`/授权 `epoch` 不匹配立即 401；拒绝响应序列化失败也不得继续过滤链）· **base/prod 关闭 swagger，dev 显式开放**（prod 为 404 + 白名单回落认证，ADR-009 §3）。未设置 `UTEN_PROFILE` 时按 prod fail-closed；默认配置不处理 `Forwarded/X-Forwarded-*`，prod 才使用 `native`，Tomcat 只信任 `UTEN_TRUSTED_PROXY_REGEX`，且部署必须保证后端 8080 仅受信反向代理可达。鉴权/导出桶仍是单实例内存态，多实例部署需改共享状态或由网关兜底；导出另有进程内全局并发闸门（源码默认 2）。开发库已应用 V135；仍须完成个人、角色、部门树、共享权限和超管变化的真实 HTTP 负向矩阵与性能测试，才能认定权限回收即时失效。

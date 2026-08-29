@@ -210,6 +210,11 @@ public class CurrencyService {
         tx.bind();
         com.uten.imp.security.CurrentAuthorityGuard.requireAll("currency:edit");
         Currency c = requireCurrency(id);
+        if (c.isBaseCurrency() && !"使用".equals(req.getStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "本位币 UUID 只能保持启用；变更本位币必须使用经复核的前向迁移");
+        }
         if (req.getStatus() != null && !java.util.Objects.equals(c.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("currency:status");
         }
@@ -225,6 +230,11 @@ public class CurrencyService {
         tx.bind();
         Currency c = requireCurrency(id);
         em.refresh(c, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (c.isBaseCurrency() && !"使用".equals(req.status())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "本位币 UUID 不能停用；变更本位币必须使用经复核的前向迁移");
+        }
         c.setStatus(req.status());
         repo.save(c);
         return toDetail(c);
@@ -235,6 +245,11 @@ public class CurrencyService {
     public void delete(UUID id) {
         tx.bind();
         Currency c = requireCurrency(id);
+        if (c.isBaseCurrency()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "本位币 UUID 不能删除；变更本位币必须使用经复核的前向迁移");
+        }
         c.setDeleted(true);
         c.setDeletedAt(OffsetDateTime.now());
         repo.save(c);
@@ -248,12 +263,12 @@ public class CurrencyService {
 
     private CurrencyDetail toDetail(Currency c) {
         return new CurrencyDetail(c.getId(), c.getCode(), c.getName(), c.getExchangeRate(),
-                c.getStatus(), c.getLegacyId());
+                c.isBaseCurrency(), c.getStatus(), c.getLegacyId());
     }
 
     private CurrencyListItem toList(Currency c) {
         return new CurrencyListItem(c.getId(), c.getCode(), c.getName(), c.getExchangeRate(),
-                c.getStatus(), c.getLegacyId());
+                c.isBaseCurrency(), c.getStatus(), c.getLegacyId());
     }
 
     private Currency requireCurrency(UUID id) {

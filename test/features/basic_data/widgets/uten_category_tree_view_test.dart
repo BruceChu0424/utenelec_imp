@@ -17,9 +17,9 @@ void main() {
     await tester.enterText(find.byKey(const Key('category-tree-search')), '办公');
     await tester.pump();
 
-    expect(find.text('办公费用（A100）'), findsOneWidget);
-    expect(find.text('差旅费用（B200）'), findsNothing);
-    expect(find.text('费用（EXP）'), findsOneWidget);
+    expect(find.text('办公费用(A100)'), findsOneWidget);
+    expect(find.text('差旅费用(B200)'), findsNothing);
+    expect(find.text('费用(EXP)'), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const Key('category-tree-search')),
@@ -27,9 +27,9 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('差旅费用（B200）'), findsOneWidget);
-    expect(find.text('办公费用（A100）'), findsNothing);
-    expect(find.text('费用（EXP）'), findsOneWidget);
+    expect(find.text('差旅费用(B200)'), findsOneWidget);
+    expect(find.text('办公费用(A100)'), findsNothing);
+    expect(find.text('费用(EXP)'), findsOneWidget);
   });
 
   testWidgets('sortByCode=false 时保留服务端输入顺序', (tester) async {
@@ -40,8 +40,8 @@ void main() {
       ], sortByCode: false),
     );
 
-    final first = find.text('优先显示（Z900）');
-    final second = find.text('随后显示（A100）');
+    final first = find.text('优先显示(Z900)');
+    final second = find.text('随后显示(A100)');
     expect(first, findsOneWidget);
     expect(second, findsOneWidget);
     expect(tester.getTopLeft(first).dy, lessThan(tester.getTopLeft(second).dy));

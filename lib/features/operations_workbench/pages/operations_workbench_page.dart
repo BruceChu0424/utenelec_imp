@@ -9,6 +9,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -141,7 +142,7 @@ class _OperationsWorkbenchPageState
             : _purchaseSelectionIssue(selected);
         return _SelectionPrimaryAction(
           buttonKey: const Key('operations-workbench-purchase-batch'),
-          label: selected.isEmpty ? '生成采购订货单' : '生成采购订货单（${selected.length}）',
+          label: selected.isEmpty ? '生成采购订货单' : '生成采购订货单(${selected.length})',
           icon: Icons.add_shopping_cart_rounded,
           readyTooltip: '把已选采购申请明细带入采购订货单',
           unavailableReason: issue,
@@ -154,7 +155,7 @@ class _OperationsWorkbenchPageState
             : _subcontractSelectionIssue(selected);
         return _SelectionPrimaryAction(
           buttonKey: const Key('operations-workbench-subcontract-batch'),
-          label: selected.isEmpty ? '生成委外订货单' : '生成委外订货单（${selected.length}）',
+          label: selected.isEmpty ? '生成委外订货单' : '生成委外订货单(${selected.length})',
           icon: Icons.precision_manufacturing_outlined,
           readyTooltip: '把已选计划委外申请明细带入委外订货单',
           unavailableReason: issue,
@@ -229,31 +230,26 @@ class _OperationsWorkbenchPageState
   }
 
   Widget _buildFloatingSelectionAction(_SelectionPrimaryAction action) {
-    final theme = Theme.of(context);
     final disabledReason = action.unavailableReason ?? '当前选择不可执行此操作';
-    return DecoratedBox(
+    return UtenFloatingActionGroup(
       key: const Key('operations-workbench-floating-primary-action'),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: UtenElevation.mid(
-          isDark: theme.brightness == Brightness.dark,
+      children: [
+        Tooltip(
+          message: action.enabled ? action.readyTooltip : disabledReason,
+          child: UtenButton(
+            key: action.buttonKey,
+            size: UtenButtonSize.large,
+            icon: action.icon,
+            onPressed: action.enabled
+                ? () => goFrom(context, action.route!)
+                : null,
+            onDisabledTap: action.enabled
+                ? null
+                : () => context.appWarning(disabledReason),
+            child: Text(action.label),
+          ),
         ),
-      ),
-      child: Tooltip(
-        message: action.enabled ? action.readyTooltip : disabledReason,
-        child: UtenButton(
-          key: action.buttonKey,
-          size: UtenButtonSize.large,
-          icon: action.icon,
-          onPressed: action.enabled
-              ? () => goFrom(context, action.route!)
-              : null,
-          onDisabledTap: action.enabled
-              ? null
-              : () => context.appWarning(disabledReason),
-          child: Text(action.label),
-        ),
-      ),
+      ],
     );
   }
 

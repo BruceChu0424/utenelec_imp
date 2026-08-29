@@ -16,6 +16,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -496,6 +497,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                 children: [
                                   // 单据号：系统自动生成，只读显示。
                                   TextFormField(
+                                    errorBuilder: utenTextFieldErrorBuilder,
                                     readOnly: true,
                                     controller: _billNo,
                                     decoration: InputDecoration(

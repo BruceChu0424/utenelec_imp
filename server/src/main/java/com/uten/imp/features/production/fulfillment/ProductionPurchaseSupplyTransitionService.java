@@ -375,6 +375,11 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void onPurchaseReceiptApproved(UUID receiptId) {
+        advancePurchaseReceipt(receiptId, null);
+    }
+
+    private void advancePurchaseReceipt(
+            UUID receiptId, UUID dispositionEventId) {
         UUID actorId = currentUser.requireId();
         UUID employeeId = currentUser.requireEmployeeId();
         List<UUID> warehouses = NativeQueryResults.typedRows(
@@ -414,7 +419,11 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                   AND receipt_item.order_item_id IS NOT NULL
                                   AND (
                                       inspection.id IS NULL
-                                      OR inspection.status = 'RESOLVED'
+                                      OR (
+                                          inspection.status IN (
+                                              'PARTIAL', 'RESOLVED')
+                                          AND inspection.passed_base_qty > 0
+                                      )
                                   )
                                 ORDER BY receipt_item.order_item_id,
                                          receipt_item.id
@@ -581,7 +590,10 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                         .setParameter("qty", quantity)
                         .setParameter(
                                 "key",
-                                "RECEIPT-STOCK:" + receiptItemId + ":" + pegId)
+                                receiptAllocationKey(
+                                        receiptItemId,
+                                        pegId,
+                                        dispositionEventId))
                         .setParameter("actorId", actorId)
                         .executeUpdate();
                 touched.add(demandId);
@@ -601,6 +613,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
         materialAnalysisWakeup.afterPurchaseInspectionPassed(
                 receiptId, inspectionItemId, dispositionEventId);
+        advancePurchaseReceipt(receiptId, dispositionEventId);
     }
 
     @Override
@@ -991,6 +1004,16 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                 .setParameter("actorId", actorId)
                 .executeUpdate();
         return reservationId;
+    }
+
+    private static String receiptAllocationKey(
+            UUID receiptItemId,
+            UUID pegId,
+            UUID dispositionEventId) {
+        String base = "RECEIPT-STOCK:" + receiptItemId + ":" + pegId;
+        return dispositionEventId == null
+                ? base
+                : base + ":IQC_PASS:" + dispositionEventId;
     }
 
     private DrawHandle createReceiptDraw(

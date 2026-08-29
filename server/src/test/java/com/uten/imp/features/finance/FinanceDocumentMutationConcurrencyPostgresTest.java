@@ -203,16 +203,236 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         assertThat(entryState(voucherId)).containsExactlyElementsOf(entriesBefore);
     }
 
+    @Test
+    void receiptGlAndAccountFlowsFinalizeThenReverseWithoutMutableBypasses() throws Exception {
+        DraftDocument receipt=seedDrafts().stream()
+                .filter(document->document.label().equals("receipt"))
+                .findFirst().orElseThrow();
+        callAsSuperAdmin("receipt-integrity-approver",receipt.approve());
+
+        assertThat(jdbc.queryForObject("""
+                SELECT is_consistent FROM v_receipt_gl_integrity WHERE receipt_id=?
+                """,Boolean.class,receipt.id())).isTrue();
+        assertThat(jdbc.queryForObject("""
+                SELECT is_consistent FROM v_receipt_flow_integrity WHERE receipt_id=?
+                """,Boolean.class,receipt.id())).isTrue();
+        UUID voucherId=jdbc.queryForObject("""
+                SELECT id FROM gl_vouchers
+                WHERE source='AUTO' AND source_type='RECEIPT'
+                  AND source_doc_id=? AND status=1 AND is_deleted=FALSE
+                """,UUID.class,receipt.id());
+        UUID styleId=jdbc.queryForObject("""
+                SELECT style_id FROM gl_entries WHERE voucher_id=? ORDER BY line_no LIMIT 1
+                """,UUID.class,voucherId);
+
+        assertThatThrownBy(()->jdbc.update("""
+                INSERT INTO gl_entries(
+                  voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                  source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT ?,9999,?,1,1,voucher_date,period,
+                       'RECEIPT',source_doc_id,voucher_no,'非法追加'
+                FROM gl_vouchers WHERE id=?
+                """,voucherId,styleId,voucherId))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(()->jdbc.update(
+                "UPDATE finance_receipts SET is_deleted=TRUE,deleted_at=now() WHERE id=?",
+                receipt.id()))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+
+        UUID ordinaryVoucher=UUID.randomUUID();
+        UUID ordinaryEntry=UUID.randomUUID();
+        String period=BusinessTime.today().toString().substring(0,7);
+        jdbc.update("""
+                INSERT INTO gl_vouchers(
+                  id,voucher_no,period,voucher_date,source,source_type,remark)
+                VALUES (?,?,?,?,'MANUAL','MANUAL','不可变绕过测试')
+                """,ordinaryVoucher,"MANUAL-"+ordinaryVoucher,period,BusinessTime.today());
+        jdbc.update("""
+                INSERT INTO gl_entries(
+                  id,voucher_id,line_no,style_id,direction,amount,entry_date,period,summary)
+                VALUES (?,?,1,?,1,1,?,?,'普通分录')
+                """,ordinaryEntry,ordinaryVoucher,styleId,BusinessTime.today(),period);
+        assertThatThrownBy(()->jdbc.update("""
+                UPDATE gl_vouchers
+                SET source='AUTO',source_type='RECEIPT',source_doc_id=? WHERE id=?
+                """,receipt.id(),ordinaryVoucher))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThatThrownBy(()->jdbc.update(
+                "UPDATE gl_entries SET voucher_id=? WHERE id=?",voucherId,ordinaryEntry))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        jdbc.update("DELETE FROM gl_vouchers WHERE id=?",ordinaryVoucher);
+
+        callAsSuperAdmin("receipt-integrity-reverser",()->receiptService.reverse(receipt.id()));
+
+        assertThat(jdbc.queryForObject(
+                "SELECT status FROM finance_receipts WHERE id=?",Integer.class,receipt.id()))
+                .isEqualTo(-1);
+        assertThat(jdbc.queryForObject("""
+                SELECT is_consistent FROM v_receipt_gl_integrity WHERE receipt_id=?
+                """,Boolean.class,receipt.id())).isTrue();
+        assertThat(jdbc.queryForObject("""
+                SELECT is_consistent FROM v_receipt_flow_integrity WHERE receipt_id=?
+                """,Boolean.class,receipt.id())).isTrue();
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM gl_vouchers
+                WHERE source_doc_id=? AND source_type IN('RECEIPT','RECEIPT_REV')
+                  AND status=1 AND is_deleted=FALSE
+                """,Long.class,receipt.id())).isEqualTo(2L);
+    }
+
+    @Test
+    void multiCurrencyReceiptPostsNetAndReverses() throws Exception {
+        DraftDocument seededReceipt=seedDrafts().stream()
+                .filter(document->document.label().equals("receipt"))
+                .findFirst().orElseThrow();
+        Map<String,Object> seed=jdbc.queryForMap("""
+                SELECT client_id,account_id,account_currency_id
+                FROM finance_receipts WHERE id=?
+                """,seededReceipt.id());
+        UUID clientId=(UUID)seed.get("client_id");
+        UUID accountId=(UUID)seed.get("account_id");
+        UUID baseCurrencyId=(UUID)seed.get("account_currency_id");
+        String suffix=UUID.randomUUID().toString();
+        UUID usdId=UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO currencies(id,code,name,exchange_rate,status,is_base_currency)
+                VALUES (?,?,'美元测试',7.200000,'使用',FALSE)
+                """,usdId,"USD-"+suffix);
+        UUID feeStyle=seedLeafStyle("EXPENSE",suffix+"-TRADE-FEE");
+
+        var request=new com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest();
+        request.setReceiptKind("CUSTOMER_PREPAYMENT");
+        request.setBillDate(BusinessTime.today());
+        request.setClientId(clientId);
+        request.setAccountId(accountId);
+        request.setCurrencyId(usdId);
+        request.setExchangeRate(new BigDecimal("7.200000"));
+        request.setAmountOriginal(new BigDecimal("1000.0000"));
+        request.setSettlementChannel("DIRECT_ACCOUNT");
+        request.setExchangeRateSource("BANK_STATEMENT");
+        request.setExchangeRateEffectiveAt(BusinessTime.startOfDay(BusinessTime.today()).plusHours(9));
+        request.setBankBookedAt(BusinessTime.startOfDay(BusinessTime.today()).plusHours(10));
+        request.setBankReference("BANK-FX-"+suffix);
+        request.setAccountCurrencyId(baseCurrencyId);
+        request.setAccountAmount(new BigDecimal("7128.0000"));
+        request.setBankFeeAccountAmount(BigDecimal.ZERO);
+        request.setOtherFeeAccountAmount(new BigDecimal("72.0000"));
+        request.setOtherFeeStyleId(feeStyle);
+        request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
+        request.setFeeBearer("COMPANY");
+        request.setCreateIdempotencyKey("receipt-fx-"+suffix);
+        request.setItems(List.of());
+        var draft=(com.uten.imp.features.finance.receipt.dto.FinanceReceiptDetail)
+                callAsSuperAdmin("receipt-fx-maker",()->receiptService.create(request));
+        callAsSuperAdmin("receipt-fx-approver",()->receiptService.approve(draft.getId()));
+
+        Map<String,Object> receipt=jdbc.queryForMap("""
+                SELECT amount_original,amount_local,account_amount,account_amount_local,
+                       other_fee,fee_bearer
+                FROM finance_receipts WHERE id=?
+                """,draft.getId());
+        assertThat((BigDecimal)receipt.get("amount_original")).isEqualByComparingTo("1000");
+        assertThat((BigDecimal)receipt.get("amount_local")).isEqualByComparingTo("7200");
+        assertThat((BigDecimal)receipt.get("account_amount")).isEqualByComparingTo("7128");
+        assertThat((BigDecimal)receipt.get("account_amount_local")).isEqualByComparingTo("7128");
+        assertThat((BigDecimal)receipt.get("other_fee")).isEqualByComparingTo("72");
+        assertThat(receipt.get("fee_bearer")).isEqualTo("COMPANY");
+        assertThat(jdbc.queryForObject("""
+                SELECT is_consistent FROM v_receipt_flow_integrity WHERE receipt_id=?
+                """,Boolean.class,draft.getId())).isTrue();
+        assertThat(jdbc.queryForObject("""
+                SELECT is_consistent FROM v_receipt_gl_integrity WHERE receipt_id=?
+                """,Boolean.class,draft.getId())).isTrue();
+
+        callAsSuperAdmin("receipt-fx-reverser",()->receiptService.reverse(draft.getId()));
+        assertThat(jdbc.queryForObject("""
+                SELECT is_consistent FROM v_receipt_flow_integrity WHERE receipt_id=?
+                """,Boolean.class,draft.getId())).isTrue();
+        assertThat(jdbc.queryForObject("""
+                SELECT is_consistent FROM v_receipt_gl_integrity WHERE receipt_id=?
+                """,Boolean.class,draft.getId())).isTrue();
+    }
+
+    @Test
+    void localOnlyExpenseAndIncomeRejectAnActiveForeignCurrencyAccount() throws Exception {
+        List<DraftDocument> documents = seedDrafts();
+        String suffix = UUID.randomUUID().toString();
+        UUID foreignCurrencyId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO currencies(id,code,name,exchange_rate,status,is_base_currency)
+                VALUES (?,?,'外币测试',7.000000,'使用',FALSE)
+                """, foreignCurrencyId, "FX-" + suffix);
+        UUID foreignAccountId = seedAccount(foreignCurrencyId, suffix + "-FOREIGN");
+
+        for (DraftDocument document : documents.stream()
+                .filter(item -> item.label().equals("expense")
+                        || item.label().equals("income"))
+                .toList()) {
+            jdbc.update("UPDATE " + document.table()
+                            + " SET account_id=?,currency_id=? WHERE id=?",
+                    foreignAccountId, foreignCurrencyId, document.id());
+
+            assertThatThrownBy(() -> callAsSuperAdmin(
+                    document.label() + "-foreign-account-approver",
+                    document.approve()))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("本位币账户");
+            assertThat(((Number) documentState(document).get("status")).intValue()).isZero();
+            assertThat(reconciliationCount(document)).isZero();
+        }
+    }
+
+    @Test
+    void localOnlyExpenseAndIncomeRejectHeaderCurrencyOrRateContradictingTheBaseAccount()
+            throws Exception {
+        List<DraftDocument> documents = seedDrafts().stream()
+                .filter(item -> item.label().equals("expense")
+                        || item.label().equals("income"))
+                .toList();
+        String suffix = UUID.randomUUID().toString();
+        UUID foreignCurrencyId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO currencies(id,code,name,exchange_rate,status,is_base_currency)
+                VALUES (?,?,'单头外币测试',7.000000,'使用',FALSE)
+                """, foreignCurrencyId, "HDR-FX-" + suffix);
+
+        for (DraftDocument document : documents) {
+            UUID accountCurrencyId = jdbc.queryForObject(
+                    "SELECT account.currency_id FROM " + document.table()
+                            + " doc JOIN accounts account ON account.id=doc.account_id WHERE doc.id=?",
+                    UUID.class, document.id());
+            jdbc.update("UPDATE " + document.table()
+                            + " SET currency_id=?,exchange_rate=1 WHERE id=?",
+                    foreignCurrencyId, document.id());
+
+            assertThatThrownBy(() -> callAsSuperAdmin(
+                    document.label() + "-header-currency-approver", document.approve()))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("单头币种必须等于真实")
+                    .hasMessageContaining("汇率必须为 1");
+
+            jdbc.update("UPDATE " + document.table()
+                            + " SET currency_id=?,exchange_rate=2 WHERE id=?",
+                    accountCurrencyId, document.id());
+            assertThatThrownBy(() -> callAsSuperAdmin(
+                    document.label() + "-header-rate-approver", document.approve()))
+                    .isInstanceOf(ApiException.class)
+                    .hasMessageContaining("汇率必须为 1");
+            assertThat(((Number) documentState(document).get("status")).intValue()).isZero();
+            assertThat(reconciliationCount(document)).isZero();
+        }
+    }
+
     private List<DraftDocument> seedDrafts() throws Exception {
         String suffix = UUID.randomUUID().toString();
         seedCoreStyle("102", "银行存款", "ACCOUNT", "/102/");
-        UUID currencyId = UUID.randomUUID();
+        UUID currencyId = jdbc.queryForObject("""
+                SELECT id FROM currencies
+                WHERE is_base_currency AND status='使用'
+                  AND COALESCE(is_deleted,FALSE)=FALSE
+                """, UUID.class);
         UUID clientId = UUID.randomUUID();
         UUID makerId = seedCurrentActor("concurrency-direct-maker").employeeId();
-        jdbc.update("""
-                INSERT INTO currencies (id, code, name, exchange_rate, status)
-                VALUES (?, ?, '人民币', 1.000000, '使用')
-                """, currencyId, "CUR-" + suffix);
         jdbc.update("""
                 INSERT INTO clients (id, code, name, status, code_sequence)
                 VALUES (?, ?, '财务并发测试客户', '使用',
@@ -241,6 +461,20 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         receiptReq.setCurrencyId(currencyId);
         receiptReq.setExchangeRate(BigDecimal.ONE);
         receiptReq.setAmountOriginal(new BigDecimal("10"));
+        receiptReq.setBankFeeAccountAmount(BigDecimal.ZERO);
+        receiptReq.setOtherFeeAccountAmount(BigDecimal.ZERO);
+        receiptReq.setFeeSettlementMode("NONE");
+        receiptReq.setFeeBearer("NONE");
+        receiptReq.setSettlementChannel("DIRECT_ACCOUNT");
+        receiptReq.setExchangeRateSource("BANK_STATEMENT");
+        receiptReq.setExchangeRateEffectiveAt(
+                BusinessTime.startOfDay(billDate).plusHours(9));
+        receiptReq.setBankBookedAt(
+                BusinessTime.startOfDay(billDate).plusHours(10));
+        receiptReq.setBankReference("BANK-CONCURRENCY-" + suffix);
+        receiptReq.setAccountCurrencyId(currencyId);
+        receiptReq.setCreateIdempotencyKey("receipt-concurrency-" + suffix);
+        receiptReq.setItems(List.of());
         var receiptDetail = (com.uten.imp.features.finance.receipt.dto.FinanceReceiptDetail)
                 callAsSuperAdmin("concurrency-receipt-seeder",
                         () -> receiptService.create(receiptReq));

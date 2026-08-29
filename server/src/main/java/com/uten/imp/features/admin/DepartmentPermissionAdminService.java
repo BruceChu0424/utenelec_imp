@@ -43,7 +43,8 @@ public class DepartmentPermissionAdminService {
 
     private static final Set<String> INDIVIDUAL_ONLY_PERMISSION_CODES = Set.of(
             "audit_log:view",
-            "audit_log:export");
+            "audit_log:export",
+            "account:balance:adjust");
 
     /**
      * 一级模块的固定显示顺序。未列出的模块（如兜底「其他」）排在最后并按名字稳定排序，
@@ -134,7 +135,7 @@ public class DepartmentPermissionAdminService {
         // 去重（保持顺序），避免主键冲突
         Set<String> codes = new LinkedHashSet<>(permissionCodes == null ? List.of() : permissionCodes);
         if (codes.stream().anyMatch(INDIVIDUAL_ONLY_PERMISSION_CODES::contains)) {
-            throw new ApiException(ErrorCode.BUSINESS, "审计权限仅允许个人授权");
+            throw new ApiException(ErrorCode.BUSINESS, "该高风险权限仅允许个人授权");
         }
         Map<String, Permission> byCode = permissionRepo.findByCodeIn(codes).stream()
                 .collect(Collectors.toMap(Permission::getCode, p -> p));

@@ -375,7 +375,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
                         child: UtenSearchBar(
-                          hint: '搜索单位（名称/编号）', // TODO(l10n): 补 arb
+                          hint: '搜索单位(名称/编号)', // TODO(l10n): 补 arb
                           initialValue: _keyword,
                           onChanged: _onKeywordChanged,
                         ),

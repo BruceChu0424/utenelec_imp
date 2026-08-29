@@ -15,6 +15,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -475,6 +476,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
                   ),
                   const SizedBox(height: UtenSpacing.s16),
                   TextFormField(
+                    errorBuilder: utenTextFieldErrorBuilder,
                     controller: _dateController,
                     readOnly: true,
                     decoration: const InputDecoration(

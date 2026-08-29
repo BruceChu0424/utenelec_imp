@@ -373,7 +373,7 @@ public class GoodsBomService {
 
     private void ensureComponentUnique(UUID goodsId, UUID componentId) {
         if (bomRepo.findByGoods_IdAndComponent_IdAndDeletedFalse(goodsId, componentId).isPresent()) {
-            throw new ApiException(ErrorCode.CONFLICT, "该组件已在组装清单中（组件编号必须唯一）");
+            throw new ApiException(ErrorCode.CONFLICT, "该组件已在组装清单中(组件编号必须唯一)");
         }
     }
 

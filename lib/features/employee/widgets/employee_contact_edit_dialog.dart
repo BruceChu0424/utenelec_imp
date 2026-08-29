@@ -5,6 +5,7 @@
 // 文案硬编码中文（与 HR 运维页同惯例）。
 import 'package:flutter/material.dart';
 
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/employee_api_models.dart';
 
@@ -53,7 +54,7 @@ Future<String?> showEmployeeChangePhoneDialog(
                 decoration: InputDecoration(
                   labelText: '新手机号',
                   hintText: '11 位中国大陆手机号',
-                  errorText: error,
+                  error: utenFieldError(error),
                 ),
                 onChanged: (_) => setState(() => error = null),
               ),
@@ -161,7 +162,7 @@ Future<List<Map<String, dynamic>>?> showEmployeeVehiclesDialog(
                     .replaceAll(RegExp(r'\s+'), '')
                     .toUpperCase();
                 if (!RegExp(r'^[\u4e00-\u9fa5A-Z0-9]{7,8}$').hasMatch(norm)) {
-                  setState(() => error = '车牌号格式不正确：${v.plateNo}（7-8 位）');
+                  setState(() => error = '车牌号格式不正确：${v.plateNo}(7-8 位)');
                   return;
                 }
                 if (!plates.add(norm)) {
@@ -227,8 +228,9 @@ Widget _vehicleEditor(
             children: [
               Expanded(
                 child: TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.plateNo,
-                  decoration: deco('车牌号 *（如 粤T12345）'),
+                  decoration: deco('车牌号 *(如 粤T12345)'),
                   onChanged: (x) => v.plateNo = x,
                 ),
               ),
@@ -244,16 +246,18 @@ Widget _vehicleEditor(
             children: [
               Expanded(
                 child: TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.vehicleType,
-                  decoration: deco('车型（非必填）'),
+                  decoration: deco('车型(非必填)'),
                   onChanged: (x) => v.vehicleType = x,
                 ),
               ),
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.brandModel,
-                  decoration: deco('品牌型号（非必填）'),
+                  decoration: deco('品牌型号(非必填)'),
                   onChanged: (x) => v.brandModel = x,
                 ),
               ),
@@ -264,16 +268,18 @@ Widget _vehicleEditor(
             children: [
               Expanded(
                 child: TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.color,
-                  decoration: deco('颜色（非必填）'),
+                  decoration: deco('颜色(非必填)'),
                   onChanged: (x) => v.color = x,
                 ),
               ),
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   initialValue: v.remark,
-                  decoration: deco('备注（非必填）'),
+                  decoration: deco('备注(非必填)'),
                   onChanged: (x) => v.remark = x,
                 ),
               ),
@@ -312,7 +318,7 @@ Future<List<Map<String, dynamic>>?> showEmployeePhonesDialog(
             children: [
               const Text(
                 '主手机号用于登录，在这里之外的「更换手机号」维护；'
-                '此处登记额外联系号码（不参与登录）。',
+                '此处登记额外联系号码(不参与登录)。',
               ),
               const SizedBox(height: UtenSpacing.s8),
               if (error != null)
@@ -335,6 +341,7 @@ Future<List<Map<String, dynamic>>?> showEmployeePhonesDialog(
                             SizedBox(
                               width: 90,
                               child: TextFormField(
+                                errorBuilder: utenTextFieldErrorBuilder,
                                 initialValue: phones[i].label,
                                 decoration: const InputDecoration(
                                   labelText: '标签',
@@ -347,6 +354,7 @@ Future<List<Map<String, dynamic>>?> showEmployeePhonesDialog(
                             const SizedBox(width: UtenSpacing.s8),
                             Expanded(
                               child: TextFormField(
+                                errorBuilder: utenTextFieldErrorBuilder,
                                 initialValue: phones[i].phone,
                                 keyboardType: TextInputType.phone,
                                 decoration: const InputDecoration(

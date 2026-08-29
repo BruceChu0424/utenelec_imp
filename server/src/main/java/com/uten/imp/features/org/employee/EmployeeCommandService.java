@@ -710,7 +710,7 @@ public class EmployeeCommandService {
                 .orElse("");
         return joinTypeAndReason(resignType, reason)
                 + "\n离职办理请求：" + requestId
-                + "\n人工确认清单（仅记录办理人确认，不代表系统自动核验）："
+                + "\n人工确认清单(仅记录办理人确认，不代表系统自动核验)："
                 + checklist;
     }
 

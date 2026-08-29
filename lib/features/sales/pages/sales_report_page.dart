@@ -496,7 +496,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       toolbarActions: [
         UtenPrintPreviewButton(
           title: '销售${_docType.label}${_kind.shortLabel}报表',
-          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
           loader: _printLoader,
           exportEndpoint: '/sales/reports/export',
           exportPermission: Perm.salesReportExport,
@@ -725,8 +725,8 @@ class _SalesClientDetailDialogState
                   Expanded(
                     child: Text(
                       '${widget.clientName} · ${widget.docType.label}明细'
-                      '（${widget.dateFrom} ~ ${widget.dateTo}'
-                      '${data != null ? '，共 ${data.total} 条' : ''}）',
+                      '(${widget.dateFrom} ~ ${widget.dateTo}'
+                      '${data != null ? '，共 ${data.total} 条' : ''})',
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -736,7 +736,7 @@ class _SalesClientDetailDialogState
                   UtenPrintPreviewButton(
                     title: '${widget.clientName} · ${widget.docType.label}明细',
                     subtitle:
-                        '${widget.dateFrom} ~ ${widget.dateTo}（最多前 2000 行）',
+                        '${widget.dateFrom} ~ ${widget.dateTo}(最多前 2000 行)',
                     loader: _printLoader,
                     type: UtenButtonType.primary,
                     size: UtenButtonSize.large,

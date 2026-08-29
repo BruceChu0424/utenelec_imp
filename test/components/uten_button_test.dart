@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 
 void main() {
   testWidgets('is keyboard operable and exposes enabled button semantics', (
@@ -146,7 +147,7 @@ void main() {
     expect(expanded.width, 280);
   });
 
-  testWidgets('uses semantic ColorScheme pairs for primary and danger', (
+  testWidgets('uses semantic color pairs for primary, success and danger', (
     tester,
   ) async {
     const primary = Color(0xFF123456);
@@ -172,6 +173,10 @@ void main() {
     await pumpType(UtenButtonType.primary);
     expect(_buttonMaterial(tester).color, primary);
     expect(_buttonTextStyle(tester).color, onPrimary);
+
+    await pumpType(UtenButtonType.success);
+    expect(_buttonMaterial(tester).color, UtenColors.deepGreen);
+    expect(_buttonTextStyle(tester).color, Colors.white);
 
     await pumpType(UtenButtonType.danger);
     expect(_buttonMaterial(tester).color, error);

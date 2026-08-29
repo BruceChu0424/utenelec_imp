@@ -334,7 +334,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
               runSpacing: 4,
               children: [
                 ChoiceChip(
-                  label: const Text('应收（客户）'),
+                  label: const Text('应收(客户)'),
                   selected: _side == 'AR',
                   onSelected: (_) {
                     setState(() {
@@ -349,7 +349,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
                   },
                 ),
                 ChoiceChip(
-                  label: const Text('应付（供应商）'),
+                  label: const Text('应付(供应商)'),
                   selected: _side == 'AP',
                   onSelected: (_) {
                     setState(() {
@@ -561,8 +561,8 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         UtenPrintPreviewButton(
           title: '往来对帐单 · $_viewLabel',
           subtitle: _view == _StmtView.annual
-              ? '年度 $_year（最多前 2000 行）'
-              : '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+              ? '年度 $_year(最多前 2000 行)'
+              : '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
           loader: _printLoader,
           exportEndpoint: '/finance/reports/export',
           exportPermission: Perm.financeReportExport,

@@ -30,6 +30,7 @@ class AccountFinancialHistoryGuardTest {
     private EntityManager em;
     private Query flowCount;
     private Query documentCount;
+    private Query adjustmentItemCount;
     private Query styleLookup;
     private Query hierarchyLock;
     private AccountService service;
@@ -41,12 +42,14 @@ class AccountFinancialHistoryGuardTest {
         em = mock(EntityManager.class);
         flowCount = query(0L);
         documentCount = query(1L);
+        adjustmentItemCount = query(0L);
         styleLookup = mock(Query.class);
         hierarchyLock = query(0L);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("PAYMENT_STYLE_HIERARCHY")) return hierarchyLock;
             if (sql.contains("FROM payment_styles")) return styleLookup;
+            if (sql.contains("account_balance_adjustment_items")) return adjustmentItemCount;
             return sql.contains("SUM(fact_count)") ? documentCount : flowCount;
         });
         service = new AccountService(
@@ -89,6 +92,48 @@ class AccountFinancialHistoryGuardTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("币别不可修改");
         verify(repository, never()).save(account);
+    }
+
+    @Test
+    void historicalFinancialFactFreezesOpeningBalanceEvenForBalanceAdjuster() {
+        authenticate("account:edit", "account:balance:adjust");
+        AccountSaveRequest request = unchangedRequest();
+        request.setInitBalance(BigDecimal.ONE);
+
+        assertThatThrownBy(() -> service.update(account.getId(), request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("期初余额不可修改");
+        verify(repository, never()).save(account);
+    }
+
+    @Test
+    void historicalFinancialFactFreezesAccountPostingStyle() {
+        authenticate("account:edit");
+        AccountSaveRequest request = unchangedRequest();
+        request.setStyleId(UUID.randomUUID());
+
+        assertThatThrownBy(() -> service.update(account.getId(), request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("会计科目不可修改");
+        verify(repository, never()).save(account);
+    }
+
+    @Test
+    void zeroDeltaVerificationFreezesHistoricalFieldsButDoesNotBlockDeactivation() {
+        authenticate("account:edit", "account:status");
+        when(documentCount.getSingleResult()).thenReturn(0L);
+        when(adjustmentItemCount.getSingleResult()).thenReturn(1L);
+
+        AccountSaveRequest currencyChange = unchangedRequest();
+        currencyChange.setCurrencyId(UUID.randomUUID());
+        assertThatThrownBy(() -> service.update(account.getId(), currencyChange))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("币别不可修改");
+
+        AccountSaveRequest deactivate = unchangedRequest();
+        deactivate.setStatus("禁用");
+        service.update(account.getId(), deactivate);
+        verify(repository).save(account);
     }
 
     @Test

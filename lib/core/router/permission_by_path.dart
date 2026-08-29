@@ -40,6 +40,17 @@ String? _documentRouteViewDependency(
   return null;
 }
 
+bool _isOrderDetailPath(String location, String module) {
+  final path = Uri.tryParse(location)?.path ?? location.split('?').first;
+  final segments = path.split('/');
+  return segments.length == 4 &&
+      segments[1] == module &&
+      segments[2] == 'orders' &&
+      segments[3].isNotEmpty &&
+      segments[3] != 'new' &&
+      segments[3] != 'edit';
+}
+
 /// 返回某路径所需的权限点列表（任一满足即可）；不需要权限返回 null。
 ///
 /// 这是路由守卫与工作台显隐共用的唯一数据源。
@@ -185,11 +196,20 @@ List<String>? requiredAnyPermFor(String location) {
   }
   // 品质任务中心：与待检处置同权限（查看检验任务）。
   if (location == RouteName.qualityTaskCenter) {
-    return const [Perm.procurementInspectionView];
+    return const [
+      Perm.procurementInspectionView,
+      Perm.productionQualityInspectionView,
+    ];
+  }
+  if (location == RouteName.productionFqcInspections) {
+    return const [Perm.productionQualityInspectionView];
   }
   if (location == RouteName.warehouseInboundExpectations ||
       location == RouteName.warehouseArrivalExceptions) {
     return const [Perm.warehouseInboundView];
+  }
+  if (location == RouteName.warehouseProductionFinishedInboundTasks) {
+    return const [Perm.stockDocView];
   }
   // 到货异常确认入库是独立高影响动作，不再借用收货单编辑权限。
   if (location == RouteName.warehouseArrivalReceiptNew) {
@@ -222,6 +242,9 @@ List<String>? requiredAnyPermFor(String location) {
     return authority == null ? const [] : [authority];
   }
   if (location.startsWith('/purchase/')) {
+    if (_isOrderDetailPath(location, 'purchase')) {
+      return const [Perm.purchaseOrderView, Perm.financeOrderApprovalView];
+    }
     final authority = _documentRouteAuthority(
       location,
       'purchase',
@@ -278,7 +301,10 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.basicinfoWarehouse) {
     return const [Perm.warehouseView];
   }
-  if (location == RouteName.basicinfoAccount) return const [Perm.accountView];
+  if (location == RouteName.basicinfoAccount ||
+      location.startsWith('${RouteName.basicinfoAccount}/')) {
+    return const [Perm.accountView];
+  }
   if (location == RouteName.basicinfoPaymentStyle) {
     return const [Perm.paymentStyleView];
   }
@@ -332,6 +358,9 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.subcontractReportView];
   }
   if (location.startsWith('/subcontract/')) {
+    if (_isOrderDetailPath(location, 'subcontract')) {
+      return const [Perm.subcontractOrderView, Perm.financeOrderApprovalView];
+    }
     final authority = _documentRouteAuthority(
       location,
       'subcontract',
@@ -380,6 +409,10 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.productionMaterialAnalysisHistory) {
     return const [Perm.productionMaterialAnalysisView];
   }
+  if (location.startsWith('/production/material-analyses/') &&
+      location.endsWith('/summary')) {
+    return const [Perm.productionMaterialAnalysisView];
+  }
   // 生产链路健康初筛：与物料分析查看同权（只读扫描）
   if (location == RouteName.productionChainHealth) {
     return const [Perm.productionMaterialAnalysisView];
@@ -425,7 +458,7 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.arApLedgerView];
   }
   if (location == RouteName.financeReconciliations) {
-    return const [Perm.financeReconciliationView];
+    return const [Perm.accountFlowView];
   }
   if (location == RouteName.financeChecks) {
     return const [Perm.accountView];
@@ -489,6 +522,14 @@ List<String> requiredAllPermsFor(String location) {
     ];
   }
 
+  if (location == RouteName.financeReconciliations) {
+    return const [
+      Perm.accountView,
+      Perm.accountBalanceView,
+      Perm.accountFlowView,
+    ];
+  }
+
   // 分类树与右侧主档是一个页面：两侧读取权限必须同时成立。
   if (location.startsWith('/finance/customers')) {
     return const [Perm.clientCategoryView];
@@ -514,7 +555,9 @@ List<String> requiredAllPermsFor(String location) {
   }
 
   // 物料分析所有首屏查询都要求 view；manage/route 等只是附加动作。
-  if (location == RouteName.productionMaterialAnalysis) {
+  if (location == RouteName.productionMaterialAnalysis ||
+      location.startsWith('/production/material-analyses/') &&
+          location.endsWith('/summary')) {
     return const [Perm.productionMaterialAnalysisView];
   }
 

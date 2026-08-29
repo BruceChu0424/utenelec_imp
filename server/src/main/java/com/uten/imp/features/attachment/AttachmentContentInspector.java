@@ -139,7 +139,7 @@ final class AttachmentContentInspector {
             return;
         }
         if (pixels == 0 || pixels > MAX_PIXELS) {
-            throw invalid("图片尺寸超出允许范围（最大 4000 万像素），请压缩后重新上传");
+            throw invalid("图片尺寸超出允许范围(最大 4000 万像素)，请压缩后重新上传");
         }
     }
 

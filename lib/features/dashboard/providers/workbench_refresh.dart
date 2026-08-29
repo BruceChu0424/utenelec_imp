@@ -21,6 +21,8 @@ import '../../finance/providers/finance_procurement_approval_count_provider.dart
 import '../../finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/providers/production_draw_count_provider.dart';
+import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
+import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
 import '../../../shared/auth/pending_review_provider.dart';
 import '../../../shared/models/procurement_inbound.dart';
@@ -47,7 +49,9 @@ void refreshGlobalBadges(WidgetRef ref) {
   ref.invalidate(warehouseInboundExpectationCountProvider);
   ref.invalidate(warehouseArrivalExceptionCountProvider);
   ref.invalidate(warehouseProductionDrawPendingCountProvider);
+  ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
   ref.invalidate(procurementInspectionPendingCountProvider);
+  ref.invalidate(productionFqcPendingCountProvider);
   ref.invalidate(
     procurementArrivalReturnCountProvider(ProcurementInboundOrderType.purchase),
   );
@@ -56,6 +60,7 @@ void refreshGlobalBadges(WidgetRef ref) {
       ProcurementInboundOrderType.subcontract,
     ),
   );
-  // 销售 autoDispose 计数（订单完工提醒徽章）
+  // 销售 autoDispose 计数（财务驳回待修正 + 订单完工提醒）
   ref.invalidate(salesCompletionCountProvider);
+  ref.invalidate(salesAttentionCountProvider);
 }

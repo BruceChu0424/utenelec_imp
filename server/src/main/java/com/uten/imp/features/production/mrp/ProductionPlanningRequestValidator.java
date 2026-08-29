@@ -42,7 +42,7 @@ public class ProductionPlanningRequestValidator {
         Map<CompleteKitAllocator.MaterialKey, String> routes =
                 authoritativeRoutes(request, snapshot);
         if (!snapshot.noBomPlanItemIds().isEmpty()) {
-            throw conflict("生产计划存在未获 DIRECT_MAKE 或逐计划例外放行的无 BOM 行");
+            throw conflict("生产计划存在缺少物料分析事实的无 BOM 行，请从物料分析准备页重新生成计划");
         }
         CompleteKitAllocator.Allocation allocation =
                 planning.applyRequested(snapshot, request.getSegments());

@@ -17,6 +17,7 @@ import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery;
+import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
@@ -33,6 +34,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -92,8 +94,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlanService;
 
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
+
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
+        boolean priceMasked = subcontractPriceMasked();
         var readScope = access.scope();
         Specification<SubcontractOrder> spec = (Root<SubcontractOrder> root,
                                                 jakarta.persistence.criteria.CriteriaQuery<?> q,
@@ -114,7 +120,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
         Page<SubcontractOrder> p = orderRepo.findAll(spec, pageable);
         Map<UUID, FinanceApproval> approvals = approvalProjection.latestForOrders(
                 orderType(),
@@ -122,7 +129,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         SubcontractOrder::getId,
                         row -> row.getStatus())));
         List<OrderListItem> items = p.getContent().stream()
-                .map(row -> toList(row, approvals.get(row.getId())))
+                .map(row -> toList(row, approvals.get(row.getId()), priceMasked))
                 .toList();
         return new PageResponse<>(
                 items, page, size, p.getTotalElements(), p.getTotalPages());
@@ -201,7 +208,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             if (supplier == null) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "每一行都必须指定委外商（明细级或表头）");
+                        "每一行都必须指定委外商(明细级或表头)");
             }
             groups.computeIfAbsent(supplier, k -> new ArrayList<>()).add(item);
         }
@@ -214,6 +221,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             sub.setCurrencyId(req.getCurrencyId());
             sub.setExchangeRate(req.getExchangeRate());
             sub.setTaxRate(req.getTaxRate());
+            // 拆单必须携带结算方式，否则生成的订货单无法通过 applyHeader 的必填校验
+            sub.setSettlementMethodId(req.getSettlementMethodId());
             sub.setPurchaserId(req.getPurchaserId());
             sub.setDeliverDate(req.getDeliverDate());
             sub.setRemark(req.getRemark());
@@ -822,20 +831,21 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private OrderListItem toList(
-            SubcontractOrder order, FinanceApproval approval) {
+            SubcontractOrder order, FinanceApproval approval, boolean priceMasked) {
         return new OrderListItem(
                 order.getId(),
                 order.getBillNo(),
                 order.getBillDate(),
                 order.getSupplierId(),
                 order.getWarehouseId(),
-                order.getSettlementMethodId(),
-                order.getTotalLocal(),
+                priceMasked ? null : order.getSettlementMethodId(),
+                priceMasked ? null : order.getTotalLocal(),
                 order.getStatus(),
                 order.isClosed(),
                 order.isFulfill(),
                 order.getLegacyId(),
-                approval);
+                approval,
+                priceMasked);
     }
 
     private OrderItemDto toItemDto(SubcontractOrderItem it) {
@@ -869,6 +879,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             SubcontractOrder order,
             List<OrderItemDto> items,
             FinanceApproval approval) {
+        boolean priceMasked = subcontractPriceMasked();
         boolean productionLinked =
                 productionSourceGuard.isSubcontractOrderLinked(order.getId());
         boolean pending = approval != null
@@ -876,21 +887,40 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         boolean canEdit = order.getStatus() == STATUS_DRAFT
                 && !pending;
         OrderSourceRef sourceApplication = singleApplicationSource(items);
+        List<OrderItemDto> safeItems = priceMasked
+                ? items.stream().map(SubcontractOrderService::maskItemPrices).toList()
+                : items;
         return new OrderDetail(
                 order.getId(), order.getLegacyId(), order.getBillNo(), order.getBillDate(),
-                order.getSupplierId(), order.getWarehouseId(), order.getCurrencyId(),
-                order.getExchangeRate(), order.getSettlementMethodId(), order.getTaxRate(), order.getPurchaserId(),
+                order.getSupplierId(), order.getWarehouseId(), priceMasked ? null : order.getCurrencyId(),
+                priceMasked ? null : order.getExchangeRate(),
+                priceMasked ? null : order.getSettlementMethodId(),
+                priceMasked ? null : order.getTaxRate(), order.getPurchaserId(),
                 order.getMakerId(), order.getApproverId(), order.getDeliverDate(),
-                order.isFulfill(), order.getRemark(), order.getTotalOriginal(),
-                order.getTotalLocal(), order.getStatus(), order.isClosed(),
-                order.getSourceDocNo(), items,
+                order.isFulfill(), order.getRemark(), priceMasked ? null : order.getTotalOriginal(),
+                priceMasked ? null : order.getTotalLocal(), order.getStatus(), order.isClosed(),
+                order.getSourceDocNo(), safeItems,
                 nameResolver.nameOf(order.getMakerId()), order.getCreatedAt(),
                 productionLinked, canEdit, canEdit,
                 order.getStatus() == STATUS_APPROVED,
                 restrictionReason(pending),
                 approval,
                 sourceApplication == null ? null : sourceApplication.id(),
-                sourceApplication == null ? null : sourceApplication.billNo());
+                sourceApplication == null ? null : sourceApplication.billNo(),
+                priceMasked);
+    }
+
+    private boolean subcontractPriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+    }
+
+    private static OrderItemDto maskItemPrices(OrderItemDto it) {
+        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
+                it.getQty(), null, null, null, it.getReceivedQty(), it.getReturnedQty(),
+                it.getIssuedQty(), it.getMaterialReturnedQty(), it.getApplicationItemId(),
+                it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark());
     }
 
     /** 全部明细同属一张委外申请时返回该申请 (id, billNo)；否则 null。 */

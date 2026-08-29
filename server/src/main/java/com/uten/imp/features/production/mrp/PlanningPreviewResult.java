@@ -14,9 +14,7 @@ public record PlanningPreviewResult(
         boolean balancedKitCoverage,
         boolean executionSegmentationReady,
         List<ExecutionSegmentPreview> executionSegments,
-        List<UUID> noBomPlanItemIds,
-        List<UUID> noBomGoodsIds,
-        List<UUID> forwardedGoodsIds) {
+        List<UUID> noBomPlanItemIds) {
 
     public record TargetWarehouseMaterial(
             UUID goodsId,

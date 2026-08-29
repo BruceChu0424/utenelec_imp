@@ -1,6 +1,6 @@
 # UtenClientPicker · 客户选择器
 
-> 源码：[`uten_client_picker.dart`](../../lib/features/basic_data/widgets/uten_client_picker.dart) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-08-16。
+> 源码：[`uten_client_picker.dart`](../../lib/features/basic_data/widgets/uten_client_picker.dart) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-08-27。
 
 ## 一、用途与入口
 
@@ -8,7 +8,7 @@
 
 选择器取代旧的平铺客户字典：用户可以按分类浏览，也可以直接输入分类名称/编号或客户名称/编号等字段定位。客户列表与主档服务同源，继续受 `client:view` 及服务端客户 owner 可见范围约束；前端不复制权限过滤。
 
-**二次操作契约（2026-08-16，全站滑窗统一）**：点客户行仅高亮勾选（行尾绿色对勾 + 底部确认栏显示「已选择：客户名（编号）」），必须再点底部「确定」才把选中客户返回给调用方并关闭面板；「取消」（或右上角关闭/点遮罩）= 放弃选择。底部确认栏是共享的 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)。
+**二次操作契约(2026-08-16，全站滑窗统一)**：点客户行仅高亮勾选(行尾绿色对勾 + 底部确认栏显示「已选择：客户名(编号)」)，必须再点底部「确定」才把选中客户返回给调用方并关闭面板；「取消」(或右上角关闭/点遮罩)= 放弃选择。底部确认栏是共享的 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)。
 
 ## 二、响应式布局
 

@@ -1,6 +1,8 @@
 # UtenDepartmentEmployeePicker · 部门员工选择器
 
-> 源码：[`department_employee_picker.dart`](../../lib/features/employee/widgets/department_employee_picker.dart) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-08-16。
+> 源码：[`department_employee_picker.dart`](../../lib/features/employee/widgets/department_employee_picker.dart) ·
+> 通用员工展示契约：[UtenEmployeePicker](UtenEmployeePicker.md) ·
+> 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-08-27。
 
 ## 一、用途与入口
 
@@ -8,7 +10,7 @@
 
 它支持两种找人方式：按部门树浏览所选部门及其子树人员，或在左树顶部直接按部门名称/编号、员工姓名/工号搜索并反向定位所属部门。
 
-**二次操作契约（2026-08-16，全站滑窗统一）**：点员工行仅高亮勾选（行尾 ✓ + 底部确认栏显示「已选择：姓名(部门)」），点底部「确定」才返回；「取消」/关闭 = 放弃。确认栏为共享 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)。
+**二次操作契约(2026-08-27，全站滑窗统一)**：点员工行仅高亮勾选(行尾 ✓ + 底部确认栏显示「已选择：姓名(工号)」)，点底部「确定」才返回；「取消」/关闭 = 放弃。候选主行与选中值统一使用 ASCII 半角括号 `姓名(工号)`，部门显示在下一行；接口没有返回工号时才回退为姓名。确认栏为共享 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)。
 
 ## 二、响应式与交互
 
@@ -30,4 +32,8 @@
 
 ## 四、回归测试
 
-[`department_employee_picker_test.dart`](../../test/features/employee/department_employee_picker_test.dart) 覆盖员工搜索后展开所属部门、纯部门命中、旧请求竞态、后续页加载与选择；服务端 `DepartmentEmployeePickerSecurityContractTest` 覆盖端点权限和最小 DTO 边界。共享的分页收集与请求取消规则由 `category_tree_search_test.dart` 覆盖。
+[`department_employee_picker_test.dart`](../../test/features/employee/department_employee_picker_test.dart) 覆盖员工搜索后展开所属部门、纯部门命中、旧请求竞态、后续页加载与选择；
+[`uten_employee_picker_display_test.dart`](../../test/components/inputs/uten_employee_picker_display_test.dart)
+覆盖 `姓名(工号)`、部门副行和历史回显补查。服务端
+`DepartmentEmployeePickerSecurityContractTest` 覆盖端点权限和最小 DTO 边界。共享的分页收集与请求取消规则由
+`category_tree_search_test.dart` 覆盖。

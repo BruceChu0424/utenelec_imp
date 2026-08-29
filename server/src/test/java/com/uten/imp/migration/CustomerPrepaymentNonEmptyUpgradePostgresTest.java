@@ -38,6 +38,14 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
                     .isEqualTo("AR_SETTLEMENT");
             assertThat(text(connection,"SELECT receipt_kind FROM finance_receipts WHERE id=?",f.directReceipt()))
                     .isEqualTo("CUSTOMER_PREPAYMENT");
+            assertThat(number(connection,"SELECT bank_fee FROM finance_receipts WHERE id=?",f.directReceipt()))
+                    .isEqualTo(2);
+            assertThat(number(connection,"SELECT settlement_authority_version FROM finance_receipts WHERE id=?",f.directReceipt()))
+                    .isZero();
+            assertThat(text(connection,"""
+                    SELECT reconciliation_state FROM v_receipt_v0_gl_reconciliation
+                    WHERE receipt_id=?
+                    """,f.directReceipt())).isEqualTo("MISSING");
             assertThat(text(connection,"SELECT open_item_kind FROM ar_ap_ledger WHERE id=?",f.directLedger()))
                     .isEqualTo("CUSTOMER_PREPAYMENT");
             assertThat(number(connection,"""
@@ -89,7 +97,8 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
         UUID singleLine=UUID.randomUUID(),multiLine=UUID.randomUUID();
         execute(c,"INSERT INTO clients(id,code,name,status,code_sequence) VALUES(?,?,?,'使用',2)",
                 client,"CP-UPGRADE-"+client,"Customer prepayment upgrade");
-        execute(c,"INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,?,?,1,'使用')",
+        execute(c,"INSERT INTO currencies(id,legacy_id,code,name,exchange_rate,status) "
+                        + "VALUES(?,1,?,?,1,'使用')",
                 currency,"UPG-"+currency,"Upgrade currency");
         insertOrder(c,order1,"XD20260823000011",client,currency,"99.0000");
         insertOrder(c,order2,"XD20260823000012",client,currency,"0");
@@ -104,7 +113,7 @@ class CustomerPrepaymentNonEmptyUpgradePostgresTest {
         execute(c,"""
                 INSERT INTO finance_receipts(id,bill_no,bill_date,client_id,currency_id,exchange_rate,
                     amount_original,amount_local,bank_fee,other_fee,status,is_deleted)
-                VALUES(?,'XS20260823000013',DATE '2026-08-23',?,?,1,5,5,0,0,1,FALSE)
+                VALUES(?,'XS20260823000013',DATE '2026-08-23',?,?,1,5,5,2,0,1,FALSE)
                 """,directReceipt,client,currency);
         insertLedger(c,directLedger,"DIRECT_RECEIPT",directReceipt,"XS20260823000013",client,currency,
                 "0","0","5","5","-5","5","-5");

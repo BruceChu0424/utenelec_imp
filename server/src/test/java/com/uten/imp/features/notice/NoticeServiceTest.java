@@ -97,6 +97,7 @@ class NoticeServiceTest {
         notice.setTitle("title");
         notice.setContent("content");
         notice.setType("system");
+        notice.setSourceEvent("SYSTEM_TEST_EVENT");
         notice.setPublisher("system");
         notice.setPublishedAt(Instant.parse("2026-07-30T00:00:00Z"));
         when(noticeRepository.findVisible(eq(userId), eq(false), any()))
@@ -108,7 +109,9 @@ class NoticeServiceTest {
         when(ackRepository.existsByIdNoticeIdAndIdUserId(any(), any())).thenReturn(false);
         when(ackRepository.findRecentAcknowledgers(any(), anyInt())).thenReturn(List.of());
 
-        assertEquals(1, service.list(false).size());
+        List<NoticeDto> items = service.list(false);
+        assertEquals(1, items.size());
+        assertEquals("SYSTEM_TEST_EVENT", items.getFirst().sourceEvent());
 
         verify(noticeRepository, never()).findAll();
     }
@@ -192,6 +195,7 @@ class NoticeServiceTest {
                 "ORDER BY n.publishedAt ASC, n.id ASC"));
         assertTrue(query.value().contains("n.id > :afterId"));
         assertTrue(query.value().contains("s.readAt IS NULL"));
+        assertTrue(query.value().contains("s.popupAcknowledgedAt IS NULL"));
         assertFalse(query.value().contains("topPriority"));
     }
 
@@ -278,8 +282,69 @@ class NoticeServiceTest {
                         && state.getId().getUserId().equals(userId)
                         && state.getReadAt() != null
                         && state.getReadAt().isAfter(before)
+                        && state.getPopupAcknowledgedAt() != null
+                        && state.getPopupAcknowledgedAt().isAfter(before)
                         && state.getTaskCompletedAt() != null
                         && state.getTaskCompletedAt().isAfter(before)));
+    }
+
+    @Test
+    void popupAcknowledgementDoesNotMarkNotificationReadOrCompleteTodo() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setAudienceScope("all");
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+        when(stateRepository.findById(new NoticeUserStateId(noticeId, userId)))
+                .thenReturn(Optional.empty());
+
+        service.acknowledgePopup(noticeId);
+
+        verify(stateRepository).save(argThat(state ->
+                state.getId().getNoticeId().equals(noticeId)
+                        && state.getPopupAcknowledgedAt() != null
+                        && state.getReadAt() == null
+                        && state.getTaskCompletedAt() == null));
+    }
+
+    @Test
+    void acknowledgingAnAlreadyAcknowledgedPopupIsIdempotent() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setAudienceScope("all");
+        NoticeUserState state = new NoticeUserState();
+        state.setId(new NoticeUserStateId(noticeId, userId));
+        state.setPopupAcknowledgedAt(Instant.parse("2026-08-27T00:00:00Z"));
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+        when(stateRepository.findById(new NoticeUserStateId(noticeId, userId)))
+                .thenReturn(Optional.of(state));
+
+        service.acknowledgePopup(noticeId);
+
+        verify(stateRepository, never()).save(any());
+        assertEquals(
+                Instant.parse("2026-08-27T00:00:00Z"),
+                state.getPopupAcknowledgedAt());
+    }
+
+    @Test
+    void markReadAlsoAcknowledgesAPreviouslyUnacknowledgedPopup() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setAudienceScope("all");
+        NoticeUserState state = new NoticeUserState();
+        state.setId(new NoticeUserStateId(noticeId, userId));
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+        when(stateRepository.findById(new NoticeUserStateId(noticeId, userId)))
+                .thenReturn(Optional.of(state));
+
+        service.markRead(noticeId);
+
+        verify(stateRepository).save(argThat(saved ->
+                saved.getReadAt() != null
+                        && saved.getPopupAcknowledgedAt() != null));
     }
 
     @Test
@@ -328,6 +393,70 @@ class NoticeServiceTest {
         verify(noticeRepository).saveAndFlush(captor.capture());
         assertNull(captor.getValue().getActionRoute());
         assertEquals("task", captor.getValue().getType());
+    }
+
+    @Test
+    void urgentSystemTypeUsesUrgentPriorityAndPersistsSourceEvent() {
+        UUID audienceUserId = UUID.randomUUID();
+        when(noticeRepository.saveAndFlush(any(Notice.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.publishForUser(
+                audienceUserId,
+                "订单被驳回",
+                "原因",
+                "urgent",
+                "系统",
+                "/sales/orders/" + UUID.randomUUID(),
+                "SALES_ORDER_FINANCE_REJECTED");
+
+        ArgumentCaptor<Notice> captor = ArgumentCaptor.forClass(Notice.class);
+        verify(noticeRepository).saveAndFlush(captor.capture());
+        assertEquals("urgent", captor.getValue().getPriority());
+        assertEquals(
+                "SALES_ORDER_FINANCE_REJECTED",
+                captor.getValue().getSourceEvent());
+    }
+
+    @Test
+    void explicitNormalPriorityKeepsDepartmentBroadcastNonBlocking() {
+        UUID audienceUserId = UUID.randomUUID();
+        when(noticeRepository.saveAndFlush(any(Notice.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.publishForUser(
+                audienceUserId,
+                "部门广播",
+                "公共任务",
+                "urgent",
+                "系统",
+                "/production/schedule",
+                "PRODUCTION_DRAW_ISSUE_REVERSED",
+                "normal");
+
+        ArgumentCaptor<Notice> captor = ArgumentCaptor.forClass(Notice.class);
+        verify(noticeRepository).saveAndFlush(captor.capture());
+        assertEquals("normal", captor.getValue().getPriority());
+    }
+
+    @Test
+    void directedReturnTaskUsesImportantPriorityFromEventPolicy() {
+        UUID audienceUserId = UUID.randomUUID();
+        when(noticeRepository.saveAndFlush(any(Notice.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.publishForUser(
+                audienceUserId,
+                "供应商退回任务",
+                "请处理",
+                "task",
+                "系统",
+                "/procurement/arrival-exceptions",
+                "PROCUREMENT_SUPPLIER_RETURN_REQUIRED");
+
+        ArgumentCaptor<Notice> captor = ArgumentCaptor.forClass(Notice.class);
+        verify(noticeRepository).saveAndFlush(captor.capture());
+        assertEquals("important", captor.getValue().getPriority());
     }
 
     // =========================== V224：庆典发布 / 互动 ===========================

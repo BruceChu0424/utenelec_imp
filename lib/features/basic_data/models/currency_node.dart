@@ -4,6 +4,7 @@
 // 数值字段走 (json['x'] as num?)，避免后端 BigDecimal 序列化成 String/null 时 cast 崩溃。
 
 import 'master_facet.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 /// 币种列表项。
 class CurrencyListItem {
@@ -12,6 +13,8 @@ class CurrencyListItem {
     this.code,
     this.name,
     this.exchangeRate,
+    this.exchangeRateText,
+    this.baseCurrency = false,
     this.status,
     this.legacyId,
   });
@@ -20,6 +23,8 @@ class CurrencyListItem {
   final String? code;
   final String? name;
   final double? exchangeRate;
+  final String? exchangeRateText;
+  final bool baseCurrency;
   final String? status;
   final int? legacyId;
 
@@ -28,7 +33,11 @@ class CurrencyListItem {
         id: json['id'] as String,
         code: json['code'] as String?,
         name: json['name'] as String?,
-        exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+        exchangeRate: _currencyDecimal(json['exchangeRate']),
+        exchangeRateText: financeExactDecimal(
+          json['exchangeRateText'] ?? json['exchangeRate'],
+        ),
+        baseCurrency: json['baseCurrency'] as bool? ?? false,
         status: json['status'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),
       );
@@ -41,6 +50,8 @@ class CurrencyDetail {
     this.code,
     this.name,
     this.exchangeRate,
+    this.exchangeRateText,
+    this.baseCurrency = false,
     this.status,
     this.legacyId,
   });
@@ -49,6 +60,8 @@ class CurrencyDetail {
   final String? code;
   final String? name;
   final double? exchangeRate;
+  final String? exchangeRateText;
+  final bool baseCurrency;
   final String? status;
   final int? legacyId;
 
@@ -56,7 +69,11 @@ class CurrencyDetail {
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
-    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    exchangeRate: _currencyDecimal(json['exchangeRate']),
+    exchangeRateText: financeExactDecimal(
+      json['exchangeRateText'] ?? json['exchangeRate'],
+    ),
+    baseCurrency: json['baseCurrency'] as bool? ?? false,
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
   );
@@ -93,4 +110,9 @@ class CurrencyFacets {
     }
     return CurrencyFacets(fields: fields, nullCounts: nullCounts);
   }
+}
+
+double? _currencyDecimal(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '');
 }

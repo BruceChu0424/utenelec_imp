@@ -7,6 +7,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -93,10 +94,13 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
           .read(noticeRepositoryProvider)
           .previewCelebration(employeeId: id, type: _type);
       if (!mounted) return;
+      final selected = _celebrationSubject;
       setState(() {
         _celebrationSubject = UtenEmployeePickerItem(
           id: id,
           name: preview.subjectName,
+          employeeCode: selected?.id == id ? selected?.employeeCode : null,
+          departmentName: selected?.id == id ? selected?.departmentName : null,
         );
         _celebrationPreview = preview;
         _selectedTemplates = List<String>.from(preview.suggestedTemplates);
@@ -126,6 +130,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
         UtenEmployeePickerItem(
           id: item.id,
           name: item.name,
+          employeeCode: item.code,
           departmentName: item.departmentName,
         ),
     ];
@@ -457,14 +462,15 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                 ],
               ] else ...[
                 TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   controller: _actionRouteController,
                   maxLength: 500,
                   decoration: const InputDecoration(
-                    labelText: '办理页面（可选）',
+                    labelText: '办理页面(可选)',
                     hintText: '例如 /production/schedule',
                     prefixIcon: Icon(Icons.link_rounded),
                     border: OutlineInputBorder(),
-                    helperText: '仅支持应用内以 / 开头的路径',
+                    helper: UtenFieldMessage.helper('仅支持应用内以 / 开头的路径'),
                   ),
                   validator: (value) {
                     final route = value?.trim() ?? '';
@@ -483,7 +489,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       _dueAt == null
-                          ? '设置截止日期（可选）'
+                          ? '设置截止日期(可选)'
                           : '截止日期：${_dueAt!.year}-'
                                 '${_dueAt!.month.toString().padLeft(2, '0')}-'
                                 '${_dueAt!.day.toString().padLeft(2, '0')}',
@@ -519,6 +525,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                 builder: (context, _) {
                   final empty = _titleController.text.trim().isEmpty;
                   return TextFormField(
+                    errorBuilder: utenTextFieldErrorBuilder,
                     controller: _titleController,
                     maxLength: 200,
                     textInputAction: TextInputAction.next,
@@ -548,6 +555,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                 builder: (context, _) {
                   final empty = _contentController.text.trim().isEmpty;
                   return TextFormField(
+                    errorBuilder: utenTextFieldErrorBuilder,
                     controller: _contentController,
                     minLines: 10,
                     maxLines: 16,

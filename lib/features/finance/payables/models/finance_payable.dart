@@ -158,6 +158,7 @@ class FinancePayableItem {
     this.creditDays,
     this.currencyId,
     this.currencyCode,
+    this.currencyName,
     this.bookingRate,
     this.grossOriginal,
     this.grossLocal,
@@ -191,6 +192,7 @@ class FinancePayableItem {
   final int? creditDays;
   final String? currencyId;
   final String? currencyCode;
+  final String? currencyName;
   final String? bookingRate;
 
   /// 金额保持服务端十进制字符串，不在客户端用 double 重新核算。
@@ -252,6 +254,7 @@ class FinancePayableItem {
           : _intValue(json['creditDays']),
       currencyId: _firstText([json['currencyId'], currency?['id']]),
       currencyCode: _firstText([json['currencyCode'], currency?['code']]),
+      currencyName: _firstText([json['currencyName'], currency?['name']]),
       bookingRate: _decimalText(json['bookingRate'] ?? json['exchangeRate']),
       grossOriginal: _decimalText(
         json['grossOriginal'] ??

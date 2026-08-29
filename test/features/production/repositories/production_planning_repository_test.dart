@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/interceptors/safe_request_retry_interceptor.dart';
 import 'package:uten_imp/features/production/models/production_execution_planning.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 
@@ -231,7 +232,7 @@ void main() {
   });
 
   test(
-    'loads learned workshop preferences in proxy-safe 100-id chunks',
+    'loads workshop preferences in bounded one-shot parallel chunks',
     () async {
       final requests = <RequestOptions>[];
       final repository = ProductionPlanRepository(
@@ -258,6 +259,14 @@ void main() {
       expect(
         requests.map((request) => request.path),
         everyElement('/production/material-analyses/default-workshops'),
+      );
+      expect(
+        requests.map((request) => request.receiveTimeout),
+        everyElement(const Duration(seconds: 10)),
+      );
+      expect(
+        requests.map((request) => request.extra[safeRequestRetryDisabledKey]),
+        everyElement(isTrue),
       );
       expect(
         (requests.first.queryParameters['ids'] as String).split(','),

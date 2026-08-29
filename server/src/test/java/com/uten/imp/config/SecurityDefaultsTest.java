@@ -56,6 +56,11 @@ class SecurityDefaultsTest {
     }
 
     @Test
+    void swaggerDefaultsToFailClosed() {
+        assertFalse(new SecurityProperties().isSwaggerEnabled());
+    }
+
+    @Test
     void corsRejectsWildcardEmptyAndPathOrigins() {
         SecurityConfig config = new SecurityConfig();
         for (String invalid : java.util.List.of(

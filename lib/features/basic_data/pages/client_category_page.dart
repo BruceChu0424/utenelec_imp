@@ -865,7 +865,7 @@ class _DetailPaneState extends State<_DetailPane> {
             title: d.name,
             icon: Icons.people_outline,
             subtitle:
-                '编号前缀 ${d.effectivePrefix ?? 'KH'}${d.codePrefix == null ? '（继承）' : ''}'
+                '编号前缀 ${d.effectivePrefix ?? 'KH'}${d.codePrefix == null ? '(继承)' : ''}'
                 '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
             // 详情卡精简（与货品/模具/供应商/收付方式分类卡统一）：不再展示统计行
             // 与路径行——左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
@@ -918,7 +918,7 @@ class _DetailPaneState extends State<_DetailPane> {
                     child: UtenSearchBar(
                       // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
                       key: ValueKey('client-search-${widget.nodeId}-$_kwSeed'),
-                      hint: '搜索客户（简称/编码/全称/联系人/手机）', // TODO(l10n): 补 arb
+                      hint: '搜索客户(简称/编码/全称/联系人/手机)', // TODO(l10n): 补 arb
                       initialValue: _keyword,
                       onChanged: _onKeywordChanged,
                     ),

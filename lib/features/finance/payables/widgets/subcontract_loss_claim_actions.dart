@@ -6,6 +6,7 @@ import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../../../basic_data/models/account_node.dart';
 import '../../../basic_data/repositories/account_repository.dart';
 import '../models/finance_payable.dart';
@@ -65,13 +66,17 @@ Future<SubcontractLossDecisionDraft?> showSubcontractLossDecisionPanel({
 Future<SubcontractLossFulfillmentDraft?> showSubcontractLossFulfillmentPanel({
   required BuildContext context,
   required SubcontractLossResolution resolution,
+  bool canViewFinancialAmounts = true,
 }) => showUtenAdaptivePanel<SubcontractLossFulfillmentDraft>(
   context: context,
   drawerWidth: 560,
   compactHeightFactor: 0.92,
   barrierDismissible: false,
   panelElevation: 16,
-  builder: (_) => _LossFulfillmentEditor(resolution: resolution),
+  builder: (_) => _LossFulfillmentEditor(
+    resolution: resolution,
+    canViewFinancialAmounts: canViewFinancialAmounts,
+  ),
 );
 
 Future<String?> showSubcontractLossReasonDialog({
@@ -336,7 +341,7 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
               maxLength: 2000,
               maxLines: 3,
               decoration: InputDecoration(
-                labelText: _disputed ? '争议原因（必填）' : '责任决定说明（必填）',
+                labelText: _disputed ? '争议原因(必填)' : '责任决定说明(必填)',
               ),
             ),
             if (!_disputed) ...[
@@ -484,7 +489,7 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: const InputDecoration(labelText: '处理金额（本币）'),
+              decoration: const InputDecoration(labelText: '处理金额(本币)'),
             ),
           ],
           const SizedBox(height: UtenSpacing.s8),
@@ -637,6 +642,12 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final item = _items[index];
+                final currency =
+                    financeCurrencyDisplayLabel(
+                      name: item.currencyName,
+                      code: item.currencyCode,
+                    ) ??
+                    '原币';
                 final selected = _selected.contains(item.id);
                 final controller = _amounts.putIfAbsent(
                   item.id,
@@ -658,7 +669,7 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
                     '${item.sourceDocNo ?? '—'} · ${item.sourceTypeLabel}',
                   ),
                   subtitle: Text(
-                    '未付 ${item.currencyCode ?? ''} ${item.outstandingOriginal ?? '—'}',
+                    '未付 $currency ${item.outstandingOriginal ?? '—'}',
                   ),
                   secondary: SizedBox(
                     width: 150,
@@ -693,9 +704,13 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
 }
 
 class _LossFulfillmentEditor extends ConsumerStatefulWidget {
-  const _LossFulfillmentEditor({required this.resolution});
+  const _LossFulfillmentEditor({
+    required this.resolution,
+    required this.canViewFinancialAmounts,
+  });
 
   final SubcontractLossResolution resolution;
+  final bool canViewFinancialAmounts;
 
   @override
   ConsumerState<_LossFulfillmentEditor> createState() =>
@@ -881,19 +896,21 @@ class _LossFulfillmentEditorState
               readOnly: true,
               decoration: const InputDecoration(labelText: '整笔履约数量'),
             ),
-            const SizedBox(height: UtenSpacing.s8),
-            TextField(
-              controller: _amount,
-              readOnly: !widget.resolution.isCashCompensation,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+            if (widget.canViewFinancialAmounts) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              TextField(
+                controller: _amount,
+                readOnly: !widget.resolution.isCashCompensation,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: widget.resolution.isCashCompensation
+                      ? '到账金额(本币，必须等于确认额)'
+                      : '方案金额(本币)',
+                ),
               ),
-              decoration: InputDecoration(
-                labelText: widget.resolution.isCashCompensation
-                    ? '到账金额（本币，必须等于确认额）'
-                    : '方案金额（本币）',
-              ),
-            ),
+            ],
             if (widget.resolution.isCashCompensation) ...[
               const SizedBox(height: UtenSpacing.s8),
               if (_accountsLoading)
@@ -907,7 +924,7 @@ class _LossFulfillmentEditorState
                 DropdownButtonFormField<String>(
                   initialValue: _accountId,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: '启用资金账户（必选）'),
+                  decoration: const InputDecoration(labelText: '启用资金账户(必选)'),
                   items: [
                     for (final account in _cashAccounts)
                       DropdownMenuItem(
@@ -932,7 +949,7 @@ class _LossFulfillmentEditorState
               controller: _evidence,
               maxLength: 1000,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: '履约证据（必填）'),
+              decoration: const InputDecoration(labelText: '履约证据(必填)'),
             ),
             if (widget.resolution.requiresPhysicalDocument) ...[
               const SizedBox(height: UtenSpacing.s8),
@@ -944,14 +961,14 @@ class _LossFulfillmentEditorState
               TextField(
                 controller: _docId,
                 decoration: const InputDecoration(
-                  labelText: '已审核实物单头 UUID（必填）',
+                  labelText: '已审核实物单头 UUID(必填)',
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
               TextField(
                 controller: _docItemId,
                 decoration: const InputDecoration(
-                  labelText: '已审核实物单明细 UUID（必填）',
+                  labelText: '已审核实物单明细 UUID(必填)',
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),

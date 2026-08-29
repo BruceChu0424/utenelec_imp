@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../shared/repositories/account_history_store.dart';
 
 class AccountField extends ConsumerStatefulWidget {
@@ -123,6 +124,7 @@ class _AccountFieldState extends ConsumerState<AccountField> {
         textInputAction: widget.textInputAction,
         autocorrect: false,
         validator: widget.validator,
+        errorBuilder: utenTextFieldErrorBuilder,
         autofillHints: const ['username'],
         decoration: InputDecoration(
           hintText: widget.hint,

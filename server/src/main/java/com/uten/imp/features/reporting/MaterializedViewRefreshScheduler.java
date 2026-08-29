@@ -119,7 +119,7 @@ public class MaterializedViewRefreshScheduler {
                 // 避免只看到单条 error 不知道整轮受影响面。
                 if (refreshed < REPORT_VIEWS.size()) {
                     log.warn(
-                            "物化视图刷新部分失败 {}/{}，总耗时 {} ms（明细见上方 error 日志）",
+                            "物化视图刷新部分失败 {}/{}，总耗时 {} ms(明细见上方 error 日志)",
                             refreshed, REPORT_VIEWS.size(), elapsedMillis);
                 }
             } finally {

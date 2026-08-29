@@ -1,12 +1,8 @@
-// 财务订货审批任务中心「页内审批」回归测试。
-//
-// 背景：审批按钮原先长在采购/委外订货详情页——admin 等同时持财务审核资格的
-// 账号在采购模块提交订货后立刻看到「财务通过」按钮，被业务方质疑流程越位。
-// 收敛后：订货详情页只读展示等待状态；审批的权威操作位在财务专属的任务中心
-// 卡片上（通过 / 退回修改），allowedActions 由服务端按 V229 资格放行。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/models/finance_procurement_workflow.dart';
 import 'package:uten_imp/features/finance/pages/finance_procurement_approval_tasks_page.dart';
 import 'package:uten_imp/features/finance/providers/finance_procurement_approval_count_provider.dart';
@@ -15,40 +11,70 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
-/// 记录型假仓库：只回固定的一页任务，并记录页内审批调用。
 class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   _FakeWorkflowRepo(this.items);
 
   final List<FinanceProcurementApprovalTask> items;
-  final List<String> approvedOrderIds = [];
+  final List<List<FinanceProcurementDecisionItem>> approvedBatches = [];
+  final List<({List<FinanceProcurementDecisionItem> items, String reason})>
+  rejectedBatches = [];
+  String? lastKeyword;
+  FinanceProcurementOrderType? lastOrderType;
 
   @override
   Future<FinanceProcurementApprovalPage> approvalTasks({
     int page = 1,
     int size = 20,
     FinanceProcurementOrderType? orderType,
-  }) async => FinanceProcurementApprovalPage(
-    items: items,
-    page: 1,
-    size: 20,
-    total: items.length,
-    totalPages: 1,
-  );
+    String? keyword,
+  }) async {
+    lastKeyword = keyword;
+    lastOrderType = orderType;
+    return FinanceProcurementApprovalPage(
+      items: items,
+      page: page,
+      size: size,
+      total: items.length,
+      totalPages: 1,
+    );
+  }
 
   @override
   Future<int> pendingApprovalCount() async => items.length;
 
   @override
-  Future<Map<String, int>> approvalTypeCounts() async => const {'PURCHASE': 1};
+  Future<Map<String, int>> approvalTypeCounts() async => {
+    'PURCHASE': items
+        .where((task) => task.orderType == FinanceProcurementOrderType.purchase)
+        .length,
+    'SUBCONTRACT': items
+        .where(
+          (task) => task.orderType == FinanceProcurementOrderType.subcontract,
+        )
+        .length,
+  };
+
+  @override
+  Future<void> approveOrdersBatch(
+    List<FinanceProcurementDecisionItem> items,
+  ) async {
+    approvedBatches.add(List.of(items));
+  }
+
+  @override
+  Future<void> rejectOrdersBatch(
+    List<FinanceProcurementDecisionItem> items,
+    String reason,
+  ) async {
+    rejectedBatches.add((items: List.of(items), reason: reason));
+  }
 
   @override
   Future<void> approveOrder(
     FinanceProcurementOrderType orderType,
     String orderId,
     int expectedVersion,
-  ) async {
-    approvedOrderIds.add('$orderType|$orderId|v$expectedVersion');
-  }
+  ) async {}
 
   @override
   Future<void> rejectOrder(
@@ -71,112 +97,276 @@ class _FinanceReviewerSessionNotifier extends SessionNotifier {
   );
 }
 
-Map<String, dynamic> _purchaseTaskJson() => <String, dynamic>{
-  'caseId': 'case-1',
-  'orderId': 'order-1',
-  'orderType': 'PURCHASE',
-  'billNo': 'PO-2026-001',
-  'supplierName': '供应商A',
+FinanceProcurementApprovalTask _task({
+  required String caseId,
+  required String orderId,
+  required String orderType,
+  required String billNo,
+  List<String> allowedActions = const ['APPROVE', 'REJECT'],
+}) => FinanceProcurementApprovalTask.fromJson({
+  'caseId': caseId,
+  'orderId': orderId,
+  'orderType': orderType,
+  'billNo': billNo,
+  'supplierName': orderType == 'PURCHASE' ? '供应商A' : '委外商B',
+  'warehouseName': '一号仓',
+  'amount': orderType == 'PURCHASE' ? '1200.50' : '800.00',
   'submittedByName': '张三',
   'submittedAt': '2026-08-18T02:00:00+08:00',
+  'expectedDate': '2026-09-01',
+  'attempt': 1,
   'status': 'PENDING',
   'version': 3,
-  'allowedActions': <Object>['APPROVE', 'REJECT'],
-};
+  'allowedActions': allowedActions,
+});
+
+Future<GoRouter> _pumpPage(
+  WidgetTester tester,
+  _FakeWorkflowRepo repository, {
+  Size size = const Size(1400, 1000),
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  final router = GoRouter(
+    initialLocation: '/finance/procurement-approvals',
+    routes: [
+      GoRoute(
+        path: '/finance/procurement-approvals',
+        builder: (_, _) => const FinanceProcurementApprovalTasksPage(),
+      ),
+      GoRoute(
+        path: '/purchase/orders/:id',
+        builder: (_, state) =>
+            Scaffold(body: Text('采购详情 ${state.pathParameters['id']}')),
+      ),
+      GoRoute(
+        path: '/subcontract/orders/:id',
+        builder: (_, state) =>
+            Scaffold(body: Text('委外详情 ${state.pathParameters['id']}')),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        isSuperAdminProvider.overrideWithValue(false),
+        currentPermissionsProvider.overrideWithValue(const {
+          Perm.financeOrderApprovalView,
+          Perm.financeOrderApprovalApprove,
+          Perm.financeOrderApprovalReject,
+        }),
+        sessionProvider.overrideWith(_FinanceReviewerSessionNotifier.new),
+        financeProcurementApprovalCountProvider.overrideWith(
+          (ref) async => repository.items.length,
+        ),
+        financeProcurementWorkflowRepositoryProvider.overrideWithValue(
+          repository,
+        ),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return router;
+}
 
 void main() {
-  testWidgets('任务卡渲染页内「通过/退回修改」，点通过走订货审批端点', (tester) async {
-    tester.view.physicalSize = const Size(1200, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'uses a selectable table and atomic bottom-right approve/reject actions',
+    (tester) async {
+      final repository = _FakeWorkflowRepo([
+        _task(
+          caseId: 'case-1',
+          orderId: 'order-1',
+          orderType: 'PURCHASE',
+          billNo: 'PO-2026-001',
+        ),
+        _task(
+          caseId: 'case-2',
+          orderId: 'order-2',
+          orderType: 'SUBCONTRACT',
+          billNo: 'SO-2026-002',
+        ),
+      ]);
+      await _pumpPage(tester, repository);
 
-    final task = FinanceProcurementApprovalTask.fromJson(_purchaseTaskJson());
-    final fakeRepo = _FakeWorkflowRepo([task]);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          isSuperAdminProvider.overrideWithValue(false),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.financeOrderApprovalView,
-          }),
-          sessionProvider.overrideWith(_FinanceReviewerSessionNotifier.new),
-          // 轮询型角标 provider 换固定值，避免测试期间自刷新。
-          financeProcurementApprovalCountProvider.overrideWith(
-            (ref) async => 1,
-          ),
-          financeProcurementWorkflowRepositoryProvider.overrideWithValue(
-            fakeRepo,
-          ),
-        ],
-        child: const MaterialApp(home: FinanceProcurementApprovalTasksPage()),
+      expect(
+        find.byKey(const Key('finance-approval-type-cards')),
+        findsNothing,
+      );
+      expect(find.byType(Card), findsNothing);
+      expect(
+        find.byKey(const Key('finance-approval-task-table')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('finance-approval-approve-case-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('finance-approval-reject-case-1')),
+        findsNothing,
+      );
+
+      var table = tester
+          .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+            find.byKey(const Key('finance-approval-task-table')),
+          );
+      final columnKeys = table.columns.map((column) => column.key).toList();
+      expect(
+        columnKeys,
+        containsAll(<String>[
+          'orderType',
+          'billNo',
+          'supplierName',
+          'amount',
+          'expectedDate',
+          'submittedByName',
+          'submittedAt',
+          'attempt',
+        ]),
+      );
+
+      table.onSelectedIdsChanged?.call({'case-1', 'case-2'});
+      await tester.pump();
+      expect(find.text('已选 2 项'), findsOneWidget);
+      expect(
+        find.byKey(const Key('finance-approval-batch-approve')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('finance-approval-batch-reject')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('finance-approval-batch-approve')));
+      await tester.pumpAndSettle();
+      expect(find.text('批量通过(2 笔)'), findsOneWidget);
+      expect(find.text('审核员：财务李四(FIN001)'), findsOneWidget);
+      await tester.tap(find.text('确认批量通过'));
+      await tester.pumpAndSettle();
+
+      expect(repository.approvedBatches, hasLength(1));
+      expect(repository.approvedBatches.single.map((item) => item.toJson()), [
+        {'caseId': 'case-1', 'expectedVersion': 3},
+        {'caseId': 'case-2', 'expectedVersion': 3},
+      ]);
+
+      table = tester
+          .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+            find.byKey(const Key('finance-approval-task-table')),
+          );
+      table.onSelectedIdsChanged?.call({'case-1', 'case-2'});
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('finance-approval-batch-reject')));
+      await tester.pumpAndSettle();
+      expect(find.text('批量驳回(2 笔)'), findsOneWidget);
+      final reason = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.decoration?.labelText == '退回原因(必填)',
+      );
+      await tester.enterText(reason, '价格与交期需要重新确认');
+      await tester.pump();
+      await tester.tap(find.text('确认批量驳回'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('批量驳回(2 笔)'), findsNothing);
+      expect(repository.rejectedBatches, hasLength(1));
+      expect(repository.rejectedBatches.single.reason, '价格与交期需要重新确认');
+      expect(repository.rejectedBatches.single.items, hasLength(2));
+    },
+  );
+
+  testWidgets('single click selects and same-row double click opens detail', (
+    tester,
+  ) async {
+    final repository = _FakeWorkflowRepo([
+      _task(
+        caseId: 'case-1',
+        orderId: 'order-1',
+        orderType: 'PURCHASE',
+        billNo: 'PO-2026-001',
       ),
-    );
+    ]);
+    await _pumpPage(tester, repository);
+
+    await tester.tap(find.text('PO-2026-001'));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('已选 1 项'), findsOneWidget);
+    await tester.tap(find.text('PO-2026-001'));
     await tester.pumpAndSettle();
 
-    expect(find.text('PO-2026-001'), findsOneWidget);
-    expect(find.text('显示财务审核组共享的采购和委外订货待审任务。'), findsOneWidget);
-    // 页内审批操作行
-    final approveBtn = find.byKey(const Key('finance-approval-approve-case-1'));
-    final rejectBtn = find.byKey(const Key('finance-approval-reject-case-1'));
-    expect(approveBtn, findsOneWidget, reason: '资格账号应看到「通过」操作');
-    expect(rejectBtn, findsOneWidget, reason: '资格账号应看到「退回修改」操作');
-
-    // 点「通过」→ 确认对话框 → 确认 → 恰好发起一次采购订货审批（类型+单据+版本）。
-    await tester.tap(approveBtn);
-    await tester.pumpAndSettle();
-    expect(find.text('确认通过'), findsOneWidget);
-    expect(find.text('审核员：财务李四（FIN001）'), findsOneWidget);
-    await tester.tap(find.text('确认通过'));
-    await tester.pumpAndSettle();
-    expect(fakeRepo.approvedOrderIds, hasLength(1), reason: '应恰好审批一次');
-    expect(
-      fakeRepo.approvedOrderIds.single,
-      'FinanceProcurementOrderType.purchase|order-1|v3',
-    );
-
-    await tester.tap(rejectBtn);
-    await tester.pumpAndSettle();
-    expect(find.text('退回原因（必填）'), findsOneWidget);
-    expect(find.text('审核员：财务李四（FIN001）'), findsOneWidget);
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
+    expect(find.text('采购详情 order-1'), findsOneWidget);
   });
 
-  testWidgets('服务端未放行 allowedActions 时不出页内审批操作', (tester) async {
-    tester.view.physicalSize = const Size(1200, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    final json = _purchaseTaskJson()..['allowedActions'] = <Object>[];
-    final task = FinanceProcurementApprovalTask.fromJson(json);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          isSuperAdminProvider.overrideWithValue(false),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.financeOrderApprovalView,
-          }),
-          financeProcurementApprovalCountProvider.overrideWith(
-            (ref) async => 0,
-          ),
-          financeProcurementWorkflowRepositoryProvider.overrideWithValue(
-            _FakeWorkflowRepo([task]),
-          ),
-        ],
-        child: const MaterialApp(home: FinanceProcurementApprovalTasksPage()),
+  testWidgets('search clears selection and compact mode remains card-free', (
+    tester,
+  ) async {
+    final repository = _FakeWorkflowRepo([
+      _task(
+        caseId: 'case-1',
+        orderId: 'order-1',
+        orderType: 'PURCHASE',
+        billNo: 'PO-2026-001',
       ),
+    ]);
+    await _pumpPage(tester, repository, size: const Size(375, 812));
+
+    var table = tester
+        .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+          find.byKey(const Key('finance-approval-task-table')),
+        );
+    table.onSelectedIdsChanged?.call({'case-1'});
+    await tester.pump();
+    expect(find.text('已选 1 项'), findsOneWidget);
+
+    final search = find.descendant(
+      of: find.byKey(const Key('finance-approval-search')),
+      matching: find.byType(TextField),
     );
+    await tester.enterText(search, '供应商A');
+    await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
 
+    expect(repository.lastKeyword, '供应商A');
+    table = tester.widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+      find.byKey(const Key('finance-approval-task-table')),
+    );
+    expect(table.selectedIds, isEmpty);
+    expect(find.byType(Card), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('server denied allowedActions keeps the table read-only', (
+    tester,
+  ) async {
+    final repository = _FakeWorkflowRepo([
+      _task(
+        caseId: 'case-1',
+        orderId: 'order-1',
+        orderType: 'PURCHASE',
+        billNo: 'PO-2026-001',
+        allowedActions: const [],
+      ),
+    ]);
+    await _pumpPage(tester, repository);
+
+    final table = tester
+        .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+          find.byKey(const Key('finance-approval-task-table')),
+        );
+    expect(table.selectable, isFalse);
     expect(
-      find.byKey(const Key('finance-approval-approve-case-1')),
+      find.byKey(const Key('finance-approval-batch-approve')),
       findsNothing,
-      reason: '无资格（allowedActions 空）不得出现审批操作',
     );
     expect(
-      find.byKey(const Key('finance-approval-reject-case-1')),
+      find.byKey(const Key('finance-approval-batch-reject')),
       findsNothing,
     );
   });

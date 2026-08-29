@@ -15,11 +15,11 @@ import org.springframework.stereotype.Component;
 public class DisabledStorageService implements StorageService {
 
     public DisabledStorageService() {
-        log.warn("StorageService 处于 disabled，附件上传/下载不可用（UTEN_STORAGE_PROVIDER=disabled）");
+        log.warn("StorageService 处于 disabled，附件上传/下载不可用(UTEN_STORAGE_PROVIDER=disabled)");
     }
 
     private static UnsupportedOperationException unavailable() {
-        return new UnsupportedOperationException("附件存储未启用（UTEN_STORAGE_PROVIDER=disabled）");
+        return new UnsupportedOperationException("附件存储未启用(UTEN_STORAGE_PROVIDER=disabled)");
     }
 
     @Override

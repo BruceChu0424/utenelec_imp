@@ -55,7 +55,7 @@ public class EmployeeVehiclePhoneService {
             String norm = EmployeeVehicle.normalizePlate(in.plateNo());
             if (isBlank(norm) || !PLATE.matcher(norm).matches()) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "车牌号格式不正确（7-8 位，如 粤T12345 / 粤TD12345）");
+                        "车牌号格式不正确(7-8 位，如 粤T12345 / 粤TD12345)");
             }
             if (!seen.add(norm)) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "车牌号重复：" + norm);

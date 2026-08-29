@@ -82,6 +82,7 @@ class ProductionExecutionPackageCommandStatusTest {
         assertThat(segment.getZeroMaterialExceptionReason()).isNull();
         assertThat(segment.getZeroMaterialAuthorizedBy()).isNull();
 
+        // V423：PLAN_BOM_OVERRIDE 原因随计划级 BOM 例外机制一并下线，不再可创建。
         CompleteKitAllocator.ProductLine invalidOverride = zeroLine(
                 ProductionExecutionSegment
                         .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE,
@@ -97,7 +98,7 @@ class ProductionExecutionPackageCommandStatusTest {
                 .freezeMaterialRequirementShape(
                         new ProductionExecutionSegment(), invalidProposal))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("授权或例外事实不完整");
+                .hasMessageContaining("缺少可审计的合法原因");
     }
 
     private static CompleteKitAllocator.ProductLine zeroLine(

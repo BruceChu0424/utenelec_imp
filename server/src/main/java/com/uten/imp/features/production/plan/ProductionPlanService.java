@@ -370,8 +370,8 @@ public class ProductionPlanService {
                 }
                 if (linkedQty.compareTo(planQty) != 0) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "计划明细分摊合计必须等于计划数量（计划 "
-                                    + qtyText(planQty) + "，分摊 " + qtyText(linkedQty) + "）");
+                            "计划明细分摊合计必须等于计划数量(计划 "
+                                    + qtyText(planQty) + "，分摊 " + qtyText(linkedQty) + ")");
                 }
             } else if (item.getSalesOrderItemId() != null) {
                 BigDecimal allocatedQty = planQty;
@@ -495,7 +495,7 @@ public class ProductionPlanService {
             BigDecimal remaining = locked.get(entry.getKey()).remainingQty();
             if (entry.getValue().compareTo(remaining) > 0) {
                 throw new ApiException(ErrorCode.BUSINESS,
-                        "排产量超过订单未满足需求（剩余可排 " + qtyText(remaining) + "）");
+                        "排产量超过订单未满足需求(剩余可排 " + qtyText(remaining) + ")");
             }
         }
         return locked;
@@ -1359,7 +1359,7 @@ public class ProductionPlanService {
             if (value != null && !normalized.add(value)) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "生产计划明细的产品编号不能重复（忽略大小写和首尾空格）");
+                        "生产计划明细的产品编号不能重复(忽略大小写和首尾空格)");
             }
         }
         return normalized;

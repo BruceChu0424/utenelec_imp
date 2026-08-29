@@ -365,6 +365,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
           (employee) => UtenEmployeePickerItem(
             id: employee.id,
             name: employee.fullName,
+            employeeCode: employee.code,
             departmentName: employee.departmentName,
           ),
         )

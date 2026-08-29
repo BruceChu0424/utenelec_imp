@@ -22,7 +22,8 @@ import java.util.UUID;
  *   <li>GET /api/finance/reconciliations?keyword=&accountId=&sourceDocType=&sourceDocId=&checkNo=&dateFrom=&dateTo=&page=&size=</li>
  * </ul>
  *
- * <p>权限：{@code finance_reconciliation:view}（种子化，view 给所有部门）。
+ * <p>账户流水包含敏感资金金额，必须同时具备账户查看、余额查看和流水查看权限。
+ * 历史 {@code finance_reconciliation:view} 不再构成访问授权。
  * 流水由各 finance_*审核 Service 写入（用户不直接编辑）。
  */
 @RestController
@@ -33,7 +34,8 @@ public class FinanceReconciliationController {
     private final FinanceReconciliationService service;
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    @PreAuthorize("hasAuthority('finance_reconciliation:view')")
+    @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
+            + "and hasAuthority('account:flow:view')")
     public PageResponse<FinanceReconciliationListItem> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) UUID accountId,

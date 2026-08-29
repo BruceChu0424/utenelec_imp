@@ -26,7 +26,7 @@ public class PayrollPdfService {
         List<String> lines = new ArrayList<>();
         lines.add("优腾智能管理平台 - 工资条");
         lines.add("工资期间：" + slip.year() + "年" + slip.month() + "月");
-        lines.add("员工：" + slip.employeeName() + "（" + slip.employeeCode() + "）");
+        lines.add("员工：" + slip.employeeName() + "(" + slip.employeeCode() + ")");
         lines.add("----------------------------------------");
         for (PayrollItemDto item : slip.items()) {
             String sign = "DEDUCTION".equals(item.type()) ? "-" : "+";

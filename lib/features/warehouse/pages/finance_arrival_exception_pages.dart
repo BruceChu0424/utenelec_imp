@@ -9,6 +9,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -299,7 +300,7 @@ class _FinanceTaskCard extends StatelessWidget {
                 ),
                 if (task.excessAmountLocal?.isNotEmpty == true) ...[
                   const SizedBox(height: UtenSpacing.s4),
-                  Text('超量金额（服务端快照）：${task.excessAmountLocal}'),
+                  Text('超量金额(服务端快照)：${task.excessAmountLocal}'),
                 ],
               ],
             ),
@@ -786,8 +787,9 @@ class _FinanceDecisionPanel extends StatelessWidget {
                 ],
                 decoration: InputDecoration(
                   labelText: '批准的额外超量',
-                  helperText:
-                      '必须大于 0，且小于 ${procurementQty(task.requestedExcessQty)} ${task.unitName ?? ''}',
+                  helper: UtenFieldMessage.helper(
+                    '必须大于 0，且小于 ${procurementQty(task.requestedExcessQty)} ${task.unitName ?? ''}',
+                  ),
                 ),
               ),
             ],
@@ -801,8 +803,8 @@ class _FinanceDecisionPanel extends StatelessWidget {
                 maxLength: 1000,
                 decoration: InputDecoration(
                   labelText: value == FinanceArrivalDecision.rejectExcess
-                      ? '财务理由（可选）'
-                      : '财务理由（必填）',
+                      ? '财务理由(可选)'
+                      : '财务理由(必填)',
                   hintText: '说明批准超量的业务依据',
                 ),
               ),
@@ -872,7 +874,7 @@ class _DecisionOption extends StatelessWidget {
                     children: [
                       Text(
                         decision == FinanceArrivalDecision.rejectExcess
-                            ? '${decision.label}（推荐）'
+                            ? '${decision.label}(推荐)'
                             : decision.label,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,

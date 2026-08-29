@@ -84,7 +84,9 @@ public final class OrderProgressContracts {
             /** 已立应付加工费合计（本币，已审进仓 − 已审成品退货）。 */
             BigDecimal apPostedTotal,
             /** 已立损耗扣款合计（本币，deduct_posted 的损耗单）。 */
-            BigDecimal wasteDeductTotal) {
+            BigDecimal wasteDeductTotal,
+            /** 当前用户无委外商业金额权限时为 true，进度中的金额族字段全部置 null。 */
+            boolean priceMasked) {
         public OrderProgress {
             materialLines = List.copyOf(materialLines);
             issues = List.copyOf(issues);

@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_doc_detail_page.dart';
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
@@ -102,7 +103,7 @@ class _WarehouseReviewerSessionNotifier extends SessionNotifier {
 }
 
 void main() {
-  testWidgets('委外订货详情（财务待审）渲染标题、表头、明细与审批按钮，body 不被底栏挤没', (tester) async {
+  testWidgets('委外订货详情(财务待审)渲染标题、表头、明细与审批按钮，body 不被底栏挤没', (tester) async {
     tester.view.physicalSize = const Size(1200, 1800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -210,11 +211,27 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    final detailTable = tester.widget<MasterDataTableView<SubcontractDocItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<SubcontractDocItem>,
+      ),
+    );
+    final detailColumnKeys = {
+      for (final column in detailTable.columns) column.key,
+    };
+    expect(detailColumnKeys, containsAll(<String>{'qty', 'weight'}));
+    expect(detailColumnKeys, isNot(contains('price')));
+    expect(detailColumnKeys, isNot(contains('amount')));
+    expect(find.text('币种'), findsNothing);
+    expect(find.text('汇率'), findsNothing);
+    expect(find.text('结算方式'), findsNothing);
+    expect(find.text('合计(本币)'), findsNothing);
+
     expect(find.text('审核'), findsOneWidget);
     await tester.tap(find.text('审核'));
     await tester.pumpAndSettle();
 
-    expect(find.text('审核员：仓管王五（WH001）'), findsOneWidget);
+    expect(find.text('审核员：仓管王五(WH001)'), findsOneWidget);
     expect(
       find.byKey(const Key('reviewer-responsibility-notice')),
       findsOneWidget,

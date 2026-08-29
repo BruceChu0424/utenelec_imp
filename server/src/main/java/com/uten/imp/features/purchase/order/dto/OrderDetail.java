@@ -47,4 +47,6 @@ public class OrderDetail {
     /** 来源采购申请（全部明细同源时给出，供详情页跳转；跨申请分解为 null，看明细行谱系）。 */
     private UUID sourceRequestId;
     private String sourceRequestNo;
+    /** 当前用户无采购商业金额权限时为 true，币种/结算/单价/金额字段同时置 null。 */
+    private boolean priceMasked;
 }

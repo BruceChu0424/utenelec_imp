@@ -112,7 +112,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                   AND material.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                   AND material.unit_id = :unitId
                   AND material.shortage_qty > 0
-                  AND """ + ownerPredicate + keywordPredicate;
+                  AND %s
+                """.formatted(ownerPredicate) + keywordPredicate;
 
         Query countQuery = em.createNativeQuery("SELECT COUNT(*) " + fromAndWhere)
                 .setParameter("sourceAnalysisId", sourceAnalysisId)

@@ -87,6 +87,37 @@ void main() {
       expect(notice.interactionMode, NoticeInteractionMode.bless);
     });
 
+    test('parses sourceEvent for business presentation policy', () async {
+      final repo = DioNoticeRepository(
+        _api(
+          (_) => {
+            ..._announcementAckJson(),
+            'sourceEvent': 'SALES_ORDER_FINANCE_REJECTED',
+          },
+        ),
+      );
+
+      final notice = (await repo.getById('notice-1'))!;
+      expect(notice.sourceEvent, 'SALES_ORDER_FINANCE_REJECTED');
+    });
+
+    test(
+      'popup acknowledgement uses dedicated endpoint without marking read',
+      () async {
+        late RequestOptions captured;
+        final repo = DioNoticeRepository(
+          _api((request) {
+            captured = request;
+            return <String, dynamic>{};
+          }),
+        );
+
+        await repo.acknowledgePopup('notice-1');
+        expect(captured.method, 'POST');
+        expect(captured.path, '/notices/notice-1/popup-ack');
+      },
+    );
+
     test(
       'publish sends subjectEmployeeId + blessingTemplates for celebration',
       () async {

@@ -56,7 +56,7 @@ public class PurchaseOrderController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('purchase_order:view')")
+    @PreAuthorize("hasAnyAuthority('purchase_order:view','finance_order_approval:view')")
     public OrderDetail detail(@PathVariable UUID id) {
         return service.detail(id);
     }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -248,6 +249,7 @@ class _MaterialSettlementSheetState
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
+                errorBuilder: utenTextFieldErrorBuilder,
                 controller: qty,
                 autofocus: true,
                 keyboardType: const TextInputType.numberWithOptions(
@@ -255,11 +257,14 @@ class _MaterialSettlementSheetState
                 ),
                 decoration: InputDecoration(
                   labelText: '冲销数量',
-                  helperText: '最多 ${_number(source.reversibleQtyBase)}',
+                  helper: UtenFieldMessage.helper(
+                    '最多 ${_number(source.reversibleQtyBase)}',
+                  ),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
               TextFormField(
+                errorBuilder: utenTextFieldErrorBuilder,
                 controller: reason,
                 maxLength: 500,
                 decoration: const InputDecoration(
@@ -489,7 +494,7 @@ class _MaterialSettlementSheetState
                     children: [
                       Expanded(
                         child: Text(
-                          '材料结清台账（${_grid.length} 种）',
+                          '材料结清台账(${_grid.length} 种)',
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
@@ -723,7 +728,7 @@ class _MaterialSettlementSheetState
       initiallyExpanded: active.isNotEmpty,
       tilePadding: EdgeInsets.zero,
       title: Text(
-        '已提交记录（${_sources.length}）',
+        '已提交记录(${_sources.length})',
         style: theme.textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w700,
         ),

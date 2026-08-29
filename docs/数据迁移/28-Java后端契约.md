@@ -1,4 +1,21 @@
 # 28 - 业务四模块 Java 后端契约（普通业务单据通用基线）
+
+## 2026-08-28 后置覆盖：V407–V417 收款、账户流水与付款命令契约
+
+- 新 `FinanceReceiptSaveRequest` 必须传制单人范围内稳定的 8–128 位 `createIdempotencyKey`；更新必须传详情返回的 `expectedVersion`。金额和汇率在 JSON 中以十进制字符串提交，服务端使用 `BigDecimal` 重算；二进制浮点不是入账权威。
+- `currencyId/amountOriginal/exchangeRate` 分别是 AR 应收/核销原币、本批原币毛额和 `BASE_PER_SETTLEMENT` 实际结算率。`accountId/accountCurrencyId/accountAmount` 是真实到账账户、账户币种和银行入账原币金额；两组字段不得共用一个 `amount`。
+- `settlementChannel` 只允许 `DIRECT_ACCOUNT/TRADE_AGENT_CONVERSION`；`exchangeRateSource` 对应 `BANK_STATEMENT/TRADE_AGENT_STATEMENT`。请求还须带 `exchangeRateEffectiveAt/bankBookedAt/bankReference`；代理结汇另带 supplier UUID 和 `agentStatementNo`。
+- `feeSettlementMode` 只允许 `NONE/DEDUCTED_FROM_PROCEEDS/PAID_SEPARATELY`，`feeBearer` 只允许 `NONE/COMPANY`。费用原币与本币快照分字段；另付时必须传真实 `feePaymentAccountId`。客户/代理承担必须另立应收/索赔，本 API 失败关闭。
+- `AR_SETTLEMENT` 必须有同客户、同核销原币的 AR 行；V1 `writeOffAmount=0`。`CUSTOMER_PREPAYMENT` 不得有普通 AR 行，但 V1 可使用同一毛额/净额费用模型；V0 历史仍不猜测费用。
+- 审核在单个服务端事务内更新 AR/预收、真实账户缓存、追加式流水与 `RECEIPT` GL；终态前校验 `v_receipt_flow_integrity` 和按冻结科目/金额生成的 `v_receipt_expected_gl_entries`。红冲只追加关联 `REVERSAL/RECEIPT_REV`。
+- V416 使上述银行/代理单号、头部毛额公式、maker-checker 和新账户流水来源/币种/本位币快照同样受数据库守卫；旧不确定记录只进入异常视图，不由 API 猜修。
+- 新付款 `createIdempotencyKey` 同样为 8–128 位，允许字符为字母、数字、点、下划线、冒号、连字符；同 maker+key 同有效请求返回原草稿，同键异内容返回 409。更新带 `expectedVersion`，陈旧版本 409。付款金额四位、汇率六位十进制字符串；服务端 BigDecimal 重算。
+- 当前付款空明细（供应商预付）、外币/跨币种银行转账、费用/其它收入的外币单头均在完整双币/资产/退款/GL 契约交付前失败关闭；Flutter 不再显示可提交的供应商预付金额入口。
+- `GET /api/finance/reconciliations` 同时要求 `account:view`、`account:balance:view`、`account:flow:view`，旧 `finance_reconciliation:view` 不能替代。行返回 `entryKind/reversalOfId`，客户端显示入账、反向冲销、余额调整及原流水引用。
+- 错误口径：JSON 结构错误为 400；业务账户/币种冲突可为 400；无动作或敏感金额权限为 403；幂等键异内容、陈旧版本和并发状态为 409；缺字段、精度或范围不合法为 422。
+
+详细字段公式、数字例和发布边界以 [ADR-053](../99-决策记录-ADR/ADR-053-多币种收款毛额净额与追加式账户流水.md) 为准。
+
 ## 2026-08-23 当前覆盖：客户预收 Java 契约
   这里“不接受资金定金”指不把它作为新业务输入：OrderSaveRequest.deposit 仍为旧客户端兼容而解析但被服务忽略；
   新建强制写 0、编辑不改，输出才命名 legacyDepositSnapshot，审核仅对历史负快照失败关闭。
@@ -6,7 +23,7 @@
 
 - 销售订单请求不接受资金定金；legacyDepositSnapshot 只读兼容，创建保存 0、编辑保留历史值，资金汇总不读。
 - FinanceReceiptSaveRequest.receiptKind 只允许 AR_SETTLEMENT/CUSTOMER_PREPAYMENT；预收可选 salesOrderId，
-  不得有普通 AR 行或费用，必须由 finance_receipt 权限与 customer_prepayment:view + finance:view:all 共同保护。
+  不得有普通 AR 行；V1 可按 V407 独立毛额/净额费用模型登记，V0 历史仍不猜测费用。必须由 finance_receipt 权限与 customer_prepayment:view + finance:view:all 共同保护。
 - FinanceReceiptSourceAllocationService 在普通收款审核事务内按 source_sequence FIFO 冻结逐订单
   finance_receipt_source_allocations；历史累计与分配不守恒时失败关闭。
 - CustomerPrepaymentOffsetService 以幂等批次应用/反转预收转销，目标必须带 receivableLedgerId、
@@ -305,7 +322,7 @@ common/docnumber/
 ### 10.1 应用层边界
 
 - `PurchaseRequestController` 与 `SubcontractApplicationController` 只允许 list、detail、decomposition-preview；计划下达申请不是采购/委外 CRUD 资源。
-- 采购/委外分解只读预览接受多个申请明细 ID，保持输入顺序、去重并 fail-closed；选择项必须已下达、未关闭、有可靠单位且剩余量大于零。不同仓库返回 409。
+- 采购/委外分解只读预览接受多个申请明细 ID，保持输入顺序、去重并 fail-closed；选择项必须已下达、未关闭、有可靠单位且剩余量大于零。ADR-038 后订货不携带入库仓库，跨仓申请行可同批分解；申请行仓库只作库存口径展示，实际仓库在收货/回厂登记时确定。
 - 原生采购/委外订单每行必须有申请明细 FK。订单创建接口即使被直接调用，提交财务时也必须重新锁定并验证全部来源，不能靠 Flutter 路由守卫保证完整性。
 
 ### 10.2 端点
@@ -317,22 +334,24 @@ common/docnumber/
 | 采购分解预览 | `POST /api/purchase/requests/decomposition-preview` | `purchase_request:view` + `purchase_order:edit` |
 | 委外分解预览 | `POST /api/subcontract/applications/decomposition-preview` | `subcontract_application:view` + `subcontract_order:edit` |
 | 提交财务 | `POST /api/purchase/orders/{id}/submit-finance`、`POST /api/subcontract/orders/{id}/submit-finance` | 分别要求 `purchase_order:submit_finance` / `subcontract_order:submit_finance`；订单草稿和来源重验 |
-| 财务任务 | `GET /api/finance/procurement-approvals/tasks`、`GET /api/finance/procurement-approvals/count` | `finance_order_approval:view`；列出全部 `PENDING` 待审（V229 起不再按 assignee 过滤），`APPROVE/REJECT` 由合格审核人资格实时判定 |
-| 通过 | `POST /api/purchase/orders/{id}/approve`、`POST /api/subcontract/orders/{id}/approve` | `finance_order_approval:review` + 合格审核人资格（`WorkflowReviewerEligibility` 实时查库）+ `expectedVersion`；决定与返回订单详情同事务 |
-| 驳回 | `POST /api/purchase/orders/{id}/reject`、`POST /api/subcontract/orders/{id}/reject` | `finance_order_approval:review` + 合格审核人资格（实时查库）+ `expectedVersion` + `reason`；决定与返回详情同事务 |
-| ~~负责人列表/保存~~ | `GET/PUT /api/admin/workflow-responsibilities*` | **V229 已删除**（`workflow_assignment:manage` 同步退役）；审批人改由 `finance_order_approval:review` + 财务部门资格决定，见 ADR-027 |
+| 财务任务 | `GET /api/finance/procurement-approvals/tasks`、`GET /api/finance/procurement-approvals/count`、`GET /api/finance/procurement-approvals/type-counts` | `finance_order_approval:view`；支持 `orderType + keyword(单号/供应商/提交人)` 服务端分页，列出全部 `PENDING` 待审（V229 起不再按 assignee 过滤），`APPROVE/REJECT` 由合格审核人资格实时判定 |
+| 原子批量通过 | `POST /api/finance/procurement-approvals/tasks/batch-approve` | `view + finance_order_approval:approve` + 实时审核人资格；1–100 项，每项 `{caseId,expectedVersion}`，任一失败整批回滚 |
+| 原子批量驳回 | `POST /api/finance/procurement-approvals/tasks/batch-reject` | `view + finance_order_approval:reject` + 实时审核人资格；1–100 项，共用必填 `reason`，任一失败整批回滚 |
+| 通过 | `POST /api/purchase/orders/{id}/approve`、`POST /api/subcontract/orders/{id}/approve` | `finance_order_approval:approve` + 合格审核人资格（`WorkflowReviewerEligibility` 实时查库）+ `expectedVersion`；决定与返回订单详情同事务 |
+| 驳回 | `POST /api/purchase/orders/{id}/reject`、`POST /api/subcontract/orders/{id}/reject` | `finance_order_approval:reject` + 合格审核人资格（实时查库）+ `expectedVersion` + `reason`；决定与返回详情同事务 |
+| ~~负责人列表/保存~~ | `GET/PUT /api/admin/workflow-responsibilities*` | **V229 已删除**；V328 后批准/驳回按 `:approve` / `:reject` 分权并叠加财务部门资格 |
 | 仓库预计到货 | `GET /api/warehouse/inbound/expectations`、`GET /api/warehouse/inbound/expectations/count` | `warehouse_inbound:view`；只返回财务已批订单投影 |
 | 仓库到货异常 | `GET /api/warehouse/inbound/arrival-exceptions`、`GET /api/warehouse/inbound/arrival-exceptions/count` | `warehouse_inbound:view`；只读，不能决定入库量 |
 | 财务超量任务 | `GET /api/finance/procurement-arrival-exceptions/tasks`、`GET /api/finance/procurement-arrival-exceptions/count`、`GET /api/finance/procurement-arrival-exceptions/{id}` | `finance_order_approval:view`；V229 起列出全部 `PENDING_FINANCE`，决定动作由合格审核人资格实时判定 |
-| 财务超量决定 | `POST /api/finance/procurement-arrival-exceptions/{id}/decision` | 同时要求 `finance_order_approval:view` + `finance_order_approval:review`、合格审核人资格（实时查库）与 `expectedVersion`；full/custom 必填说明 |
+| 财务超量决定 | `POST /api/finance/procurement-arrival-exceptions/{id}/decision` | 要求 view；`APPROVE_ALL/APPROVE_CUSTOM` 另要 `:approve`，`REJECT_EXCESS` 另要 `:reject`，均叠加实时资格与 `expectedVersion`；full/custom 必填说明 |
 | 本人退货任务 | `GET /api/procurement/arrival-exceptions/tasks?orderType={orderType}`、`GET /api/procurement/arrival-exceptions/count?orderType={orderType}`、`GET /api/procurement/arrival-exceptions/{id}` | `orderType` 可省略，值仅为 `PURCHASE` / `SUBCONTRACT`；`supplier_return_task:handle` + 精确任务 owner；只投影 PENDING_RETURN |
 | 完成供应商退回 | `POST /api/procurement/arrival-exceptions/return-tasks/{id}/complete` | `supplier_return_task:handle` + 精确任务 owner + `expectedVersion` |
 
-`allowedActions` 是动作事实源：草稿/驳回后且有提交权限才返回 `SUBMIT_FINANCE`；只有待审实例的合格审核人（财务部门资格 + `review`，含个人加授，由 `WorkflowReviewerEligibility` 实时查库）才返回订单 `APPROVE/REJECT` 或超量 `APPROVE_ALL/APPROVE_CUSTOM/REJECT_EXCESS`；只有精确任务 owner 才返回 `COMPLETE_RETURN`。超管不可绕过、已知 UUID 都不得追加对象级动作。V201 为财务任务详情最小授予财务部门 `purchase_order:view` / `subcontract_order:view`，绝不授相应 edit。
+`allowedActions` 是动作事实源：草稿/驳回后且有提交权限才返回 `SUBMIT_FINANCE`；待审实例的合格审核人还必须分别持 `:approve` 或 `:reject`，才能获得对应订单/超量动作；只有精确任务 owner 才返回 `COMPLETE_RETURN`。超管不可绕过、已知 UUID 都不得追加对象级动作。V201 为财务任务详情最小授予财务部门订单 view，绝不授相应 edit。
 
-普通订单 `detail(id)` 保持 maker / `*:view:all` / data-scope 边界；唯一例外是当前用户既为权威合格审核人、又存在与该订单精确匹配的 PENDING case。该例外只允许任务详情读取，不放宽 list，不授 edit，case 结束后立即失效。控制器仍要求对应 order view 权限。
+普通订单 `detail(id)` 保持 maker / `*:view:all` / data-scope 边界；唯一例外是当前用户持 `finance_order_approval:view`，且服务层确认其为权威合格审核人并存在与该订单精确匹配的 PENDING case。该例外只允许任务详情读取，不放宽 list，不授 edit，case 结束后立即失效；控制器和 Flutter 路由仅为主详情增加 `order view OR finance task view`，最终对象边界仍在服务层。
 
-V229 起「负责人设置」已删除（见 ADR-027）：不再有固定行为码与单点默认负责人。审批人资格完全由 `finance_order_approval:review` + 财务部门（`DEPT_FIN` 及子树）在职、账号启用决定，或在权限管理里个人加授（`user_permission_overrides effect='grant'`）该权限；`WorkflowReviewerEligibility` 每次审批实时查库，超管不可绕过，取消权限即时生效，无任何合格审核人则提交/异常生成失败。`procurement_order_approval_cases.assignee_*` 与 `procurement_arrival_exceptions.finance_assignee_*` 列保留为历史快照，V229 起改为可空、新行为 NULL。
+V229 起「负责人设置」已删除（见 ADR-027）。V328 后动作资格 = `finance_order_approval:approve` 或 `:reject` 的具体动作码 + 财务部门在职/账号启用资格；跨部门只能个人加授具体动作。`WorkflowReviewerEligibility` 每次动作实时查库，超管不可绕过，取消权限即时生效；无合格批准人时提交/异常生成失败。历史 assignee 列继续只作快照，新行为 NULL。
 
 ### 10.3 事务、并发和快照
 
@@ -340,11 +359,13 @@ V229 起「负责人设置」已删除（见 ADR-027）：不再有固定行为�
 
 1. 锁订单并验证 `status=0`、供应商、商业字段和全部来源；
 2. 拒绝同订单已有 `PENDING`；
-3. 复查合格审核人组非空（财务部门在职、账号启用、持 `review` 权限，或个人加授；由 `WorkflowReviewerEligibility` 实时查库），无任何合格审核人则提交失败；
+3. 复查合格批准人组非空（财务部门在职、账号启用且持 `finance_order_approval:approve`，或个人加授该动作；实时查库），无任何合格批准人则提交失败；
 4. 保存头行 canonical JSON 快照、hash 和提交人快照（V229 起 assignee 列留空，仅保留历史快照语义）；
 5. 追加 `SUBMITTED` 事件并写 Outbox。
 
 审批事务先做权威审核人资格预检，再锁订单和待审 case，验证 `expectedVersion` 及当前订单快照 hash 未变化。`PurchaseOrderFinanceDecisionCommandService` / `SubcontractOrderFinanceDecisionCommandService` 是外层事务门面：通过时调用 `applyFinanceApproval`，使订单 `status=1`、回写申请累计/生产供给，再写 case、事件、未来入库并用决定 receipt 组装详情；驳回结束 case、记录原因并同样组装决定详情。caseId、status、orderId 任一不匹配或投影失败，审批与响应整体回滚。
+
+批量命令只信任 `caseId + expectedVersion`：服务端从 PENDING case 解析 `orderType/orderId`，拒绝重复 case/重复订货单，按「订货类型 + orderId」稳定排序后沿单笔相同的订单→case 锁顺序处理，并在锁内再次校验 caseId、版本和快照。旧 case 被驳回、修改并重提为相同版本的新 attempt 时，旧页面的 caseId 必然不匹配（阻断 ABA）；批次中任何一项失败，订单生效、申请累计、生产供给、审批事件、预计到货和 Outbox 全部回滚。
 
 来源容量必须同时计算 `ordered_qty + 其它 PENDING qty + 本次 qty`，并按稳定 ID 顺序锁来源。申请余量不能因并发提交被透支。
 
@@ -372,7 +393,7 @@ PENDING_FINANCE
 
 ### 10.4 数据与通知
 
-- `workflow_responsibility_assignments`：**V229 已删除**（见 ADR-027）；审批人改由 `finance_order_approval:review` + 财务部门资格决定。`procurement_order_approval_cases.assignee_*`/`procurement_arrival_exceptions.finance_assignee_*` 保留为历史快照，V229 起可空、新行为 NULL。
+- `workflow_responsibility_assignments`：**V229 已删除**；V328 后批准/驳回由 `finance_order_approval:approve` / `:reject` 与财务实时资格共同决定。历史 assignee 列保留为可空快照，新行为 NULL。
 - `procurement_order_approval_cases`：每次提交一个 attempt，保存不可变提交快照和乐观锁版本。
 - `procurement_order_approval_events`：append-only；禁止更新/删除。
 - `inbound_expectations/items`：财务通过后唯一未来到货任务；不是实际到货、库存、IQC 或应付。
@@ -396,6 +417,13 @@ Flyway 已执行迁移不可修改、改名或重排；V253 已用于官网询�
 
 - `ProductionSupplySourceGuard` 与 V250 数据库触发器共同保护由 `preplan_supply_actions` 形成的采购申请、委外申请、订单及明细 provenance。历史 action 即使取消也不能由普通 CRUD 换绑或清空；生产专用取消/反向必须在一个事务释放全部关联事实。
 - 采购/委外 IQC 每次部分 PASS 都在本次处置事务内按合格基本量写 `DIR_IN`，并调用 `MaterialAnalysisSupplyWakeupService` 刷新命中的活动分析；这不是整张 receipt 已履约的证明。全 FAIL 不产生可用库存、reservation、peg、DRAW 或 READY。
+- 同一收货单多行常规合格使用
+  `POST /api/procurement/inspection/{receiptType}/{receiptId}/pass-batch`：一次 1–100 行，
+  每行只信 `inspectionItemId + expectedRemainingBaseQty + idempotencyKey`。服务先按既有顺序取得
+  全部库存维度锁与整张 receipt 的 IQC 行锁，在任何库存写入前校验重复 ID、状态、归属和剩余量；
+  再在同一事务复用单行 PASS 的库存、事件、分析归属、供给推进与整单结案链。任一行失败整批回滚。
+- 批量 PASS 的每行幂等键支持同体重放；一批中出现部分历史重放、部分新命令时失败关闭。
+  FAIL 原因是行级质量证据，当前无批量 FAIL 接口，禁止客户端循环调用后宣称原子批量完成。
 - 只有同一 receipt 的全部检查明细都进入终态，才按固定锁序执行一次正式来源推进，把累计 `passed_base_qty` 转换为订单累计、peg/预约/DRAW/执行齐套；末行并发不得重复或漏掉该正式推进。
 - `MaterialAnalysisSupplyWakeupService` 只按同仓、相关货品/颜色和活动分析候选加锁刷新。ready-finish 净增才发布正向事件；红冲在库存扣减后刷新，只允许就绪量下降且不发“增加”通知。
 - 整批 FAIL 可以取消旧 action 的计划投影并允许下一次通知建立 `generation+1/predecessor` 替代需求，但不得删除商业单据、IQC 或 append-only 事件。

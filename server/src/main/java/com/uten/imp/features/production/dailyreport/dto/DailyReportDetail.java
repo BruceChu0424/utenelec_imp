@@ -34,4 +34,6 @@ public class DailyReportDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    /** 当前乐观锁版本；PUT 时原样回传为 expectedVersion。 */
+    private long rowVersion;
 }

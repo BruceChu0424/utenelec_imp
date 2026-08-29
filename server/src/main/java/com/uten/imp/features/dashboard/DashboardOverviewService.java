@@ -23,8 +23,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -74,7 +72,7 @@ public class DashboardOverviewService {
         addProductionCards(user, department, metrics, todos);
         addFulfillmentCards(user, department, todos);
         addPeopleCards(user, todos);
-        addFinanceCards(user, metrics, todos);
+        addFinanceTodos(user, todos);
         addSalesCards(user, department, metrics);
 
         return new DashboardOverviewDto(
@@ -294,51 +292,7 @@ public class DashboardOverviewService {
         }
     }
 
-    private void addFinanceCards(
-            AuthUser user, List<MetricCard> metrics, List<TodoCard> todos) {
-        boolean canSeeSensitive =
-                can(user, "dashboard:finance-sensitive:view");
-        if (canSeeSensitive && can(user, "account:view")) {
-            BigDecimal balance = decimal("""
-                    SELECT COALESCE(SUM(a.balance_current), 0)
-                    FROM accounts a
-                    LEFT JOIN currencies c ON c.id = a.currency_id
-                    WHERE a.is_deleted = false
-                      AND (
-                        a.currency_id IS NULL
-                        OR c.name = '人民币'
-                        OR UPPER(COALESCE(c.code, '')) IN ('CNY', 'RMB', '01')
-                      )
-                    """);
-            metrics.add(new MetricCard(
-                    "cash-balance",
-                    "人民币账户余额",
-                    money(balance),
-                    "仅统计人民币账户",
-                    balance.signum() < 0 ? "danger" : "success",
-                    "/basicinfo/account",
-                    true));
-        }
-        if (canSeeSensitive && can(user, "ar_ap_ledger:view")) {
-            Map<String, BigDecimal> arAp = jdbc.query("""
-                    SELECT direction, COALESCE(SUM(amount_balance), 0) AS amount
-                    FROM ar_ap_ledger
-                    WHERE is_deleted = false AND status = 1 AND is_settled = false
-                    GROUP BY direction
-                    """, rs -> {
-                java.util.HashMap<String, BigDecimal> result = new java.util.HashMap<>();
-                while (rs.next()) {
-                    result.put(rs.getString("direction"), rs.getBigDecimal("amount"));
-                }
-                return result;
-            });
-            metrics.add(new MetricCard(
-                    "ar-balance", "未结应收", money(arAp.getOrDefault("AR", BigDecimal.ZERO)),
-                    "已生效且尚未结清", "info", "/finance/ar-ap", true));
-            metrics.add(new MetricCard(
-                    "ap-balance", "未结应付", money(arAp.getOrDefault("AP", BigDecimal.ZERO)),
-                    "已生效且尚未结清", "warning", "/finance/ar-ap", true));
-        }
+    private void addFinanceTodos(AuthUser user, List<TodoCard> todos) {
         if (can(user, "expense:approve")) {
             long count = count("""
                     SELECT COUNT(*) FROM expense_claims
@@ -505,16 +459,6 @@ public class DashboardOverviewService {
     private long count(String sql) {
         Long result = jdbc.queryForObject(sql, Long.class);
         return result == null ? 0 : result;
-    }
-
-    private BigDecimal decimal(String sql) {
-        BigDecimal result = jdbc.queryForObject(sql, BigDecimal.class);
-        return result == null ? BigDecimal.ZERO : result;
-    }
-
-    private static String money(BigDecimal value) {
-        BigDecimal normalized = value.setScale(2, RoundingMode.HALF_UP);
-        return "¥" + String.format(Locale.ROOT, "%,.2f", normalized);
     }
 
     private static String compactText(String value, int maxLength) {

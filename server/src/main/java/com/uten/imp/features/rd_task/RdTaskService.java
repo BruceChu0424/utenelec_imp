@@ -28,18 +28,16 @@ import java.util.UUID;
 /**
  * 工程研发部任务中心（rd_tasks）。范式镜像采购财务审批（Pattern B：JdbcTemplate + 记录）。
  *
- * <p>既是研发任务中心数据源，也承载生产「待排产 BOM 缺失」转发的等待状态：
+ * <p>既是研发任务中心数据源，也承载历史「待排产 BOM 缺失」转发任务的等待状态：
  * <ul>
- *   <li>{@link #forwardBomGap} 由 ProductionScheduleService 调用：建 BOM 任务 + 发 {@link #EVENT_FORWARDED} 通知研发；</li>
  *   <li>{@link #resolveOpenBomTasksForGoods} 由 ChainNoticeService.notifyBomUpdated 调用（BOM 保存后）：
  *       自动完成对应 BOM 任务；通知由 ChainNoticeService 负责。</li>
  * </ul>
+ * V423 起生产侧不再按「缺 BOM」拦截排产，转发入口已下线；存量 BOM 任务照常流转。
  */
 @Service
 public class RdTaskService {
 
-    /** 转发任务事件（→ ChainNoticeService 通知 DEPT_ENG）。 */
-    public static final String EVENT_FORWARDED = "RD_TASK_FORWARDED";
     /** 任务完成事件（→ ChainNoticeService 通知制单人/转发人）。 */
     public static final String EVENT_RESOLVED = "RD_TASK_RESOLVED";
 
@@ -182,80 +180,6 @@ public class RdTaskService {
                 """, employeeId, actor, id);
         if (changed != 1) throw new ApiException(ErrorCode.NOT_FOUND, "任务不存在或已结束");
         return get(id);
-    }
-
-    /**
-     * 生产「BOM 缺失」转发（成品或自制组件）：按 goods_id 去重，每货品只建一个未完成 BOM 任务、
-     * 只通知研发一次；所有转发人都登记进 rd_task_forwarders，研发维护好后逐个通知。
-     * 由 ProductionScheduleService（单条 forwardToRd / 批量 forwardBomGapsBatch）调用。
-     *
-     * @param orderItemId 来源销售订单行（成品转发有值；组件转发可空）
-     */
-    @Transactional
-    public UUID forwardBomGap(UUID orderItemId, UUID goodsId, String sourceDocType,
-                              UUID sourceDocId, String sourceDocNo, String note,
-                              UUID reporterEmployeeId) {
-        // 按 goods_id 探测未完成 BOM 任务（每组件只一个；order_item_id 不再参与去重）。
-        UUID existing = jdbc.query("""
-                SELECT id FROM rd_tasks
-                WHERE is_deleted = false AND category = 'BOM' AND status IN ('OPEN','IN_PROGRESS')
-                  AND goods_id = ?
-                ORDER BY created_at DESC LIMIT 1
-                """, (rs, rn) -> rs.getObject("id", UUID.class), goodsId).stream().findFirst().orElse(null);
-
-        UUID taskId;
-        boolean isNew;
-        UUID actor = currentUser.requireId();
-        if (existing != null) {
-            taskId = existing;
-            isNew = false;
-        } else {
-            taskId = UUID.randomUUID();
-            String taskNo = docNumberService.nextNumber(DocNumberPrefix.RD_TASK);
-            try {
-                jdbc.update("""
-                        INSERT INTO rd_tasks (id, task_no, title, description, category, status, priority,
-                            goods_id, order_item_id, source_doc_type, source_doc_id, source_doc_no,
-                            reporter_employee_id, row_version, created_by, updated_by)
-                        VALUES (?, ?, ?, ?, 'BOM', 'OPEN', 'NORMAL', ?, ?, ?, ?, ?, ?, 1, ?, ?)
-                        """,
-                        taskId, taskNo, "维护货品 BOM（生产转发）", note, goodsId, orderItemId,
-                        sourceDocType, sourceDocId, sourceDocNo, reporterEmployeeId, actor, actor);
-                isNew = true;
-            } catch (DataIntegrityViolationException concurrent) {
-                // 并发：另一事务已凭 uq_rd_tasks_open_bom(goods_id) 建任务，复用之（胜出方已发通知）。
-                taskId = existingOpenBomTaskId(goodsId);
-                isNew = false;
-            }
-        }
-
-        // 始终把当前转发人登记进等待名单（任务新建/复用都登记；同一人同一任务不重复）。
-        jdbc.update("""
-                INSERT INTO rd_task_forwarders (rd_task_id, reporter_employee_id, order_item_id,
-                    source_doc_type, source_doc_id, source_doc_no, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (rd_task_id, reporter_employee_id) DO NOTHING
-                """,
-                taskId, reporterEmployeeId, orderItemId, sourceDocType, sourceDocId, sourceDocNo, actor);
-
-        // 仅任务首次创建时通知研发（每个组件只弹一次）。
-        if (isNew) {
-            events.publish(EVENT_FORWARDED, "RD_TASK", taskId, Map.of(
-                    "goodsId", goodsId.toString(),
-                    "reporterEmployeeId", reporterEmployeeId.toString()));
-        }
-        return taskId;
-    }
-
-    private UUID existingOpenBomTaskId(UUID goodsId) {
-        return jdbc.query("""
-                SELECT id FROM rd_tasks
-                WHERE is_deleted = false AND category = 'BOM' AND status IN ('OPEN','IN_PROGRESS')
-                  AND goods_id = ?
-                ORDER BY created_at DESC LIMIT 1
-                """, (rs, rn) -> rs.getObject("id", UUID.class), goodsId)
-                .stream().findFirst()
-                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "并发转发冲突，请重试"));
     }
 
     /**

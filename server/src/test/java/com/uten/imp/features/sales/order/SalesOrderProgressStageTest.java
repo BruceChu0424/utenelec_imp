@@ -35,10 +35,27 @@ class SalesOrderProgressStageTest {
     }
 
     @Test
+    void unresolvedFinanceRejectionOverridesEveryProductionStage() {
+        assertEquals(
+                "REJECTED",
+                SalesOrderService.progressStageOf(
+                        10, 10, 10, 0, 10, true));
+        assertEquals(
+                "REJECTED",
+                SalesOrderService.progressStageOf(
+                        0, 0, 0, 0, 0, true));
+        String expression = SalesOrderService.progressStageExpr();
+        org.junit.jupiter.api.Assertions.assertTrue(
+                expression.indexOf("finance_rejected")
+                        < expression.indexOf("shipped_qty"));
+    }
+
+    @Test
     void openStageIsThePendingDefaultAndUnknownStagesAreRejected() {
         assertEquals("", SalesOrderService.normalizeProgressStage(null));
         assertEquals("", SalesOrderService.normalizeProgressStage(""));
         assertEquals("OPEN", SalesOrderService.normalizeProgressStage("open"));
+        assertEquals("REJECTED", SalesOrderService.normalizeProgressStage("rejected"));
         assertEquals("SHIPPED", SalesOrderService.normalizeProgressStage(" shipped "));
         org.junit.jupiter.api.Assertions.assertThrows(
                 com.uten.imp.common.web.ApiException.class,

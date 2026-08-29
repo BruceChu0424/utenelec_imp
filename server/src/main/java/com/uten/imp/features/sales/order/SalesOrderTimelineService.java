@@ -32,7 +32,7 @@ import static com.uten.imp.features.sales.order.dto.OrderProgressTimelineEvent.R
  * 物料准备（采购/委外下单、财务审批）→ 生产计划 → 生产 → 发货 → 结案。
  *
  * <p>每一环都尽量带「责任人 + 发生时间」：制单/审核/确认人取单据自身 *_by 列（员工经
- * {@link EmployeeNameResolver#nameWithCodeOf} 解析为「姓名（工号）」防重名，兼容 users.id 历史数据）；单据自身没有审核时间列的
+ * {@link EmployeeNameResolver#nameWithCodeOf} 解析为「姓名(工号)」防重名，兼容 users.id 历史数据）；单据自身没有审核时间列的
  * （销售审核、计划下达、出货审核），时间点从 audit_log 的状态迁移记录补齐，查不到就只显示责任人。
  *
  * <p>展示顺序（服务端排好，前端直接渲染）：已发生事件（DONE/CURRENT/REJECTED）按发生时间倒序、
@@ -115,6 +115,14 @@ public class SalesOrderTimelineService {
     // ============================ 财务审核 ============================
 
     private void addFinanceEvents(SalesOrder order, List<OrderProgressTimelineEvent> events) {
+        boolean hasRejectionHistory = order.getFinanceRejectedAt() != null;
+        if (hasRejectionHistory) {
+            events.add(new OrderProgressTimelineEvent(
+                    35, "FINANCE_REJECTED", "财务驳回", "审核人",
+                    nameResolver.nameWithCodeOf(order.getFinanceRejectedBy()),
+                    order.getFinanceRejectedAt(), REJECTED,
+                    order.getFinanceRejectedReason(), null, null, null));
+        }
         if (order.isFinanceConfirmed()) {
             events.add(new OrderProgressTimelineEvent(
                     30, "FINANCE_CONFIRMED", "财务审核通过", "审核人",
@@ -123,23 +131,24 @@ public class SalesOrderTimelineService {
                     order.getFinanceConfirmRemark(), null, null, null));
             return;
         }
-        if (order.isFinanceRejected()) {
-            events.add(new OrderProgressTimelineEvent(
-                    35, "FINANCE_REJECTED", "财务驳回", "审核人",
-                    nameResolver.nameWithCodeOf(order.getFinanceRejectedBy()),
-                    order.getFinanceRejectedAt(), REJECTED,
-                    order.getFinanceRejectedReason(), null, null, null));
-        }
         if (order.getStatus() == 1) {
             events.add(new OrderProgressTimelineEvent(
                     30, "FINANCE_CONFIRMED", "财务审核", null, null, null,
                     order.isFinanceRejected() ? REJECTED : CURRENT,
-                    order.isFinanceRejected() ? "已被驳回，待重新确认" : "等待财务审核组确认",
+                    order.isFinanceRejected()
+                            ? "已被驳回，待销售修订并重新审核"
+                            : hasRejectionHistory
+                                    ? "销售已修订并重新审核，等待财务确认"
+                                    : "等待财务审核组确认",
                     null, null, null));
         } else if (order.getStatus() == 0) {
             events.add(new OrderProgressTimelineEvent(
-                    30, "FINANCE_CONFIRMED", "财务审核", null, null, null, PENDING,
-                    "销售审核通过后由财务确认", null, null, null));
+                    30, "FINANCE_CONFIRMED", "财务审核", null, null, null,
+                    order.isFinanceRejected() ? CURRENT : PENDING,
+                    order.isFinanceRejected()
+                            ? "财务已驳回，等待销售完成修订并重新审核"
+                            : "销售审核通过后由财务确认",
+                    null, null, null));
         }
     }
 
@@ -255,7 +264,7 @@ public class SalesOrderTimelineService {
                 state = DONE;
                 String approver = approval == null
                         ? null : nameResolver.nameWithCodeOf((UUID) approval[3]);
-                detail = approver == null ? "财务审批通过" : "财务审批通过（审批人：" + approver + "）";
+                detail = approver == null ? "财务审批通过" : "财务审批通过(审批人：" + approver + ")";
             } else {
                 state = CURRENT;
                 detail = approval != null && "PENDING".equals(approval[1])
@@ -332,7 +341,7 @@ public class SalesOrderTimelineService {
                 OffsetDateTime approvedAt =
                         auditTransitionAt("production_plans", planId, "status", "1");
                 if (approvedAt != null) at = approvedAt;
-                detail = (approver == null ? "已审核下达" : "已审核下达（审核人：" + approver + "）")
+                detail = (approver == null ? "已审核下达" : "已审核下达(审核人：" + approver + ")")
                         + (closed ? " · 已结案" : "");
             } else {
                 state = CURRENT;

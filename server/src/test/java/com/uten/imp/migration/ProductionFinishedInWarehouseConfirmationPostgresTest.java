@@ -48,6 +48,7 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                     connection, new BigDecimal("3.0000"));
         }
         migrateOnlyV338();
+        migrateOnlyV418();
     }
 
     @AfterAll
@@ -175,6 +176,72 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                     () -> execute(connection, """
                             UPDATE production_finished_in_confirmations
                             SET variance_reason = '改写'
+                            WHERE id = ?
+                            """, confirmationId));
+            assertEquals("55000", appendOnly.getSQLState());
+        }
+    }
+
+    @Test
+    void rejectedConfirmationPreservesFullResidualForRedelivery()
+            throws Exception {
+        ReportSource report;
+        Fixture source;
+        Fixture residual;
+        try (Connection connection = connection()) {
+            report = createReportSource(
+                    connection, new BigDecimal("10.0000"));
+            source = createFixture(
+                    connection, (short) -1, new BigDecimal("10.0000"),
+                    true, report, new BigDecimal("10.0000"));
+            residual = createResidualFixture(
+                    connection, source, report, new BigDecimal("10.0000"));
+        }
+
+        UUID confirmationId = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            execute(connection, """
+                    INSERT INTO production_finished_in_confirmations(
+                        id, stock_document_id, residual_stock_document_id,
+                        decision, variance_reason, idempotency_key,
+                        request_hash)
+                    VALUES (?, ?, ?, 'REJECTED', '仓库整单拒收待重新交付', ?, ?)
+                    """, confirmationId, source.documentId(), residual.documentId(),
+                    "rejected-confirm-" + confirmationId,
+                    "d".repeat(64));
+            execute(connection, """
+                    INSERT INTO production_finished_in_confirmation_items(
+                        confirmation_id, stock_document_item_id,
+                        residual_stock_document_item_id,
+                        reported_qty, accepted_qty, residual_qty)
+                    VALUES (?, ?, ?, 10, 0, 10)
+                    """, confirmationId, source.itemId(), residual.itemId());
+            connection.commit();
+        }
+
+        try (Connection connection = connection()) {
+            assertEquals("REJECTED", scalarString(connection, """
+                    SELECT decision
+                    FROM production_finished_in_confirmations
+                    WHERE id = ?
+                    """, confirmationId));
+            assertDecimal(connection, """
+                    SELECT accepted_qty + residual_qty
+                    FROM production_finished_in_confirmation_items
+                    WHERE confirmation_id = ?
+                    """, confirmationId, "10.0000");
+            assertDecimal(connection, """
+                    SELECT qty FROM stock_document_items WHERE id = ?
+                    """, residual.itemId(), "10.0000");
+            assertEquals(false, scalarBoolean(connection, """
+                    SELECT is_deleted FROM stock_document_items WHERE id = ?
+                    """, source.itemId()));
+            PSQLException appendOnly = assertThrows(
+                    PSQLException.class,
+                    () -> execute(connection, """
+                            UPDATE production_finished_in_confirmations
+                            SET variance_reason = '改写拒收原因'
                             WHERE id = ?
                             """, confirmationId));
             assertEquals("55000", appendOnly.getSQLState());
@@ -444,10 +511,9 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
     }
 
     /**
-     * V330 is an unrelated pending finance migration and currently blocks a
-     * full empty-database replay.  This test isolates V338 by starting from the
-     * last installed local baseline (V329) and giving Flyway a location that
-     * contains only the immutable V338 candidate under test.
+     * This historical fixture starts at V329, then applies the immutable V338
+     * warehouse-confirmation migration in isolation before V418 strengthens
+     * the all-zero rejected residual shape.
      */
     private static void migrateOnlyV338() throws Exception {
         Path directory = Files.createTempDirectory("uten-v338-only-");
@@ -467,6 +533,32 @@ class ProductionFinishedInWarehouseConfirmationPostgresTest {
                     .locations("filesystem:" + directory.toAbsolutePath())
                     .validateOnMigrate(false)
                     .target("338")
+                    .load()
+                    .migrate();
+        } finally {
+            Files.deleteIfExists(migration);
+            Files.deleteIfExists(directory);
+        }
+    }
+
+    private static void migrateOnlyV418() throws Exception {
+        Path directory = Files.createTempDirectory("uten-v418-only-");
+        Path migration = directory.resolve(
+                "V418__production_finished_in_rejected_residual.sql");
+        try {
+            Files.copy(
+                    Path.of("src/main/resources/db/migration/"
+                            + "V418__production_finished_in_rejected_residual.sql"),
+                    migration,
+                    StandardCopyOption.REPLACE_EXISTING);
+            Flyway.configure()
+                    .dataSource(
+                            POSTGRES.getJdbcUrl(),
+                            POSTGRES.getUsername(),
+                            POSTGRES.getPassword())
+                    .locations("filesystem:" + directory.toAbsolutePath())
+                    .validateOnMigrate(false)
+                    .target("418")
                     .load()
                     .migrate();
         } finally {

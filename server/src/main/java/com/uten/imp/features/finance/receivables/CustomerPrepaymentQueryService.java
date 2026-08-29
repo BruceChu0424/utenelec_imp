@@ -52,7 +52,8 @@ public class CustomerPrepaymentQueryService {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = bind(em.createNativeQuery("""
                 SELECT ledger.id,receipt.id,receipt.bill_no,receipt.bill_date,receipt.sales_order_id,
-                       ledger.client_id,client.name,ledger.currency_id,currency.code,ledger.exchange_rate,
+                       ledger.client_id,client.name,ledger.currency_id,currency.code,currency.name,
+                       ledger.exchange_rate,
                        ledger.amount_received_original,ledger.amount_received_local,
                        ABS(ledger.amount_offset_original),ABS(ledger.amount_offset_local),
                        ABS(ledger.amount_balance_original),ABS(ledger.amount_balance),ledger.updated_at
@@ -63,8 +64,9 @@ public class CustomerPrepaymentQueryService {
                 (UUID) row[0], (UUID) row[1], Objects.toString(row[2], null),
                 NativeValueConverters.toLocalDate(row[3]), (UUID) row[4], (UUID) row[5],
                 Objects.toString(row[6], null), (UUID) row[7], Objects.toString(row[8], null),
-                rate(row[9]), money(row[10]), money(row[11]), money(row[12]), money(row[13]),
-                money(row[14]), money(row[15]), NativeValueConverters.toOffsetDateTime(row[16]))).toList();
+                Objects.toString(row[9], null), rate(row[10]), money(row[11]), money(row[12]),
+                money(row[13]), money(row[14]), money(row[15]), money(row[16]),
+                NativeValueConverters.toOffsetDateTime(row[17]))).toList();
         Object[] summary = (Object[]) bind(em.createNativeQuery("""
                 SELECT COALESCE(SUM(ledger.amount_received_original),0),
                        COALESCE(SUM(ledger.amount_received_local),0),
@@ -135,16 +137,16 @@ public class CustomerPrepaymentQueryService {
         BigDecimal prepaymentAvailableLocal = decimal(boundPrepayments[3]);
 
         Object[] offsets = (Object[]) em.createNativeQuery("""
-                SELECT COALESCE(SUM(offset.amount_original),0),
-                       COALESCE(SUM(offset.source_amount_local),0),
-                       COALESCE(SUM(offset.target_amount_local),0),
-                       COALESCE(SUM(offset.exchange_difference),0),
-                       COALESCE(SUM(offset.amount_original) FILTER(WHERE source_receipt.sales_order_id IS NULL),0),
-                       COALESCE(SUM(offset.source_amount_local) FILTER(WHERE source_receipt.sales_order_id IS NULL),0)
-                FROM customer_open_item_offsets offset
-                JOIN ar_ap_ledger source_ledger ON source_ledger.id=offset.source_ledger_id
+                SELECT COALESCE(SUM(o.amount_original),0),
+                       COALESCE(SUM(o.source_amount_local),0),
+                       COALESCE(SUM(o.target_amount_local),0),
+                       COALESCE(SUM(o.exchange_difference),0),
+                       COALESCE(SUM(o.amount_original) FILTER(WHERE source_receipt.sales_order_id IS NULL),0),
+                       COALESCE(SUM(o.source_amount_local) FILTER(WHERE source_receipt.sales_order_id IS NULL),0)
+                FROM customer_open_item_offsets o
+                JOIN ar_ap_ledger source_ledger ON source_ledger.id=o.source_ledger_id
                 JOIN finance_receipts source_receipt ON source_receipt.id=source_ledger.source_doc_id
-                WHERE offset.sales_order_id=:orderId AND offset.status='APPLIED'
+                WHERE o.sales_order_id=:orderId AND o.status='APPLIED'
                 """).setParameter("orderId", salesOrderId).getSingleResult();
         BigDecimal prepaymentAppliedOriginal = decimal(offsets[0]);
         BigDecimal prepaymentAppliedSourceLocal = decimal(offsets[1]);

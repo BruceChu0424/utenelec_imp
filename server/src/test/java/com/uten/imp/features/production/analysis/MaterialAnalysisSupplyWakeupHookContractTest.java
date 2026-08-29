@@ -58,7 +58,7 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
     }
 
     @Test
-    void purchaseAndSubcontractApprovalWakeOnlyFromWholeReceiptIqcClosure()
+    void purchaseAndSubcontractPassSlicesAdvanceBeforeWholeReceiptClosure()
             throws Exception {
         String inspection = source(
                 "features/warehouse/inbound/ProcurementInspectionService.java");
@@ -71,23 +71,26 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
 
         assertThat(inspection)
                 .contains("boolean wholeReceiptResolved = allResolved(receiptType, receiptId)")
-                .contains("if (\"PASS\".equals(action) && !wholeReceiptResolved)")
-                .contains("refreshAnalysisAfterPartialPass(")
+                .contains("if (\"PASS\".equals(action))")
+                .contains("advanceProductionAfterInspectionPass(")
                 .contains("if (!wholeReceiptResolved || alreadyWoken(receiptType, receiptId))")
+                .contains("wakeProduction(receiptType, receiptId)")
                 .contains("purchaseSupply.onPurchaseReceiptApproved(receiptId)")
                 .contains("subcontractSupply.onSubcontractReceiptApproved(receiptId)");
-        assertThat(inspection.lastIndexOf("refreshAnalysisAfterPartialPass("))
+        assertThat(inspection.lastIndexOf("advanceProductionAfterInspectionPass("))
                 .isGreaterThan(inspection.indexOf(
                         "appendEvent(eventId, inspectionItemId, action, requested, reason, actor, now)"));
         assertOrdered(inspection,
-                "refreshAnalysisAfterPartialPass(",
+                "advanceProductionAfterInspectionPass(",
                 "wakeIfWholeReceiptResolved(");
         assertThat(purchase).contains(
                 "materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId)")
-                .contains("materialAnalysisWakeup.afterPurchaseInspectionPassed(");
+                .contains("materialAnalysisWakeup.afterPurchaseInspectionPassed(")
+                .contains("advancePurchaseReceipt(receiptId, dispositionEventId);");
         assertThat(subcontract).contains(
                 "materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId)")
-                .contains("materialAnalysisWakeup.afterSubcontractInspectionPassed(");
+                .contains("materialAnalysisWakeup.afterSubcontractInspectionPassed(")
+                .contains("onSubcontractReceiptApproved(receiptId);");
     }
 
     @Test

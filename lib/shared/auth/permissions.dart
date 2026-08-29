@@ -95,6 +95,10 @@ abstract final class Perm {
   static const accountView = 'account:view';
   static const accountEdit = 'account:edit';
   static const accountExport = 'account:export';
+  static const accountBalanceView = 'account:balance:view';
+  static const accountFlowView = 'account:flow:view';
+  static const accountBalanceAdjust = 'account:balance:adjust';
+  static const accountWarningManage = 'account:warning:manage';
 
   /// 货品资料分类（基础资料）
   static const materialCategoryView = 'material_category:view';
@@ -271,10 +275,16 @@ abstract final class Perm {
       'production_material_analysis:reallocate';
   static const productionMaterialAnalysisCrossReallocate =
       'production_material_analysis:cross_reallocate';
-  static const productionMaterialAnalysisBomOverride =
-      'production_material_analysis:bom_override';
   static const productionDailyReportView = 'production_daily_report:view';
   static const productionDailyReportEdit = 'production_daily_report:edit';
+  static const productionQualityInspectionView =
+      'production_quality_inspection:view';
+  static const productionQualityInspectionApprove =
+      'production_quality_inspection:approve';
+  static const productionFqcReplenishmentView =
+      'production_fqc_replenishment:view';
+  static const productionFqcReplenishmentConfirm =
+      'production_fqc_replenishment:confirm';
   static const productionReportView = 'production_report:view';
   static const productionReportExport = 'production_report:export';
   static const productionWhereUsedView = 'production_where_used:view';
@@ -354,7 +364,6 @@ abstract final class Perm {
   static const rdTaskResolve = 'rd_task:resolve';
 
   /// 生产待排产 BOM 缺失转发工程研发部（独立权限点，不复用 production_plan:edit）。
-  static const productionPlanForwardRd = 'production_plan:forward_rd';
 
   // ===== V328：按钮级动作权限（与后端迁移 code 一一对应） =====
   static const materialCategoryCreate = 'material_category:create';
@@ -624,6 +633,8 @@ abstract final class Perm {
     accountCreate,
     accountDelete,
     accountStatus,
+    accountBalanceAdjust,
+    accountWarningManage,
     paymentStyleCreate,
     paymentStyleStatus,
     paymentStyleMove,
@@ -677,6 +688,9 @@ abstract final class Perm {
     productionDailyReportDelete,
     productionDailyReportApprove,
     productionDailyReportReverse,
+    productionQualityInspectionView,
+    productionQualityInspectionApprove,
+    productionFqcReplenishmentConfirm,
     productionPlanDelete,
     productionPlanReverse,
     productionPlanFlags,
@@ -872,6 +886,8 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.accountView,
       Perm.accountEdit,
       Perm.accountExport,
+      Perm.accountBalanceView,
+      Perm.accountFlowView,
       Perm.materialCategoryView,
       Perm.materialCategoryEdit,
       Perm.goodsView,
@@ -941,12 +957,14 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.productionMaterialAnalysisGenerate,
       Perm.productionMaterialAnalysisReallocate,
       Perm.productionMaterialAnalysisCrossReallocate,
-      Perm.productionMaterialAnalysisBomOverride,
       Perm.productionDailyReportView, Perm.productionDailyReportEdit,
+      Perm.productionQualityInspectionView,
+      Perm.productionQualityInspectionApprove,
+      Perm.productionFqcReplenishmentView,
+      Perm.productionFqcReplenishmentConfirm,
       Perm.productionReportView, Perm.productionReportExport,
       Perm.productionWhereUsedView,
       Perm.productionPlanViewAll,
-      Perm.productionPlanForwardRd,
       // 工程研发部任务中心
       Perm.rdTaskView, Perm.rdTaskResolve,
       // 钱流管理

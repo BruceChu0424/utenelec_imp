@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/audit/device_audit_store.dart';
@@ -119,7 +120,7 @@ class _DeviceAuditReceiptsPageState
     final operationId = _operationController.text.trim();
     if (!_uuidPattern.hasMatch(operationId)) {
       setState(() {
-        _error = '请输入审计详情中的完整本地操作 ID（UUID）';
+        _error = '请输入审计详情中的完整本地操作 ID(UUID)';
         _receipt = null;
         _searched = false;
       });
@@ -319,7 +320,7 @@ class _SearchCard extends StatelessWidget {
             decoration: InputDecoration(
               labelText: '本地操作 ID',
               hintText: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-              errorText: error,
+              error: utenFieldError(error),
               prefixIcon: const Icon(Icons.fingerprint_rounded),
             ),
           ),

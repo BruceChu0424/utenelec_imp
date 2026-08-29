@@ -239,6 +239,7 @@ class _FinanceAssetFormSurfaceState
         _custodian = UtenEmployeePickerItem(
           id: profile.id,
           name: profile.fullName ?? '',
+          employeeCode: profile.code,
           departmentName: profile.departmentName,
         );
       });
@@ -261,6 +262,7 @@ class _FinanceAssetFormSurfaceState
         UtenEmployeePickerItem(
           id: employee.id,
           name: employee.fullName,
+          employeeCode: employee.code,
           departmentName: employee.departmentName,
         ),
     ];
@@ -583,12 +585,12 @@ class _FinanceAssetFormSurfaceState
                             }),
                           ),
                           UtenInput(
-                            label: '来源单据引用（提交前必填）',
+                            label: '来源单据引用(提交前必填)',
                             hint: '合同号、发票号或业务单据号；草稿阶段可稍后补',
                             controller: _sourceRef,
                           ),
                           UtenInput(
-                            label: '来源单据行引用（提交前必填）',
+                            label: '来源单据行引用(提交前必填)',
                             hint: '填写稳定行号；头级来源请明确填写 HEADER',
                             controller: _sourceLineRef,
                           ),
@@ -721,7 +723,7 @@ class _FinanceAssetFormSurfaceState
       searchable: true,
       value: _categoryId,
       hintText: selectable.isEmpty ? '暂无可用分类，可先保存不完整草稿' : '请选择资产分类',
-      errorText: _categoryError,
+      errorMessage: _categoryError,
       items: [
         for (final item in selectable)
           UtenDropdownItem(
@@ -837,7 +839,7 @@ class _FinanceAssetFormSurfaceState
           Expanded(
             child: Text(
               _fixed
-                  ? '启折期间：${period ?? '选择达到预定可使用日期后自动计算'}（从次月开始，不可手工修改）'
+                  ? '启折期间：${period ?? '选择达到预定可使用日期后自动计算'}(从次月开始，不可手工修改)'
                   : '摊销计划：${period == null ? '选择受益期后生成' : '自 $period 起，按受益起止日期和政策月份生成'}',
             ),
           ),

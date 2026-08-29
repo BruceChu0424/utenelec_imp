@@ -448,8 +448,6 @@ public class ProductionExecutionPackageCommandService {
                         ProductionExecutionSegment
                                 .ZERO_MATERIAL_REASON_DIRECT_MAKE,
                         ProductionExecutionSegment
-                                .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE,
-                        ProductionExecutionSegment
                                 .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE)
                 .contains(zeroReason)) {
             throw conflict("无物料执行分段缺少可审计的合法原因");
@@ -462,12 +460,6 @@ public class ProductionExecutionPackageCommandService {
                     analysisId != null
                             && exceptionReason == null
                             && authorizedBy == null;
-            case ProductionExecutionSegment
-                    .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE ->
-                    analysisId != null
-                            && exceptionReason != null
-                            && !exceptionReason.isBlank()
-                            && authorizedBy != null;
             case ProductionExecutionSegment
                     .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE ->
                     analysisId == null
@@ -996,7 +988,7 @@ public class ProductionExecutionPackageCommandService {
                             decimal(row[4])));
             if (previous != null) {
                 throw conflict(
-                        "直接自制子计划包含重复的物料维度（货品+颜色）");
+                        "直接自制子计划包含重复的物料维度(货品+颜色)");
             }
         }
 

@@ -33,7 +33,7 @@ class SalesHubPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final perms = ref.watch(currentPermissionsProvider);
 
-    // 任务中心（对齐仓库管理 hub 顶部）：订单进度查询（带完工提醒徽章）。
+    // 任务中心：订单进度查询（财务驳回待修正 + 未读完工提醒同源徽章）。
     final taskEntries = <_Entry>[
       _Entry(
         icon: Icons.timeline_outlined,

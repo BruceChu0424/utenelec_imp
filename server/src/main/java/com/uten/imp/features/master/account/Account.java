@@ -18,7 +18,8 @@ import java.util.UUID;
  * 账户类型靠 {@code account_type} 枚举重建（老库 AStyle 全为 1，退化丢弃）；按 {@code name}
  * 关键字映射，规则见 {@link AccountService#inferAccountType}（迁移脚本与运行时复用同一份语义）。
  *
- * <p>余额守恒：{@code balanceCurrent = initBalance + receiptsTotal − paymentsTotal}
+ * <p>余额守恒：{@code balanceCurrent = initBalance + receiptsTotal − paymentsTotal
+ * + balanceAdjustmentsTotal}
  * （Service 维护；详见 design doc 26 §五 Service 层断言）。
  */
 @Getter
@@ -67,9 +68,17 @@ public class Account extends SoftDeletableEntity {
     @Column(name = "payments_total", precision = 18, scale = 4)
     private BigDecimal paymentsTotal = BigDecimal.ZERO;
 
-    /** 当前余额 = init + receipts − payments（冗余，源 M_Acc.FactTotal，Service 维护）。 */
+    /** 已过账余额校准差额累计；不混入正常收款/付款累计。 */
+    @Column(name = "balance_adjustments_total", precision = 18, scale = 4)
+    private BigDecimal balanceAdjustmentsTotal = BigDecimal.ZERO;
+
+    /** 当前余额 = init + receipts − payments + adjustments（冗余，Service 维护）。 */
     @Column(name = "balance_current", precision = 18, scale = 4)
     private BigDecimal balanceCurrent = BigDecimal.ZERO;
+
+    /** 账户币种口径的可选警戒线；仅告警，不构成透支授权。 */
+    @Column(name = "balance_floor", precision = 18, scale = 4)
+    private BigDecimal balanceFloor;
 
     /** 老库父节点 ID（M_Acc.ParentID→SystemItem，保留 legacy 不 FK）。 */
     @Column(name = "parent_legacy_id")

@@ -290,7 +290,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
     final theme = Theme.of(context);
     final need = line.needQty ?? 0;
     final hasBom = line.bom.isNotEmpty;
-    final plannable = need > 0 && hasBom;
+    final plannable = need > 0;
     final checked = _selected.contains(line.orderItemId);
     final shortageCount = line.bom.where((item) {
       final onhand = item.onhand;
@@ -359,10 +359,10 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
             ),
             const SizedBox(height: UtenSpacing.s8),
             if (!hasBom)
-              _missingBomWarning(theme)
+              _missingBomHint(theme)
             else ...[
               Text(
-                '物料明细（按待排数量 ${_fmt(line.needQty)} 折算）',
+                '物料明细(按待排数量 ${_fmt(line.needQty)} 折算)',
                 style: theme.textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -478,23 +478,27 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
     );
   }
 
-  Widget _missingBomWarning(ThemeData theme) {
+  /// 未维护 BOM 的产品按「直接自制」处理：无下层物料，不阻断带入排产。
+  Widget _missingBomHint(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer,
+        color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: UtenRadius.smAll,
-        border: Border.all(color: theme.colorScheme.error),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline_rounded, color: theme.colorScheme.error),
+          Icon(
+            Icons.info_outline_rounded,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: UtenSpacing.s8),
           Expanded(
             child: Text(
-              '该产品未维护 BOM，系统无法计算用料和齐套状态，已禁止带入排产。请先补齐组装物料资料。',
+              '该产品未维护 BOM，按直接自制处理：无下层物料需求，不生成领料明细。',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onErrorContainer,
+                color: theme.colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
               ),
             ),

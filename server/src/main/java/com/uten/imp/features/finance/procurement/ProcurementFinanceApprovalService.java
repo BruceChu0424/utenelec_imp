@@ -12,6 +12,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalTask;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.BatchDecisionItem;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.BatchDecisionResponse;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -24,9 +26,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -139,12 +144,42 @@ public class ProcurementFinanceApprovalService {
     public FinanceApproval approve(
             String rawOrderType, UUID orderId, long expectedVersion) {
         tx.bind();
-        String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         requireEligibleReviewer();
+        return approveOne(rawOrderType, orderId, expectedVersion, null);
+    }
+
+    /**
+     * 批量通过使用一个事务和稳定的订货类型/UUID 顺序。任一项的 case、版本、
+     * 快照或副作用失败都会回滚整批，禁止客户端循环单笔接口形成半批事实。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_order_approval:approve')")
+    public BatchDecisionResponse approveBatch(List<BatchDecisionItem> rawItems) {
+        tx.bind();
+        requireEligibleReviewer();
+        List<ResolvedBatchItem> items = resolveBatchItems(rawItems);
+        List<FinanceApproval> decisions = new ArrayList<>(items.size());
+        for (ResolvedBatchItem item : items) {
+            decisions.add(approveOne(
+                    item.orderType(),
+                    item.orderId(),
+                    item.expectedVersion(),
+                    item.caseId()));
+        }
+        return new BatchDecisionResponse(decisions.size(), decisions);
+    }
+
+    private FinanceApproval approveOne(
+            String rawOrderType,
+            UUID orderId,
+            long expectedVersion,
+            UUID expectedCaseId) {
+        String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         ProcurementOrderApprovalPort port = requirePort(orderType);
         OrderSnapshot currentSnapshot =
                 port.lockAndValidateFinanceSubmission(orderId);
         ApprovalCase approvalCase = lockPendingCase(orderType, orderId);
+        requireCaseIdentity(approvalCase, expectedCaseId);
         requireVersion(approvalCase, expectedVersion);
         requireUnchangedSnapshot(approvalCase, currentSnapshot);
 
@@ -196,13 +231,49 @@ public class ProcurementFinanceApprovalService {
             long expectedVersion,
             String rawReason) {
         tx.bind();
-        String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
+        requireEligibleReviewer();
+        return rejectOne(
+                rawOrderType,
+                orderId,
+                expectedVersion,
+                null,
+                normalizeReason(rawReason));
+    }
+
+    /** 批量驳回共用一个明确原因，并与全部 case/order 副作用保持原子。 */
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_order_approval:reject')")
+    public BatchDecisionResponse rejectBatch(
+            List<BatchDecisionItem> rawItems,
+            String rawReason) {
+        tx.bind();
         requireEligibleReviewer();
         String reason = normalizeReason(rawReason);
+        List<ResolvedBatchItem> items = resolveBatchItems(rawItems);
+        List<FinanceApproval> decisions = new ArrayList<>(items.size());
+        for (ResolvedBatchItem item : items) {
+            decisions.add(rejectOne(
+                    item.orderType(),
+                    item.orderId(),
+                    item.expectedVersion(),
+                    item.caseId(),
+                    reason));
+        }
+        return new BatchDecisionResponse(decisions.size(), decisions);
+    }
+
+    private FinanceApproval rejectOne(
+            String rawOrderType,
+            UUID orderId,
+            long expectedVersion,
+            UUID expectedCaseId,
+            String reason) {
+        String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         ProcurementOrderApprovalPort port = requirePort(orderType);
         OrderSnapshot currentSnapshot =
                 port.lockAndValidateFinanceSubmission(orderId);
         ApprovalCase approvalCase = lockPendingCase(orderType, orderId);
+        requireCaseIdentity(approvalCase, expectedCaseId);
         requireVersion(approvalCase, expectedVersion);
         requireUnchangedSnapshot(approvalCase, currentSnapshot);
 
@@ -247,16 +318,33 @@ public class ProcurementFinanceApprovalService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_order_approval:view')")
-    public PageResponse<ApprovalTask> tasks(int page, int size, String orderType) {
+    public PageResponse<ApprovalTask> tasks(
+            int page,
+            int size,
+            String orderType,
+            String keyword) {
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(size, 200));
-        // 类型筛选卡（全部/采购/委外）：空 = 全部；非法值 fail-closed。
+        // 类型分段（全部/采购/委外）：空 = 全部；非法值 fail-closed。
         String normalizedType = normalizeOrderType(orderType);
-        long total = countTasks(normalizedType);
+        String normalizedKeyword = normalizeKeyword(keyword);
+        long total = countTasks(normalizedType, normalizedKeyword);
         String typeFilter = normalizedType.isEmpty() ? "" : " AND c.order_type = ?\n";
+        String keywordFilter = normalizedKeyword == null
+                ? ""
+                : """
+                   AND (LOWER(COALESCE(c.bill_no_snapshot, '')) LIKE ?
+                     OR LOWER(COALESCE(supplier.name, '')) LIKE ?
+                     OR LOWER(COALESCE(submitter.full_name, '')) LIKE ?)
+                  """;
         List<Object> params = new ArrayList<>();
         if (!normalizedType.isEmpty()) {
             params.add(normalizedType);
+        }
+        if (normalizedKeyword != null) {
+            params.add(normalizedKeyword);
+            params.add(normalizedKeyword);
+            params.add(normalizedKeyword);
         }
         params.add(safeSize);
         params.add((safePage - 1) * safeSize);
@@ -287,7 +375,7 @@ public class ProcurementFinanceApprovalService {
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
                 WHERE c.status = 'PENDING'
-                """ + typeFilter + """
+                """ + typeFilter + keywordFilter + """
                 ORDER BY c.submitted_at, c.id
                 LIMIT ? OFFSET ?
                 """,
@@ -323,20 +411,42 @@ public class ProcurementFinanceApprovalService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public long countTasks(String orderType) {
-        String normalizedType = normalizeOrderType(orderType);
-        if (normalizedType.isEmpty()) {
-            Long count = jdbc.queryForObject("""
-                    SELECT COUNT(*)
-                    FROM procurement_order_approval_cases
-                    WHERE status = 'PENDING'
-                    """, Long.class);
-            return count == null ? 0 : count;
+        return countTasks(normalizeOrderType(orderType), null);
+    }
+
+    private long countTasks(String normalizedType, String normalizedKeyword) {
+        String typeFilter = normalizedType.isEmpty() ? "" : " AND c.order_type = ?\n";
+        String keywordFilter = normalizedKeyword == null
+                ? ""
+                : """
+                   AND (LOWER(COALESCE(c.bill_no_snapshot, '')) LIKE ?
+                     OR LOWER(COALESCE(supplier.name, '')) LIKE ?
+                     OR LOWER(COALESCE(submitter.full_name, '')) LIKE ?)
+                  """;
+        List<Object> params = new ArrayList<>();
+        if (!normalizedType.isEmpty()) {
+            params.add(normalizedType);
+        }
+        if (normalizedKeyword != null) {
+            params.add(normalizedKeyword);
+            params.add(normalizedKeyword);
+            params.add(normalizedKeyword);
         }
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*)
-                FROM procurement_order_approval_cases
-                WHERE status = 'PENDING' AND order_type = ?
-                """, Long.class, normalizedType);
+                FROM procurement_order_approval_cases c
+                LEFT JOIN purchase_orders po
+                  ON c.order_type = 'PURCHASE' AND po.id = c.order_id
+                LEFT JOIN subcontract_orders so
+                  ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
+                LEFT JOIN suppliers supplier
+                  ON supplier.id = COALESCE(po.supplier_id, so.supplier_id)
+                LEFT JOIN employees submitter
+                  ON submitter.id = c.submitted_by_employee_id
+                WHERE c.status = 'PENDING'
+                """ + typeFilter + keywordFilter,
+                Long.class,
+                params.toArray());
         return count == null ? 0 : count;
     }
 
@@ -363,6 +473,90 @@ public class ProcurementFinanceApprovalService {
             case "", "PURCHASE", "SUBCONTRACT" -> normalized;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型无效");
         };
+    }
+
+    private static String normalizeKeyword(String keyword) {
+        String normalized = keyword == null ? "" : keyword.strip();
+        if (normalized.length() > 100) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "搜索关键词不能超过100字");
+        }
+        return normalized.isEmpty()
+                ? null
+                : "%" + normalized.toLowerCase(Locale.ROOT) + "%";
+    }
+
+    /**
+     * 批量项必须精确绑定 case/order/version，并以稳定顺序获取订单与 case 锁。
+     * 同一 case 或同一订货单重复出现都直接拒绝，避免二次执行与死锁顺序漂移。
+     */
+    private List<ResolvedBatchItem> resolveBatchItems(
+            List<BatchDecisionItem> rawItems) {
+        if (rawItems == null || rawItems.isEmpty() || rawItems.size() > 100) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "批量审批必须选择1至100笔任务");
+        }
+        Map<UUID, Long> expectedVersions = new LinkedHashMap<>();
+        for (BatchDecisionItem item : rawItems) {
+            if (item == null
+                    || item.caseId() == null
+                    || item.expectedVersion() == null
+                    || item.expectedVersion() < 1) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "批量审批任务身份或版本无效");
+            }
+            if (expectedVersions.putIfAbsent(
+                    item.caseId(), item.expectedVersion()) != null) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "批量审批不能重复选择同一任务");
+            }
+        }
+
+        String placeholders = String.join(
+                ",", Collections.nCopies(expectedVersions.size(), "?"));
+        List<ResolvedBatchItem> resolved = jdbc.query("""
+                SELECT id, order_type, order_id, version
+                FROM procurement_order_approval_cases
+                WHERE status = 'PENDING' AND id IN (
+                """ + placeholders + ")",
+                (rs, rowNum) -> new ResolvedBatchItem(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("order_type"),
+                        rs.getObject("order_id", UUID.class),
+                        rs.getLong("version")),
+                expectedVersions.keySet().toArray());
+        if (resolved.size() != expectedVersions.size()) {
+            throw concurrentChange();
+        }
+
+        Set<String> orderKeys = new HashSet<>();
+        List<ResolvedBatchItem> normalized = new ArrayList<>(resolved.size());
+        for (ResolvedBatchItem item : resolved) {
+            String orderType = ProcurementApprovalProjectionQuery.requireOrderType(
+                    item.orderType());
+            String orderKey = orderType + "|" + item.orderId();
+            if (!orderKeys.add(orderKey)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "批量审批不能重复选择同一订货单");
+            }
+            Long expectedVersion = expectedVersions.get(item.caseId());
+            if (expectedVersion == null
+                    || item.expectedVersion() != expectedVersion) {
+                throw concurrentChange();
+            }
+            normalized.add(new ResolvedBatchItem(
+                    item.caseId(),
+                    orderType,
+                    item.orderId(),
+                    expectedVersion));
+        }
+        normalized.sort(Comparator
+                .comparing(ResolvedBatchItem::orderType)
+                .thenComparing(item -> item.orderId().toString()));
+        return List.copyOf(normalized);
     }
 
     private void requireSubmitAuthority(String orderType) {
@@ -459,6 +653,14 @@ public class ProcurementFinanceApprovalService {
             ApprovalCase approvalCase, long expectedVersion) {
         if (expectedVersion < 1
                 || approvalCase.version() != expectedVersion) {
+            throw concurrentChange();
+        }
+    }
+
+    private static void requireCaseIdentity(
+            ApprovalCase approvalCase, UUID expectedCaseId) {
+        if (expectedCaseId != null
+                && !approvalCase.caseId().equals(expectedCaseId)) {
             throw concurrentChange();
         }
     }
@@ -674,5 +876,12 @@ public class ProcurementFinanceApprovalService {
             UUID orderId,
             long version,
             String snapshotHash) {
+    }
+
+    private record ResolvedBatchItem(
+            UUID caseId,
+            String orderType,
+            UUID orderId,
+            long expectedVersion) {
     }
 }

@@ -19,8 +19,10 @@ import '../../../shared/auth/permissions.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/procurement_inbound_count_providers.dart';
+import '../providers/production_finished_inbound_task_count_provider.dart';
 import '../providers/production_draw_count_provider.dart';
 import '../widgets/procurement_inbound_badges.dart';
+import '../widgets/production_finished_inbound_pending_badge.dart';
 import '../widgets/production_draw_pending_badge.dart';
 import '../widgets/warehouse_subcontract_outbound_badge.dart';
 
@@ -34,6 +36,7 @@ class WarehouseHubPage extends ConsumerWidget {
       ref.invalidate(warehouseInboundExpectationCountProvider);
       ref.invalidate(warehouseArrivalExceptionCountProvider);
       ref.invalidate(warehouseProductionDrawPendingCountProvider);
+      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
     });
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
@@ -73,7 +76,7 @@ class WarehouseHubPage extends ConsumerWidget {
                 icon: Icons.outbound_outlined,
                 // TODO(l10n): 补 arb —— 委外出仓（材料发委外商加工）。
                 label: '委外出仓',
-                description: '材料出仓给委外商加工（订货批准后自动生成任务）',
+                description: '材料出仓给委外商加工(订货批准后自动生成任务)',
                 location: RouteName.warehouseSubcontractOutbound,
                 perm: Perm.subcontractOutboundView,
                 badge: const WarehouseSubcontractOutboundBadge(showLabel: true),
@@ -93,6 +96,16 @@ class WarehouseHubPage extends ConsumerWidget {
                 location: RouteName.operationsWarehouseWorkbench,
                 perm: Perm.stockDocView,
                 badge: const WarehouseProductionDrawPendingBadge(
+                  showLabel: true,
+                ),
+              ),
+              (
+                icon: Icons.inventory_outlined,
+                label: '产成品待点收',
+                description: '查看生产/FQC形成的待点收任务；有点收权限者按实物逐行确认',
+                location: RouteName.warehouseProductionFinishedInboundTasks,
+                perm: Perm.stockDocView,
+                badge: const WarehouseProductionFinishedInboundPendingBadge(
                   showLabel: true,
                 ),
               ),

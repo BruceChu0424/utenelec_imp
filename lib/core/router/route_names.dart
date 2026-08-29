@@ -88,6 +88,7 @@ abstract final class RouteName {
   static const String basicinfoCurrency = '/basicinfo/currency';
   static const String basicinfoWarehouse = '/basicinfo/warehouse';
   static const String basicinfoAccount = '/basicinfo/account';
+  static const String basicinfoAccountDetail = '/basicinfo/account/:id';
   static const String basicinfoPaymentStyle = '/basicinfo/payment-style';
 
   // 工资条
@@ -121,12 +122,8 @@ abstract final class RouteName {
   static const String profileEdit = '/profile/edit';
   static const String profileMyChanges = '/profile/me/changes';
   static const String profileMyDepartment = '/profile/me/department';
-
-  /// 我的车辆与备用手机号（ADR-021 员工自助，直改即时生效）。
-  static const String profileMyVehicles = '/profile/me/vehicles';
-
-  /// 我的文件（员工自服务：只读查看本人档案文件）。
-  static const String profileMyDocuments = '/profile/me/documents';
+  // 我的车辆与号码(/profile/me/vehicles)、我的文件(/profile/me/documents)
+  // 独立路由已下线：内容吸收为「我的」页 Tab（我的页 v7）。
 
   // HR 端：员工个人信息修改审批
   static const String hrProfileChanges = '/hr/profile-changes';
@@ -210,8 +207,14 @@ abstract final class RouteName {
   static const String warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
 
+  /// 生产报工生成、等待仓库逐行实收的 FINISHED_IN 权威任务队列。
+  static const String warehouseProductionFinishedInboundTasks =
+      '/warehouse/production-finished-in/tasks';
+
   /// 品质管理部任务中心（待检处置等品质任务的统一入口）。
   static const String qualityTaskCenter = '/quality/task-center';
+  static const String productionFqcInspections =
+      '/quality/production-inspections';
 
   /// 货架目视化清单（库位号驱动的挂牌打印/导出；静态段，须先于 /warehouse/:code）。
   static const String warehouseShelfLabels = '/warehouse/shelf-labels';
@@ -337,6 +340,8 @@ abstract final class RoutePath {
       '/basicinfo/goods/new?categoryId=$categoryId';
   static String basicinfoGoodsDetail(String id, {int? tab}) =>
       tab == null ? '/basicinfo/goods/$id' : '/basicinfo/goods/$id?tab=$tab';
+  static String basicinfoAccountDetail(String id, {bool edit = false}) =>
+      edit ? '/basicinfo/account/$id?edit=true' : '/basicinfo/account/$id';
   static String expenseDetail(String id) => '/expense/$id';
   static String noticeDetail(String id) => '/notice/$id';
   static String suggestionDetail(String id) => '/suggestion/$id';
@@ -391,6 +396,8 @@ abstract final class RoutePath {
       '/subcontract/$seg/$id/edit';
 
   /// 生产计划单 / 日报表：新建 / 详情 / 编辑。
+  static String productionMaterialAnalysisSummary(String analysisId) =>
+      '/production/material-analyses/$analysisId/summary';
   static String productionPlanNew() => '/production/plans/new';
   static String productionPlanDetail(String id) => '/production/plans/$id';
   static String productionPlanEdit(String id) => '/production/plans/$id/edit';

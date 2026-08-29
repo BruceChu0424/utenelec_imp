@@ -160,7 +160,7 @@ void main() {
 
       expect(find.byType(Dialog), findsOneWidget);
       expect(find.text('多来源关系详情'), findsOneWidget);
-      expect(find.text('全部历史 · A 螺丝（MAT-001）'), findsOneWidget);
+      expect(find.text('全部历史 · A 螺丝(MAT-001)'), findsOneWidget);
       expect(
         find.byKey(const Key('where-used-source-overview')),
         findsOneWidget,
@@ -184,9 +184,9 @@ void main() {
       expect(find.text('直接单套用量'), findsOneWidget);
       expect(find.text('展开需求量'), findsOneWidget);
       expect(find.text('净领料'), findsOneWidget);
-      expect(find.text('发料痕迹数量（待核）'), findsOneWidget);
-      expect(find.text('退料痕迹数量（待核）'), findsOneWidget);
-      expect(find.text('损耗痕迹数量（待核）'), findsOneWidget);
+      expect(find.text('发料痕迹数量(待核)'), findsOneWidget);
+      expect(find.text('退料痕迹数量(待核)'), findsOneWidget);
+      expect(find.text('损耗痕迹数量(待核)'), findsOneWidget);
       expect(find.textContaining('旧委外发料迁移数据仍待重导'), findsOneWidget);
       expect(find.textContaining('49,889'), findsNothing);
       expect(find.text('当前产成品资料'), findsOneWidget);

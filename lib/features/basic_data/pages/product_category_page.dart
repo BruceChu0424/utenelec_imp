@@ -86,7 +86,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         title: const Text('撤回最近一次导入'),
         content: Text(
           '将撤销最近一次导入的 ${batch!.rowCount} 条货品'
-          '${(batch.filename != null && batch.filename!.isNotEmpty) ? "（${batch.filename}）" : ""}'
+          '${(batch.filename != null && batch.filename!.isNotEmpty) ? "(${batch.filename})" : ""}'
           '，及本次新建的分类/颜色/单位。确认撤回？',
         ),
         actionsAlignment: MainAxisAlignment.center,
@@ -357,7 +357,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final msg =
         (preview != null &&
             (preview.descendantCount > 0 || preview.goodsCount > 0))
-        ? '已删除分类（含 ${preview.descendantCount} 个子分类、${preview.goodsCount} 个货品）'
+        ? '已删除分类(含 ${preview.descendantCount} 个子分类、${preview.goodsCount} 个货品)'
         : '分类已删除';
     if (mounted) context.appSuccess(msg); // TODO(l10n): 补 arb
     await shellReload();
@@ -665,7 +665,7 @@ class _DetailPaneState extends State<_DetailPane> {
       groups.add(
         MasterDataGroup<GoodsListItem>(
           id: 'disabled',
-          title: '禁用货品（${d.total}）',
+          title: '禁用货品(${d.total})',
           subtitle: '当前分类子树内已停用的货品',
           icon: Icons.block_rounded,
           tint: Colors.red.withValues(alpha: 0.12),
@@ -680,8 +680,8 @@ class _DetailPaneState extends State<_DetailPane> {
         groups.add(
           MasterDataGroup<GoodsListItem>(
             id: 'stub',
-            title: '不明货品（${s.total}）',
-            subtitle: '迁移兜底占位（auto_created），无分类归属',
+            title: '不明货品(${s.total})',
+            subtitle: '迁移兜底占位(auto_created)，无分类归属',
             icon: Icons.help_outline_rounded,
             tint: Colors.amber.withValues(alpha: 0.16),
             items: s.items,
@@ -788,19 +788,20 @@ class _DetailPaneState extends State<_DetailPane> {
   String _goodsLabel(GoodsListItem g) =>
       g.name?.isNotEmpty == true ? g.name! : (g.code ?? '该货品');
 
-  /// 粘贴生成的新货品名称：尾部加「（n）」副本标记，与原货品区分。
-  /// 源名已带「（n）」时顺延为 n+1（X→X（1）、X（1）→X（2）），避免无限叠加；
+  /// 粘贴生成的新货品名称：尾部加「(n)」副本标记，与原货品区分。
+  /// 源名已带副本标记时顺延为 n+1（X→X(1)、X(1)→X(2)），避免无限叠加；
+  /// 括号匹配全角「（）」与半角「()」两种（历史数据里存在全角副本名）。
   /// 并避开 [taken]（当前列表已加载的货品名 + 同批已生成的名字），同批多份依次顺延。
   String _pastedGoodsName(String? raw, Set<String> taken) {
     final n = (raw ?? '').trim();
     if (n.isEmpty) return n;
-    final m = RegExp('^(.*)（(\\d+)）\$').firstMatch(n);
+    final m = RegExp('^(.*)[（(](\\d+)[）)]\$').firstMatch(n);
     final base = m?.group(1) ?? n;
     var seq = m != null ? int.parse(m.group(2)!) + 1 : 1;
-    var candidate = '$base（$seq）';
+    var candidate = '$base($seq)';
     while (taken.contains(candidate)) {
       seq++;
-      candidate = '$base（$seq）';
+      candidate = '$base($seq)';
     }
     return candidate;
   }
@@ -832,7 +833,6 @@ class _DetailPaneState extends State<_DetailPane> {
       'status': status ?? d.status ?? '使用',
       'shortName': d.shortName,
       'sourceType': d.sourceType,
-      'productionBomPolicy': d.productionBomPolicy,
       'model': d.model,
       'spec': d.spec,
       'material': d.material,
@@ -941,7 +941,7 @@ class _DetailPaneState extends State<_DetailPane> {
     _rowOpBusy = false;
     if (!mounted) return;
     if (ok > 0) {
-      context.appSuccess('已粘贴 $ok 个新货品（编号自动生成）'); // TODO(l10n): 补 arb
+      context.appSuccess('已粘贴 $ok 个新货品(编号自动生成)'); // TODO(l10n): 补 arb
       await _loadGoods(_goodsPageNum);
       await _loadSpecialCollections();
     } else {
@@ -1134,10 +1134,10 @@ class _DetailPaneState extends State<_DetailPane> {
     if (okCount > 0) {
       final skipped = items.length - okCount;
       context.appSuccess(
-        '已粘贴 $okCount 个组件${skipped > 0 ? '，$skipped 个跳过（重复或环路）' : ''}',
+        '已粘贴 $okCount 个组件${skipped > 0 ? '，$skipped 个跳过(重复或环路)' : ''}',
       );
     } else {
-      context.appError('粘贴失败：${items.length} 个组件均被跳过（重复或环路）');
+      context.appError('粘贴失败：${items.length} 个组件均被跳过(重复或环路)');
     }
   }
 
@@ -1291,25 +1291,25 @@ class _DetailPaneState extends State<_DetailPane> {
     final n = selected.length;
     return [
       UtenMenuItem(
-        label: '批量复制（$n）', // TODO(l10n): 补 arb
+        label: '批量复制($n)', // TODO(l10n): 补 arb
         icon: Icons.copy_all_rounded,
         enabled: _canCreateMaster,
         onTap: () => _batchCopyGoods(selected),
       ),
       UtenMenuItem(
-        label: '批量粘贴组件（$n）', // TODO(l10n): 补 arb
+        label: '批量粘贴组件($n)', // TODO(l10n): 补 arb
         icon: Icons.account_tree_outlined,
         enabled: _canReplaceBom && (clip.bomItems?.isNotEmpty ?? false),
         onTap: () => _batchPasteBom(selected),
       ),
       UtenMenuItem(
-        label: '批量禁用（$n）', // TODO(l10n): 补 arb
+        label: '批量禁用($n)', // TODO(l10n): 补 arb
         icon: Icons.pause_circle_outline_rounded,
         enabled: _canStatusMaster,
         onTap: () => _batchSetGoodsStatus(selected, '禁用'),
       ),
       UtenMenuItem(
-        label: '批量删除（$n）', // TODO(l10n): 补 arb
+        label: '批量删除($n)', // TODO(l10n): 补 arb
         icon: Icons.delete_outline_rounded,
         destructive: true,
         enabled: _canDeleteMaster,
@@ -1485,7 +1485,7 @@ class _DetailPaneState extends State<_DetailPane> {
               ),
               const SizedBox(height: UtenSpacing.s8),
               Text(
-                '共将生成 ${clips.length * copies} 个新货品（编号自动生成）', // TODO(l10n): 补 arb
+                '共将生成 ${clips.length * copies} 个新货品(编号自动生成)', // TODO(l10n): 补 arb
                 style: Theme.of(ctx).textTheme.bodySmall,
               ),
             ],
@@ -1592,7 +1592,7 @@ class _DetailPaneState extends State<_DetailPane> {
         '已粘贴到 $targetOk 个货品，共 $totalComponents 个组件', // TODO(l10n): 补 arb
       );
     } else {
-      context.appError('粘贴失败：组件均被跳过（重复或环路）'); // TODO(l10n): 补 arb
+      context.appError('粘贴失败：组件均被跳过(重复或环路)'); // TODO(l10n): 补 arb
     }
   }
 
@@ -1726,7 +1726,7 @@ class _DetailPaneState extends State<_DetailPane> {
             title: d.name,
             icon: Icons.inventory_2_outlined,
             subtitle:
-                '编号前缀 ${d.effectivePrefix ?? 'HP'}${d.codePrefix == null ? '（继承）' : ''}'
+                '编号前缀 ${d.effectivePrefix ?? 'HP'}${d.codePrefix == null ? '(继承)' : ''}'
                 '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
             // 详情卡精简：不再展示统计行（子分类数/父级/旧编码）与路径行——
             // 左侧分类树已是主视觉，层级/父级/子项数树里都能看出，卡片只留标题+操作。
@@ -1806,7 +1806,7 @@ class _DetailPaneState extends State<_DetailPane> {
                     child: UtenSearchBar(
                       // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
                       key: ValueKey('goods-search-${widget.nodeId}-$_kwSeed'),
-                      hint: '搜索货品（名称/编号/型号/规格/系列）', // TODO(l10n): 补 arb
+                      hint: '搜索货品(名称/编号/型号/规格/系列)', // TODO(l10n): 补 arb
                       initialValue: _keyword,
                       onChanged: _onKeywordChanged,
                     ),

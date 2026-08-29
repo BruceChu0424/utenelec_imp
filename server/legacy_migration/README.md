@@ -2,7 +2,7 @@
 
 本目录只用于 `YTDQ_2023` 离线一致性快照到新库的首次引导导入或可丢弃演练。它不是切流后的增量同步器，也不是普通运维入口。权威模块清单、对账和生产门禁见 [迁移总索引](../../docs/数据迁移/README.md)。
 
-> 当前源码边界（2026-08-14）：Flyway 目录最高 V289，共 270 个迁移文件、270 个唯一版本且无重号。V279 建立全局业务标识终身保留；V282/V284/V286/V287 是窄范围 PII 迁移与一致性候选；V288/V289 已形成生产物料分析现货借用结构、终态守卫和审计覆盖，在线 create/revoke、持久化、生效计算与 Flutter UI 已接通为源码候选。脚本存在、空库回放或本地演练都不表示公司目标库已应用 V239–V289，目标库仍以自身 `flyway_schema_history` 为准。
+> 当前源码边界（2026-08-29）：Flyway 全局目录最高 V423，共 385 个迁移文件、385 个唯一版本且无重号。V420 是已授权的 BUY 需求 exact/公共安全补库分账，V421 是库存台账金额与货品成本完整性，V422 前向修正安全 action 单位快照和 allocation 反向门禁。离线 bootstrap 在任何写库前必须消费与当前候选 exact-set 一致的 385 行 checksum manifest，并把 `bootstrap-v9-v423` 写入迁移运行记录。V409–V415/V418 的生产质量事实、V419 在线到货命令以及 V420–V422 的在线修复语义均不由离线脚本伪造或回填。脚本存在、空库回放或本地演练都不表示公司目标库已应用 V239–V422，目标库仍以自身 `flyway_schema_history` 为准。
 
 ## 不变量
 
@@ -47,7 +47,7 @@ bash server/legacy_migration/migrate.sh --purchase --confirm-destructive
 
 ## PostgreSQL 前向升级演练
 
-本目录的 SQL Server 离线 bootstrap 与既有 PostgreSQL 的 Flyway 前向升级是两条不同链路，不能混用。自动测试 `V238ToCurrentSyntheticMigrationPostgresTest` 从最后一份公司目标库只读基线 V238 构造非空库并升级到当前 V289/270，用于发现空库回放看不到的结构、种子和约束问题；它不包含公司历史业务数据。
+本目录的 SQL Server 离线 bootstrap 与既有 PostgreSQL 的 Flyway 前向升级是两条不同链路，不能混用。自动测试 `V238ToCurrentSyntheticMigrationPostgresTest` 从最后一份公司目标库只读基线 V238 构造非空库并升级到当前 V423/385，用于发现空库回放看不到的结构、种子和约束问题；它不包含公司历史业务数据。
 
 公司数据只能在独立、可丢弃且可恢复的克隆上运行 `CurrentHeadNonEmptyCloneRehearsalTest`。除 `UTEN_RUN_REHEARSAL_DB_TESTS=true` 外，执行者必须通过私有环境显式提供：
 
@@ -56,7 +56,7 @@ bash server/legacy_migration/migrate.sh --purchase --confirm-destructive
 - `UTEN_REHEARSAL_DB_SYSTEM_IDENTIFIER`、`UTEN_REHEARSAL_BACKUP_SHA256`、`UTEN_REHEARSAL_APPROVAL_REFERENCE`；
 - `UTEN_REHEARSAL_IDENTIFIER_CONFLICT_SHA256`、`UTEN_REHEARSAL_CLIENT_SETTLEMENT_ISSUE_SHA256`，分别绑定 V279 编号冲突和 V285 客户结算问题的受审规范化证据。
 
-该测试固定 `cleanDisabled=true`，拒绝普通 `uten_imp` 库名，先核对起点、集群身份和完整 Flyway history，再升级并验证行数允许清单、用户身份、权限范围、收付款合计、库存合计、系统分类根、PII 派生约束和 V288/V289 审计合同。没有上述带外证据时保持跳过；不得为了“跑绿”伪造摘要或把目标库改名后直接执行。
+该测试固定 `cleanDisabled=true`，拒绝普通 `uten_imp` 库名，先核对起点、集群身份和完整 Flyway history，再升级并验证行数允许清单、用户身份、权限范围、收付款合计、库存合计、系统分类根、PII 派生约束以及当前迁移审计合同。没有上述带外证据时保持跳过；不得为了“跑绿”伪造摘要或把目标库改名后直接执行。
 
 ## 发布边界
 

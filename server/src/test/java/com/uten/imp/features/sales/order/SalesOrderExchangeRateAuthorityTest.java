@@ -176,12 +176,13 @@ class SalesOrderExchangeRateAuthorityTest {
     }
 
     @Test
-    void quoteConversionResolvesActiveCnyButDoesNotCreateAnOrderRate() {
+    void quoteConversionResolvesUniqueActiveBaseCurrencyButDoesNotCreateAnOrderRate() {
         UUID currencyId = UUID.randomUUID();
         UUID quoteOwner = UUID.randomUUID();
-        Query cnyQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(cnyQuery);
-        when(cnyQuery.getResultList()).thenReturn(List.of(currencyId));
+        Query baseCurrencyQuery = mock(Query.class);
+        when(em.createNativeQuery(contains("AND is_base_currency")))
+                .thenReturn(baseCurrencyQuery);
+        when(baseCurrencyQuery.getResultList()).thenReturn(List.of(currencyId));
         stubActiveCurrency(currencyId);
         when(currentUser.requireEmployeeId()).thenReturn(makerId);
         when(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER))
@@ -200,77 +201,35 @@ class SalesOrderExchangeRateAuthorityTest {
         assertThat(detail.getCurrencyId()).isEqualTo(currencyId);
         assertThat(detail.getExchangeRate()).isNull();
         assertThat(detail.getTotalLocal()).isNull();
+        verify(em, never()).createNativeQuery(contains("UPPER(BTRIM"));
+        verify(em, never()).createNativeQuery(contains("BTRIM(COALESCE(name"));
     }
 
     @Test
-    void quoteConversionFallsBackToUniqueRenminbiName() {
-        UUID currencyId = UUID.randomUUID();
-        UUID quoteOwner = UUID.randomUUID();
-        Query codeQuery = mock(Query.class);
-        Query nameQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(codeQuery);
-        when(em.createNativeQuery(contains("BTRIM(COALESCE(name"))).thenReturn(nameQuery);
-        when(codeQuery.getResultList()).thenReturn(List.of());
-        when(nameQuery.getResultList()).thenReturn(List.of(currencyId));
-        stubActiveCurrency(currencyId);
-        when(currentUser.requireEmployeeId()).thenReturn(makerId);
-        when(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER))
-                .thenReturn("XD202608080004");
-        when(priceMasker.canView()).thenReturn(true);
-        SalesQuote source = new SalesQuote();
-        source.setBillNo("XB202608080002");
-        source.setMakerId(quoteOwner);
-        when(quoteRepo.findById(source.getId())).thenReturn(Optional.of(source));
-        when(accessPolicy.hasAuthority("sales_quote:view")).thenReturn(true);
-        OrderSaveRequest request = request(null, "999999");
-        request.setSourceDocNo(source.getBillNo());
-
-        var detail = service.createFromQuote(request, source.getId(), quoteOwner);
-
-        assertThat(detail.getCurrencyId()).isEqualTo(currencyId);
-        assertThat(detail.getExchangeRate()).isNull();
-        assertThat(detail.getTotalLocal()).isNull();
-    }
-
-    @Test
-    void quoteConversionFailsWhenNoActiveCnyOrRenminbiMasterExists() {
-        Query codeQuery = mock(Query.class);
-        Query nameQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(codeQuery);
-        when(em.createNativeQuery(contains("BTRIM(COALESCE(name"))).thenReturn(nameQuery);
-        when(codeQuery.getResultList()).thenReturn(List.of());
-        when(nameQuery.getResultList()).thenReturn(List.of());
+    void quoteConversionFailsWhenNoActiveBaseCurrencyAuthorityExists() {
+        Query baseCurrencyQuery = mock(Query.class);
+        when(em.createNativeQuery(contains("AND is_base_currency")))
+                .thenReturn(baseCurrencyQuery);
+        when(baseCurrencyQuery.getResultList()).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.createFromQuote(
                 request(null, "7.2"), UUID.randomUUID(), UUID.randomUUID()))
-                .isInstanceOf(ApiException.class);
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("本位币 UUID 权威");
     }
 
     @Test
-    void quoteConversionFailsWhenMultipleActiveCnyMastersExist() {
-        Query codeQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(codeQuery);
-        when(codeQuery.getResultList()).thenReturn(
+    void quoteConversionFailsWhenMultipleActiveBaseCurrencyAuthoritiesExist() {
+        Query baseCurrencyQuery = mock(Query.class);
+        when(em.createNativeQuery(contains("AND is_base_currency")))
+                .thenReturn(baseCurrencyQuery);
+        when(baseCurrencyQuery.getResultList()).thenReturn(
                 List.of(UUID.randomUUID(), UUID.randomUUID()));
 
         assertThatThrownBy(() -> service.createFromQuote(
                 request(null, "7.2"), UUID.randomUUID(), UUID.randomUUID()))
-                .isInstanceOf(ApiException.class);
-    }
-
-    @Test
-    void quoteConversionFailsWhenMultipleRenminbiNameMastersExist() {
-        Query codeQuery = mock(Query.class);
-        Query nameQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(codeQuery);
-        when(em.createNativeQuery(contains("BTRIM(COALESCE(name"))).thenReturn(nameQuery);
-        when(codeQuery.getResultList()).thenReturn(List.of());
-        when(nameQuery.getResultList()).thenReturn(
-                List.of(UUID.randomUUID(), UUID.randomUUID()));
-
-        assertThatThrownBy(() -> service.createFromQuote(
-                request(null, "7.2"), UUID.randomUUID(), UUID.randomUUID()))
-                .isInstanceOf(ApiException.class);
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("本位币 UUID 权威");
     }
 
     private void prepareUpdate(SalesOrder order) {

@@ -65,7 +65,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('订单资金状态（财务只读）'), findsOneWidget);
+    expect(find.text('订单资金状态(财务只读)'), findsOneWidget);
     expect(find.textContaining('不读取历史订单订金快照'), findsOneWidget);
     expect(find.text('现金累计已收'), findsOneWidget);
     expect(find.text('预收累计到账'), findsOneWidget);
@@ -73,9 +73,15 @@ void main() {
     expect(find.text('可用预收'), findsOneWidget);
     expect(find.text('正式应收未收'), findsOneWidget);
     expect(find.text('订单计划未收'), findsOneWidget);
-    expect(find.text('USD 40.12'), findsOneWidget);
-    expect(find.text('USD 30.0234'), findsOneWidget);
-    expect(find.text('USD 59.8566'), findsOneWidget);
+    expect(find.text('40.12'), findsOneWidget);
+    expect(find.text('30.0234'), findsOneWidget);
+    expect(find.text('59.8566'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Text && (widget.data ?? '').startsWith('001 '),
+      ),
+      findsNothing,
+    );
     expect(api.getCount, 1);
   });
 
@@ -102,7 +108,7 @@ void main() {
     expect(find.text('订单资金汇总加载失败'), findsOneWidget);
     await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
-    expect(find.text('订单资金状态（财务只读）'), findsOneWidget);
+    expect(find.text('订单资金状态(财务只读)'), findsOneWidget);
     expect(find.text('现金累计已收'), findsOneWidget);
     expect(api.getCount, 2);
   });
@@ -130,7 +136,7 @@ const _summary = <String, dynamic>{
   'orderBillNo': 'XD-001',
   'clientId': 'client-1',
   'currencyId': 'currency-usd',
-  'currencyCode': 'USD',
+  'currencyCode': '001',
   'orderTotalOriginal': '100.0000',
   'orderTotalLocal': '720.0000',
   'formalArOriginal': '80.0000',

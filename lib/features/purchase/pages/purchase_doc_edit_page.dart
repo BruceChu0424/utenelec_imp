@@ -18,6 +18,7 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -95,8 +96,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   String? _departmentId;
   String? _currencyId;
   String? _settlementMethodId;
-
-  bool get _hasSettlement => widget.docType != PurchaseDocType.request;
+  String? _settlementError;
 
   // 人员字段（id + 给 picker 的 initial 项缓存）
   String? _applicantId;
@@ -289,6 +289,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           _empCache[id] = UtenEmployeePickerItem(
             id: p.id,
             name: p.fullName ?? '',
+            employeeCode: p.code,
             departmentName: p.departmentName,
           );
         } catch (_) {
@@ -528,6 +529,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       context.appError('请选择仓库');
       return;
     }
+    if (_cfg.settlementRequired && _settlementMethodId == null) {
+      setState(() => _settlementError = '请选择结账方式');
+      context.appError('请选择结账方式');
+      return;
+    }
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
@@ -576,7 +582,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       if (_cfg.hasDepartment) 'departmentId': _departmentId,
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
       if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
-      if (_hasSettlement && _settlementMethodId != null)
+      if (_cfg.hasSettlement && _settlementMethodId != null)
         'settlementMethodId': _settlementMethodId,
       if (_cfg.hasApplicant && _applicantId != null)
         'applicantId': _applicantId,
@@ -701,7 +707,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         const <ReferenceMethodOption>[];
     final settlementEntries = <String, String>{
       for (final method in settlementMethods)
-        method.id: '${method.name}（${method.code}）',
+        method.id: '${method.name}(${method.code})',
     };
     return Scaffold(
       appBar: UtenAppBar(
@@ -751,6 +757,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                 children: [
                                   // 单据号：系统自动生成，只读显示。
                                   TextFormField(
+                                    errorBuilder: utenTextFieldErrorBuilder,
                                     readOnly: true,
                                     controller: _billNo,
                                     decoration: InputDecoration(
@@ -841,14 +848,18 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                       ),
                                     ),
                                   ],
-                                  if (_hasSettlement)
+                                  if (_cfg.hasSettlement)
                                     _dropdown(
-                                      '结帐方式',
+                                      '结账方式',
                                       _settlementMethodId,
                                       settlementEntries,
-                                      (value) => setState(
-                                        () => _settlementMethodId = value,
-                                      ),
+                                      (value) => setState(() {
+                                        _settlementMethodId = value;
+                                        _settlementError = null;
+                                      }),
+                                      required: _cfg.settlementRequired,
+                                      allowClear: !_cfg.settlementRequired,
+                                      errorMessage: _settlementError,
                                     ),
                                   // 人员字段（按 config 显隐）
                                   if (_cfg.hasApplicant)
@@ -1018,8 +1029,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
             ),
           ),
           padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
             children: [
               ValueListenableBuilder<double>(
                 valueListenable: _grid.totalListenable,
@@ -1030,13 +1044,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                   ),
                 ),
               ),
-              const SizedBox(width: UtenSpacing.s16),
               UtenButton(
                 type: UtenButtonType.secondary,
                 onPressed: () => context.pop(),
                 child: const Text('取消'),
               ),
-              const SizedBox(width: UtenSpacing.s12),
               UtenButton(
                 isLoading: _saving,
                 icon:
@@ -1147,7 +1159,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                       '如果实到数量超过财务批准剩余量，仍可如实填写。'
                       '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'
                       '并通知财务审核组审批——财务可批准实到数量进入后续流程，'
-                      '或要求退货（生成供应商退货任务）。',
+                      '或要求退货(生成供应商退货任务)。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
                       ),
@@ -1193,6 +1205,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
             UtenEmployeePickerItem(
               id: e.id,
               name: e.fullName,
+              employeeCode: e.code,
               departmentName: e.departmentName,
             ),
         ];
@@ -1211,12 +1224,16 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     ValueChanged<String?> onChanged, {
     bool required = false,
     bool enabled = true,
+    bool allowClear = true,
+    String? errorMessage,
   }) {
     return UtenDropdownField(
       label: label,
       value: value,
       required: required,
       enabled: enabled,
+      allowClear: allowClear,
+      errorMessage: errorMessage,
       items: [
         for (final e in entries.entries)
           UtenDropdownItem(value: e.key, label: e.value),

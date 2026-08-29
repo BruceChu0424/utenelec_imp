@@ -159,7 +159,7 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
     if (saved != true || !mounted) return;
     final name = nameCtl.text.trim();
     if (name.isEmpty || (isCreate && codeCtl.text.trim().isEmpty)) {
-      UtenToast.warning(context, '请填写必填项（编码/名称）');
+      UtenToast.warning(context, '请填写必填项(编码/名称)');
       return;
     }
     final level = levelCtl.text.trim();

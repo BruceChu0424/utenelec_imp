@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/network/server_selection.dart';
@@ -95,7 +96,7 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
                     decoration: const InputDecoration(
                       labelText: 'Debug 云端地址覆盖',
                       hintText: 'https://cloud.example.com/api',
-                      helperText: '仅调试构建保存；生产构建会忽略并清除此值',
+                      helper: UtenFieldMessage.helper('仅调试构建保存；生产构建会忽略并清除此值'),
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
@@ -106,7 +107,7 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
                 else
                   InputDecorator(
                     decoration: const InputDecoration(
-                      labelText: '云端地址（构建托管）',
+                      labelText: '云端地址(构建托管)',
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
@@ -145,9 +146,9 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
             ? '优先公司内网服务；不可达时切换到托管云端。云端登录仍须管理员授予远程访问权限。'
             : '优先公司内网服务；此版本未配置云端地址，内网不可达时不会连接其他主机。';
       case ServerMode.local:
-        return '强制只用公司内网本地后端（排障用）。';
+        return '强制只用公司内网本地后端(排障用)。';
       case ServerMode.cloud:
-        return '强制只用构建期可信云端后端（排障用）；账号须有远程访问权限。';
+        return '强制只用构建期可信云端后端(排障用)；账号须有远程访问权限。';
     }
   }
 
@@ -159,7 +160,7 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
       await writeCloudUrl(prefs, null);
       ref.invalidate(apiBaseUrlProvider);
       if (mounted) {
-        context.appSuccess('已恢复默认（自动）');
+        context.appSuccess('已恢复默认(自动)');
         Navigator.of(context).pop();
       }
     } catch (e) {

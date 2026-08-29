@@ -23,7 +23,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('部门编辑保存后详情卡自动重载显示新名称（无需手动刷新）', (tester) async {
+  testWidgets('部门编辑保存后详情卡自动重载显示新名称(无需手动刷新)', (tester) async {
     final departments = _FakeDepartmentRepository();
     await _pumpPage(tester, departments);
 

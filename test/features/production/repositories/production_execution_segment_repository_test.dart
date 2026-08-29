@@ -20,6 +20,14 @@ void main() {
       expect(rows.single.segmentCode, 'SEG-001');
       expect(rows.single.reportedQty, 3);
       expect(rows.single.remainingQty, 7);
+      expect(rows.single.ordinaryRemainingQty, 5);
+      expect(rows.single.fqcPendingQty, 2);
+      expect(rows.single.finishedInboundPendingQty, 1);
+      expect(rows.single.inboundQty, 4);
+      expect(rows.single.finishedInboundRejectedQty, 3);
+      expect(rows.single.fqcRecoveryAvailableQty, 2);
+      expect(rows.single.fqcReworkAvailableQty, 2);
+      expect(rows.single.fqcReplacementReadyQty, 1);
       expect(rows.single.status, 'IN_PROGRESS');
       expect(rows.single.lockVersion, 4);
     },
@@ -112,6 +120,17 @@ Map<String, dynamic> _segmentJson({
     'plannedQty': 10,
     'reportedQty': 3,
     'remainingQty': 7,
+    'ordinaryRemainingQty': 5,
+    'fqcPendingQty': 2,
+    'fqcPassedQty': 5,
+    'fqcFailedQty': 2,
+    'finishedInboundPendingQty': 1,
+    'inboundQty': 4,
+    'finishedInboundRejectedQty': 3,
+    'fqcRecoveryAvailableQty': 2,
+    'fqcReworkAvailableQty': 2,
+    'fqcReplacementAvailableQty': 0,
+    'fqcReplacementReadyQty': 1,
     'status': status,
     'workshopDepartmentId': 'workshop-1',
     'workshopName': '装配一车间',

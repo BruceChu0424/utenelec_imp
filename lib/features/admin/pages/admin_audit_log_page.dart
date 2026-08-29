@@ -1494,8 +1494,8 @@ class _AuditListHeader extends ConsumerWidget {
         ),
         Tooltip(
           message: mode == TimeDisplayMode.beijing
-              ? '当前显示北京时间，点击切换为设备当地时间（$localLabel）'
-              : '当前显示当地时间（$localLabel），点击切换回北京时间',
+              ? '当前显示北京时间，点击切换为设备当地时间($localLabel)'
+              : '当前显示当地时间($localLabel)，点击切换回北京时间',
           child: ActionChip(
             key: const ValueKey('audit-time-mode-toggle'),
             avatar: Icon(
@@ -1845,7 +1845,7 @@ class _AuditEmptyCard extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: onShowAll,
             icon: const Icon(Icons.filter_alt_off_outlined),
-            label: const Text('清除业务筛选（保留最近 7 天）'),
+            label: const Text('清除业务筛选(保留最近 7 天)'),
           ),
         ],
       ),
@@ -2205,7 +2205,7 @@ class _AuditOverviewTab extends ConsumerWidget {
               if (detail.targetId?.trim().isNotEmpty == true) ...[
                 const SizedBox(height: UtenSpacing.s12),
                 _CopyableAuditFact(
-                  label: '对象数据库 ID（排查用）',
+                  label: '对象数据库 ID(排查用)',
                   value: detail.targetId!,
                 ),
               ],
@@ -2490,7 +2490,7 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
     if (AuditFieldLabels.looksLikeUuid(value)) {
       final id = value as String;
       final resolved = _resolveRef(service, field, id);
-      return resolved == null ? _shortId(id) : '$resolved（${_shortId(id)}）';
+      return resolved == null ? _shortId(id) : '$resolved(${_shortId(id)})';
     }
     return AuditFieldLabels.valueOf(value);
   }
@@ -3359,7 +3359,7 @@ class _LocalReceiptCard extends ConsumerWidget {
       ('语言区域', server?.locale, receipt.device.locale),
       ('时区', server?.timeZone, receipt.device.timeZone),
       (
-        '时区偏移（分钟）',
+        '时区偏移(分钟)',
         server?.timeZoneOffsetMinutes?.toString(),
         receipt.device.timeZoneOffsetMinutes?.toString(),
       ),
@@ -3433,7 +3433,7 @@ class _LocalReceiptCard extends ConsumerWidget {
           ],
           const Divider(height: 1),
           ExpansionTile(
-            title: Text('请求尝试链（${receipt.allAttempts.length} 次）'),
+            title: Text('请求尝试链(${receipt.allAttempts.length} 次)'),
             subtitle: const Text('自动刷新令牌或网络重试会保留为同一操作下的多次请求'),
             children: [
               for (final entry in receipt.allAttempts.indexed)

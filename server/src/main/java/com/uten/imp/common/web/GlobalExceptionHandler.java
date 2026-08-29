@@ -143,7 +143,7 @@ public class GlobalExceptionHandler {
         }
         if (message != null
                 && message.contains("received_qty exceeds finance-approved arrival capacity")) {
-            return "该订货明细的可收数量已用尽（可能已被其他收货单审核入库），无法重复入库";
+            return "该订货明细的可收数量已用尽(可能已被其他收货单审核入库)，无法重复入库";
         }
         log.warn("Database integrity conflict: {}",
                 root == null ? "unknown" : root.getClass().getSimpleName());

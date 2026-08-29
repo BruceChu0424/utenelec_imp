@@ -400,12 +400,27 @@ class MaterialStockReallocationServiceTest {
 
         var result = service.candidates(
                 sourceAnalysis, sourceMaterial, null, 1, 20);
+        service.candidates(sourceAnalysis, sourceMaterial, "  PLAN-B  ", 1, 20);
 
         assertThat(result.getItems()).singleElement().satisfies(item -> {
             assertThat(item.deliveryDate()).isEqualTo(LocalDate.of(2026, 9, 3));
             assertThat(item.sourceLendableQty()).isEqualByComparingTo("10");
             assertThat(item.shortageQty()).isEqualByComparingTo("4");
         });
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, times(6)).createNativeQuery(sql.capture());
+        List<String> candidateQueries = sql.getAllValues().stream()
+                .filter(statement -> statement.contains(
+                        "SELECT analysis.id, analysis.version"))
+                .toList();
+        assertThat(candidateQueries).hasSize(2);
+        assertThat(candidateQueries.get(0))
+                .contains("AND analysis.maker_id IS NOT NULL\nORDER BY")
+                .doesNotContain("ANDanalysis", "NULLORDER BY");
+        assertThat(candidateQueries.get(1))
+                .contains("AND analysis.maker_id IS NOT NULL\nAND (")
+                .contains(")\nORDER BY")
+                .doesNotContain("ANDanalysis", "NULLAND", "NULLORDER BY");
     }
 
     private static Fixture fixture() {

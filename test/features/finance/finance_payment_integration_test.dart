@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,8 +18,25 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../support/document_scope_capability_overrides.dart';
 
 void main() {
+  test(
+    'payment editor sends command idempotency and optimistic version facts',
+    () {
+      final source = File(
+        'lib/features/finance/pages/finance_doc_edit_page.dart',
+      ).readAsStringSync();
+      expect(
+        source,
+        contains(
+          'if (_cfg.type == FinanceDocType.payment && widget.id == null)',
+        ),
+      );
+      expect(source, contains("'createIdempotencyKey': _createIdempotencyKey"));
+      expect(source, contains("'expectedVersion': _expectedVersion"));
+    },
+  );
+
   testWidgets(
-    'direct payment requires and submits original amount currency and rate',
+    'payment without AP fails closed until supplier prepayment chain exists',
     (tester) async {
       final api = await _pumpEditor(tester, detail: _directPaymentDetail());
 
@@ -29,11 +48,12 @@ void main() {
       final rate = tester.widget<TextField>(
         find.byKey(const ValueKey('finance-payment-exchange-rate')),
       );
-      final amount = tester.widget<TextField>(
-        find.byKey(const ValueKey('finance-payment-amount-original')),
-      );
       expect(rate.controller?.text, '7.2');
-      expect(amount.controller?.text, '100.0');
+      expect(
+        find.byKey(const ValueKey('finance-payment-amount-original')),
+        findsNothing,
+      );
+      expect(find.text('请先引用已入账应付；供应商预付链尚未开放'), findsOneWidget);
       expect(find.textContaining('预计本币 ¥720.00'), findsOneWidget);
 
       final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
@@ -41,19 +61,16 @@ void main() {
       );
       expect(grid.showAddRow, isFalse);
       expect(grid.controller, isEmpty);
-      expect(find.text('未引用应付；可填写上方直接/预付款原币金额'), findsOneWidget);
+      expect(find.text('暂无应付核销明细，请点击顶部“引用应付”添加'), findsOneWidget);
 
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
 
-      final body = api.lastPutBody;
-      expect(body, isNotNull);
-      expect(body!['supplierId'], 'supplier-1');
-      expect(body['accountId'], 'account-1');
-      expect(body['currencyId'], 'currency-usd');
-      expect(body['exchangeRate'], 7.2);
-      expect(body['amountOriginal'], 100.0);
-      expect(body['items'], isEmpty);
+      expect(api.lastPutBody, isNull);
+      final notifications = ProviderScope.containerOf(
+        tester.element(find.byType(FinanceDocEditPage)),
+      ).read(appNotificationProvider);
+      expect(notifications.single.message, contains('供应商预付资产'));
     },
   );
 
@@ -80,7 +97,7 @@ void main() {
     },
   );
 
-  testWidgets('direct payment rejects a missing original amount before API', (
+  testWidgets('legacy direct payment amount cannot bypass AP requirement', (
     tester,
   ) async {
     final detail = _directPaymentDetail()..remove('amountOriginal');
@@ -93,8 +110,8 @@ void main() {
     final notifications = ProviderScope.containerOf(
       tester.element(find.byType(FinanceDocEditPage)),
     ).read(appNotificationProvider);
-    expect(notifications.single.message, '请填写大于 0 的直接/预付款原币金额');
-    expect(find.text('请填写大于 0 的直接/预付款原币金额'), findsOneWidget);
+    expect(notifications.single.message, contains('供应商预付资产'));
+    expect(find.text('请先引用已入账应付；供应商预付链尚未开放'), findsOneWidget);
   });
 
   testWidgets(
@@ -112,8 +129,9 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey('finance-payment-amount-original')),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(find.textContaining('供应商预付链尚未开放'), findsOneWidget);
       expect(find.text('保存').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -136,6 +154,7 @@ void main() {
     expect(grid.showAddRow, isFalse);
     expect(grid.controller.length, 1);
     expect(grid.controller.rows.single.appliedLedgerId, 'ledger-1');
+    grid.controller.rows.single.amount.text = '50.1234';
 
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -143,14 +162,15 @@ void main() {
     final body = api.lastPutBody;
     expect(body, isNotNull);
     expect(body!.containsKey('amountOriginal'), isFalse);
+    expect(body['expectedVersion'], 3);
     expect(body['currencyId'], 'currency-usd');
-    expect(body['exchangeRate'], 7.2);
+    expect(body['exchangeRate'], '7.200000');
     final item = Map<String, dynamic>.from(
       (body['items'] as List<dynamic>).single as Map,
     );
     expect(item['appliedLedgerId'], 'ledger-1');
     expect(item['appliedBillNo'], 'AP-001');
-    expect(item['amountOriginal'], 50.0);
+    expect(item['amountOriginal'], '50.1234');
     expect(item.containsKey('amountLocal'), isFalse);
     expect(item.containsKey('appliedAmountLocal'), isFalse);
     expect(item.containsKey('exchangeDiff'), isFalse);
@@ -232,9 +252,40 @@ void main() {
         (body['items'] as List<dynamic>).single as Map,
       );
       expect(item['appliedLedgerId'], 'ap-usd');
-      expect(item['amountOriginal'], 80.0);
+      expect(item['amountOriginal'], '80.0000');
     },
   );
+
+  testWidgets('AP payment rejects amount or rate beyond fixed precision', (
+    tester,
+  ) async {
+    final api = await _pumpEditor(tester, detail: _appliedPaymentDetail());
+    final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(_financeGrid());
+    grid.controller.rows.single.amount.text = '50.12345';
+
+    await tester.tap(find.text('保存'));
+    await tester.pump();
+
+    expect(api.lastPutBody, isNull);
+    var notifications = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceDocEditPage)),
+    ).read(appNotificationProvider);
+    expect(notifications.single.message, contains('最多 4 位小数'));
+
+    grid.controller.rows.single.amount.text = '50.1234';
+    await tester.enterText(
+      find.byKey(const ValueKey('finance-payment-exchange-rate')),
+      '7.1234567',
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pump();
+
+    expect(api.lastPutBody, isNull);
+    notifications = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceDocEditPage)),
+    ).read(appNotificationProvider);
+    expect(notifications.last.message, contains('付款汇率'));
+  });
 
   testWidgets('payment detail shows server-calculated settlement amounts', (
     tester,
@@ -251,7 +302,7 @@ void main() {
     );
     final columns = {for (final column in table.columns) column.key: column};
     final item = table.items.single;
-    expect(columns['amountOriginal']?.label, '本次付款（原币）');
+    expect(columns['amountOriginal']?.label, '本次付款(原币)');
     expect(columns['amountOriginal']?.value(item), '50.00');
     expect(columns['amountLocal']?.label, '付款本币');
     expect(columns['amountLocal']?.value(item), '360.00');
@@ -329,6 +380,7 @@ Future<void> _pumpDetail(
 
 Map<String, dynamic> _directPaymentDetail() => <String, dynamic>{
   'id': 'payment-1',
+  'version': 3,
   'makerId': 'maker-1',
   'billNo': 'CF202608090001',
   'billDate': '2026-08-09',
@@ -345,6 +397,7 @@ Map<String, dynamic> _directPaymentDetail() => <String, dynamic>{
 
 Map<String, dynamic> _appliedPaymentDetail() => <String, dynamic>{
   'id': 'payment-1',
+  'version': 3,
   'makerId': 'maker-1',
   'billNo': 'CF202608090002',
   'billDate': '2026-08-09',

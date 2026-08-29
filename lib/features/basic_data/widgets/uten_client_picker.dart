@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -392,7 +393,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
 
   String _clientLabel(ClientListItem c) =>
       '${c.name ?? c.fullName ?? '—'}'
-      '${c.code != null && c.code!.isNotEmpty ? '（${c.code}）' : ''}';
+      '${c.code != null && c.code!.isNotEmpty ? '(${c.code})' : ''}';
 
   Widget _buildRightPane(ThemeData theme) {
     return Column(
@@ -522,7 +523,7 @@ class ClientPickerField extends StatefulWidget {
     required this.onPick,
     this.label = '客户',
     this.required = false,
-    this.errorText,
+    this.errorMessage,
   });
 
   final String? initialId;
@@ -536,7 +537,7 @@ class ClientPickerField extends StatefulWidget {
 
   final String label;
   final bool required;
-  final String? errorText;
+  final String? errorMessage;
 
   @override
   State<ClientPickerField> createState() => _ClientPickerFieldState();
@@ -587,7 +588,7 @@ class _ClientPickerFieldState extends State<ClientPickerField> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final requiredEmpty =
-        widget.required && _id == null && widget.errorText == null;
+        widget.required && _id == null && widget.errorMessage == null;
     return TextField(
       controller: _ctl,
       readOnly: true,
@@ -600,7 +601,9 @@ class _ClientPickerFieldState extends State<ClientPickerField> {
             base: theme.inputDecorationTheme.labelStyle,
           ),
           hintText: '点击选择客户',
-          errorText: widget.errorText,
+          error: widget.errorMessage == null
+              ? null
+              : UtenFieldMessage.error(widget.errorMessage!),
           prefixIcon: const Icon(Icons.storefront_outlined),
           suffixIcon: _id != null
               ? IconButton(

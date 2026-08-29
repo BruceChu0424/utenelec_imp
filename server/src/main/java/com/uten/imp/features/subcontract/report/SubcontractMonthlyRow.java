@@ -24,4 +24,5 @@ public class SubcontractMonthlyRow {
     private BigDecimal qty;
     private BigDecimal amt;
     private Long lines;
+    private boolean priceMasked;
 }

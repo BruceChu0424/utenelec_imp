@@ -3,6 +3,7 @@ package com.uten.imp.features.production.dailyreport;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
 import jakarta.persistence.EntityManager;
@@ -29,6 +30,7 @@ import java.util.UUID;
 public class DailyReportExecutionSegmentGuard {
 
     private final EntityManager em;
+    private final ProductionDocumentAccessPolicy access;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void validateDraft(
@@ -37,6 +39,8 @@ public class DailyReportExecutionSegmentGuard {
                 ? List.of()
                 : lines.stream()
                 .map(line -> new ReportLine(
+                        null,
+                        line.getFqcRecoveryAuthorizationId(),
                         line.getExecutionSegmentId(),
                         line.getExecutionSegmentSalesAllocationId(),
                         line.getSalesOrderItemId(),
@@ -55,6 +59,8 @@ public class DailyReportExecutionSegmentGuard {
             UUID reportId, List<ProductionDailyReportItem> items) {
         List<ReportLine> lines = items.stream()
                 .map(item -> new ReportLine(
+                        item.getId(),
+                        item.getFqcRecoveryAuthorizationId(),
                         item.getExecutionSegmentId(),
                         item.getExecutionSegmentSalesAllocationId(),
                         item.getSalesOrderItemId(),
@@ -72,6 +78,8 @@ public class DailyReportExecutionSegmentGuard {
     public void reverse(List<ProductionDailyReportItem> items) {
         List<ReportLine> lines = items.stream()
                 .map(item -> new ReportLine(
+                        item.getId(),
+                        item.getFqcRecoveryAuthorizationId(),
                         item.getExecutionSegmentId(),
                         item.getExecutionSegmentSalesAllocationId(),
                         item.getSalesOrderItemId(),
@@ -95,20 +103,29 @@ public class DailyReportExecutionSegmentGuard {
         Map<UUID, BigDecimal> requested = new LinkedHashMap<>();
         Map<UUID, BigDecimal> salesRequested = new LinkedHashMap<>();
         Map<UUID, BigDecimal> salesCapacities = new LinkedHashMap<>();
+        List<ReportLine> recoveryLines = new ArrayList<>();
         for (ReportLine line : lines) {
             requireSegmentWhenNeeded(line);
             if (line.executionSegmentId() == null) continue;
             if (line.qty() == null || line.qty().signum() <= 0) {
                 throw validation("执行段报工数量必须大于 0");
             }
-            requested.merge(
-                    line.executionSegmentId(), line.qty(), BigDecimal::add);
+            if (line.recoveryAuthorizationId() == null) {
+                requested.merge(
+                        line.executionSegmentId(), line.qty(), BigDecimal::add);
+            } else {
+                recoveryLines.add(line);
+            }
         }
         Map<UUID, SegmentSnapshot> segments =
                 lockAndValidateIdentity(lines, false);
+        for (ReportLine recoveryLine : recoveryLines) {
+            validateRecoveryAuthorization(recoveryLine);
+        }
         for (ReportLine line : lines) {
             BigDecimal capacity = validateSalesAllocation(line);
-            if (line.executionSegmentSalesAllocationId() != null) {
+            if (line.executionSegmentSalesAllocationId() != null
+                    && line.recoveryAuthorizationId() == null) {
                 salesRequested.merge(
                         line.executionSegmentSalesAllocationId(),
                         line.qty(),
@@ -146,6 +163,7 @@ public class DailyReportExecutionSegmentGuard {
 
     private Map<UUID, SegmentSnapshot> lockAndValidateIdentity(
             List<ReportLine> lines, boolean allowTerminalPackage) {
+        validateLegacyPlanItemAccess(lines);
         TreeSet<UUID> ids = lines.stream()
                 .map(ReportLine::executionSegmentId)
                 .filter(Objects::nonNull)
@@ -163,11 +181,15 @@ public class DailyReportExecutionSegmentGuard {
                                            s.product_unit_id,
                                            s.product_unit_rate,
                                            s.planned_qty, s.status,
-                                           s.segment_code, package.status
+                                           s.segment_code, package.status,
+                                           plan.maker_id
                                     FROM production_execution_segments s
                                     JOIN production_planning_packages package
                                       ON package.id = s.package_id
                                      AND package.is_deleted = FALSE
+                                    JOIN production_plans plan
+                                      ON plan.id = s.plan_id
+                                     AND plan.is_deleted = FALSE
                                     WHERE s.id = :id
                                       AND s.is_deleted = FALSE
                                     FOR UPDATE OF s
@@ -187,7 +209,11 @@ public class DailyReportExecutionSegmentGuard {
                     decimal(row[6]),
                     (String) row[7],
                     (String) row[8],
-                    (String) row[9]);
+                    (String) row[9],
+                    (UUID) row[10]);
+            access.requireReadable(
+                    snapshot.planMakerId(),
+                    "报工关联的执行段不存在");
             if (!allowTerminalPackage
                     && !"CONFIRMED".equals(snapshot.packageStatus())) {
                 throw conflict("执行段所属计划包已经终止");
@@ -216,6 +242,36 @@ public class DailyReportExecutionSegmentGuard {
             }
         }
         return result;
+    }
+
+    private void validateLegacyPlanItemAccess(List<ReportLine> lines) {
+        TreeSet<UUID> planItemIds = lines.stream()
+                .filter(line -> line.executionSegmentId() == null)
+                .map(ReportLine::planItemId)
+                .filter(Objects::nonNull)
+                .collect(
+                        TreeSet::new,
+                        TreeSet::add,
+                        TreeSet::addAll);
+        for (UUID planItemId : planItemIds) {
+            List<?> owners = em.createNativeQuery("""
+                            SELECT plan.maker_id
+                            FROM production_plan_items item
+                            JOIN production_plans plan
+                              ON plan.id = item.plan_id
+                             AND plan.is_deleted = FALSE
+                            WHERE item.id = :planItemId
+                              AND item.is_deleted = FALSE
+                            """)
+                    .setParameter("planItemId", planItemId)
+                    .getResultList();
+            if (owners.isEmpty()) {
+                throw conflict("报工关联的生产计划行不存在");
+            }
+            access.requireReadable(
+                    (UUID) owners.getFirst(),
+                    "报工关联的生产计划行不存在");
+        }
     }
 
     private BigDecimal validateSalesAllocation(ReportLine line) {
@@ -265,25 +321,68 @@ public class DailyReportExecutionSegmentGuard {
     }
 
     private void requireSegmentWhenNeeded(ReportLine line) {
-        if (line.executionSegmentId() != null
-                || line.planItemId() == null) {
+        if (line.executionSegmentId() != null) {
             return;
         }
-        Number count = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM production_execution_segments s
-                        JOIN production_planning_packages package
-                          ON package.id = s.package_id
-                         AND package.is_deleted = FALSE
-                         AND package.status = 'CONFIRMED'
-                         AND package.execution_model_version = 1
-                        WHERE s.source_plan_item_id = :planItemId
-                          AND s.is_deleted = FALSE
-                        """)
-                .setParameter("planItemId", line.planItemId())
-                .getSingleResult();
-        if (count.longValue() > 0) {
-            throw validation("该生产计划行必须选择具体执行段后报工");
+        if (line.reportItemId() != null) {
+            Number legacy = (Number) em.createNativeQuery("""
+                            SELECT COUNT(*)
+                            FROM production_fqc_legacy_exemptions
+                            WHERE source_report_item_id = :reportItemId
+                            """)
+                    .setParameter("reportItemId", line.reportItemId())
+                    .getSingleResult();
+            if (legacy.longValue() == 1) return;
+        }
+        throw validation("V414 后新增报工必须选择已开工执行段；无段历史仅允许显式豁免行");
+    }
+
+    private void validateRecoveryAuthorization(ReportLine line) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT recovery_auth.source_plan_item_id,
+                                       recovery_auth.execution_segment_id,
+                                       recovery_auth.execution_segment_sales_allocation_id,
+                                       recovery_auth.goods_id,
+                                       recovery_auth.color_id,
+                                       recovery_auth.unit_id,
+                                       recovery_auth.unit_rate,
+                                       recovery_auth.disposition_code,
+                                       balance.available_qty,
+                                       balance.cancelled,
+                                       fn_fqc_replenishment_material_ready(
+                                           recovery_auth.id) AS material_ready
+                                FROM production_fqc_recovery_authorizations recovery_auth
+                                JOIN v_production_fqc_recovery_balance balance
+                                  ON balance.authorization_id = recovery_auth.id
+                                WHERE recovery_auth.id = :authorizationId
+                                FOR UPDATE OF recovery_auth
+                                """)
+                        .setParameter(
+                                "authorizationId",
+                                line.recoveryAuthorizationId()));
+        if (rows.size() != 1) {
+            throw conflict("FQC 返工/补产授权不存在");
+        }
+        Object[] row = rows.getFirst();
+        BigDecimal reportRate = line.unitRate() == null
+                ? BigDecimal.ONE : line.unitRate();
+        boolean materialReady = Boolean.TRUE.equals(row[10]);
+        if (Boolean.TRUE.equals(row[9])
+                || (!"REWORK".equals(row[7]) && !materialReady)) {
+            throw conflict(
+                    "SCRAP/REJECT 必须先由计划部确认补产 BOM，完成仓库领料实发后才能报工");
+        }
+        if (!Objects.equals(line.planItemId(), row[0])
+                || !Objects.equals(line.executionSegmentId(), row[1])
+                || !Objects.equals(
+                        line.executionSegmentSalesAllocationId(), row[2])
+                || !Objects.equals(line.goodsId(), row[3])
+                || !Objects.equals(line.colorId(), row[4])
+                || !Objects.equals(line.unitId(), row[5])
+                || reportRate.compareTo(decimal(row[6])) != 0
+                || line.qty().compareTo(decimal(row[8])) > 0) {
+            throw conflict("FQC 返工授权与报工身份、单位或开放数量不一致");
         }
     }
 
@@ -298,6 +397,7 @@ public class DailyReportExecutionSegmentGuard {
                         JOIN production_daily_reports report
                           ON report.id = item.report_id
                         WHERE item.execution_segment_id = :segmentId
+                          AND item.fqc_recovery_authorization_id IS NULL
                           AND item.report_id <> :reportId
                           AND item.is_deleted = FALSE
                           AND report.is_deleted = FALSE
@@ -322,6 +422,7 @@ public class DailyReportExecutionSegmentGuard {
                           ON report.id = item.report_id
                         WHERE item.execution_segment_sales_allocation_id =
                               :allocationId
+                          AND item.fqc_recovery_authorization_id IS NULL
                           AND item.report_id <> :reportId
                           AND item.is_deleted = FALSE
                           AND report.is_deleted = FALSE
@@ -347,6 +448,8 @@ public class DailyReportExecutionSegmentGuard {
     }
 
     private record ReportLine(
+            UUID reportItemId,
+            UUID recoveryAuthorizationId,
             UUID executionSegmentId,
             UUID executionSegmentSalesAllocationId,
             UUID salesOrderItemId,
@@ -368,6 +471,7 @@ public class DailyReportExecutionSegmentGuard {
             BigDecimal plannedQty,
             String status,
             String segmentCode,
-            String packageStatus) {
+            String packageStatus,
+            UUID planMakerId) {
     }
 }

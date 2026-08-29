@@ -115,7 +115,7 @@ class SubcontractHubPage extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
                 child: Text(
                   '材料出仓与成品回厂由仓库执行；打开委外订货单详情可跟踪全链路进度'
-                  '（出仓单号 / 进仓单号 / 品质验收 / 应付）。',
+                  '(出仓单号 / 进仓单号 / 品质验收 / 应付)。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

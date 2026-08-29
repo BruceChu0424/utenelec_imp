@@ -42,4 +42,6 @@ public class ReturnDetail
     private String approverName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    /** 当前用户无委外商业金额权限时为 true，币种/结算/单价/金额字段同时置 null。 */
+    private boolean priceMasked;
 }

@@ -462,9 +462,9 @@ public class SubcontractReceiptService {
                 BigDecimal rowRate = (BigDecimal) row[3];
                 if (rowRate.compareTo(unitQty) != 0) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外订货明细下同一子件存在多个冻结 BOM 单耗版本（" + unitQty.stripTrailingZeros().toPlainString()
+                            "委外订货明细下同一子件存在多个冻结 BOM 单耗版本(" + unitQty.stripTrailingZeros().toPlainString()
                                     + " / " + rowRate.stripTrailingZeros().toPlainString()
-                                    + "），无法确定回厂消费口径，请人工核销");
+                                    + ")，无法确定回厂消费口径，请人工核销");
                 }
             }
             BigDecimal required = receivedParentQty.multiply(unitQty)
@@ -494,13 +494,13 @@ public class SubcontractReceiptService {
                             .executeUpdate();
                     if (updated != 1) {
                         throw new ApiException(ErrorCode.CONFLICT,
-                                "委外回厂消费超过供应商在制余量（发料−已消费−已退−已损耗），疑似超耗或错料，请人工核销");
+                                "委外回厂消费超过供应商在制余量(发料−已消费−已退−已损耗)，疑似超耗或错料，请人工核销");
                     }
                     remaining = remaining.subtract(take);
                 }
                 if (remaining.signum() > 0) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外回厂消费超过供应商在制余量（发料−已消费−已退−已损耗），疑似超耗或错料，请人工核销");
+                            "委外回厂消费超过供应商在制余量(发料−已消费−已退−已损耗)，疑似超耗或错料，请人工核销");
                 }
             } else {
                 for (int i = group.size() - 1; i >= 0; i--) {
@@ -519,13 +519,13 @@ public class SubcontractReceiptService {
                             .executeUpdate();
                     if (updated != 1) {
                         throw new ApiException(ErrorCode.CONFLICT,
-                                "委外回厂红冲回退与并发回厂消费冲突（子件已消费量已变化），请重试或人工核销");
+                                "委外回厂红冲回退与并发回厂消费冲突(子件已消费量已变化)，请重试或人工核销");
                     }
                     remaining = remaining.subtract(give);
                 }
                 if (remaining.signum() > 0) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外回厂红冲需回退的子件消费量不足（其它回厂单据已消费该子件），请人工核销，禁止自动吞并错账");
+                            "委外回厂红冲需回退的子件消费量不足(其它回厂单据已消费该子件)，请人工核销，禁止自动吞并错账");
                 }
             }
         }

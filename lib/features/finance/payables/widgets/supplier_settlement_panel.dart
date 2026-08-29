@@ -8,6 +8,7 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../../../../shared/auth/permissions.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../models/supplier_settlement.dart';
@@ -140,7 +141,12 @@ class _SupplierSettlementPanelState
       key: 'currencyCode',
       label: '币种',
       width: 80,
-      value: (item) => item.currencyCode,
+      value: (item) =>
+          financeCurrencyDisplayLabel(
+            name: item.currencyName,
+            code: item.currencyCode,
+          ) ??
+          '原币',
     ),
     MasterColumnDef(
       key: 'periodStart',
@@ -158,7 +164,7 @@ class _SupplierSettlementPanelState
     ),
     MasterColumnDef(
       key: 'openingBalanceOriginal',
-      label: '期初（原币）',
+      label: '期初(原币)',
       width: 120,
       type: 'money',
       value: (item) => item.openingBalanceOriginal,
@@ -186,7 +192,7 @@ class _SupplierSettlementPanelState
     ),
     MasterColumnDef(
       key: 'closingBalanceOriginal',
-      label: '期末（原币）',
+      label: '期末(原币)',
       width: 120,
       type: 'money',
       value: (item) => item.closingBalanceOriginal,
@@ -401,7 +407,7 @@ class _SupplierSettlementDetailPanelState
     final reason = await showSupplierSettlementReasonDialog(
       context: context,
       title: reverse ? '反转月结批次' : '登记月结争议',
-      label: reverse ? '反转原因（必填）' : '争议原因（必填）',
+      label: reverse ? '反转原因(必填)' : '争议原因(必填)',
     );
     if (reason == null || !mounted) return;
     setState(() => _writing = true);
@@ -470,7 +476,7 @@ class _SupplierSettlementDetailPanelState
                   _kv(theme, '批次号', summary.batchNo),
                   _kv(theme, '供应商', summary.supplierName),
                   _kv(theme, '月份', summary.periodStart?.substring(0, 7)),
-                  _kv(theme, '到期日（服务端）', summary.dueDate),
+                  _kv(theme, '到期日(服务端)', summary.dueDate),
                   _kv(theme, '状态', summary.statusLabel),
                   _kv(theme, '期初原币', summary.openingBalanceOriginal),
                   _kv(theme, '本期立账/红冲', summary.periodPostedOriginal),

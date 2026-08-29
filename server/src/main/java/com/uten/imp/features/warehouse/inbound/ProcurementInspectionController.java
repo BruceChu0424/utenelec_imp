@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionPassRequest;
 import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
 import com.uten.imp.features.warehouse.inbound.dto.ProcurementInspectionItemDto;
 import jakarta.validation.Valid;
@@ -131,6 +132,20 @@ public class ProcurementInspectionController {
             @PathVariable UUID inspectionItemId,
             @Valid @RequestBody InspectionDispositionRequest request) {
         service.dispose(receiptType, receiptId, inspectionItemId, request);
+    }
+
+    /**
+     * 同一收货单内多条待检明细一次性合格放行。服务端校验完整集合后在单事务内执行，
+     * 任何一条已变化都会令整批回滚，禁止客户端循环伪装批量成功。
+     */
+    @PostMapping("/{receiptType}/{receiptId}/pass-batch")
+    @PreAuthorize("hasAuthority('procurement_inspection:view')"
+            + " and hasAuthority('procurement_inspection:handle')")
+    public void passBatch(
+            @PathVariable String receiptType,
+            @PathVariable UUID receiptId,
+            @Valid @RequestBody BatchInspectionPassRequest request) {
+        service.passBatch(receiptType, receiptId, request);
     }
 
     private static BigDecimal dec(Object value) {

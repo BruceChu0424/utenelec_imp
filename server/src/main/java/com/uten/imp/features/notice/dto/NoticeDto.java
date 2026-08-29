@@ -31,7 +31,7 @@ public record NoticeDto(
         Instant dueAt,
         boolean taskCompleted,
         Instant taskCompletedAt,
-        // ---- 互动 + 庆典字段（追加在末尾，保持原 19 字段顺序与签名兼容）----
+        // ---- 互动 + 庆典字段（保持原字段顺序）；sourceEvent 始终追加在最末尾 ----
         String interactionMode,
         String subjectName,
         String eventLabel,
@@ -41,5 +41,6 @@ public record NoticeDto(
         String myBlessing,
         List<String> recentAckers,
         List<NoticeBlessingDto> recentBlessings,
-        List<String> blessingTemplates) {
+        List<String> blessingTemplates,
+        String sourceEvent) {
 }

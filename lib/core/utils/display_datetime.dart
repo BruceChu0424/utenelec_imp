@@ -14,12 +14,12 @@ abstract final class DisplayDateTime {
   static String beijing(String? iso, {String fallback = ''}) {
     final text = ChinaDateTime.formatIsoInstant(iso);
     if (text.isEmpty) return fallback;
-    return '$text（北京）';
+    return '$text(北京)';
   }
 
   /// 北京时间展示（DateTime 入参，[wallOrInstant] 为中国墙上时间）。
   static String beijingWall(DateTime wallTime) =>
-      '${ChinaDateTime.formatDateTime(wallTime)}（北京）';
+      '${ChinaDateTime.formatDateTime(wallTime)}(北京)';
 
   /// 当前时间按北京时间展示。
   static String beijingNow() => beijingWall(ChinaDateTime.now());
@@ -34,7 +34,7 @@ abstract final class DisplayDateTime {
     final instant = instantOf(iso);
     if (instant == null) return fallback.isEmpty ? (iso ?? '') : fallback;
     final localTime = instant.toLocal();
-    return '${_formatLocal(localTime)}（当地 · ${localZoneLabel(localTime)}）';
+    return '${_formatLocal(localTime)}(当地 · ${localZoneLabel(localTime)})';
   }
 
   /// 把后端时间串解析成真实时间点（UTC instant）。
@@ -95,7 +95,7 @@ abstract final class DisplayDateTime {
 
   /// 常见 UTC 偏移 → 代表城市（分钟键）。用于"获取在哪个地方"的友好提示。
   static const Map<int, String> _offsetCityLabels = {
-    -720: '奥克兰（西十二区）',
+    -720: '奥克兰(西十二区)',
     -660: '中途岛',
     -600: '檀香山',
     -540: '安克雷奇',

@@ -184,7 +184,7 @@ class _OverviewBody extends StatelessWidget {
                   : '${overview.netChange}',
             ),
             _Metric(
-              '离职率（估算）',
+              '离职率(估算)',
               rate == null ? '—' : '${rate.toStringAsFixed(1)}%',
               tooltip: overview.historyCoverageComplete
                   ? '离职事件数 ÷ 期初与期末平均在册人数'

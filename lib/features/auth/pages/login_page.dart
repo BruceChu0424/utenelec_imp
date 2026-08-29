@@ -205,6 +205,17 @@ class _LoginPageState extends ConsumerState<LoginPage>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 左上角返回入口选择页（与访客登录页一致）；带回 returnTo 深链，
+          // 返回后重新选「内部人员登录」不丢目标页面。
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              tooltip: '返回',
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () =>
+                  context.go(RoutePath.entry(returnTo: widget.returnTo)),
+            ),
+          ),
           // 品牌区：吉祥物 + 横向字标
           const Center(child: UtenBrandMascot.size(88)),
           const SizedBox(height: UtenSpacing.s16),

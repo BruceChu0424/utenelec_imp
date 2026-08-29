@@ -136,8 +136,9 @@ class _ProductionChainHealthPageState
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: const Text(
-        '当前扫描只覆盖：销售缺口、物料分析、生产计划和 DRAW 领料关系。'
-        '采购/委外订单与 IQC、精确供给分配、报工、成品入库和发运仍需在各权威单据中核对；'
+        '当前扫描覆盖：销售缺口、物料分析、生产计划与 DRAW、活动关系重复、'
+        'fqty/iqty 事实对账、数量越界、执行段完成条件，以及 FQC 决定/入库授权守恒。'
+        '采购/委外订单与 IQC 明细、精确供给分配和发运仍需在各权威单据中核对；'
         '“0 项”只表示本次覆盖范围内未发现问题。',
       ),
     );

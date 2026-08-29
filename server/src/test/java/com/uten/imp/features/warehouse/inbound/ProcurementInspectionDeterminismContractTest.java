@@ -27,8 +27,8 @@ class ProcurementInspectionDeterminismContractTest {
                 .contains("lockSubcontractReceiptMutationDimensions(receiptId)")
                 .contains("if (isReplay(eventId, inspectionItemId, action, requested, reason)) {")
                 .contains("boolean wholeReceiptResolved = allResolved(receiptType, receiptId)")
-                .contains("if (\"PASS\".equals(action) && !wholeReceiptResolved)")
-                .contains("refreshAnalysisAfterPartialPass(")
+                .contains("if (\"PASS\".equals(action))")
+                .contains("advanceProductionAfterInspectionPass(")
                 .contains("purchaseSupply.afterPurchaseInspectionPassed(")
                 .contains("subcontractSupply.afterSubcontractInspectionPassed(")
                 .contains("wakeIfWholeReceiptResolved(");
@@ -82,17 +82,22 @@ class ProcurementInspectionDeterminismContractTest {
 
         assertThat(purchaseTransition)
                 .contains("inspection.passed_base_qty")
-                .contains("inspection.status = 'RESOLVED'")
+                .contains("inspection.status IN (")
+                .contains("'PARTIAL', 'RESOLVED'")
+                .contains("inspection.passed_base_qty > 0")
+                .contains(":IQC_PASS:")
                 .contains("AND status = 1");
         assertThat(readiness)
                 .contains("THEN inspection")
                 .contains(".passed_base_qty")
-                .contains("WHEN inspection.status =")
-                .contains("'RESOLVED'")
+                .contains("WHEN inspection.status IN (")
+                .contains("'PARTIAL', 'RESOLVED'")
                 .contains("receipt.doc_type = 'FINISHED_IN'")
                 .contains("AND receipt.status = 1")
                 .contains("FOR UPDATE OF peg")
                 .doesNotContain("FOR UPDATE OF peg, receipt_item, receipt");
+        assertThat(occurrences(readiness, "'PARTIAL', 'RESOLVED'"))
+                .isEqualTo(2);
         assertThat(analysis)
                 .contains("THEN inspection.passed_base_qty")
                 .contains("COALESCE(i.qty,0)-COALESCE(i.received_qty,0)")
@@ -111,6 +116,10 @@ class ProcurementInspectionDeterminismContractTest {
     private static void assertOrdered(String source, String first, String second) {
         assertThat(source.indexOf(first)).isGreaterThanOrEqualTo(0);
         assertThat(source.indexOf(second)).isGreaterThan(source.indexOf(first));
+    }
+
+    private static int occurrences(String source, String token) {
+        return source.split(java.util.regex.Pattern.quote(token), -1).length - 1;
     }
 
     private static String source(String relative) throws Exception {

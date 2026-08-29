@@ -476,7 +476,7 @@ class _DepartmentOverviewPaneState
     final search = UtenSearchBar(
       // key 含 node.id + _kwSeed：切部门 / 树搜索写入过滤词时重建搜索框同步显示。
       key: ValueKey('department-employee-search-${widget.node.id}-$_kwSeed'),
-      hint: '搜索员工（姓名/工号）',
+      hint: '搜索员工(姓名/工号)',
       initialValue: _keyword,
       onChanged: _onSearchChanged,
     );
@@ -619,7 +619,7 @@ class _DepartmentOverviewPaneState
                   : FilledButton.tonal(
                       onPressed: _loadMoreEmployees,
                       child: Text(
-                        '加载更多（已显示 ${_employees.length}/$_employeeTotal）',
+                        '加载更多(已显示 ${_employees.length}/$_employeeTotal)',
                       ),
                     ),
             ),

@@ -53,6 +53,7 @@ class GoodsDiscountVisibilityTest {
 
     private static final BigDecimal DISCOUNT = new BigDecimal("0.90");
     private static final BigDecimal PRICE = new BigDecimal("100.0000");
+    private static final BigDecimal COST = new BigDecimal("12.3400");
 
     private final GoodsRepository goodsRepo = mock(GoodsRepository.class);
     private final MaterialCategoryRepository categoryRepo = mock(MaterialCategoryRepository.class);
@@ -66,6 +67,8 @@ class GoodsDiscountVisibilityTest {
         CategoryDrivenCodeService categoryCodes = mock(CategoryDrivenCodeService.class);
         when(categoryCodes.allocateForUpdate(any(), any(), any(), any(), any()))
                 .thenAnswer(invocation -> invocation.getArgument(4, CategoryCodeAllocation.class));
+        GoodsCostMasker costMasker = mock(GoodsCostMasker.class);
+        when(costMasker.canView()).thenReturn(permissions.contains("goods:cost:view"));
         return new GoodsService(
                 goodsRepo,
                 categoryRepo,
@@ -76,7 +79,7 @@ class GoodsDiscountVisibilityTest {
                 categoryCodes,
                 mock(OwnerVisibility.class),
                 currentUser,
-                mock(GoodsCostMasker.class),
+                costMasker,
                 mock(GoodsMasterRelationshipResolver.class));
     }
 
@@ -102,6 +105,24 @@ class GoodsDiscountVisibilityTest {
         g.setCode("LEGACY-GOODS");
         g.setCodeSequence(1L);
         g.setCodeManaged(false);
+        g.setSourceE(COST);
+        g.setMachiningE(COST);
+        g.setIncidentalE(COST);
+        g.setLacquerE(COST);
+        g.setPlatingE(COST);
+        g.setCasingE(COST);
+        g.setPolishE(COST);
+        g.setTotal(COST);
+        g.setWorkRate(COST);
+        g.setWorkE(COST);
+        g.setLostRate(COST);
+        g.setLostE(COST);
+        g.setRentRate(COST);
+        g.setRentE(COST);
+        g.setMakeRate(COST);
+        g.setMakeE(COST);
+        g.setCTotal(COST);
+        g.setGTotal(COST);
         return g;
     }
 
@@ -204,8 +225,66 @@ class GoodsDiscountVisibilityTest {
 
         GoodsDetail d = service.update(g.getId(), req);
 
-        assertEquals(newDiscount, d.getDiscount(), "财务改折扣须落库（V226 setDiscount 遗漏修复）");
+        assertEquals(newDiscount, d.getDiscount(), "财务改折扣须落库(V226 setDiscount 遗漏修复)");
         assertFalse(d.isDiscountMasked());
+    }
+
+    @Test
+    void editorWithoutCostViewPreservesAllCostsWhenUpdatingOtherFields() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:edit"));
+        Goods g = goodsWithDiscount();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+        when(goodsRepo.save(any(Goods.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        GoodsSaveRequest req = saveRequest();
+        req.setName("只改名称");
+        req.setPrice(PRICE);
+        req.setDiscount(null);
+
+        GoodsDetail detail = assertDoesNotThrow(() -> service.update(g.getId(), req));
+
+        assertTrue(detail.isCostMasked());
+        assertNull(detail.getCTotal());
+        ArgumentCaptor<Goods> captor = ArgumentCaptor.forClass(Goods.class);
+        verify(goodsRepo).save(captor.capture());
+        assertAllCostsPreserved(captor.getValue());
+    }
+
+    @Test
+    void editorWithoutCostViewCannotSubmitNonNullCost() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:edit"));
+        Goods g = goodsWithDiscount();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+
+        GoodsSaveRequest req = saveRequest();
+        req.setPrice(PRICE);
+        req.setDiscount(null);
+        req.setCTotal(new BigDecimal("99.99"));
+
+        com.uten.imp.common.web.ApiException error = assertThrows(
+                com.uten.imp.common.web.ApiException.class,
+                () -> service.update(g.getId(), req));
+        assertEquals(com.uten.imp.common.web.ErrorCode.FORBIDDEN, error.getCode());
+    }
+
+    @Test
+    void editorWithCostViewCanChangeCost() {
+        GoodsService service = serviceWith(
+                Set.of("goods:view", "goods:edit", "goods:cost:view"));
+        Goods g = goodsWithDiscount();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+        when(goodsRepo.save(any(Goods.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BigDecimal changed = new BigDecimal("88.8800");
+        GoodsSaveRequest req = saveRequest();
+        req.setPrice(PRICE);
+        req.setDiscount(null);
+        req.setCTotal(changed);
+
+        GoodsDetail detail = service.update(g.getId(), req);
+
+        assertEquals(changed, detail.getCTotal());
+        assertFalse(detail.isCostMasked());
     }
 
     @AfterEach
@@ -226,6 +305,27 @@ class GoodsDiscountVisibilityTest {
         req.setCategoryId(cat.getId());
         req.setName("原品名");
         return req;
+    }
+
+    private static void assertAllCostsPreserved(Goods goods) {
+        assertEquals(COST, goods.getSourceE());
+        assertEquals(COST, goods.getMachiningE());
+        assertEquals(COST, goods.getIncidentalE());
+        assertEquals(COST, goods.getLacquerE());
+        assertEquals(COST, goods.getPlatingE());
+        assertEquals(COST, goods.getCasingE());
+        assertEquals(COST, goods.getPolishE());
+        assertEquals(COST, goods.getTotal());
+        assertEquals(COST, goods.getWorkRate());
+        assertEquals(COST, goods.getWorkE());
+        assertEquals(COST, goods.getLostRate());
+        assertEquals(COST, goods.getLostE());
+        assertEquals(COST, goods.getRentRate());
+        assertEquals(COST, goods.getRentE());
+        assertEquals(COST, goods.getMakeRate());
+        assertEquals(COST, goods.getMakeE());
+        assertEquals(COST, goods.getCTotal());
+        assertEquals(COST, goods.getGTotal());
     }
 
     private static GoodsQueryFilter emptyFilter() {

@@ -13,6 +13,9 @@ import java.util.UUID;
 @Setter
 public class OrderItemLine {
 
+    /** 被驳回订单修订时用于稳定匹配既有行；新行留空。 */
+    private UUID id;
+
     private Integer lineNo;
 
     @NotNull

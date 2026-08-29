@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/responsive/dialog_size.dart';
@@ -256,7 +257,7 @@ class _MaterialReallocationDialogBodyState
     if (qty == null || qty <= 0) return '请输入大于 0 的让料数量';
     if (qty > _maxQty) {
       return '最多可让 ${widget.qtyText(_maxQty)}'
-          '（不超过服务端权威可让量和接受计划缺口）';
+          '(不超过服务端权威可让量和接受计划缺口)';
     }
     return null;
   }
@@ -655,6 +656,7 @@ class _MaterialReallocationDialogBodyState
             Text(target.productLabel!, style: theme.textTheme.bodyMedium),
           const SizedBox(height: UtenSpacing.s12),
           TextFormField(
+            errorBuilder: utenTextFieldErrorBuilder,
             key: const Key('cross-reallocation-qty'),
             controller: _qtyController,
             enabled: !_submitting,
@@ -667,14 +669,16 @@ class _MaterialReallocationDialogBodyState
             }),
             decoration: InputDecoration(
               labelText: '让料数量',
-              helperText:
-                  '服务端可让 ${widget.qtyText(target.sourceLendableQty)} · '
-                  '接受计划缺 ${widget.qtyText(target.shortageQty)} · 最多 ${widget.qtyText(_maxQty)}',
+              helper: UtenFieldMessage.helper(
+                '服务端可让 ${widget.qtyText(target.sourceLendableQty)} · '
+                '接受计划缺 ${widget.qtyText(target.shortageQty)} · 最多 ${widget.qtyText(_maxQty)}',
+              ),
               suffixText: _sourceMaterial.unitName,
             ),
           ),
           const SizedBox(height: UtenSpacing.s12),
           TextFormField(
+            errorBuilder: utenTextFieldErrorBuilder,
             key: const Key('cross-reallocation-reason'),
             controller: _reasonController,
             enabled: !_submitting,
@@ -687,8 +691,8 @@ class _MaterialReallocationDialogBodyState
               _submitError = null;
             }),
             decoration: const InputDecoration(
-              labelText: '业务原因（必填）',
-              helperText: '例如：客户订单加急，本批现货先给该计划。',
+              labelText: '业务原因(必填)',
+              helper: UtenFieldMessage.helper('例如：客户订单加急，本批现货先给该计划。'),
               alignLabelWithHint: true,
             ),
           ),

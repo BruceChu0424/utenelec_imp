@@ -4,6 +4,7 @@ import com.uten.imp.common.domain.SoftDeletableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -26,6 +27,16 @@ import java.util.UUID;
 @Entity
 @Table(name = "finance_payments")
 public class FinancePayment extends SoftDeletableEntity {
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
+    @Column(name = "create_idempotency_key", length = 128)
+    private String createIdempotencyKey;
+
+    @Column(name = "create_request_hash", length = 64)
+    private String createRequestHash;
 
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;             // M_Paid.ID

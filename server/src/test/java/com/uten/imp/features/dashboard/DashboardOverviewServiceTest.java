@@ -16,6 +16,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
@@ -97,33 +98,38 @@ class DashboardOverviewServiceTest {
     }
 
     @Test
-    void legacyAccountViewAloneDoesNotExposeSensitiveBalance() {
+    void accountViewAloneDoesNotExposeTopLevelFinanceAmounts() {
         when(user.getPermissions()).thenReturn(Set.of("account:view"));
 
         DashboardOverviewDto result = service.overview();
 
         assertThat(result.metrics())
-                .noneMatch(metric -> metric.id().equals("cash-balance"));
+                .extracting(DashboardOverviewDto.MetricCard::id)
+                .doesNotContain("cash-balance", "ar-balance", "ap-balance");
         verify(jdbc, never()).queryForObject(
                 contains("FROM accounts"), eq(BigDecimal.class));
+        verify(jdbc, never()).query(
+                contains("FROM ar_ap_ledger"),
+                ArgumentMatchers.<ResultSetExtractor<Map<String, BigDecimal>>>any());
     }
 
     @Test
-    void explicitSensitivePermissionAndAccountViewExposeBalance() {
+    void explicitSensitivePermissionsStillDoNotExposeTopLevelFinanceAmounts() {
         when(user.getPermissions()).thenReturn(Set.of(
-                "account:view", "dashboard:finance-sensitive:view"));
-        when(jdbc.queryForObject(
-                contains("FROM accounts"), eq(BigDecimal.class)))
-                .thenReturn(new BigDecimal("123456.78"));
+                "account:view",
+                "ar_ap_ledger:view",
+                "dashboard:finance-sensitive:view"));
 
         DashboardOverviewDto result = service.overview();
 
         assertThat(result.metrics())
-                .anySatisfy(metric -> {
-                    assertThat(metric.id()).isEqualTo("cash-balance");
-                    assertThat(metric.value()).isEqualTo("¥123,456.78");
-                    assertThat(metric.sensitive()).isTrue();
-                });
+                .extracting(DashboardOverviewDto.MetricCard::id)
+                .doesNotContain("cash-balance", "ar-balance", "ap-balance");
+        verify(jdbc, never()).queryForObject(
+                contains("FROM accounts"), eq(BigDecimal.class));
+        verify(jdbc, never()).query(
+                contains("FROM ar_ap_ledger"),
+                ArgumentMatchers.<ResultSetExtractor<Map<String, BigDecimal>>>any());
     }
 
     @ParameterizedTest

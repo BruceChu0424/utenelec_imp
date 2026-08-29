@@ -63,7 +63,7 @@ Widget _harness() {
 }
 
 void main() {
-  testWidgets('primary 模式整树正常构建（不抛异常）', (tester) async {
+  testWidgets('primary 模式整树正常构建(不抛异常)', (tester) async {
     await tester.pumpWidget(_harness());
     await tester.pumpAndSettle();
 
@@ -96,13 +96,13 @@ void main() {
     expect(
       cardTopAfter,
       lessThan(cardTopBefore),
-      reason: '卡片应随上滚上移（顶边 dy 减小）；未动说明联动未生效',
+      reason: '卡片应随上滚上移(顶边 dy 减小)；未动说明联动未生效',
     );
     // 搜索行在 body 里（表格的 Column 兄弟），不随表格内滚而消失。
     expect(find.byKey(const ValueKey('searchrow')), findsOneWidget);
   });
 
-  testWidgets('向下滚能把收起的卡片拉回（反向协调）', (tester) async {
+  testWidgets('向下滚能把收起的卡片拉回(反向协调)', (tester) async {
     await tester.pumpWidget(_harness());
     await tester.pumpAndSettle();
 
@@ -128,7 +128,7 @@ void main() {
     expect(
       restoredTop,
       greaterThan(collapsedTop),
-      reason: '向下滚后卡片应被拉回（顶边 dy 增大）',
+      reason: '向下滚后卡片应被拉回(顶边 dy 增大)',
     );
   });
 }

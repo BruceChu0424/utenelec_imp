@@ -12,6 +12,8 @@ import com.uten.imp.features.master.account.dto.AccountFacets;
 import com.uten.imp.features.master.account.dto.AccountListItem;
 import com.uten.imp.features.master.account.dto.AccountQueryFilter;
 import com.uten.imp.features.master.account.dto.AccountSaveRequest;
+import com.uten.imp.features.master.account.dto.AccountSummary;
+import com.uten.imp.features.master.account.dto.AccountWarningUpdateRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -78,6 +81,12 @@ public class AccountController {
     @PreAuthorize("hasAuthority('account:view')")
     public AccountFacets facets() {
         return service.facets();
+    }
+
+    @GetMapping("/summary")
+    @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view')")
+    public AccountSummary summary() {
+        return service.summary();
     }
 
     /** 全量字典（钱流单据选账户用；account:view 全员有）。 */
@@ -141,6 +150,15 @@ public class AccountController {
             @PathVariable UUID id,
             @Valid @RequestBody com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
         return service.changeStatus(id, req);
+    }
+
+    @PatchMapping("/{id}/warning")
+    @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
+            + "and hasAuthority('account:warning:manage')")
+    public AccountDetail updateWarning(
+            @PathVariable UUID id,
+            @Valid @RequestBody AccountWarningUpdateRequest req) {
+        return service.updateWarning(id, req);
     }
 
     @DeleteMapping("/{id}")

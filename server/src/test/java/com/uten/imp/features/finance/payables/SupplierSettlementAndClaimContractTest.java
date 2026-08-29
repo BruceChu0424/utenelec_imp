@@ -57,6 +57,10 @@ class SupplierSettlementAndClaimContractTest {
         assertThat(sequence).contains("resolution_seq","line_sequence");
         assertThat(rate).contains("source_rate=target_rate");
         assertThat(service).contains("ORDER BY line_sequence DESC","offset_batch_id,line_sequence");
+        assertThat(service)
+                .contains("\"PREPAYMENT\".equals(source.kind())")
+                .contains("专用资产科目、应用、退款和总账链完成前禁止自动核销")
+                .doesNotContain("source.kind().equals(\"PREPAYMENT\")");
         assertThat(command).contains("禁止倒填或预填财务期间",
                 "closedPeriodGuard.requireOpen","lockAutoProjectionPeriod");
         assertThat(closedGuard).contains("supplier_settlement_batches");

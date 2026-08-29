@@ -175,7 +175,7 @@ public class GoodsImportService {
             } else {
                 category = categoryIndex.plan(r.categorySegments, willCreateCat);
                 if (category == null) {
-                    errors.add(new GoodsImportError(r.rowNum, "类别", "分类路径存在歧义（同父同名节点）"));
+                    errors.add(new GoodsImportError(r.rowNum, "类别", "分类路径存在歧义(同父同名节点)"));
                 }
             }
             if (r.sourceType != null && !r.sourceType.isEmpty() && !VALID_SOURCE_TYPES.contains(r.sourceType)) {

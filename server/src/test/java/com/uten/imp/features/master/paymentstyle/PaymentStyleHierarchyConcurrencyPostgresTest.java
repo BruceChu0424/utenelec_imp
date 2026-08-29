@@ -200,8 +200,10 @@ class PaymentStyleHierarchyConcurrencyPostgresTest {
                     connection, "LEGACY-CLEANUP", "旧库重跑反向关联", null, "ACCOUNT");
             UUID accountId = UUID.randomUUID();
             try (PreparedStatement account = connection.prepareStatement("""
-                    INSERT INTO accounts (id, code, name, account_type, style_id)
-                    VALUES (?, ?, ?, 'BANK', ?)
+                    INSERT INTO accounts (
+                        id, code, name, account_type, style_id, currency_id)
+                    VALUES (?, ?, ?, 'BANK', ?, (
+                        SELECT id FROM currencies WHERE is_base_currency))
                     """)) {
                 account.setObject(1, accountId);
                 account.setString(2, "AC-TX-" + shortId());
@@ -238,8 +240,10 @@ class PaymentStyleHierarchyConcurrencyPostgresTest {
                     connection, "LEGACY-FK-PROBE", "旧库重跑外键探针科目", null, "ACCOUNT");
             UUID accountId = UUID.randomUUID();
             try (PreparedStatement account = connection.prepareStatement("""
-                    INSERT INTO accounts (id, code, name, account_type, style_id)
-                    VALUES (?, ?, ?, 'BANK', ?)
+                    INSERT INTO accounts (
+                        id, code, name, account_type, style_id, currency_id)
+                    VALUES (?, ?, ?, 'BANK', ?, (
+                        SELECT id FROM currencies WHERE is_base_currency))
                     """)) {
                 account.setObject(1, accountId);
                 account.setString(2, "AC-TX-" + shortId());
@@ -586,8 +590,10 @@ class PaymentStyleHierarchyConcurrencyPostgresTest {
 
     private static int insertAccount(Connection connection, UUID styleId) throws SQLException {
         try (PreparedStatement insert = connection.prepareStatement("""
-                INSERT INTO accounts (id, code, name, account_type, style_id)
-                VALUES (?, ?, ?, 'BANK', ?)
+                INSERT INTO accounts (
+                    id, code, name, account_type, style_id, currency_id)
+                VALUES (?, ?, ?, 'BANK', ?, (
+                    SELECT id FROM currencies WHERE is_base_currency))
                 """)) {
             insert.setObject(1, UUID.randomUUID());
             insert.setString(2, "AC-TX-" + shortId());

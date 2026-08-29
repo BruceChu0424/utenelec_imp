@@ -3,20 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/widgets/metric_filter_cards.dart';
+import '../../basic_data/models/master_facet.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
 import '../providers/finance_procurement_approval_count_provider.dart';
@@ -32,6 +33,8 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
 
 class _FinanceProcurementApprovalTasksPageState
     extends ConsumerState<FinanceProcurementApprovalTasksPage> {
+  static const int _maxBatchSize = 100;
+
   FinanceProcurementApprovalPage? _result;
   bool _loading = false;
   String? _error;
@@ -42,6 +45,10 @@ class _FinanceProcurementApprovalTasksPageState
 
   /// 按类型计数（后端全量口径）；null = 尚未返回，卡片显示 '—'。
   Map<String, int>? _typeCounts;
+  String _keyword = '';
+  Set<String> _selectedIds = <String>{};
+  final Map<String, FinanceProcurementApprovalTask> _selectedTasksById = {};
+  bool _busyDecision = false;
 
   bool get _allowed {
     return ref.read(isSuperAdminProvider) ||
@@ -56,12 +63,33 @@ class _FinanceProcurementApprovalTasksPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
-  /// 卡片单选互斥：点选即切换；再点已选卡回「全部」。
   void _selectType(FinanceProcurementOrderType? type) {
-    final next = _orderType == type ? null : type;
-    if (next == _orderType) return;
-    setState(() => _orderType = next);
+    if (_orderType == type) return;
+    setState(() {
+      _orderType = type;
+      _clearSelectionState();
+    });
     _load(1);
+  }
+
+  void _applyKeyword(String value) {
+    final normalized = value.trim();
+    if (_keyword == normalized) return;
+    setState(() {
+      _keyword = normalized;
+      _clearSelectionState();
+    });
+    _load(1);
+  }
+
+  void _clearSelectionState() {
+    _selectedIds = <String>{};
+    _selectedTasksById.clear();
+  }
+
+  void _refreshCurrent() {
+    setState(_clearSelectionState);
+    _load(_result?.page ?? 1);
   }
 
   /// 当前筛选口径的提示文案：卡片内不放说明文字（与资产与待摊工作台的指标卡一致），
@@ -95,6 +123,7 @@ class _FinanceProcurementApprovalTasksPageState
       final result = await repo.approvalTasks(
         page: page,
         orderType: _orderType,
+        keyword: _keyword.isEmpty ? null : _keyword,
       );
       // 类型计数失败不阻断列表（卡片降级为 '—'）。
       repo
@@ -107,6 +136,11 @@ class _FinanceProcurementApprovalTasksPageState
       setState(() {
         _result = result;
         _loading = false;
+        for (final task in result.items) {
+          if (_selectedIds.contains(task.caseId)) {
+            _selectedTasksById[task.caseId] = task;
+          }
+        }
       });
       ref.invalidate(financeProcurementApprovalCountProvider);
     } on ApiException catch (error) {
@@ -133,39 +167,101 @@ class _FinanceProcurementApprovalTasksPageState
     goFrom(context, route);
   }
 
-  // ==== 页内审批（V229 审核组的权威操作位）====
-  // 订货详情页不再提供审批按钮：采购/委外视角只看到「等待财务通过」，
-  // 审核动作收敛到本任务中心（财务专属页面，服务端仍有资格校验兜底）。
+  List<FinanceProcurementApprovalTask> get _selectedTasks => [
+    for (final id in _selectedIds)
+      if (_selectedTasksById[id] != null) _selectedTasksById[id]!,
+  ];
 
-  bool _busyApproving = false;
+  bool _canSelectTask(FinanceProcurementApprovalTask task) =>
+      task.decisionItem != null &&
+      (task.allowedActions.contains('APPROVE') ||
+          task.allowedActions.contains('REJECT'));
 
-  Future<void> _approveTask(FinanceProcurementApprovalTask task) async {
-    if (_busyApproving) return;
+  void _setSelectedIds(Set<String> next) {
+    final currentItems =
+        _result?.items ?? const <FinanceProcurementApprovalTask>[];
+    final capped = next.length > _maxBatchSize;
+    final normalized = capped ? next.take(_maxBatchSize).toSet() : next;
+    setState(() {
+      _selectedIds = normalized;
+      _selectedTasksById.removeWhere((id, _) => !normalized.contains(id));
+      for (final task in currentItems) {
+        if (normalized.contains(task.caseId)) {
+          _selectedTasksById[task.caseId] = task;
+        }
+      }
+    });
+    if (capped) {
+      context.appWarning('单次最多处理 $_maxBatchSize 笔，已保留前 $_maxBatchSize 笔');
+    }
+  }
+
+  String? _selectionIssue(String action) {
+    if (_selectedIds.isEmpty) return '请先选择待审订货单';
+    final tasks = _selectedTasks;
+    if (tasks.length != _selectedIds.length ||
+        tasks.any((task) => task.decisionItem == null)) {
+      return '部分任务已变化，请刷新后重新选择';
+    }
+    if (tasks.any((task) => !task.allowedActions.contains(action))) {
+      return action == 'APPROVE'
+          ? '所选任务中有不可通过的订货单，请调整选择'
+          : '所选任务中有不可驳回的订货单，请调整选择';
+    }
+    return null;
+  }
+
+  List<FinanceProcurementDecisionItem> get _selectedCommands => [
+    for (final task in _selectedTasks) task.decisionItem!,
+  ];
+
+  String _selectedBillSummary() {
+    final tasks = _selectedTasks;
+    final visible = tasks.take(5).map((task) => task.billNo).join('、');
+    return tasks.length > 5 ? '$visible 等 ${tasks.length} 笔' : visible;
+  }
+
+  Future<void> _approveSelected() async {
+    if (_busyDecision) return;
+    final issue = _selectionIssue('APPROVE');
+    if (issue != null) {
+      context.appWarning(issue);
+      return;
+    }
+    final count = _selectedIds.length;
     final confirmed = await showUtenReviewerConfirmDialog(
       context,
-      title: '通过 ${task.billNo}？',
-      confirmLabel: '确认通过',
-      actionLabel: '订货财务审核',
-      responsibilityDescription: '确认后，系统将以此登录员工记录本次订货财务审核责任。',
-      message: '通过后${task.orderTypeLabel}立即生效，并生成仓库预计到货任务。',
+      title: '批量通过($count 笔)',
+      confirmLabel: '确认批量通过',
+      actionLabel: '批量订货财务审核',
+      responsibilityDescription: '确认后，系统将以此登录员工记录整批订货财务审核责任。',
+      message: '${_selectedBillSummary()}。整批通过后订货立即生效，并分别生成仓库预计到货任务。',
     );
     if (!confirmed || !mounted) return;
-    final repo = ref.read(financeProcurementWorkflowRepositoryProvider);
-    await _runTaskAction(
-      () => repo.approveOrder(task.orderType, task.orderId, task.version ?? 0),
-      '财务审核已通过',
+    final commands = _selectedCommands;
+    await _runBatchAction(
+      () => ref
+          .read(financeProcurementWorkflowRepositoryProvider)
+          .approveOrdersBatch(commands),
+      '已批量通过 $count 笔订货审批',
     );
   }
 
-  Future<void> _rejectTask(FinanceProcurementApprovalTask task) async {
-    if (_busyApproving) return;
+  Future<void> _rejectSelected() async {
+    if (_busyDecision) return;
+    final issue = _selectionIssue('REJECT');
+    if (issue != null) {
+      context.appWarning(issue);
+      return;
+    }
+    final count = _selectedIds.length;
     final reason = await showDialog<String>(
       context: context,
       builder: (ctx) {
         var value = '';
         return StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
-            title: Text('退回 ${task.billNo}'),
+            title: Text('批量驳回($count 笔)'),
             content: SizedBox(
               width: 440,
               child: Column(
@@ -173,9 +269,11 @@ class _FinanceProcurementApprovalTasksPageState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const UtenReviewerResponsibilityNotice(
-                    actionLabel: '退回订货财务审核',
-                    description: '确认后，系统将以此登录员工记录本次退回责任。',
+                    actionLabel: '批量驳回订货财务审核',
+                    description: '确认后，系统将以此登录员工记录整批退回责任。',
                   ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Text('${_selectedBillSummary()}将使用同一个驳回原因，整批原子提交。'),
                   const SizedBox(height: UtenSpacing.s12),
                   TextField(
                     autofocus: true,
@@ -184,7 +282,7 @@ class _FinanceProcurementApprovalTasksPageState
                     maxLength: 1000,
                     onChanged: (v) => setDialogState(() => value = v.trim()),
                     decoration: const InputDecoration(
-                      labelText: '退回原因（必填）',
+                      labelText: '退回原因(必填)',
                       hintText: '请写清需要制单人修改的内容',
                     ),
                   ),
@@ -198,10 +296,14 @@ class _FinanceProcurementApprovalTasksPageState
                 child: const Text('取消'),
               ),
               FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                  foregroundColor: Theme.of(ctx).colorScheme.onError,
+                ),
                 onPressed: value.isEmpty
                     ? null
                     : () => Navigator.pop(ctx, value),
-                child: const Text('确认退回'),
+                child: const Text('确认批量驳回'),
               ),
             ],
           ),
@@ -209,35 +311,33 @@ class _FinanceProcurementApprovalTasksPageState
       },
     );
     if (reason == null || reason.isEmpty || !mounted) return;
-    final repo = ref.read(financeProcurementWorkflowRepositoryProvider);
-    await _runTaskAction(
-      () => repo.rejectOrder(
-        task.orderType,
-        task.orderId,
-        task.version ?? 0,
-        reason,
-      ),
-      '已退回制单人修改',
+    final commands = _selectedCommands;
+    await _runBatchAction(
+      () => ref
+          .read(financeProcurementWorkflowRepositoryProvider)
+          .rejectOrdersBatch(commands, reason),
+      '已批量驳回 $count 笔订货审批',
     );
   }
 
-  Future<void> _runTaskAction(
+  Future<void> _runBatchAction(
     Future<Object?> Function() action,
     String okMsg,
   ) async {
-    setState(() => _busyApproving = true);
+    setState(() => _busyDecision = true);
     try {
       await action();
       if (!mounted) return;
       context.appSuccess(okMsg);
+      setState(_clearSelectionState);
       ref.invalidate(financeProcurementApprovalCountProvider);
       await _load(_result?.page ?? 1);
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted) context.appError('整批未提交：${e.message}');
     } catch (_) {
-      if (mounted) context.appError('审批操作失败，请稍后重试');
+      if (mounted) context.appError('整批未提交，请检查网络后重试');
     } finally {
-      if (mounted) setState(() => _busyApproving = false);
+      if (mounted) setState(() => _busyDecision = false);
     }
   }
 
@@ -268,10 +368,10 @@ class _FinanceProcurementApprovalTasksPageState
                     size: UtenButtonSize.large,
                     type: UtenButtonType.tonal,
                     icon: Icons.refresh_rounded,
-                    isLoading: _loading && _result != null,
-                    onPressed: _loading
+                    isLoading: (_loading && _result != null) || _busyDecision,
+                    onPressed: _loading || _busyDecision
                         ? null
-                        : () => _load(_result?.page ?? 1),
+                        : _refreshCurrent,
                     child: const Text('刷新'),
                   ),
                 ),
@@ -307,346 +407,313 @@ class _FinanceProcurementApprovalTasksPageState
           total: 0,
           totalPages: 1,
         );
-    return UtenContentContainer.narrow(
-      child: RefreshIndicator(
-        onRefresh: () => _load(result.page),
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+    final canApprove =
+        result.items.any((task) => task.allowedActions.contains('APPROVE')) ||
+        _selectedTasks.any((task) => task.allowedActions.contains('APPROVE'));
+    final canReject =
+        result.items.any((task) => task.allowedActions.contains('REJECT')) ||
+        _selectedTasks.any((task) => task.allowedActions.contains('REJECT'));
+    final selectable = canApprove || canReject;
+
+    return UtenContentContainer.wide(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 顶部类型筛选卡与任务工作台统一（MetricFilterCards）：全部/采购/委外，
-            // 卡片即筛选、单选互斥、再点已选卡回「全部」；计数走后端全量口径。
-            // 卡片内不放说明文字（与资产与待摊的指标卡一致），口径提示在下方整行提示条。
-            Semantics(
-              header: true,
-              label: '待我审核 ${result.total} 张订货单',
-              child: MetricFilterCards(
-                key: const Key('finance-approval-type-cards'),
-                items: [
-                  MetricFilterCardItem(
-                    key: 'all',
-                    label: '全部待审',
-                    value: _typeCount(null),
-                    icon: Icons.approval_outlined,
-                    selected: _orderType == null,
-                    onTap: () => _selectType(null),
-                  ),
-                  MetricFilterCardItem(
-                    key: 'purchase',
-                    label: '采购订货',
-                    value: _typeCount(FinanceProcurementOrderType.purchase),
-                    tone: 'info',
-                    icon: Icons.shopping_cart_outlined,
-                    selected:
-                        _orderType == FinanceProcurementOrderType.purchase,
-                    onTap: () =>
-                        _selectType(FinanceProcurementOrderType.purchase),
-                  ),
-                  MetricFilterCardItem(
-                    key: 'subcontract',
-                    label: '委外订货',
-                    value: _typeCount(FinanceProcurementOrderType.subcontract),
-                    tone: 'warning',
-                    icon: Icons.precision_manufacturing_outlined,
-                    selected:
-                        _orderType == FinanceProcurementOrderType.subcontract,
-                    onTap: () =>
-                        _selectType(FinanceProcurementOrderType.subcontract),
-                  ),
-                ],
+            AbsorbPointer(
+              absorbing: _busyDecision,
+              child: Opacity(
+                opacity: _busyDecision ? 0.65 : 1,
+                child: _buildToolbar(result),
               ),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            _ScopeHintBanner(message: _scopeHint),
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               _InlineError(message: _error!, onRetry: () => _load(result.page)),
             ],
-            const SizedBox(height: UtenSpacing.s16),
-            if (result.items.isEmpty)
-              SizedBox(
-                height: 420,
-                child: UtenEmpty(
-                  icon: Icons.task_alt_rounded,
-                  message: _orderType == null
-                      ? '目前没有待审核的订货单'
-                      : '该类型目前没有待审核的订货单',
-                  description: '财务部门持权人员及被点名授权的员工均可在此处理采购或委外订货单。',
-                ),
-              )
-            else
-              for (var i = 0; i < result.items.length; i++) ...[
-                _ApprovalTaskCard(
-                  key: Key('finance-approval-task-${result.items[i].caseId}'),
-                  task: result.items[i],
-                  onTap: () => _open(result.items[i]),
-                  onApprove: () => _approveTask(result.items[i]),
-                  onReject: () => _rejectTask(result.items[i]),
-                ),
-                if (i != result.items.length - 1)
-                  const SizedBox(height: UtenSpacing.s12),
-              ],
-            if (result.totalPages > 1) ...[
-              const SizedBox(height: UtenSpacing.s20),
-              _Pager(
-                page: result.page,
-                totalPages: result.totalPages,
-                loading: _loading,
-                onPage: _load,
+            if (_busyDecision) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              const LinearProgressIndicator(
+                key: Key('finance-approval-batch-progress'),
               ),
             ],
-            const SizedBox(height: UtenSpacing.s24),
+            const SizedBox(height: UtenSpacing.s12),
+            Expanded(
+              child: AbsorbPointer(
+                absorbing: _busyDecision,
+                child: MasterDataTableView<FinanceProcurementApprovalTask>(
+                  key: const Key('finance-approval-task-table'),
+                  columns: _columns,
+                  items: result.items,
+                  facets: const {
+                    'orderType': [
+                      MasterFacetBucket(
+                        value: 'PURCHASE',
+                        count: 0,
+                        label: '采购订货',
+                      ),
+                      MasterFacetBucket(
+                        value: 'SUBCONTRACT',
+                        count: 0,
+                        label: '委外订货',
+                      ),
+                    ],
+                  },
+                  nullCounts: const {},
+                  filters: {'orderType': _orderType?.name.toUpperCase()},
+                  onFilterChanged: (key, value) {
+                    if (key != 'orderType') return;
+                    _selectType(switch (value) {
+                      'PURCHASE' => FinanceProcurementOrderType.purchase,
+                      'SUBCONTRACT' => FinanceProcurementOrderType.subcontract,
+                      _ => null,
+                    });
+                  },
+                  selectable: selectable,
+                  idOf: (task) => _canSelectTask(task) ? task.caseId : null,
+                  selectedIds: _selectedIds,
+                  onSelectedIdsChanged: _setSelectedIds,
+                  batchActionsBuilder: selectable ? _batchActions : null,
+                  onRowTap: _open,
+                  canOpenRow: (task) => task.canOpen,
+                  rowMenuBuilder: (task) => [
+                    UtenMenuItem(
+                      label: '查看订货详情',
+                      icon: Icons.open_in_new_rounded,
+                      onTap: () => _open(task),
+                    ),
+                  ],
+                  canShowRowMenu: (task) => task.canOpen,
+                  isLoading: _loading,
+                  loadingMore: _loading && _result != null,
+                  error: result.items.isEmpty ? _error : null,
+                  onRetry: () => _load(result.page),
+                  emptyMessage: _keyword.isNotEmpty || _orderType != null
+                      ? '没有匹配的待审订货单'
+                      : '目前没有待审核的订货单',
+                  currentPage: result.page,
+                  totalPages: result.totalPages,
+                  onPageChange: _load,
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
-}
 
-class _ApprovalTaskCard extends StatelessWidget {
-  const _ApprovalTaskCard({
-    super.key,
-    required this.task,
-    required this.onTap,
-    this.onApprove,
-    this.onReject,
-  });
-
-  final FinanceProcurementApprovalTask task;
-  final VoidCallback onTap;
-
-  /// 页内审批回调（服务端按 V229 资格放行 allowedActions）。
-  final VoidCallback? onApprove;
-  final VoidCallback? onReject;
-
-  bool get _canApprove =>
-      onApprove != null && task.allowedActions.contains('APPROVE');
-  bool get _canReject =>
-      onReject != null && task.allowedActions.contains('REJECT');
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final submitted = DisplayDateTime.beijing(
-      task.submittedAt,
-      fallback: task.submittedAt ?? '—',
-    );
-    final amount = task.amount == null
-        ? null
-        : '${task.currencyName?.isNotEmpty == true ? '${task.currencyName} ' : '¥'}${task.amount}';
-    return MergeSemantics(
-      child: Semantics(
-        button: true,
-        enabled: task.canOpen,
-        label: '${task.orderTypeLabel} ${task.billNo}，点击查看订货单',
-        child: Material(
-          color: theme.colorScheme.surface,
-          borderRadius: UtenRadius.lgAll,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 120),
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              decoration: BoxDecoration(
-                borderRadius: UtenRadius.lgAll,
-                border: Border.all(color: theme.colorScheme.outlineVariant),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      UtenStatusBadge(
-                        label: task.orderTypeLabel,
-                        type:
-                            task.orderType ==
-                                FinanceProcurementOrderType.purchase
-                            ? UtenStatusBadgeType.info
-                            : task.orderType ==
-                                  FinanceProcurementOrderType.subcontract
-                            ? UtenStatusBadgeType.accent
-                            : UtenStatusBadgeType.danger,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Expanded(
-                        child: Text(
-                          task.billNo,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right_rounded, size: 28),
-                    ],
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  Wrap(
-                    spacing: UtenSpacing.s16,
-                    runSpacing: UtenSpacing.s8,
-                    children: [
-                      _TaskInfo(
-                        icon: Icons.storefront_outlined,
-                        label: '供应商',
-                        value: task.supplierName ?? '未填写',
-                      ),
-                      if (amount != null)
-                        _TaskInfo(
-                          icon: Icons.payments_outlined,
-                          label: '金额',
-                          value: amount,
-                        ),
-                      _TaskInfo(
-                        icon: Icons.person_outline_rounded,
-                        label: '提交人',
-                        value: task.submittedByName ?? '—',
-                      ),
-                      _TaskInfo(
-                        icon: Icons.schedule_outlined,
-                        label: '提交时间',
-                        value: submitted,
-                      ),
-                      if (task.expectedDate?.isNotEmpty == true)
-                        _TaskInfo(
-                          icon: Icons.local_shipping_outlined,
-                          label: '交货日期',
-                          value: task.expectedDate!,
-                        ),
-                      if (task.sourceApplicationCount != null)
-                        _TaskInfo(
-                          icon: Icons.account_tree_outlined,
-                          label: '申请来源',
-                          value: '${task.sourceApplicationCount} 张',
-                        ),
-                    ],
-                  ),
-                  if (!task.canOpen) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      '任务数据不完整，暂不能打开；请刷新或联系管理员。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.error,
-                      ),
-                    ),
-                  ],
-                  // 页内审批操作行：审批的权威操作位在本任务中心
-                  //（订货详情页只读展示等待状态，采购/委外视角不出审批按钮）。
-                  if (_canApprove || _canReject) ...[
-                    const Divider(height: UtenSpacing.s24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        if (_canReject) ...[
-                          UtenButton(
-                            key: Key('finance-approval-reject-${task.caseId}'),
-                            type: UtenButtonType.danger,
-                            size: UtenButtonSize.small,
-                            icon: Icons.reply_rounded,
-                            onPressed: onReject,
-                            child: const Text('退回修改'),
-                          ),
-                          if (_canApprove)
-                            const SizedBox(width: UtenSpacing.s8),
-                        ],
-                        if (_canApprove)
-                          UtenButton(
-                            key: Key('finance-approval-approve-${task.caseId}'),
-                            size: UtenButtonSize.small,
-                            icon: Icons.check_circle_outline,
-                            onPressed: onApprove,
-                            child: const Text('通过'),
-                          ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
+  Widget _buildToolbar(FinanceProcurementApprovalPage result) {
+    final selected = _orderType == null
+        ? 'all'
+        : _orderType == FinanceProcurementOrderType.purchase
+        ? 'purchase'
+        : 'subcontract';
+    final segments = SegmentedButton<String>(
+      key: const Key('finance-approval-type-segments'),
+      segments: [
+        ButtonSegment(
+          value: 'all',
+          label: Text(_typeLabel('全部待审', _typeCount(null))),
+        ),
+        ButtonSegment(
+          value: 'purchase',
+          label: Text(
+            _typeLabel(
+              '采购订货',
+              _typeCount(FinanceProcurementOrderType.purchase),
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// 口径提示条：筛选卡下方整行说明（资产与待摊工作台横幅同款布局），
-/// 浅蓝 info 容器色（灰底 + hover 会被误读成「灰色面板」）。
-class _ScopeHintBanner extends StatelessWidget {
-  const _ScopeHintBanner({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final background = isDark
-        ? UtenColors.infoContainerDark
-        : UtenColors.infoContainer;
-    final foreground = isDark
-        ? UtenColors.onInfoContainerDark
-        : UtenColors.onInfoContainer;
-    return Semantics(
-      container: true,
-      label: '筛选口径：$message',
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: foreground.withValues(alpha: 0.25)),
+        ButtonSegment(
+          value: 'subcontract',
+          label: Text(
+            _typeLabel(
+              '委外订货',
+              _typeCount(FinanceProcurementOrderType.subcontract),
+            ),
+          ),
         ),
-        child: Row(
+      ],
+      selected: {selected},
+      onSelectionChanged: (selection) {
+        _selectType(switch (selection.first) {
+          'purchase' => FinanceProcurementOrderType.purchase,
+          'subcontract' => FinanceProcurementOrderType.subcontract,
+          _ => null,
+        });
+      },
+    );
+    final search = UtenSearchBar(
+      key: const Key('finance-approval-search'),
+      initialValue: _keyword,
+      hint: '搜索订货单号 / 供应商 / 提交人',
+      onInputChanged: (_) => _requestVersion++,
+      onChanged: _applyKeyword,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 840) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: segments,
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  search,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                segments,
+                const SizedBox(width: UtenSpacing.s12),
+                SizedBox(width: 360, child: search),
+                const Spacer(),
+                Text(
+                  '共 ${result.total} 笔 · 单击选择，双击详情',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: UtenSpacing.s8),
+        Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.info_outline_rounded, color: foreground),
-            const SizedBox(width: UtenSpacing.s12),
+            Icon(
+              Icons.info_outline_rounded,
+              size: 18,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
             Expanded(
               child: Text(
-                message,
-                style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
+                _scopeHint,
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
-}
 
-class _TaskInfo extends StatelessWidget {
-  const _TaskInfo({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  String _typeLabel(String label, int? count) =>
+      count == null ? '$label —' : '$label $count';
 
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 180),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: UtenSpacing.s4),
-          Flexible(
-            child: Text(
-              '$label：$value',
-              style: theme.textTheme.bodyMedium,
-              softWrap: true,
-            ),
-          ),
-        ],
+  List<MasterColumnDef<FinanceProcurementApprovalTask>> get _columns => [
+    MasterColumnDef(
+      key: 'orderType',
+      label: '订货类型',
+      width: 110,
+      value: (task) => task.orderTypeLabel,
+    ),
+    MasterColumnDef(
+      key: 'billNo',
+      label: '订货单号',
+      width: 170,
+      value: (task) => task.billNo,
+    ),
+    MasterColumnDef(
+      key: 'supplierName',
+      label: '供应商 / 委外商',
+      width: 210,
+      value: (task) => task.supplierName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'amount',
+      label: '本币金额',
+      width: 130,
+      type: 'money',
+      value: (task) => task.amount,
+    ),
+    MasterColumnDef(
+      key: 'expectedDate',
+      label: '预计到货日',
+      width: 120,
+      type: 'date',
+      value: (task) => task.expectedDate ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'submittedByName',
+      label: '提交人',
+      width: 140,
+      value: (task) => task.submittedByName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'submittedAt',
+      label: '提交时间',
+      width: 180,
+      type: 'date',
+      value: (task) => DisplayDateTime.beijing(
+        task.submittedAt,
+        fallback: task.submittedAt ?? '—',
       ),
-    );
+    ),
+    MasterColumnDef(
+      key: 'attempt',
+      label: '审批轮次',
+      width: 100,
+      type: 'number',
+      value: (task) => task.attempt?.toString() ?? '—',
+    ),
+  ];
+
+  List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
+    final canApprove =
+        (_result?.items.any(
+              (task) => task.allowedActions.contains('APPROVE'),
+            ) ??
+            false) ||
+        _selectedTasks.any((task) => task.allowedActions.contains('APPROVE'));
+    final canReject =
+        (_result?.items.any((task) => task.allowedActions.contains('REJECT')) ??
+            false) ||
+        _selectedTasks.any((task) => task.allowedActions.contains('REJECT'));
+    final approveIssue = _selectionIssue('APPROVE');
+    final rejectIssue = _selectionIssue('REJECT');
+    return [
+      if (canReject)
+        UtenButton(
+          key: const Key('finance-approval-batch-reject'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.reply_rounded,
+          isLoading: _busyDecision,
+          onPressed: rejectIssue == null && !_busyDecision
+              ? _rejectSelected
+              : null,
+          onDisabledTap: rejectIssue == null
+              ? null
+              : () => context.appWarning(rejectIssue),
+          child: Text('批量驳回(${selectedIds.length})'),
+        ),
+      if (canApprove)
+        UtenButton(
+          key: const Key('finance-approval-batch-approve'),
+          type: UtenButtonType.success,
+          size: UtenButtonSize.large,
+          icon: Icons.check_circle_outline_rounded,
+          isLoading: _busyDecision,
+          onPressed: approveIssue == null && !_busyDecision
+              ? _approveSelected
+              : null,
+          onDisabledTap: approveIssue == null
+              ? null
+              : () => context.appWarning(approveIssue),
+          child: Text('批量通过(${selectedIds.length})'),
+        ),
+    ];
   }
 }
 
@@ -680,49 +747,6 @@ class _InlineError extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _Pager extends StatelessWidget {
-  const _Pager({
-    required this.page,
-    required this.totalPages,
-    required this.loading,
-    required this.onPage,
-  });
-
-  final int page;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPage;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        UtenButton(
-          size: UtenButtonSize.large,
-          type: UtenButtonType.tonal,
-          icon: Icons.chevron_left_rounded,
-          onPressed: !loading && page > 1 ? () => onPage(page - 1) : null,
-          child: const Text('上一页'),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-          child: Text('第 $page / $totalPages 页'),
-        ),
-        UtenButton(
-          size: UtenButtonSize.large,
-          type: UtenButtonType.tonal,
-          icon: Icons.chevron_right_rounded,
-          onPressed: !loading && page < totalPages
-              ? () => onPage(page + 1)
-              : null,
-          child: const Text('下一页'),
-        ),
-      ],
     );
   }
 }

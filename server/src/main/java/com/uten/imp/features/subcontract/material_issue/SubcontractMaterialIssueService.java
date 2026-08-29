@@ -9,6 +9,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
@@ -24,6 +25,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -75,6 +77,9 @@ public class SubcontractMaterialIssueService {
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService planService;
 
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
+
     /**
      * 写操作准入：自有手工单维持 maker 归属隔离；系统按发料计划生成的单据除当前动作权限外，
      * 还必须持有委外出仓 execute 权限，确保独立撤权对旧 CRUD 端点同样生效。
@@ -106,6 +111,7 @@ public class SubcontractMaterialIssueService {
 
     @Transactional(readOnly = true)
     public PageResponse<MaterialIssueListItem> list(MaterialIssueQueryFilter f, int page, int size, String sort, String order) {
+        boolean priceMasked = subcontractPriceMasked();
         var readScope = access.scope();
         Specification<SubcontractMaterialIssue> spec = (Root<SubcontractMaterialIssue> root,
                                                         jakarta.persistence.criteria.CriteriaQuery<?> q,
@@ -127,7 +133,8 @@ public class SubcontractMaterialIssueService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractMaterialIssue> p = issueRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
@@ -231,7 +238,7 @@ public class SubcontractMaterialIssueService {
             }
             BigDecimal remaining = decimal(row[8]).subtract(decimal(row[9]));
             if (line.getQty() == null || line.getQty().compareTo(remaining) > 0) {
-                throw new ApiException(ErrorCode.CONFLICT, "出仓量超过发料计划余量（剩余 " + remaining.stripTrailingZeros().toPlainString() + "）");
+                throw new ApiException(ErrorCode.CONFLICT, "出仓量超过发料计划余量(剩余 " + remaining.stripTrailingZeros().toPlainString() + ")");
             }
             // plan_item_id 是唯一客户端引用；库存键、单位及父件/订货关系全部以计划快照回填。
             line.setOrderItemId((UUID) row[1]);
@@ -363,7 +370,7 @@ public class SubcontractMaterialIssueService {
                 throw new ApiException(ErrorCode.NOT_FOUND, "委外发料关联的订货明细不存在或已删除");
             }
             if (source[2] == null || ((Number) source[2]).intValue() != 1) {
-                throw new ApiException(ErrorCode.BUSINESS, "委外发料只能关联已财务批准（status=1）的委外订货明细");
+                throw new ApiException(ErrorCode.BUSINESS, "委外发料只能关联已财务批准(status=1)的委外订货明细");
             }
             if (!java.util.Objects.equals((UUID) source[1], issue.getSupplierId())) {
                 throw new ApiException(ErrorCode.BUSINESS, "发料单委外商与来源订货单委外商不一致");
@@ -597,9 +604,10 @@ public class SubcontractMaterialIssueService {
         issueRepo.save(r);
     }
 
-    private MaterialIssueListItem toList(SubcontractMaterialIssue r) {
+    private MaterialIssueListItem toList(SubcontractMaterialIssue r, boolean priceMasked) {
         return new MaterialIssueListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getSupplierId(),
-                r.getWarehouseId(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getLegacyId());
+                r.getWarehouseId(), priceMasked ? null : r.getTotalLocal(), r.getStatus(),
+                r.isClosed(), r.getLegacyId(), priceMasked);
     }
 
     private MaterialIssueItemDto toItemDto(SubcontractMaterialIssueItem it) {
@@ -617,13 +625,34 @@ public class SubcontractMaterialIssueService {
     }
 
     private MaterialIssueDetail toDetail(SubcontractMaterialIssue r, List<MaterialIssueItemDto> items) {
+        boolean priceMasked = subcontractPriceMasked();
+        List<MaterialIssueItemDto> safeItems = priceMasked
+                ? items.stream().map(SubcontractMaterialIssueService::maskItemPrices).toList()
+                : items;
         return new MaterialIssueDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
-                r.getDeliverDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), r.getSourceDocNo(), items, r.getOperatorLegacyId(), r.getOperatorName(),
+                r.getDeliverDate(), r.getRemark(), priceMasked ? null : r.getTotalOriginal(),
+                priceMasked ? null : r.getTotalLocal(), r.getStatus(),
+                r.isClosed(), r.getSourceDocNo(), safeItems, r.getOperatorLegacyId(), r.getOperatorName(),
                 r.getMakerLegacyId(),
                 (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
-                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
+                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt(), priceMasked);
+    }
+
+    private boolean subcontractPriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+    }
+
+    private static MaterialIssueItemDto maskItemPrices(MaterialIssueItemDto it) {
+        return new MaterialIssueItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
+                it.getQty(), null, null, null, it.getReturnedQty(), it.getWastedQty(),
+                it.getAtSupplierQty(), it.getConsumedQty(), it.getFrozenUnitQty(), it.getOrderItemId(),
+                it.getPlanItemId(), it.getParentGoodsId(), it.getParentGoodsCodeSnapshot(),
+                it.getParentGoodsNameSnapshot(), it.getParentGoodsSnapshotSource(),
+                it.getParentGoodsSnapshotLockedAt(), it.getParentColorId(), it.getWeight(),
+                it.getSourceDocNo(), it.getRemark(), it.getBoxQty(), it.getReturnNo(), it.getOrderNo());
     }
 
     private SubcontractMaterialIssue requireIssue(UUID id) {

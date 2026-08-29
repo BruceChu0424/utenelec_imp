@@ -61,7 +61,7 @@ Future<SupplierSettlementConfirmDraft?> showSupplierSettlementConfirmDialog({
                 TextField(
                   controller: reference,
                   maxLength: 500,
-                  decoration: const InputDecoration(labelText: '供应商确认凭据（必填）'),
+                  decoration: const InputDecoration(labelText: '供应商确认凭据(必填)'),
                 ),
               TextField(
                 controller: note,
@@ -180,7 +180,7 @@ class _SupplierSettlementCreatePanelState
       initialDate: _periodStart,
       firstDate: DateTime(2000),
       lastDate: today,
-      helpText: '选择已结束月份（提交固定为该月第一天）',
+      helpText: '选择已结束月份(提交固定为该月第一天)',
     );
     if (picked != null && mounted) {
       setState(() => _periodStart = DateTime(picked.year, picked.month));
@@ -229,7 +229,7 @@ class _SupplierSettlementCreatePanelState
             DropdownButtonFormField<String>(
               initialValue: _supplierId,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: '供应商（必选）'),
+              decoration: const InputDecoration(labelText: '供应商(必选)'),
               items: [
                 for (final entry in names.supplierEntries.entries)
                   DropdownMenuItem(value: entry.key, child: Text(entry.value)),
@@ -240,7 +240,7 @@ class _SupplierSettlementCreatePanelState
             DropdownButtonFormField<String>(
               initialValue: _currencyId,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: '币种（必选）'),
+              decoration: const InputDecoration(labelText: '币种(必选)'),
               items: [
                 for (final entry in names.currencyEntries.entries)
                   DropdownMenuItem(value: entry.key, child: Text(entry.value)),
@@ -251,7 +251,7 @@ class _SupplierSettlementCreatePanelState
             DropdownButtonFormField<String>(
               initialValue: _settlementMethodId,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: '结算方式（必选）'),
+              decoration: const InputDecoration(labelText: '结算方式(必选)'),
               items: [
                 for (final method in methods)
                   DropdownMenuItem(

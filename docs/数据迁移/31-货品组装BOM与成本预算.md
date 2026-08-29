@@ -275,3 +275,24 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 - 列表：「库存量」列（合计）。
 - 实现位置在 `GoodsService`（原生 SQL 直查 `stock_balances` 表）——**架构边界测试禁止 `master→stock` 的 Java 依赖**，故不注入 `StockQueryService`，改用 `EntityManager` 表访问（与即时库存页同口径）。
 
+## 九、2026-08-28 V421 成本非负完整性与历史异常治理
+
+- **在线输入边界**：18 个可写/派生成本金额必须位于
+  `0..99999999999999.9999` 且最多 4 位小数；人工、损耗、厂租、生产四个费率必须位于
+  `0%..100%`。Flutter 使用 `Form/TextFormField` 在字段旁提示，Bean Validation 与
+  `GoodsCostValuePolicy` 覆盖创建、编辑和导入，数据库 CHECK 是最终守卫。
+- **历史异常不静默抹除**：V421 只选择负值或越界行，先向长期保留的 `audit_log` 写入
+  20 个原字段、异常原因、修复策略与恢复来源，再夹紧输入项并按 §七同一公式重算派生金额。
+  原值可从 `audit_log.before.values` 前向恢复；禁止直接改旧迁移或用 Flyway repair 掩盖。
+- **即时库存解耦**：`goods.c_total` 继续作为 BOM/标准成本预算，不再乘库存数量冒充库存价值。
+  即时库存与导出从 V421 起显示 `SUM(stock_balances.amount_local)`，详见
+  [32-即时库存](32-即时库存.md)。
+- **可丢弃测试库零基线**：`server/ops/reset_business_data.sql` 从 2026-08-29 起把 `goods.min_qty`
+  和上述 20 项成本金额/费率（含 NULL）与 legacy 期初库存同事务归为字面 `0`，同时保留货品 UUID/编号/名称、
+  分类/单位关系、BOM、`max_qty` 与业务售价 `price/a_price/price2`；提交前有独立全零断言，UPDATE 共享
+  审计 request ID，并仅对真实变化行推进 `version/updated_at`。2026-08-29 经业务方本轮明确授权，当前
+  本机开发库已在完整备份/恢复验证后执行；137 个货品和 202 条 BOM 保留，131 个变化货品完成归零与
+  版本/审计推进。该本机证据不授权公司目标库或生产清理。
+- **验收边界**：迁移契约、服务策略、隔离 PostgreSQL 和 V420 备份恢复克隆均已通过；
+  当前开发库已应用 V421并保留修复审计。目标非空库与历史成本业务复核仍须分别留证。
+

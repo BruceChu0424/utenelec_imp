@@ -184,7 +184,30 @@ class FinancePaymentSettlementPostgresTest {
                 SELECT COUNT(*)
                 FROM finance_reconciliations
                 WHERE source_doc_type = 'PAYMENT' AND source_doc_id = ?
-                """, Long.class, draft.getId())).isZero();
+                """, Long.class, draft.getId())).isEqualTo(2L);
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM finance_reconciliations
+                WHERE source_doc_type = 'PAYMENT' AND source_doc_id = ?
+                  AND entry_kind='POSTING'
+                  AND reversal_of_id IS NULL
+                """, Long.class, draft.getId())).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM finance_reconciliations reversal
+                JOIN finance_reconciliations posting
+                  ON posting.id=reversal.reversal_of_id
+                WHERE reversal.source_doc_type = 'PAYMENT'
+                  AND reversal.source_doc_id = ?
+                  AND reversal.entry_kind='REVERSAL'
+                  AND reversal.in_amount=posting.out_amount
+                  AND reversal.out_amount=posting.in_amount
+                """, Long.class, draft.getId())).isEqualTo(1L);
+        assertMoney(jdbc.queryForObject("""
+                SELECT SUM(in_amount-out_amount)
+                FROM finance_reconciliations
+                WHERE source_doc_type = 'PAYMENT' AND source_doc_id = ?
+                """, BigDecimal.class, draft.getId()), "0.0000");
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM gl_vouchers
                 WHERE source='AUTO' AND source_type='PAYMENT' AND voucher_no=?
@@ -265,6 +288,7 @@ class FinancePaymentSettlementPostgresTest {
                 currencyId, supplierId, accountId, ledgerId);
         saveRequest.setBillDate(LocalDate.of(2035, 1, 1));
         FinancePaymentDetail draft = service.create(saveRequest);
+        saveRequest.setExpectedVersion(draft.getVersion());
 
         ExecutorService executor = Executors.newFixedThreadPool(3);
         try (Connection blocker = jdbc.getDataSource().getConnection()) {
@@ -329,6 +353,7 @@ class FinancePaymentSettlementPostgresTest {
                 currencyId, supplierId, accountId, ledgerId);
         saveRequest.setBillDate(LocalDate.of(2038, 5, 1));
         FinancePaymentDetail draft = service.create(saveRequest);
+        saveRequest.setExpectedVersion(draft.getVersion());
 
         ExecutorService executor = Executors.newFixedThreadPool(3);
         try (Connection blocker = jdbc.getDataSource().getConnection()) {
@@ -548,6 +573,7 @@ class FinancePaymentSettlementPostgresTest {
         request.setExchangeRate(new BigDecimal("7.200000"));
         request.setAmountOriginal(new BigDecimal("999.0000"));
         request.setAmountLocal(new BigDecimal("9999.0000"));
+        request.setCreateIdempotencyKey(UUID.randomUUID().toString());
         request.setItems(java.util.List.of(line));
         return request;
     }

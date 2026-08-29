@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,9 +7,12 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
 import 'package:uten_imp/features/admin/pages/page_permission_settings_page.dart';
+import 'package:uten_imp/features/employee/models/employee_api_models.dart';
+import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
 import 'package:uten_imp/shared/auth/permission_action_type.dart';
@@ -295,7 +300,7 @@ void main() {
     await tester.pumpWidget(_settingsApp(repository));
     await tester.pumpAndSettle();
 
-    expect(find.text('张三'), findsOneWidget);
+    expect(find.text('张三(S001)'), findsOneWidget);
     expect(find.textContaining(longDepartment), findsOneWidget);
     expect(find.byTooltip('账号未启用'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -335,6 +340,179 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.requestedPages, containsAllInOrder([1, 1, 2]));
   });
+
+  testWidgets(
+    'wide auto selection prefers an existing account and never prompts',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 820);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _FakePagePermissionRepository(
+        staffItems: const [
+          PagePermissionStaffSummary(
+            employeeId: 'employee-1',
+            departmentId: 'department-1',
+            departmentName: '销售一组',
+            code: 'S001',
+            fullName: '张三',
+            positionName: '业务员',
+            departmentManager: false,
+            hasAccount: false,
+            accountActive: false,
+          ),
+          PagePermissionStaffSummary(
+            employeeId: 'employee-2',
+            departmentId: 'department-1',
+            departmentName: '销售一组',
+            code: 'S002',
+            fullName: '李四',
+            positionName: '业务员',
+            departmentManager: false,
+            hasAccount: true,
+            accountActive: true,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        _settingsApp(
+          repository,
+          permissions: const {Perm.accountSupport},
+          employeeRepository: _ProvisionEmployeeRepository(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('provision-selected-employee-dialog')),
+        findsNothing,
+      );
+      expect(repository.detailEmployeeIds, ['employee-2']);
+      expect(find.text('李四'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'unprovisioned employee is visible but cannot provision without account support',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 820);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _FakePagePermissionRepository(hasAccount: false);
+      final employeeRepository = _ProvisionEmployeeRepository();
+
+      await tester.pumpWidget(
+        _settingsApp(repository, employeeRepository: employeeRepository),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('未开通账号'), findsOneWidget);
+      expect(find.text('此人还未开通账号，暂不能设置权限'), findsOneWidget);
+      expect(find.text('请联系具备“账号支持”权限的人员开通登录账号。'), findsOneWidget);
+      expect(repository.detailEmployeeIds, isEmpty);
+
+      await tester.tap(
+        find.byKey(const ValueKey('page-permission-staff-employee-1')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('provision-selected-employee-dialog')),
+        findsNothing,
+      );
+      expect(employeeRepository.provisionCalls, 0);
+    },
+  );
+
+  testWidgets('account support can cancel selected employee provisioning', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 820);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _FakePagePermissionRepository(hasAccount: false);
+    final employeeRepository = _ProvisionEmployeeRepository();
+
+    await tester.pumpWidget(
+      _settingsApp(
+        repository,
+        permissions: const {Perm.accountSupport},
+        employeeRepository: employeeRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('page-permission-staff-employee-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('开通账号确认'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('provision-selected-employee-cancel')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(employeeRepository.provisionCalls, 0);
+    expect(find.text('此人还未开通账号，暂不能设置权限'), findsOneWidget);
+    expect(repository.detailEmployeeIds, isEmpty);
+  });
+
+  testWidgets(
+    'successful provisioning waits once, shows credentials, then loads permissions',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 820);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _FakePagePermissionRepository(hasAccount: false);
+      final employeeRepository = _ProvisionEmployeeRepository(
+        onProvisioned: () => repository.hasAccount = true,
+      );
+
+      await tester.pumpWidget(
+        _settingsApp(
+          repository,
+          permissions: const {Perm.accountSupport},
+          employeeRepository: employeeRepository,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('page-permission-staff-employee-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('provision-selected-employee-confirm')),
+      );
+      await tester.pump();
+
+      expect(employeeRepository.provisionCalls, 1);
+      expect(find.text('开通中'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('provision-selected-employee-confirm')),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      employeeRepository.completeSuccess();
+      await tester.pumpAndSettle();
+
+      expect(find.text('账号已创建'), findsOneWidget);
+      expect(repository.detailEmployeeIds, isEmpty);
+      await tester.tap(find.text('我已妥善保存'));
+      await tester.pumpAndSettle();
+
+      expect(repository.detailEmployeeIds, ['employee-1']);
+      expect(find.text('销售订货查看'), findsOneWidget);
+      expect(employeeRepository.provisionCalls, 1);
+    },
+  );
 }
 
 Widget _actionApp({required bool canManage, bool superAdmin = false}) {
@@ -369,12 +547,22 @@ Widget _actionApp({required bool canManage, bool superAdmin = false}) {
   );
 }
 
-Widget _settingsApp(PagePermissionDelegationRepository repository) {
+Widget _settingsApp(
+  PagePermissionDelegationRepository repository, {
+  Set<String> permissions = const {},
+  EmployeeRepository? employeeRepository,
+}) {
   return ProviderScope(
     overrides: [
       pagePermissionDelegationRepositoryProvider.overrideWithValue(repository),
+      currentPermissionsProvider.overrideWithValue(permissions),
+      if (employeeRepository != null)
+        employeeRepositoryProvider.overrideWithValue(employeeRepository),
     ],
     child: const MaterialApp(
+      locale: Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: PagePermissionSettingsPage(surfaceKey: 'sales.order'),
     ),
   );
@@ -386,14 +574,19 @@ class _FakePagePermissionRepository
     this.totalPages = 1,
     this.departmentName = '销售一组',
     this.accountActive = true,
+    this.hasAccount = true,
+    this.staffItems,
   });
 
   final int totalPages;
   final String departmentName;
   final bool accountActive;
+  bool hasAccount;
+  final List<PagePermissionStaffSummary>? staffItems;
   String? lastSearch;
   final List<int> requestedPages = [];
   final List<String?> requestedDepartments = [];
+  final List<String> detailEmployeeIds = [];
   List<PagePermissionChange> savedChanges = const [];
 
   @override
@@ -436,19 +629,20 @@ class _FakePagePermissionRepository
     requestedPages.add(page);
     requestedDepartments.add(departmentId);
     final items = page == 1
-        ? [
-            PagePermissionStaffSummary(
-              employeeId: 'employee-1',
-              departmentId: 'department-1',
-              departmentName: departmentName,
-              code: 'S001',
-              fullName: '张三',
-              positionName: '业务员',
-              departmentManager: false,
-              hasAccount: true,
-              accountActive: accountActive,
-            ),
-          ]
+        ? staffItems ??
+              [
+                PagePermissionStaffSummary(
+                  employeeId: 'employee-1',
+                  departmentId: 'department-1',
+                  departmentName: departmentName,
+                  code: 'S001',
+                  fullName: '张三',
+                  positionName: '业务员',
+                  departmentManager: false,
+                  hasAccount: hasAccount,
+                  accountActive: hasAccount && accountActive,
+                ),
+              ]
         : [
             PagePermissionStaffSummary(
               employeeId: 'employee-2',
@@ -469,7 +663,7 @@ class _FakePagePermissionRepository
       items: items,
       page: page,
       size: size,
-      total: totalPages == 1 ? 1 : 2,
+      total: staffItems?.length ?? (totalPages == 1 ? 1 : 2),
       totalPages: totalPages,
     );
   }
@@ -479,7 +673,10 @@ class _FakePagePermissionRepository
     required String surfaceKey,
     required String departmentId,
     required String employeeId,
-  }) async => _detail(surfaceKey, departmentId, employeeId);
+  }) async {
+    detailEmployeeIds.add(employeeId);
+    return _detail(surfaceKey, departmentId, employeeId);
+  }
 
   @override
   Future<PagePermissionEmployeeDetail> saveEmployeePermissions({
@@ -493,6 +690,42 @@ class _FakePagePermissionRepository
   }
 }
 
+class _ProvisionEmployeeRepository extends Fake implements EmployeeRepository {
+  _ProvisionEmployeeRepository({this.onProvisioned});
+
+  final VoidCallback? onProvisioned;
+  final Completer<EmployeeOnboardingResult> _completer =
+      Completer<EmployeeOnboardingResult>();
+  int provisionCalls = 0;
+
+  @override
+  Future<EmployeeOnboardingResult> provisionAccount(String id) {
+    provisionCalls++;
+    return _completer.future;
+  }
+
+  void completeSuccess() {
+    onProvisioned?.call();
+    _completer.complete(
+      const EmployeeOnboardingResult(
+        employee: EmployeeProfile(
+          id: 'employee-1',
+          code: 'S001',
+          fullName: '张三',
+          departmentId: 'department-1',
+          departmentName: '销售一组',
+          positionName: '业务员',
+          status: 'active',
+          phone: '13800138000',
+          accountStatus: 'active',
+        ),
+        temporaryPassword: '123456',
+        loginAccount: '13800138000',
+      ),
+    );
+  }
+}
+
 PagePermissionEmployeeDetail _detail(
   String surfaceKey,
   String departmentId,
@@ -503,8 +736,8 @@ PagePermissionEmployeeDetail _detail(
   departmentId: departmentId,
   departmentName: '销售一组',
   employeeId: employeeId,
-  code: 'S001',
-  fullName: '张三',
+  code: employeeId == 'employee-2' ? 'S002' : 'S001',
+  fullName: employeeId == 'employee-2' ? '李四' : '张三',
   positionName: '业务员',
   departmentManager: false,
   hasAccount: true,

@@ -274,6 +274,54 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('plan detail exposes report only with daily view and create', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    Future<void> pumpWith(Set<String> permissions) async {
+      final api = _approvedPlanDetailApi(withInProgressSegment: true);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionWriteAllDocumentScope(),
+            productionPlanRepositoryProvider.overrideWithValue(
+              ProductionPlanRepository(api),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            currentPermissionsProvider.overrideWithValue(permissions),
+          ],
+          child: const MaterialApp(
+            home: ProductionPlanDetailPage(id: 'plan-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final segment = find.text('SEG-001');
+      await tester.ensureVisible(segment);
+      await tester.pumpAndSettle();
+      await tester.tap(segment);
+      await tester.pumpAndSettle();
+    }
+
+    await pumpWith(const {
+      Perm.productionPlanView,
+      Perm.productionDailyReportEdit,
+    });
+    expect(find.text('分批报工'), findsNothing);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+
+    await pumpWith(const {
+      Perm.productionPlanView,
+      Perm.productionDailyReportView,
+      Perm.productionDailyReportCreate,
+    });
+    expect(find.text('分批报工'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 ApiClient _planDetailApi() {
@@ -344,7 +392,7 @@ ApiClient _plainDraftPlanDetailApi() {
   return ApiClient(dio);
 }
 
-ApiClient _approvedPlanDetailApi() {
+ApiClient _approvedPlanDetailApi({bool withInProgressSegment = false}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -368,6 +416,41 @@ ApiClient _approvedPlanDetailApi() {
               'executionSegments': <Map<String, dynamic>>[],
               'drawDocuments': <Map<String, dynamic>>[],
             },
+          '/production/plans/plan-1/execution-segments' =>
+            withInProgressSegment
+                ? <Map<String, dynamic>>[
+                    {
+                      'id': 'segment-1',
+                      'packageId': 'package-1',
+                      'planId': 'plan-1',
+                      'sourcePlanItemId': 'plan-item-1',
+                      'segmentNo': 1,
+                      'segmentCode': 'SEG-001',
+                      'productGoodsId': 'goods-1',
+                      'productCode': 'P-001',
+                      'productName': '测试产品',
+                      'productUnitId': 'unit-1',
+                      'plannedQty': 10,
+                      'reportedQty': 2,
+                      'remainingQty': 8,
+                      'status': 'IN_PROGRESS',
+                      'autoPromoteWhenReady': true,
+                      'workshopDepartmentId': 'workshop-1',
+                      'workshopName': '装配车间',
+                      'responsibleEmployeeId': 'employee-1',
+                      'responsibleEmployeeName': '张三',
+                      'planBeginDate': '2026-08-28',
+                      'planEndDate': '2026-08-29',
+                      'materialKindCount': 1,
+                      'shortageKindCount': 0,
+                      'materialReady': true,
+                      'materialDemandCount': 1,
+                      'fullyIssuedDemandCount': 1,
+                      'materialIssued': true,
+                      'lockVersion': 1,
+                    },
+                  ]
+                : <Map<String, dynamic>>[],
           _ => <Map<String, dynamic>>[],
         };
         handler.resolve(

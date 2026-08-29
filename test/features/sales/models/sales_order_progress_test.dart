@@ -35,4 +35,31 @@ void main() {
 
     expect(row.remainingQty, 6);
   });
+
+  test(
+    'finance rejection is a first-class progress stage with reason metadata',
+    () {
+      final row = SalesOrderProgressRow.fromJson(const {
+        'orderId': 'order-rejected',
+        'billNo': 'SO-REJECTED',
+        'orderQty': 10,
+        'producedQty': 0,
+        'shippedQty': 0,
+        'reservedQty': 0,
+        'plannedQty': 0,
+        'productionPct': 0,
+        'stage': 'REJECTED',
+        'financeConfirmed': false,
+        'financeRejected': true,
+        'financeRejectedReason': '结账方式错误',
+        'financeRejectedAt': '2026-08-27T08:00:00+08:00',
+        'financeRejectedByName': '财务张经理',
+      });
+
+      expect(row.financeRejected, isTrue);
+      expect(row.financeRejectedReason, '结账方式错误');
+      expect(row.financeRejectedByName, '财务张经理');
+      expect(salesProgressStageLabel(row.stage), '财务驳回');
+    },
+  );
 }

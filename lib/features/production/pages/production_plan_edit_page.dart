@@ -19,6 +19,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -258,6 +259,7 @@ class _ProductionPlanEditPageState
           _empCache[id] = UtenEmployeePickerItem(
             id: p.id,
             name: p.fullName ?? '',
+            employeeCode: p.code,
             departmentName: p.departmentName,
           );
         } catch (_) {
@@ -574,6 +576,7 @@ class _ProductionPlanEditPageState
             UtenEmployeePickerItem(
               id: e.id,
               name: e.fullName,
+              employeeCode: e.code,
               departmentName: e.departmentName,
             ),
         ];
@@ -598,7 +601,7 @@ class _ProductionPlanEditPageState
           suffixIcon: Icon(Icons.search_rounded, size: 18),
         ),
         child: Text(
-          empty ? '点击选择销售订单（可多选）' : _sourceDocDisplay,
+          empty ? '点击选择销售订单(可多选)' : _sourceDocDisplay,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -661,6 +664,7 @@ class _ProductionPlanEditPageState
                                 children: [
                                   // 单据号：系统自动生成，只读显示。
                                   TextFormField(
+                                    errorBuilder: utenTextFieldErrorBuilder,
                                     readOnly: true,
                                     controller: _billNo,
                                     decoration: InputDecoration(
@@ -703,7 +707,7 @@ class _ProductionPlanEditPageState
                                   UtenDepartmentPicker(
                                     mode: UtenDepartmentPickerMode.single,
                                     label: '车间',
-                                    hint: '选择生产车间（部门）',
+                                    hint: '选择生产车间(部门)',
                                     selectablePredicate:
                                         isBusinessDepartmentNode,
                                     treeOverride: workshopTree,
@@ -751,7 +755,9 @@ class _ProductionPlanEditPageState
                                       isExpanded: true,
                                       decoration: const InputDecoration(
                                         labelText: '手工计划来源',
-                                        helperText: '仅手工添加的货品行必填',
+                                        helper: UtenFieldMessage.helper(
+                                          '仅手工添加的货品行必填',
+                                        ),
                                       ),
                                       items: [
                                         for (final entry
@@ -769,6 +775,7 @@ class _ProductionPlanEditPageState
                                     ),
                                   if (widget.id == null)
                                     TextFormField(
+                                      errorBuilder: utenTextFieldErrorBuilder,
                                       key: const Key(
                                         'production-manual-source-ref',
                                       ),
@@ -776,18 +783,23 @@ class _ProductionPlanEditPageState
                                       maxLength: 200,
                                       decoration: const InputDecoration(
                                         labelText: '手工计划需求编号',
-                                        helperText: '同一需求后续处理必须沿用同一个编号',
+                                        helper: UtenFieldMessage.helper(
+                                          '同一需求后续处理必须沿用同一个编号',
+                                        ),
                                       ),
                                     ),
                                   if (widget.id == null)
                                     TextFormField(
+                                      errorBuilder: utenTextFieldErrorBuilder,
                                       key: const Key(
                                         'production-manual-source-reason',
                                       ),
                                       controller: _manualSourceReason,
                                       decoration: const InputDecoration(
                                         labelText: '手工计划原因',
-                                        helperText: '返工、试制、样品、备库或其他计划不得绕过物料分析',
+                                        helper: UtenFieldMessage.helper(
+                                          '返工、试制、样品、备库或其他计划不得绕过物料分析',
+                                        ),
                                       ),
                                       minLines: 1,
                                       maxLines: 2,

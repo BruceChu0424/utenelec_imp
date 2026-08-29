@@ -456,6 +456,60 @@ void main() {
     expect(dismissals, 1);
   });
 
+  testWidgets(
+    'long actionable banner discloses full text without running its action',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      var opens = 0;
+      const message =
+          '这是一条需要跳转处理的超长业务通知，用于确认正文被截断时仍可在原位置查看完整内容，'
+          '并且点击问号只展开说明，不会误触通知本身的跳转动作。'
+          '请核对对应单据、责任人、处理期限和失败后的恢复方式，再继续下一步操作。';
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Align(
+              alignment: Alignment.topCenter,
+              child: AppNotificationHost(),
+            ),
+          ),
+        ),
+      );
+
+      container
+          .read(appNotificationProvider.notifier)
+          .showMessage(
+            message,
+            duration: const Duration(hours: 1),
+            onTap: () => opens++,
+            force: true,
+          );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+
+      final help = find.byIcon(Icons.help_outline_rounded);
+      expect(help, findsOneWidget);
+      final helpButton = find.ancestor(
+        of: help,
+        matching: find.byType(IconButton),
+      );
+      final helpSize = tester.getSize(helpButton);
+      expect(helpSize.width, greaterThanOrEqualTo(44));
+      expect(helpSize.height, greaterThanOrEqualTo(44));
+
+      await tester.tap(help);
+      await tester.pump();
+
+      expect(opens, 0);
+      expect(find.byType(UtenTopBannerCard), findsOneWidget);
+      expect(find.text(message), findsNWidgets(2));
+    },
+  );
+
   testWidgets('swipe dismissal invokes onDismissed exactly once', (
     tester,
   ) async {

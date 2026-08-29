@@ -47,7 +47,7 @@ void main() {
     );
     expect(tree.visibleFilterIds, {'root', 'sales'});
     expect(tree.selectedIds, {'sales'});
-    expect(find.text('张三'), findsOneWidget);
+    expect(find.text('张三(E-100)'), findsOneWidget);
     expect(repository.searches, contains('E-100'));
   });
 
@@ -60,7 +60,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
-    expect(find.text('第一页员工'), findsOneWidget);
+    expect(find.text('第一页员工(E-001)'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('department-employee-load-more')),
       findsOneWidget,
@@ -71,7 +71,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('第二页员工'), findsOneWidget);
+    expect(find.text('第二页员工(E-101)'), findsOneWidget);
     expect(repository.requestedPages, containsAll(<int>[1, 2]));
   });
 
@@ -91,7 +91,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.widget<TextField>(search).controller?.text, 'SALES');
-    expect(find.text('张三'), findsOneWidget);
+    expect(find.text('张三(E-100)'), findsOneWidget);
     expect(repository.departmentIds.last, 'sales');
     expect(repository.searches.last, isNull);
   });
@@ -108,12 +108,12 @@ void main() {
     await tester.enterText(search, 'NEW');
     repository.completeOld();
     await tester.pump();
-    expect(find.text('旧员工'), findsNothing);
+    expect(find.text('旧员工(OLD)'), findsNothing);
 
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
-    expect(find.text('新员工'), findsOneWidget);
-    expect(find.text('旧员工'), findsNothing);
+    expect(find.text('新员工(NEW)'), findsOneWidget);
+    expect(find.text('旧员工(OLD)'), findsNothing);
   });
 }
 

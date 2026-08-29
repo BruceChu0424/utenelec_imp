@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../features/finance/models/customer_prepayment.dart';
-import '../../features/finance/models/finance_decimal.dart';
+import '../formatters/exact_decimal.dart';
 import '../../features/finance/repositories/customer_prepayment_repository.dart';
 import '../auth/permissions.dart';
 
@@ -83,7 +83,7 @@ class _SalesOrderMoneySummaryCardState
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(
                   child: Text(
-                    '订单资金状态（财务只读）',
+                    '订单资金状态(财务只读)',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -138,7 +138,6 @@ class _SalesOrderMoneySummaryCardState
   );
 
   Widget _summaryBody(ThemeData theme, SalesOrderMoneySummary summary) {
-    final currency = summary.currencyCode ?? '订单币种';
     final metrics = <(String, String?, bool)>[
       ('订单总额', summary.orderTotalOriginal, false),
       ('正式应收', summary.formalArOriginal, false),
@@ -179,7 +178,6 @@ class _SalesOrderMoneySummaryCardState
                       theme,
                       metric.$1,
                       metric.$2,
-                      currency,
                       emphasis: metric.$3,
                     ),
                   ),
@@ -214,8 +212,7 @@ class _SalesOrderMoneySummaryCardState
   Widget _metric(
     ThemeData theme,
     String label,
-    String? value,
-    String currency, {
+    String? value, {
     required bool emphasis,
   }) => Container(
     padding: const EdgeInsets.all(UtenSpacing.s8),
@@ -237,7 +234,7 @@ class _SalesOrderMoneySummaryCardState
         ),
         const SizedBox(height: UtenSpacing.s4),
         Text(
-          '$currency ${financeExactMoneyDisplay(value)}',
+          financeExactMoneyDisplay(value),
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w700,
             fontFeatures: const [FontFeature.tabularFigures()],

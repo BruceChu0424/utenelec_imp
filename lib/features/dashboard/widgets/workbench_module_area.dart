@@ -432,7 +432,7 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.point_of_sale_outlined,
         label: '销售管理',
         location: RouteName.sales,
-        // 角标 = 销售订单完工提醒（未读完工通知数）。
+        // 角标 = 财务驳回待修正订单 + 未读完工提醒。
         badge: WorkbenchBadgeKind.sales,
       ),
       // 官网客户留言统一收件箱（V253；webinquiry:view 部门授权）。
@@ -579,7 +579,7 @@ class _ModuleTile extends StatelessWidget {
                   const SizedBox(width: UtenSpacing.s12),
                   Expanded(
                     child: Text(
-                      comingSoon ? '${item.label}（功能规划接入中）' : item.label,
+                      comingSoon ? '${item.label}(功能规划接入中)' : item.label,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w500,
                         color: comingSoon

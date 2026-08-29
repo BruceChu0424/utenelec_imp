@@ -31,7 +31,7 @@ public record TaskClaimPolicy(int leaseMinutes, String claimPermission, String m
         TaskClaimPolicy p = POLICIES.get(targetType);
         if (p == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "未登记的任务认领类型：" + targetType + "（需先在 TaskClaimPolicy 登记）");
+                    "未登记的任务认领类型：" + targetType + "(需先在 TaskClaimPolicy 登记)");
         }
         return p;
     }

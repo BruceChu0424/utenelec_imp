@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'required_field_decoration.dart';
+import 'uten_field_message.dart';
 
 /// 单选项：[value]（null=清空/不选）+ [label]（展示文本）。
 class UtenDropdownItem {
@@ -37,8 +38,9 @@ class UtenDropdownField extends StatefulWidget {
     this.allowClear = true,
     this.enabled = true,
     this.hintText,
+    this.helperMessage,
     this.searchable,
-    this.errorText,
+    this.errorMessage,
     this.onAddNew,
     this.addNewLabel,
   });
@@ -58,11 +60,14 @@ class UtenDropdownField extends StatefulWidget {
   final bool enabled;
   final String? hintText;
 
+  /// 字段辅助说明；超出一行时可展开查看全文。
+  final String? helperMessage;
+
   /// 弹层是否带搜索框（输入实时过滤选项）。null=自动（选项 ≥4 个时启用）。
   final bool? searchable;
 
   /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
-  final String? errorText;
+  final String? errorMessage;
 
   /// 浮层内"添加新项"回调（如颜色/单位内联新建）：非空时在搜索框下方渲染浅绿"添加"按钮，
   /// 点击先关浮层再触发。null=不显示（默认，不影响其他调用方）。
@@ -145,7 +150,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         widget.enabled &&
         widget.required &&
         !hasValue &&
-        widget.errorText == null;
+        widget.errorMessage == null;
     return CompositedTransformTarget(
       link: _link,
       child: InkWell(
@@ -162,7 +167,12 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                       base: theme.inputDecorationTheme.labelStyle,
                     ),
               hintText: widget.hintText,
-              errorText: widget.errorText,
+              helper: widget.helperMessage == null
+                  ? null
+                  : UtenFieldMessage.helper(widget.helperMessage!),
+              error: widget.errorMessage == null
+                  ? null
+                  : UtenFieldMessage.error(widget.errorMessage!),
               suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
             ),
             theme,

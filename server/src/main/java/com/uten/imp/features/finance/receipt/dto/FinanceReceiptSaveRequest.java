@@ -10,6 +10,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,6 +20,10 @@ import java.util.UUID;
 public class FinanceReceiptSaveRequest {
 
     private String billNo;
+    private Long expectedVersion;
+
+    @Size(min = 8, max = 128)
+    private String createIdempotencyKey;
 
     @NotNull
     private LocalDate billDate;
@@ -37,6 +42,24 @@ public class FinanceReceiptSaveRequest {
     private BigDecimal bankFee;
     private BigDecimal otherFee;
     private UUID otherFeeStyleId;
+    private String settlementChannel;
+    private UUID settlementAgentSupplierId;
+    private String exchangeRateSource;
+    private OffsetDateTime exchangeRateEffectiveAt;
+    private OffsetDateTime bankBookedAt;
+    @NotBlank
+    @Size(max = 128)
+    private String bankReference;
+    @Size(max = 128)
+    private String agentStatementNo;
+    /** Expected account currency from the client dictionary; server locks and owns the snapshot. */
+    private UUID accountCurrencyId;
+    private BigDecimal accountAmount;
+    private BigDecimal bankFeeAccountAmount;
+    private BigDecimal otherFeeAccountAmount;
+    private String feeSettlementMode;
+    private String feeBearer;
+    private UUID feePaymentAccountId;
     private UUID receiptMethodId;
     private Integer receiptMethodLegacyId;
     private String invoiceNo;

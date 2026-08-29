@@ -43,7 +43,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('可生产几个'), findsOneWidget);
-      expect(find.text('3（30%）'), findsOneWidget);
+      expect(find.text('3(30%)'), findsOneWidget);
       expect(find.text('未分析'), findsWidgets);
 
       final checkboxes = find.byType(Checkbox);
@@ -69,7 +69,7 @@ void main() {
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
       expect(find.text('联合分析所选 2 项'), findsOneWidget);
-      expect(find.text('已选 2 项（最多 500 项，可跨页选择）'), findsOneWidget);
+      expect(find.text('已选 2 项(最多 500 项，可跨页选择)'), findsOneWidget);
 
       await tester.tap(find.text('清空已选'));
       await tester.pump();
@@ -199,7 +199,6 @@ ProductionPlanRepository _repository(
                 if (activeFirst) 'materialAnalysisVersion': 2,
                 'materialAnalyzedAt': '2026-08-08T10:00:00Z',
                 'deliverDate': '2026-08-20',
-                'bomReady': true,
               },
               {
                 'orderItemId': 'line-b',
@@ -212,7 +211,6 @@ ProductionPlanRepository _repository(
                 'plannedQty': 0,
                 'needQty': 4,
                 'deliverDate': '2026-08-25',
-                'bomReady': false,
               },
             ],
             'page': 1,

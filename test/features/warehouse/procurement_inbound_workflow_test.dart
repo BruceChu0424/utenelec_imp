@@ -187,7 +187,7 @@ void main() {
 
       expect(find.text('系统不会预选，必须由您主动确认。'), findsOneWidget);
       expect(find.byIcon(Icons.radio_button_checked), findsNothing);
-      expect(find.textContaining('只批准订单剩余，超出退回（推荐）'), findsOneWidget);
+      expect(find.textContaining('只批准订单剩余，超出退回(推荐)'), findsOneWidget);
       expect(
         find.byKey(const Key('finance-arrival-custom-excess')),
         findsNothing,
@@ -202,7 +202,7 @@ void main() {
         find.byKey(const Key('finance-arrival-custom-excess')),
         findsOneWidget,
       );
-      expect(find.text('财务理由（必填）'), findsOneWidget);
+      expect(find.text('财务理由(必填)'), findsOneWidget);
       expect(find.text('确认财务决定'), findsOneWidget);
 
       await tester.enterText(

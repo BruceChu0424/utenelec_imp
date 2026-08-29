@@ -3,6 +3,8 @@ package com.uten.imp.features.master.goods.dto;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -188,30 +190,46 @@ public class GoodsSaveRequest {
     public boolean hasMWeightUnitReference() { return mWeightUnitReferencePresent; }
 
     // ===== 成本预算（「成本预算」页签；可空，留空不清已有值时传 null 即覆盖为 null，前端表单始终全量回传） =====
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal sourceE;      // SourceE 材料合计
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal machiningE;   // MachiningE 加工费
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal incidentalE;  // IncidentalE 杂费
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal lacquerE;     // LacquerE 喷漆、朔费
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal platingE;     // PlatingE 电镀费
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal casingE;      // CasingE 包装费
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal polishE;      // PolishE 抛光费
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal total;        // Total 成品价
+    @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)
     private BigDecimal workRate;     // WorkRate 人工比率(%)
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal workE;        // WorkE 人工费
+    @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)
     private BigDecimal lostRate;     // LostRate 损耗比率(%)
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal lostE;        // LostE 损耗费
+    @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)
     private BigDecimal rentRate;     // RentRate 厂租比率(%)
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal rentE;        // RentE 厂房租金
+    @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)
     private BigDecimal makeRate;     // MakeRate 生产利率(%)
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal makeE;        // MakeE 生产利润
     @JsonProperty("cTotal")
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal cTotal;       // CTotal 成本价（防 Jackson 连续大写 quirk）
     @JsonProperty("gTotal")
+    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
     private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
 
     private String sourceType;   // 来源（自制/采购/委外）
-    /** BOM_REQUIRED / DIRECT_MAKE / NOT_PRODUCED. */
-    private String productionBomPolicy;
 
     /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409）。 */
     private Long version;

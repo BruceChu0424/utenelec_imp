@@ -20,6 +20,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inspection_pending_badge.dart';
+import '../../../shared/providers/production_fqc_pending_count_provider.dart';
+import '../widgets/production_fqc_pending_badge.dart';
 
 class QualityTaskCenterPage extends ConsumerWidget {
   const QualityTaskCenterPage({super.key});
@@ -29,13 +31,43 @@ class QualityTaskCenterPage extends ConsumerWidget {
     // 返回即刷新：处置完待检单回到本页时角标立即重拉（不等下一轮 60s 轮询）。
     ref.onPageResume(RouteName.qualityTaskCenter, () {
       ref.invalidate(procurementInspectionPendingCountProvider);
+      ref.invalidate(productionFqcPendingCountProvider);
     });
     final theme = Theme.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final superAdmin = ref.watch(isSuperAdminProvider);
     final canViewInspection =
-        ref
-            .watch(currentPermissionsProvider)
-            .contains(Perm.procurementInspectionView) ||
-        ref.watch(isSuperAdminProvider);
+        superAdmin || permissions.contains(Perm.procurementInspectionView);
+    final canViewFqc =
+        superAdmin ||
+        permissions.contains(Perm.productionQualityInspectionView);
+    final taskEntries =
+        <
+          ({
+            IconData icon,
+            String label,
+            String description,
+            String location,
+            Widget badge,
+          })
+        >[
+          if (canViewInspection)
+            (
+              icon: Icons.fact_check_outlined,
+              label: '待检处置',
+              description: '采购/委外收货 IQC；合格放行后自动入库。',
+              location: RouteName.warehouseInspections,
+              badge: const ProcurementInspectionPendingBadge(showLabel: true),
+            ),
+          if (canViewFqc)
+            (
+              icon: Icons.rule_folder_outlined,
+              label: '生产成品质检',
+              description: '报工后做 PASS/部分合格/不合格决定；合格量转仓库点收。',
+              location: RouteName.productionFqcInspections,
+              badge: const ProductionFqcPendingBadge(showLabel: true),
+            ),
+        ];
     return Scaffold(
       appBar: UtenAppBar(
         title: '品质任务中心',
@@ -71,24 +103,24 @@ class QualityTaskCenterPage extends ConsumerWidget {
                       ),
                     ),
                     UtenResponsiveGrid(
-                      itemCount: canViewInspection ? 1 : 0,
+                      itemCount: taskEntries.length,
                       spacing: UtenSpacing.s12,
                       columns: const UtenResponsiveColumns(
                         compact: 2,
                         medium: 4,
                       ),
-                      itemBuilder: (context, i, _) => UtenHubCard(
-                        icon: Icons.fact_check_outlined,
-                        label: '待检处置',
-                        description: '采购/委外收货到料检验；合格放行后自动入库。',
-                        onTap: () =>
-                            goFrom(context, RouteName.warehouseInspections),
-                        badge: const ProcurementInspectionPendingBadge(
-                          showLabel: true,
-                        ),
-                      ),
+                      itemBuilder: (context, i, _) {
+                        final entry = taskEntries[i];
+                        return UtenHubCard(
+                          icon: entry.icon,
+                          label: entry.label,
+                          description: entry.description,
+                          onTap: () => goFrom(context, entry.location),
+                          badge: entry.badge,
+                        );
+                      },
                     ),
-                    if (!canViewInspection)
+                    if (taskEntries.isEmpty)
                       const Padding(
                         padding: EdgeInsets.all(UtenSpacing.s8),
                         child: Text('您暂无检验任务权限，请联系品质主管开通。'),

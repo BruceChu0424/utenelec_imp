@@ -25,7 +25,7 @@ public class StockReconciliationScheduler {
         try {
             reconciliation.scanAndWarn();
         } catch (Exception e) {
-            log.warn("库存对账扫描失败（不影响业务）: {}", e.toString());
+            log.warn("库存对账扫描失败(不影响业务): {}", e.toString());
         }
     }
 }

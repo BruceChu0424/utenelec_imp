@@ -60,6 +60,12 @@ String? financeDecimalText(Object? value) {
   return text.isEmpty ? null : text;
 }
 
+double? _financeDecimalDouble(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value.trim());
+  return null;
+}
+
 String financeReceiptKindLabel(String? value) => switch (value?.toUpperCase()) {
   'AR_SETTLEMENT' => '普通应收收款',
   'CUSTOMER_PREPAYMENT' => '客户订单预收',
@@ -173,16 +179,22 @@ class FinanceDocItem {
     this.amountOriginal,
     this.amountOriginalText,
     this.amountLocal,
+    this.amountLocalText,
     this.currencyId,
     this.exchangeRate,
     this.exchangeRateText,
     this.writeOffAmount,
     this.writeOffAmountText,
     this.writeOffLocal,
+    this.writeOffLocalText,
     this.appliedAmountLocal,
+    this.appliedAmountLocalText,
     this.balanceBeforeOriginal,
+    this.balanceBeforeOriginalText,
     this.balanceAfterOriginal,
+    this.balanceAfterOriginalText,
     this.exchangeDiff,
+    this.exchangeDiffText,
     this.summary,
     this.remark,
   });
@@ -209,16 +221,22 @@ class FinanceDocItem {
   final double? amountOriginal;
   final String? amountOriginalText;
   final double? amountLocal;
+  final String? amountLocalText;
   final String? currencyId;
   final double? exchangeRate;
   final String? exchangeRateText;
   final double? writeOffAmount;
   final String? writeOffAmountText;
   final double? writeOffLocal;
+  final String? writeOffLocalText;
   final double? appliedAmountLocal;
+  final String? appliedAmountLocalText;
   final double? balanceBeforeOriginal;
+  final String? balanceBeforeOriginalText;
   final double? balanceAfterOriginal;
+  final String? balanceAfterOriginalText;
   final double? exchangeDiff;
+  final String? exchangeDiffText;
   final String? summary;
   final String? remark;
 
@@ -241,16 +259,24 @@ class FinanceDocItem {
     amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
     amountOriginalText: financeDecimalText(json['amountOriginal']),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    amountLocalText: financeDecimalText(json['amountLocal']),
     currencyId: json['currencyId'] as String?,
     exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
     exchangeRateText: financeDecimalText(json['exchangeRate']),
     writeOffAmount: (json['writeOffAmount'] as num?)?.toDouble(),
     writeOffAmountText: financeDecimalText(json['writeOffAmount']),
     writeOffLocal: (json['writeOffLocal'] as num?)?.toDouble(),
+    writeOffLocalText: financeDecimalText(json['writeOffLocal']),
     appliedAmountLocal: (json['appliedAmountLocal'] as num?)?.toDouble(),
+    appliedAmountLocalText: financeDecimalText(json['appliedAmountLocal']),
     balanceBeforeOriginal: (json['balanceBeforeOriginal'] as num?)?.toDouble(),
+    balanceBeforeOriginalText: financeDecimalText(
+      json['balanceBeforeOriginal'],
+    ),
     balanceAfterOriginal: (json['balanceAfterOriginal'] as num?)?.toDouble(),
+    balanceAfterOriginalText: financeDecimalText(json['balanceAfterOriginal']),
     exchangeDiff: (json['exchangeDiff'] as num?)?.toDouble(),
+    exchangeDiffText: financeDecimalText(json['exchangeDiff']),
     summary: json['summary'] as String?,
     remark: json['remark'] as String?,
   );
@@ -261,6 +287,7 @@ class FinanceDocItem {
 class FinanceDocDetail {
   const FinanceDocDetail({
     required this.id,
+    this.version,
     this.legacyId,
     this.billNo,
     this.billDate,
@@ -273,10 +300,46 @@ class FinanceDocDetail {
     this.counterpartAccountId,
     this.currencyId,
     this.exchangeRate,
+    this.exchangeRateText,
     this.amountOriginal,
+    this.amountOriginalText,
     this.amountLocal,
+    this.amountLocalText,
     this.bankFee,
+    this.bankFeeText,
     this.otherFee,
+    this.otherFeeText,
+    this.settlementAuthorityVersion,
+    this.createIdempotencyKey,
+    this.settlementChannel,
+    this.settlementAgentSupplierId,
+    this.settlementAgentNameSnapshot,
+    this.settlementRateQuoteDirection,
+    this.exchangeRateSource,
+    this.exchangeRateEffectiveAt,
+    this.bankBookedAt,
+    this.bankReference,
+    this.agentStatementNo,
+    this.accountCurrencyId,
+    this.accountExchangeRate,
+    this.accountExchangeRateText,
+    this.accountExchangeRateSource,
+    this.accountAmount,
+    this.accountAmountText,
+    this.accountAmountLocal,
+    this.accountAmountLocalText,
+    this.bankFeeAccountAmount,
+    this.bankFeeAccountAmountText,
+    this.otherFeeAccountAmount,
+    this.otherFeeAccountAmountText,
+    this.feeSettlementMode,
+    this.feeBearer,
+    this.feePaymentAccountId,
+    this.feeAccountCurrencyId,
+    this.feeAccountExchangeRate,
+    this.feeAccountExchangeRateText,
+    this.settlementGrossLocal,
+    this.settlementGrossLocalText,
     this.otherFeeStyleId,
     this.receiptMethodId,
     this.paymentMethodId,
@@ -294,6 +357,7 @@ class FinanceDocDetail {
   });
 
   final String id;
+  final int? version;
   final int? legacyId;
   final String? billNo;
   final String? billDate;
@@ -306,10 +370,48 @@ class FinanceDocDetail {
   final String? counterpartAccountId;
   final String? currencyId;
   final double? exchangeRate;
+  final String? exchangeRateText;
   final double? amountOriginal;
+  final String? amountOriginalText;
   final double? amountLocal;
+  final String? amountLocalText;
   final double? bankFee;
+  final String? bankFeeText;
   final double? otherFee;
+  final String? otherFeeText;
+
+  /// 收款结算权威契约版本。null/0 表示历史 V0，1 表示到账与核销已分层。
+  final int? settlementAuthorityVersion;
+  final String? createIdempotencyKey;
+  final String? settlementChannel;
+  final String? settlementAgentSupplierId;
+  final String? settlementAgentNameSnapshot;
+  final String? settlementRateQuoteDirection;
+  final String? exchangeRateSource;
+  final String? exchangeRateEffectiveAt;
+  final String? bankBookedAt;
+  final String? bankReference;
+  final String? agentStatementNo;
+  final String? accountCurrencyId;
+  final double? accountExchangeRate;
+  final String? accountExchangeRateText;
+  final String? accountExchangeRateSource;
+  final double? accountAmount;
+  final String? accountAmountText;
+  final double? accountAmountLocal;
+  final String? accountAmountLocalText;
+  final double? bankFeeAccountAmount;
+  final String? bankFeeAccountAmountText;
+  final double? otherFeeAccountAmount;
+  final String? otherFeeAccountAmountText;
+  final String? feeSettlementMode;
+  final String? feeBearer;
+  final String? feePaymentAccountId;
+  final String? feeAccountCurrencyId;
+  final double? feeAccountExchangeRate;
+  final String? feeAccountExchangeRateText;
+  final double? settlementGrossLocal;
+  final String? settlementGrossLocalText;
   final String? otherFeeStyleId;
   final String? receiptMethodId;
   final String? paymentMethodId;
@@ -331,44 +433,94 @@ class FinanceDocDetail {
   final int? glStatus;
   final List<FinanceDocItem> items;
 
-  factory FinanceDocDetail.fromJson(Map<String, dynamic> json) =>
-      FinanceDocDetail(
-        id: json['id'] as String,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-        billNo: json['billNo'] as String?,
-        billDate: json['billDate'] as String?,
-        receiptKind: json['receiptKind'] as String?,
-        salesOrderId: json['salesOrderId'] as String?,
-        clientId: json['clientId'] as String?,
-        supplierId: json['supplierId'] as String?,
-        accountId: json['accountId'] as String?,
-        outAccountId: json['outAccountId'] as String?,
-        counterpartAccountId: json['counterpartAccountId'] as String?,
-        currencyId: json['currencyId'] as String?,
-        exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
-        amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
-        amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-        bankFee: (json['bankFee'] as num?)?.toDouble(),
-        otherFee: (json['otherFee'] as num?)?.toDouble(),
-        otherFeeStyleId: json['otherFeeStyleId'] as String?,
-        receiptMethodId: json['receiptMethodId'] as String?,
-        paymentMethodId: json['paymentMethodId'] as String?,
-        invoiceNo: json['invoiceNo'] as String?,
-        operatorId: json['operatorId'] as String?,
-        makerId: json['makerId'] as String?,
-        makerName: json['makerName'] as String?,
-        createdAt: json['createdAt'] as String?,
-        approverId: json['approverId'] as String?,
-        remark: json['remark'] as String?,
-        status: (json['status'] as num?)?.toInt(),
-        closed: (json['closed'] as bool?) ?? false,
-        glStatus: (json['glStatus'] as num?)?.toInt(),
-        items:
-            (json['items'] as List?)
-                ?.map((e) => FinanceDocItem.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            const [],
-      );
+  factory FinanceDocDetail.fromJson(
+    Map<String, dynamic> json,
+  ) => FinanceDocDetail(
+    id: json['id'] as String,
+    version: (json['version'] as num?)?.toInt(),
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    billNo: json['billNo'] as String?,
+    billDate: json['billDate'] as String?,
+    receiptKind: json['receiptKind'] as String?,
+    salesOrderId: json['salesOrderId'] as String?,
+    clientId: json['clientId'] as String?,
+    supplierId: json['supplierId'] as String?,
+    accountId: json['accountId'] as String?,
+    outAccountId: json['outAccountId'] as String?,
+    counterpartAccountId: json['counterpartAccountId'] as String?,
+    currencyId: json['currencyId'] as String?,
+    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    exchangeRateText: financeDecimalText(json['exchangeRate']),
+    amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+    amountOriginalText: financeDecimalText(json['amountOriginal']),
+    amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    amountLocalText: financeDecimalText(json['amountLocal']),
+    bankFee: (json['bankFee'] as num?)?.toDouble(),
+    bankFeeText: financeDecimalText(json['bankFee']),
+    otherFee: (json['otherFee'] as num?)?.toDouble(),
+    otherFeeText: financeDecimalText(json['otherFee']),
+    settlementAuthorityVersion: (json['settlementAuthorityVersion'] as num?)
+        ?.toInt(),
+    createIdempotencyKey: json['createIdempotencyKey'] as String?,
+    settlementChannel: json['settlementChannel'] as String?,
+    settlementAgentSupplierId: json['settlementAgentSupplierId'] as String?,
+    settlementAgentNameSnapshot: json['settlementAgentNameSnapshot'] as String?,
+    settlementRateQuoteDirection:
+        json['settlementRateQuoteDirection'] as String?,
+    exchangeRateSource: json['exchangeRateSource'] as String?,
+    exchangeRateEffectiveAt: json['exchangeRateEffectiveAt'] as String?,
+    bankBookedAt: json['bankBookedAt'] as String?,
+    bankReference: json['bankReference'] as String?,
+    agentStatementNo: json['agentStatementNo'] as String?,
+    accountCurrencyId: json['accountCurrencyId'] as String?,
+    accountExchangeRate: _financeDecimalDouble(json['accountExchangeRate']),
+    accountExchangeRateText: financeDecimalText(json['accountExchangeRate']),
+    accountExchangeRateSource: json['accountExchangeRateSource'] as String?,
+    accountAmount: _financeDecimalDouble(json['accountAmount']),
+    accountAmountText: financeDecimalText(json['accountAmount']),
+    accountAmountLocal: _financeDecimalDouble(json['accountAmountLocal']),
+    accountAmountLocalText: financeDecimalText(json['accountAmountLocal']),
+    bankFeeAccountAmount: _financeDecimalDouble(json['bankFeeAccountAmount']),
+    bankFeeAccountAmountText: financeDecimalText(json['bankFeeAccountAmount']),
+    otherFeeAccountAmount: _financeDecimalDouble(json['otherFeeAccountAmount']),
+    otherFeeAccountAmountText: financeDecimalText(
+      json['otherFeeAccountAmount'],
+    ),
+    feeSettlementMode: json['feeSettlementMode'] as String?,
+    feeBearer: json['feeBearer'] as String?,
+    feePaymentAccountId: json['feePaymentAccountId'] as String?,
+    feeAccountCurrencyId: json['feeAccountCurrencyId'] as String?,
+    feeAccountExchangeRate: _financeDecimalDouble(
+      json['feeAccountExchangeRate'],
+    ),
+    feeAccountExchangeRateText: financeDecimalText(
+      json['feeAccountExchangeRate'],
+    ),
+    settlementGrossLocal: _financeDecimalDouble(
+      json['settlementGrossLocal'] ?? json['amountLocal'],
+    ),
+    settlementGrossLocalText: financeDecimalText(
+      json['settlementGrossLocal'] ?? json['amountLocal'],
+    ),
+    otherFeeStyleId: json['otherFeeStyleId'] as String?,
+    receiptMethodId: json['receiptMethodId'] as String?,
+    paymentMethodId: json['paymentMethodId'] as String?,
+    invoiceNo: json['invoiceNo'] as String?,
+    operatorId: json['operatorId'] as String?,
+    makerId: json['makerId'] as String?,
+    makerName: json['makerName'] as String?,
+    createdAt: json['createdAt'] as String?,
+    approverId: json['approverId'] as String?,
+    remark: json['remark'] as String?,
+    status: (json['status'] as num?)?.toInt(),
+    closed: (json['closed'] as bool?) ?? false,
+    glStatus: (json['glStatus'] as num?)?.toInt(),
+    items:
+        (json['items'] as List?)
+            ?.map((e) => FinanceDocItem.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
+  );
 }
 
 // ===== 应收应付台账（只读）=====
@@ -391,12 +543,19 @@ class ArApLedgerItem {
     this.currencyCode,
     this.currencyName,
     this.exchangeRate,
+    this.exchangeRateText,
     this.amountOriginal,
+    this.amountOriginalText,
     this.amountOriginalLocal,
+    this.amountOriginalLocalText,
     this.amountReceivedOriginal,
+    this.amountReceivedOriginalText,
     this.amountReceivedLocal,
+    this.amountReceivedLocalText,
     this.amountWriteOffOriginal,
+    this.amountWriteOffOriginalText,
     this.amountWriteOffLocal,
+    this.amountWriteOffLocalText,
     this.amountBalanceOriginal,
     this.amountBalanceOriginalText,
     this.amountOffsetOriginal,
@@ -432,12 +591,19 @@ class ArApLedgerItem {
   final String? currencyCode;
   final String? currencyName;
   final double? exchangeRate;
+  final String? exchangeRateText;
   final double? amountOriginal;
+  final String? amountOriginalText;
   final double? amountOriginalLocal;
+  final String? amountOriginalLocalText;
   final double? amountReceivedOriginal;
+  final String? amountReceivedOriginalText;
   final double? amountReceivedLocal;
+  final String? amountReceivedLocalText;
   final double? amountWriteOffOriginal;
+  final String? amountWriteOffOriginalText;
   final double? amountWriteOffLocal;
+  final String? amountWriteOffLocalText;
   final double? amountBalanceOriginal;
   final String? amountBalanceOriginalText;
 
@@ -478,14 +644,25 @@ class ArApLedgerItem {
     currencyCode: json['currencyCode'] as String?,
     currencyName: json['currencyName'] as String?,
     exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    exchangeRateText: financeDecimalText(json['exchangeRate']),
     amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+    amountOriginalText: financeDecimalText(json['amountOriginal']),
     amountOriginalLocal: (json['amountOriginalLocal'] as num?)?.toDouble(),
+    amountOriginalLocalText: financeDecimalText(json['amountOriginalLocal']),
     amountReceivedOriginal: (json['amountReceivedOriginal'] as num?)
         ?.toDouble(),
+    amountReceivedOriginalText: financeDecimalText(
+      json['amountReceivedOriginal'],
+    ),
     amountReceivedLocal: (json['amountReceivedLocal'] as num?)?.toDouble(),
+    amountReceivedLocalText: financeDecimalText(json['amountReceivedLocal']),
     amountWriteOffOriginal: (json['amountWriteOffOriginal'] as num?)
         ?.toDouble(),
+    amountWriteOffOriginalText: financeDecimalText(
+      json['amountWriteOffOriginal'],
+    ),
     amountWriteOffLocal: (json['amountWriteOffLocal'] as num?)?.toDouble(),
+    amountWriteOffLocalText: financeDecimalText(json['amountWriteOffLocal']),
     amountBalanceOriginal: (json['amountBalanceOriginal'] as num?)?.toDouble(),
     amountBalanceOriginalText: financeDecimalText(
       json['amountBalanceOriginal'],
@@ -532,6 +709,8 @@ class ReconciliationItem {
     this.billDate,
     this.settledDate,
     this.sourceRemark,
+    this.entryKind,
+    this.reversalOfId,
   });
 
   final String id;
@@ -546,6 +725,8 @@ class ReconciliationItem {
   final String? billDate;
   final String? settledDate;
   final String? sourceRemark;
+  final String? entryKind;
+  final String? reversalOfId;
 
   factory ReconciliationItem.fromJson(Map<String, dynamic> json) =>
       ReconciliationItem(
@@ -561,6 +742,8 @@ class ReconciliationItem {
         billDate: json['billDate'] as String?,
         settledDate: json['settledDate'] as String?,
         sourceRemark: json['sourceRemark'] as String?,
+        entryKind: json['entryKind'] as String?,
+        reversalOfId: json['reversalOfId'] as String?,
       );
 }
 

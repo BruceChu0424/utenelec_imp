@@ -9,7 +9,9 @@ import com.uten.imp.features.sales.order.dto.SalesOrderFinanceReviewDto;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,12 +36,14 @@ import java.util.UUID;
  *
  * <p>确认只放行计划可见性，不动库存、不立账；确认后订单红冲/取消规则不变。
  *
- * <p>V300 驳回：财务可驳回（必填原因），驳回不改订单状态与库存预留，只记录事实并
- * 通知归属销售修正；订单仍留在待确认池（带驳回标记），修正后财务确认即自动清除驳回。
+ * <p>V300 驳回：财务可驳回（必填原因），驳回先记录事实并通知归属销售；
+ * 销售须走受控修订释放预留、回到草稿并重新审核，财务不能直接越过驳回确认。
  */
 @Service
 @RequiredArgsConstructor
 public class SalesOrderFinanceConfirmService {
+
+    private static final int MAX_BATCH_CONFIRM_ORDERS = 100;
 
     private final EntityManager em;
     private final SalesOrderRepository orderRepo;
@@ -60,6 +65,22 @@ public class SalesOrderFinanceConfirmService {
             @Size(max = 500, message = "驳回原因不能超过 500 个字符") String reason) {
     }
 
+    /** 原子批量确认：一次最多 100 个订单；重复 UUID 由服务层去重。 */
+    public record FinanceBatchConfirmRequest(
+            @NotEmpty(message = "请选择至少一笔销售订货单")
+            @Size(max = MAX_BATCH_CONFIRM_ORDERS, message = "一次最多确认 100 笔销售订货单")
+            List<@NotNull(message = "销售订货单 ID 不能为空") UUID> orderIds,
+            @Size(max = 500, message = "确认备注不能超过 500 个字符") String remark) {
+    }
+
+    /** 批量确认结果；orderIds 为去重、排序后的完整受理集合。 */
+    public record FinanceBatchConfirmResult(
+            int requestedCount,
+            int newlyConfirmedCount,
+            int alreadyConfirmedCount,
+            List<UUID> orderIds) {
+    }
+
     /**
      * 待确认任务：已审（status=1）且未财务确认、未结案/中止/删除的订单，按交货日升序。
      *
@@ -67,21 +88,37 @@ public class SalesOrderFinanceConfirmService {
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
-    public PageResponse<SalesOrderFinancePendingDto> pending(int page, int size, Boolean rejected) {
+    public PageResponse<SalesOrderFinancePendingDto> pending(
+            int page, int size, Boolean rejected, String keyword) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 100);
         String rejectedFilter = rejected == null ? ""
                 : rejected ? " AND o.finance_rejected = TRUE" : " AND o.finance_rejected = FALSE";
-        long total = ((Number) em.createNativeQuery("""
-                SELECT COUNT(*) FROM sales_orders o
+        String normalizedKeyword = keyword == null
+                ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        String keywordFilter = normalizedKeyword.isEmpty() ? "" : """
+                  AND (
+                    POSITION(:keyword IN LOWER(COALESCE(o.bill_no, ''))) > 0
+                    OR POSITION(:keyword IN LOWER(COALESCE(c.name, ''))) > 0
+                    OR POSITION(:keyword IN LOWER(COALESCE(e.full_name, ''))) > 0
+                  )
+                """;
+        var countQuery = em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM sales_orders o
+                LEFT JOIN clients c ON c.id = o.client_id
+                LEFT JOIN employees e ON e.id = o.seller_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
                   AND o.is_closed = FALSE AND o.is_stopped = FALSE
                   AND o.finance_confirmed = FALSE
-                """ + rejectedFilter).getSingleResult()).longValue();
+                """ + rejectedFilter + keywordFilter);
+        if (!normalizedKeyword.isEmpty()) {
+            countQuery.setParameter("keyword", normalizedKeyword);
+        }
+        long total = ((Number) countQuery.getSingleResult()).longValue();
         int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
         if (totalPages > 0 && p > totalPages) p = totalPages;
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
+        var pendingQuery = em.createNativeQuery("""
                 SELECT o.id, o.bill_no, o.bill_date,
                        COALESCE(c.name, ''), COALESCE(e.full_name, ''),
                        o.deliver_date,
@@ -102,15 +139,19 @@ public class SalesOrderFinanceConfirmService {
                 WHERE o.status = 1 AND o.is_deleted = FALSE
                   AND o.is_closed = FALSE AND o.is_stopped = FALSE
                   AND o.finance_confirmed = FALSE
-                """ + rejectedFilter + """
+                """ + rejectedFilter + keywordFilter + """
 
                 ORDER BY o.finance_rejected ASC,
                          o.deliver_date NULLS LAST, o.bill_date, o.bill_no
                 LIMIT :lim OFFSET :off
-                """)
-                .setParameter("lim", sz)
-                .setParameter("off", (p - 1) * sz)
-                .getResultList();
+                """);
+        if (!normalizedKeyword.isEmpty()) {
+            pendingQuery.setParameter("keyword", normalizedKeyword);
+        }
+        pendingQuery.setParameter("lim", sz);
+        pendingQuery.setParameter("off", (p - 1) * sz);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = pendingQuery.getResultList();
         List<SalesOrderFinancePendingDto> out = rows.stream()
                 .map(r -> new SalesOrderFinancePendingDto(
                         (UUID) r[0], (String) r[1],
@@ -252,7 +293,7 @@ public class SalesOrderFinanceConfirmService {
     /**
      * 财务确认：status=1 且未确认才受理（重复确认静默幂等返回）。确认后订单对计划部可见，
      * 并旁路通知计划员接手物料分析（同事务 outbox，提交后才发送）。
-     * 确认自动清除既有驳回标记（驳回→修正→确认 闭环）。
+     * 当前驳回标志由销售修订后的重新审核清除；最后一次驳回事实保留供时间线展示。
      */
     @Transactional
     @PreAuthorize("hasAuthority('sales_order_finance:view')"
@@ -260,35 +301,62 @@ public class SalesOrderFinanceConfirmService {
     public void confirm(UUID orderId, FinanceConfirmRequest request) {
         tx.bind();
         requireEligibleConfirmer();
-        SalesOrder order = orderRepo.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在"));
-        if (order.isDeleted() || order.getStatus() == null || order.getStatus() != 1) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可做财务确认");
-        }
-        if (order.isClosed() || order.isStopped()) {
-            throw new ApiException(ErrorCode.BUSINESS, "已结案或已中止的订单无需财务确认");
-        }
+        SalesOrder order = requireDecisionOrderForUpdate(orderId);
+        requireConfirmable(order);
         if (order.isFinanceConfirmed()) {
             return; // 幂等：已确认静默成功
         }
         UUID actor = currentUser.requireEmployeeId();
-        order.setFinanceConfirmed(true);
-        order.setFinanceConfirmedAt(OffsetDateTime.now());
-        order.setFinanceConfirmedBy(actor);
-        String remark = request == null ? null : request.remark();
-        order.setFinanceConfirmRemark(remark == null || remark.isBlank() ? null : remark.trim());
-        // 确认即驳回闭环：清除驳回事实（保留人/时间在审计账，不留在业务态）。
-        order.setFinanceRejected(false);
-        order.setFinanceRejectedReason(null);
-        order.setFinanceRejectedBy(null);
-        order.setFinanceRejectedAt(null);
+        String remark = normalizeConfirmRemark(request == null ? null : request.remark());
+        applyConfirmation(order, actor, OffsetDateTime.now(), remark);
         orderRepo.save(order);
         chainNotice.notifyOrderFinanceConfirmed(orderId);
     }
 
     /**
+     * 原子批量财务确认：按 UUID 固定顺序锁住全部订单，先校验完整集合，再统一写入。
+     * 任一订单不可确认时整个事务失败；已确认且仍处于合法已审在途态的订单幂等跳过。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_order_finance:view')"
+            + " and hasAuthority('sales_order_finance:confirm')")
+    public FinanceBatchConfirmResult confirmBatch(FinanceBatchConfirmRequest request) {
+        tx.bind();
+        requireEligibleConfirmer();
+        NormalizedBatchConfirm normalized = normalizeBatchConfirm(request);
+
+        List<SalesOrder> lockedOrders = new ArrayList<>(normalized.orderIds().size());
+        for (UUID orderId : normalized.orderIds()) {
+            lockedOrders.add(requireDecisionOrderForUpdate(orderId));
+        }
+        for (SalesOrder order : lockedOrders) {
+            requireConfirmable(order);
+        }
+
+        UUID actor = currentUser.requireEmployeeId();
+        OffsetDateTime confirmedAt = OffsetDateTime.now();
+        int alreadyConfirmed = 0;
+        int newlyConfirmed = 0;
+        for (SalesOrder order : lockedOrders) {
+            if (order.isFinanceConfirmed()) {
+                alreadyConfirmed++;
+                continue;
+            }
+            applyConfirmation(order, actor, confirmedAt, normalized.remark());
+            orderRepo.save(order);
+            chainNotice.notifyOrderFinanceConfirmed(order.getId());
+            newlyConfirmed++;
+        }
+        return new FinanceBatchConfirmResult(
+                normalized.orderIds().size(),
+                newlyConfirmed,
+                alreadyConfirmed,
+                normalized.orderIds());
+    }
+
+    /**
      * 财务驳回（V300）：订单仍保持已审状态与库存预留，仅记录驳回事实+原因，
-     * 并通知归属销售修正；修正后由财务确认清除驳回。重复驳回刷新原因（幂等安全）。
+     * 并通知归属销售修正；相同驳回请求幂等，异原因的陈旧重放拒绝覆盖。
      */
     @Transactional
     @PreAuthorize("hasAuthority('sales_order_finance:view')"
@@ -296,9 +364,8 @@ public class SalesOrderFinanceConfirmService {
     public void reject(UUID orderId, FinanceRejectRequest request) {
         tx.bind();
         requireEligibleConfirmer();
-        SalesOrder order = orderRepo.findById(orderId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在"));
-        if (order.isDeleted() || order.getStatus() == null || order.getStatus() != 1) {
+        SalesOrder order = requireDecisionOrderForUpdate(orderId);
+        if (order.getStatus() == null || order.getStatus() != 1) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可做财务驳回");
         }
         if (order.isClosed() || order.isStopped()) {
@@ -312,12 +379,114 @@ public class SalesOrderFinanceConfirmService {
         if (reason.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "驳回原因不能为空");
         }
+        if (order.isFinanceRejected()) {
+            if (reason.equals(order.getFinanceRejectedReason())) {
+                return; // 同一决策重放幂等，不刷新人员/时间，也不重复投递通知。
+            }
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "该订单已被驳回，不能用陈旧页面覆盖驳回原因，请刷新后重试");
+        }
+        requireNoShipmentWorkForRejection(orderId);
         order.setFinanceRejected(true);
         order.setFinanceRejectedReason(reason);
         order.setFinanceRejectedBy(currentUser.requireEmployeeId());
         order.setFinanceRejectedAt(OffsetDateTime.now());
         orderRepo.save(order);
         chainNotice.notifyOrderFinanceRejected(orderId, reason);
+    }
+
+    private SalesOrder requireDecisionOrderForUpdate(UUID orderId) {
+        return orderRepo.findActiveByIdForUpdate(orderId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND, "销售订货单不存在"));
+    }
+
+    private void requireConfirmable(SalesOrder order) {
+        if (order.getStatus() == null || order.getStatus() != 1) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可做财务确认");
+        }
+        if (order.isClosed() || order.isStopped()) {
+            throw new ApiException(ErrorCode.BUSINESS, "已结案或已中止的订单无需财务确认");
+        }
+        if (order.isFinanceRejected()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订单已被财务驳回，须由销售修订并重新审核后再确认");
+        }
+    }
+
+    private static void applyConfirmation(
+            SalesOrder order, UUID actor, OffsetDateTime confirmedAt, String remark) {
+        order.setFinanceConfirmed(true);
+        order.setFinanceConfirmedAt(confirmedAt);
+        order.setFinanceConfirmedBy(actor);
+        order.setFinanceConfirmRemark(remark);
+        // 当前态已在销售重新审核时清除。历史原因/人员/时间保留给业务时间线。
+        order.setFinanceRejected(false);
+    }
+
+    private static NormalizedBatchConfirm normalizeBatchConfirm(
+            FinanceBatchConfirmRequest request) {
+        if (request == null || request.orderIds() == null
+                || request.orderIds().isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "请选择至少一笔销售订货单");
+        }
+        if (request.orderIds().size() > MAX_BATCH_CONFIRM_ORDERS) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "一次最多确认 100 笔销售订货单");
+        }
+        if (request.orderIds().stream().anyMatch(java.util.Objects::isNull)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "销售订货单 ID 不能为空");
+        }
+        List<UUID> orderIds = request.orderIds().stream()
+                .distinct()
+                .sorted()
+                .toList();
+        return new NormalizedBatchConfirm(
+                orderIds, normalizeConfirmRemark(request.remark()));
+    }
+
+    private static String normalizeConfirmRemark(String remark) {
+        if (remark == null || remark.isBlank()) {
+            return null;
+        }
+        if (remark.length() > 500) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "确认备注不能超过 500 个字符");
+        }
+        return remark.trim();
+    }
+
+    private record NormalizedBatchConfirm(List<UUID> orderIds, String remark) {
+    }
+
+    /**
+     * 财务驳回必须发生在仓库接手前。订单头写锁与出货建单的头/行锁共同关闭
+     * “一边驳回、一边创建待拣货单”的竞态窗口。
+     */
+    private void requireNoShipmentWorkForRejection(UUID orderId) {
+        long count = ((Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM sales_shipment_items shipment_item
+                JOIN sales_shipments shipment
+                  ON shipment.id = shipment_item.shipment_id
+                JOIN sales_order_items order_item
+                  ON order_item.id = shipment_item.order_item_id
+                WHERE order_item.order_id = :orderId
+                  AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                  AND COALESCE(shipment_item.is_deleted, FALSE) = FALSE
+                  AND COALESCE(shipment.is_deleted, FALSE) = FALSE
+                """)
+                .setParameter("orderId", orderId)
+                .getSingleResult()).longValue();
+        if (count > 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订单已有出货作业，须先撤销相关出货单后才能财务驳回");
+        }
     }
 
     /** 确认人资格：财务部门树在职 + 账号启用 + 持有 sales_order_finance:confirm（ADR-027 同型）。 */
@@ -336,8 +505,8 @@ public class SalesOrderFinanceConfirmService {
             case SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL -> "允许分批发货";
             case SalesOrder.SHIPMENT_POLICY_REQUIRE_COMPLETE -> "整单齐套后发货";
             case SalesOrder.SHIPMENT_POLICY_CUSTOMER_CONFIRM -> "客户确认后分批";
-            case SalesOrder.SHIPMENT_POLICY_LEGACY -> "历史订单（未指定）";
-            default -> "未知策略（" + policy + "）";
+            case SalesOrder.SHIPMENT_POLICY_LEGACY -> "历史订单(未指定)";
+            default -> "未知策略(" + policy + ")";
         };
     }
 }

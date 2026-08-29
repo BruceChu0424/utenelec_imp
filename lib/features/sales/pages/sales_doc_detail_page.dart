@@ -15,6 +15,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -120,6 +121,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       salesOrderHasShippedQuantity(_detail?.items ?? const []);
 
   bool get _canChangeAnyOrderQty =>
+      !(_detail?.financeRejected ?? false) &&
       _canChangeQty &&
       (_canChangePlanned ||
           (_detail?.items.any((item) => !_touchesPlanned(item)) ?? false));
@@ -231,7 +233,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('转订货单'),
-        content: const Text('将按报价行生成订货草稿（货品/数量/价格带入，可再修改），确认转入？'),
+        content: const Text('将按报价行生成订货草稿(货品/数量/价格带入，可再修改)，确认转入？'),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
@@ -325,7 +327,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         ? '审核通过后订单将生效并形成库存预留，随后自动转发财务审核；财务确认通过后计划部才可见并排产。确认审核？'
         : _cfg.type == SalesDocType.shipment && _detail?.financeAudit != 1
         ? '该出货单尚未「财务审核发货」；现金结算客户须先财务审核，否则审核会被拒绝。确认继续审核？'
-        : '审核后将驱动下游（库存/应收），确认审核？',
+        : '审核后将驱动下游(库存/应收)，确认审核？',
     (repo) => repo.approve(widget.id),
     _cfg.type == SalesDocType.order ? '已审核，已转发财务审核' : '已审核',
     reviewerResponsibility: true,
@@ -333,10 +335,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
-  Future<void> _setStopped(bool stopped) => _doAction(
-    stopped ? '中止订单会停止后续履约并释放可释放的资源，确认中止？' : '确认恢复该订单的履约状态？',
-    (repo) => repo.setStopped(widget.id, stopped: stopped),
-    stopped ? '订单已中止' : '订单已恢复',
+  /// 恢复已中止订单：重跑库存检查并重新软预留（中止方向已并入 _cancel，
+  /// 后端 toggleStopped(stopped=true) 与 cancel 本就是同一路径）。
+  Future<void> _restore() async => _doAction(
+    '确认恢复该订单的履约状态？',
+    (repo) => repo.setStopped(widget.id, stopped: false),
+    '订单已恢复',
   );
 
   /// 订单取消：仅无发货、无排产/在产/完工关联时开放，避免展示后端必然拒绝的操作。
@@ -385,7 +389,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                       decoration: InputDecoration(
                         labelText: '处理依据 / 原因',
                         hintText: '必填，系统将写入操作审计',
-                        errorText: error,
+                        error: utenFieldError(error),
                       ),
                     ),
                   ],
@@ -632,7 +636,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       final outstanding = info['outstanding'];
       context.appSuccess(
         '已财务审核发货'
-        '${info['cashClient'] == true ? '（该客户未收余额 $outstanding）' : ''}',
+        '${info['cashClient'] == true ? '(该客户未收余额 $outstanding)' : ''}',
       );
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
@@ -702,7 +706,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         content: TextField(
           controller: reasonCtrl,
           autofocus: true,
-          decoration: const InputDecoration(hintText: '驳回原因（如：预留货物损坏 / 找不到）'),
+          decoration: const InputDecoration(hintText: '驳回原因(如：预留货物损坏 / 找不到)'),
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -750,6 +754,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   /// 仅订货单；草稿/已红冲/无可操作权限的行只维持表格自带的高亮。
   Future<void> _showLineActions(SalesDocItem item) async {
     if (widget.docType != SalesDocType.order) return;
+    if (_detail?.financeRejected ?? false) {
+      context.appInfo('订单已被财务驳回，请先使用“修改订单”完成修订并重新审核');
+      return;
+    }
     if (item.id == null) return;
     final canYield = _canReallocate && (item.reservedQty ?? 0) > 0;
     if (!_canSetPriority && !canYield) {
@@ -767,7 +775,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         canSetPriority: _canSetPriority,
         canYield: canYield,
         goodsLabel:
-            '${names.goods(item.goodsId)}（${names.color(item.colorId)}）',
+            '${names.goods(item.goodsId)}(${names.color(item.colorId)})',
         qtyLabel:
             '订货 ${item.qty?.toStringAsFixed(2) ?? '-'} · 已发 ${item.shippedQty?.toStringAsFixed(2) ?? '-'} · 可发 ${item.reservedQty?.toStringAsFixed(2) ?? '-'}',
         onSetPriority: (p, reason) => _setLinePriority(item.id!, p, reason),
@@ -1023,16 +1031,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           '财务确认',
           d.financeConfirmed
               ? '已确认 · ${utenFmtIsoTime(d.financeConfirmedAt)}'
-              : '待财务确认（确认后计划部才可见并排产）',
+              : '待财务确认(确认后计划部才可见并排产)',
         ),
-      // V300 财务驳回：已驳回订单销售端一眼可见原因，修正后联系财务重新确认。
+      // ADR-052 财务驳回：显示原因；受控修订回草稿并重新销售审核后才回财务确认。
       if (_cfg.type == SalesDocType.order &&
           d.financeRejected &&
           !d.financeConfirmed)
         _KV(
           '财务驳回',
           '${d.financeRejectedReason ?? '未注明原因'}'
-              '${(d.financeRejectedByName?.isNotEmpty ?? false) ? '（${d.financeRejectedByName} · ${utenFmtIsoTime(d.financeRejectedAt)}）' : ''}',
+              '${(d.financeRejectedByName?.isNotEmpty ?? false) ? '(${d.financeRejectedByName} · ${utenFmtIsoTime(d.financeRejectedAt)})' : ''}',
           highlight: true,
         ),
       if (_cfg.type == SalesDocType.order &&
@@ -1067,7 +1075,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       // 价格脱敏（SOP §三8）：无 sales_order:price:view 时价格族渲染 ***
       if (_cfg.type == SalesDocType.order)
         _KV(
-          '订单金额（$orderCurrency）',
+          '订单金额($orderCurrency)',
           d.priceMasked ? '***' : d.totalOriginal?.toStringAsFixed(2),
         )
       else
@@ -1097,7 +1105,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         _KV(
           '财务审核',
           d.financeAudit == 1
-              ? '已审发货${d.financeAuditedAt != null ? '（${d.financeAuditedAt!.substring(0, 10)}）' : ''}'
+              ? '已审发货${d.financeAuditedAt != null ? '(${d.financeAuditedAt!.substring(0, 10)})' : ''}'
               : '未审',
         ),
       if (_cfg.type == SalesDocType.shipment)
@@ -1247,7 +1255,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '出货与物流（${shipments.length}）',
+              '出货与物流(${shipments.length})',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -1341,7 +1349,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                   names.goods(it.goodsId),
                 );
                 final base =
-                    '$goodsIdentity（${names.color(it.colorId)} · ${names.unit(it.unitId)}）';
+                    '$goodsIdentity(${names.color(it.colorId)} · ${names.unit(it.unitId)})';
                 return (isOrder &&
                         it.chainStatus != null &&
                         it.chainStatus != 0)
@@ -1373,13 +1381,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 if (masked) return '***';
                 final p = it.price?.toStringAsFixed(2);
                 return (isOrder && it.quotePrice != null)
-                    ? '$p（报价 ${it.quotePrice!.toStringAsFixed(2)}）'
+                    ? '$p(报价 ${it.quotePrice!.toStringAsFixed(2)})'
                     : p;
               },
             ),
             MasterColumnDef(
               key: 'amount',
-              label: isOrder ? '金额（订单币种）' : '金额',
+              label: isOrder ? '金额(订单币种)' : '金额',
               width: 100,
               type: 'money',
               value: (it) => masked
@@ -1465,7 +1473,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           filters: const {},
           onFilterChanged: (_, _) {},
           onRowTap: (it) => _showLineActions(it),
-          emptyMessage: '（无明细）',
+          emptyMessage: '(无明细)',
         ),
       ],
     );
@@ -1632,6 +1640,20 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           ..add(const SizedBox(width: UtenSpacing.s8));
       }
       if (_cfg.type == SalesDocType.order && !_detail!.stopped) {
+        if (_detail!.financeRejected && _canEdit) {
+          children
+            ..add(
+              UtenButton(
+                key: const ValueKey('sales-order-finance-rejected-edit'),
+                icon: Icons.edit_outlined,
+                onPressed: () => context.push(
+                  SalesRoutePath.docEdit(_cfg.type.pathSegment, widget.id),
+                ),
+                child: const Text('修改订单'),
+              ),
+            )
+            ..add(const SizedBox(width: UtenSpacing.s8));
+        }
         if (_canChangeAnyOrderQty) {
           children
             ..add(
@@ -1673,15 +1695,17 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         // 审核完成后不再展示"登记客户同意分批"（问题 #16/#18）：分批发货已不要求
         // 先登记客户同意依据，员工选的发运策略直接生效，这颗按钮没有意义了。
       }
-      if (_cfg.type == SalesDocType.order && _canStopOrder) {
+      // 中止入口已并入「取消订单」：后端 toggleStopped(stopped=true) 对已审订单
+      // 就是 cancel，两颗按钮效果完全相同；此处仅保留已中止订单的恢复能力。
+      if (_cfg.type == SalesDocType.order &&
+          _detail!.stopped &&
+          _canStopOrder) {
         add(
           UtenButton(
             type: UtenButtonType.secondary,
-            icon: _detail!.stopped
-                ? Icons.play_circle_outline
-                : Icons.pause_circle_outline,
-            onPressed: () => _setStopped(!_detail!.stopped),
-            child: Text(_detail!.stopped ? '恢复订单' : '中止订单'),
+            icon: Icons.play_circle_outline,
+            onPressed: _restore,
+            child: const Text('恢复订单'),
           ),
         );
       }
@@ -1867,7 +1891,7 @@ class _LineActionSheetState extends State<_LineActionSheet> {
                 TextField(
                   controller: _priorityReason,
                   autofocus: true,
-                  decoration: const InputDecoration(hintText: '急单原因（必填）'),
+                  decoration: const InputDecoration(hintText: '急单原因(必填)'),
                 ),
               ],
               const SizedBox(height: UtenSpacing.s12),
@@ -1879,7 +1903,7 @@ class _LineActionSheetState extends State<_LineActionSheet> {
               if (widget.canYield) const Divider(height: UtenSpacing.s32),
             ],
             if (widget.canYield) ...[
-              _sectionLabel(theme, '让单（释放现货预留，回池供急单占用）'),
+              _sectionLabel(theme, '让单(释放现货预留，回池供急单占用)'),
               const SizedBox(height: UtenSpacing.s8),
               TextField(
                 controller: _yieldQty,
@@ -1887,13 +1911,13 @@ class _LineActionSheetState extends State<_LineActionSheet> {
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  hintText: '让单数量（0 < 数量 ≤ 可发 $reserved）',
+                  hintText: '让单数量(0 < 数量 ≤ 可发 $reserved)',
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
               TextField(
                 controller: _yieldReason,
-                decoration: const InputDecoration(hintText: '让单原因（必填）'),
+                decoration: const InputDecoration(hintText: '让单原因(必填)'),
               ),
               const SizedBox(height: UtenSpacing.s12),
               OutlinedButton.icon(

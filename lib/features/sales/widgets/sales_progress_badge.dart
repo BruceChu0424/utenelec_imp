@@ -1,5 +1,5 @@
-// 销售订单「完工提醒」红色数字徽章（销售 hub「订单进度查询」卡用）。
-// 数据源 salesCompletionCountProvider（未读完工通知数）；count<=0 不渲染。
+// 销售订单关注事项红色数字徽章（销售 hub「订单进度查询」卡用）。
+// 数据源 = 未解决财务驳回订单 + 未读完工通知；count<=0 不渲染。
 // 范式同 ProductionPendingBadge。
 
 import 'package:flutter/material.dart';
@@ -16,10 +16,10 @@ class SalesProgressBadge extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(salesCompletionCountProvider).valueOrNull ?? 0;
+    final count = ref.watch(salesAttentionCountProvider).valueOrNull ?? 0;
     if (count <= 0) return const SizedBox.shrink();
     return Tooltip(
-      message: '完工提醒 $count 条未读',
+      message: '销售待关注 $count 项',
       child: UtenNotificationBadge(
         count: count,
         size: size,

@@ -5,6 +5,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -258,7 +259,7 @@ class _ProductionPlanWizardPageState
                     controlAffinity: ListTileControlAffinity.leading,
                     title: const Text('生成后立即审核下达'),
                     subtitle: const Text(
-                      '勾选：计划直接生效，系统同时生成物料提货单（领料单），'
+                      '勾选：计划直接生效，系统同时生成物料提货单(领料单)，'
                       '车间可马上去仓库领料；不勾选：先提交审批，审核下达时再出提货单。',
                     ),
                   ),
@@ -537,18 +538,20 @@ class _ProductionPlanWizardPageState
                       _readOnlyFacts(theme, draft),
                       const SizedBox(height: UtenSpacing.s20),
                       TextFormField(
+                        errorBuilder: utenTextFieldErrorBuilder,
                         key: ValueKey(
                           'production-plan-wizard-product-no-${draft.analysisLineId}',
                         ),
                         controller: draft.productNoController,
                         maxLength: 200,
                         decoration: const InputDecoration(
-                          labelText: '产品编号（可选）',
-                          helperText: '留空由系统按计划单号生成',
+                          labelText: '产品编号(可选)',
+                          helper: UtenFieldMessage.helper('留空由系统按计划单号生成'),
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s16),
                       TextFormField(
+                        errorBuilder: utenTextFieldErrorBuilder,
                         key: ValueKey(
                           'production-plan-wizard-qty-${draft.analysisLineId}',
                         ),
@@ -558,9 +561,10 @@ class _ProductionPlanWizardPageState
                         ),
                         decoration: InputDecoration(
                           labelText: '本批计划数量 *',
-                          helperText:
-                              '最多可安排 ${_qty(draft.entry.product.readyNowQty)}'
-                              '${_unitSuffix(draft.entry.product.unitName)}，最终由服务端再次校验',
+                          helper: UtenFieldMessage.helper(
+                            '最多可安排 ${_qty(draft.entry.product.readyNowQty)}'
+                            '${_unitSuffix(draft.entry.product.unitName)}，最终由服务端再次校验',
+                          ),
                         ),
                         validator: (value) {
                           final qty = double.tryParse(value?.trim() ?? '');
@@ -663,6 +667,7 @@ class _ProductionPlanWizardPageState
                               UtenEmployeePickerItem(
                                 id: employee.id,
                                 name: employee.fullName,
+                                employeeCode: employee.code,
                                 departmentName: employee.departmentName,
                               ),
                           ];
@@ -685,7 +690,8 @@ class _ProductionPlanWizardPageState
                               label: '计划开始 *',
                               value: draft.beginDate,
                               required: true,
-                              errorText: _submitted && draft.beginDate == null
+                              errorMessage:
+                                  _submitted && draft.beginDate == null
                                   ? '请选择计划开始日期'
                                   : null,
                               onChanged: (value) => setState(() {
@@ -700,7 +706,7 @@ class _ProductionPlanWizardPageState
                               value: draft.endDate,
                               required: true,
                               firstDate: draft.beginDate,
-                              errorText: _dateError(draft),
+                              errorMessage: _dateError(draft),
                               onChanged: (value) => setState(() {
                                 draft.endDate = value;
                               }),
@@ -1029,7 +1035,7 @@ class _BulkApplyDialogState extends State<_BulkApplyDialog> {
             key: const Key('production-plan-bulk-only-blank'),
             value: _onlyBlank,
             onChanged: (value) => setState(() => _onlyBlank = value == true),
-            title: const Text('只填写空白字段（推荐）'),
+            title: const Text('只填写空白字段(推荐)'),
             subtitle: const Text('关闭后会覆盖后续计划中已经预填或人工填写的对应字段。'),
             contentPadding: EdgeInsets.zero,
           ),

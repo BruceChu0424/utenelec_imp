@@ -146,6 +146,7 @@ class Notice {
     this.audienceCount,
     this.kind = NoticeKind.normal,
     this.actionRoute,
+    this.sourceEvent,
     this.dueAt,
     this.taskCompleted = false,
     this.taskCompletedAt,
@@ -207,6 +208,11 @@ class Notice {
 
   /// 待办对应的站内办理入口。
   final String? actionRoute;
+
+  /// 产生本通知的业务事件（如 SALES_ORDER_FINANCE_REJECTED）。
+  ///
+  /// 由服务端负责分类；前端只用它选择业务化文案/动作，不据此做权限判断。
+  final String? sourceEvent;
 
   /// 待办截止时间。
   final DateTime? dueAt;
@@ -275,6 +281,7 @@ class Notice {
       audienceCount: audienceCount,
       kind: kind,
       actionRoute: actionRoute,
+      sourceEvent: sourceEvent,
       dueAt: dueAt,
       taskCompleted: taskCompleted ?? this.taskCompleted,
       taskCompletedAt: taskCompletedAt ?? this.taskCompletedAt,

@@ -64,7 +64,8 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
                 warehouseTaskAccess(),
                 // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
-                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
+                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class));
         UUID id = UUID.randomUUID();
         StockDocument document = new StockDocument();
         document.setId(id);
@@ -158,7 +159,8 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
                 warehouseTaskAccess(),
                 // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
-                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
+                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class));
 
         service.reverse(id);
 
@@ -234,7 +236,8 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
                 warehouseTaskAccess(),
                 // V298 分析备料绑定端口（成品入库路径 no-op mock，不建预留）
-                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class));
+                mock(com.uten.imp.application.port.PreplanAnalysisPegPort.class),
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class));
 
         assertThrows(ApiException.class, () -> service.reverse(id));
 
@@ -289,7 +292,8 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                 mock(com.uten.imp.features.stock.StockDocAccessPolicy.class),
                 warehouseTaskAccess(),
-                preplan);
+                preplan,
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class));
 
         ApiException error = assertThrows(ApiException.class, () -> service.reverse(id));
 
@@ -314,9 +318,7 @@ class DocumentDirectLockTest {
                 mock(ProductionPlanRepository.class),
                 mock(ProductionPlanItemRepository.class),
                 mock(PlanOrderItemLinkRepository.class),
-                mock(StockDocumentRepository.class),
                 mock(DailyReportExecutionSegmentGuard.class),
-                mock(StockDocumentItemRepository.class),
                 mock(SecurityContextCurrentUser.class),
                 mock(EmployeeNameResolver.class),
                 tx,
@@ -324,7 +326,10 @@ class DocumentDirectLockTest {
                 mock(com.uten.imp.features.production.plan.ProductionProductNoAllocator.class),
                 em,
                 mock(ChainNoticeService.class),
-                mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class));
+                mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class),
+                mock(com.uten.imp.application.port.ProductionQualityInspectionPort.class),
+                mock(com.uten.imp.application.port.ProductionFqcRecoveryPort.class),
+                mock(com.uten.imp.features.production.dailyreport.ProductionLegacyFinishedInboundService.class));
         UUID id = UUID.randomUUID();
         ProductionDailyReport report = new ProductionDailyReport();
         report.setId(id);
@@ -335,7 +340,7 @@ class DocumentDirectLockTest {
         service.delete(id);
 
         verify(em).find(ProductionDailyReport.class, id, LockModeType.PESSIMISTIC_WRITE);
-        verify(reports).save(report);
+        verify(reports).saveAndFlush(report);
         assertThat(report.isDeleted()).isTrue();
 
         UUID reversedId = UUID.randomUUID();

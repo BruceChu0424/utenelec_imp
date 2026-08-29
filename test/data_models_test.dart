@@ -8,7 +8,7 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
   group('AuthResult.fromJson', () {
-    test('解析登录响应（含角色/权限）', () {
+    test('解析登录响应(含角色/权限)', () {
       final r = AuthResult.fromJson({
         'accessToken': 'a',
         'refreshToken': 'r',
@@ -84,7 +84,7 @@ void main() {
   });
 
   group('EmployeeProfile', () {
-    test('解析详情（敏感字段已脱敏）', () {
+    test('解析详情(敏感字段已脱敏)', () {
       final p = EmployeeProfile.fromJson({
         'id': 'e1',
         'code': 'E001',

@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RemoteAccessPolicy {
 
-    public static final String DENIED_MESSAGE = "该账号未授权外网（云端）访问";
+    public static final String DENIED_MESSAGE = "该账号未授权外网(云端)访问";
 
     private final DeploymentProperties deployment;
 

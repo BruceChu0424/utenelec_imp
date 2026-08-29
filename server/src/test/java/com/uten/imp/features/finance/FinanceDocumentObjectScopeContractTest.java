@@ -30,7 +30,8 @@ class FinanceDocumentObjectScopeContractTest {
             assertThat(detail.indexOf("access.requireReadable("))
                     .isLessThan(childLoad);
             assertThat(method(source, " create("))
-                    .contains(".setMakerId(currentUser.requireEmployeeId())");
+                    .contains("currentUser.requireEmployeeId()")
+                    .contains(".setMakerId(");
         }
     }
 

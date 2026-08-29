@@ -144,9 +144,9 @@ String salesShipmentPolicyLabel(String? code) => switch (code) {
   SalesShipmentPolicy.allowPartial => '允许分批发货',
   SalesShipmentPolicy.requireComplete => '整单齐套后发货',
   SalesShipmentPolicy.customerConfirm => '客户确认后分批',
-  SalesShipmentPolicy.legacyUnspecified => '历史订单（未指定）',
+  SalesShipmentPolicy.legacyUnspecified => '历史订单(未指定)',
   null || '' => '未返回',
-  _ => '未知策略（$code）',
+  _ => '未知策略($code)',
 };
 
 /// 仓库出货作业状态。
@@ -171,7 +171,7 @@ String salesWarehouseWorkStatusLabel(String? code) => switch (code) {
   SalesWarehouseWorkStatus.cancelled => '已取消',
   SalesWarehouseWorkStatus.reversed => '已红冲',
   null || '' => '未返回',
-  _ => '未知状态（$code）',
+  _ => '未知状态($code)',
 };
 
 String salesWarehouseWorkStatusHint(String? code) => switch (code) {

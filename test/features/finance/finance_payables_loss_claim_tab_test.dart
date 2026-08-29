@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/finance/payables/models/subcontract_loss_claim.dart';
 import 'package:uten_imp/features/finance/payables/pages/finance_payables_page.dart';
 import 'package:uten_imp/features/finance/payables/repositories/subcontract_loss_claim_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -30,6 +32,21 @@ void main() {
     expect(find.text('SW-001'), findsOneWidget);
     expect(find.text('待处理'), findsWidgets);
     expect(find.text('生成付款单'), findsNothing);
+
+    final table = tester
+        .widget<MasterDataTableView<SubcontractLossClaimSummary>>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is MasterDataTableView<SubcontractLossClaimSummary>,
+          ),
+        );
+    final columnKeys = {for (final column in table.columns) column.key};
+    expect(
+      columnKeys,
+      containsAll(<String>{'actualLossQty', 'allowedLossQty', 'excessLossQty'}),
+    );
+    expect(columnKeys, isNot(contains('lossBookValueLocal')));
+    expect(columnKeys, isNot(contains('claimAmountLocal')));
   });
 }
 

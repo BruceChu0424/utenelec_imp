@@ -60,7 +60,7 @@ public class SubcontractOrderController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('subcontract_order:view')")
+    @PreAuthorize("hasAnyAuthority('subcontract_order:view','finance_order_approval:view')")
     public OrderDetail detail(@PathVariable UUID id) {
         return service.detail(id);
     }

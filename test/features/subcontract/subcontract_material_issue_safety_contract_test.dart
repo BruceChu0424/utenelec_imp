@@ -6,7 +6,7 @@ import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 
 void main() {
   group('委外发料安全门禁', () {
-    test('发料审核已启用（V221 供应商子件台账上线，前端防御门禁解除）', () {
+    test('发料审核已启用(V221 供应商子件台账上线，前端防御门禁解除)', () {
       const config = SubcontractDocConfig.materialIssue;
 
       // 2026-08-16 全链路审计：后端 V221 早已放开发料审核（冻结 BOM 单耗 +

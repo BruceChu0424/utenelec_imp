@@ -4,8 +4,10 @@ import com.uten.imp.application.port.SubcontractLossClaimPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.gl.GlPostingService;
+import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -54,6 +56,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     private final SupplierOpenItemOffsetService offsetService;
     private final GlPostingService glPostingService;
     private final SupplierClosedPeriodGuard closedPeriodGuard;
+    private final CommercialPriceVisibility commercialPriceVisibility;
+    private final AccountFlowLedgerService accountFlowLedger;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -291,6 +295,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     @Transactional(readOnly = true)
     public CaseDetail detail(UUID id) {
         CaseSummary summary = requireSummary(id);
+        boolean priceMasked = summary.priceMasked();
         @SuppressWarnings("unchecked")
         List<Object[]> lineRows = em.createNativeQuery("""
                 SELECT id, waste_item_id, material_issue_item_id, order_item_id,
@@ -303,7 +308,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]), uuid(row[4]),
                 text(row[5]), text(row[6]), uuid(row[7]), uuid(row[8]),
                 quantity(row[9]), quantity(row[10]), quantity(row[11]),
-                money(row[12]), money(row[13]), text(row[14]))).toList();
+                priceMasked ? null : money(row[12]),
+                priceMasked ? null : money(row[13]), text(row[14]))).toList();
         @SuppressWarnings("unchecked")
         List<Object[]> resolutionRows = em.createNativeQuery("""
                 SELECT id, case_line_id, resolution_type, quantity, amount_local,
@@ -312,7 +318,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 FROM subcontract_loss_resolutions WHERE case_id=:id ORDER BY created_at,id
                 """).setParameter("id", id).getResultList();
         List<Resolution> resolutions = resolutionRows.stream().map(row -> new Resolution(
-                uuid(row[0]), uuid(row[1]), text(row[2]), quantity(row[3]), money(row[4]),
+                uuid(row[0]), uuid(row[1]), text(row[2]), quantity(row[3]),
+                priceMasked ? null : money(row[4]),
                 date(row[5]), text(row[6]), text(row[7]), text(row[8]), text(row[9]),
                 uuid(row[10]), text(row[11]), uuid(row[12]), text(row[13]))).toList();
         @SuppressWarnings("unchecked")
@@ -630,19 +637,18 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         if(!"APPROVED".equals(text(row[6]))||!"SETTLED".equals(text(row[8]))){
             throw conflict("现金赔偿到账或索赔应收状态不允许反转");
         }
+        if(reconciliationId==null)throw conflict("现金赔偿原始资金流水缺失，禁止反转");
         glPostingService.lockAutoProjectionPeriod(receiptDate);
         glPostingService.removeSupplierClaimCashReceiptDoc(receiptId,"SPCR-"+resolution.id(),receiptDate);
+        lockActiveBaseCurrencyCashAccount(accountId);
         int accountUpdated=em.createNativeQuery("""
                 UPDATE accounts SET balance_current=COALESCE(balance_current,0)-:amount,
                     receipts_total=COALESCE(receipts_total,0)-:amount,updated_at=now()
                 WHERE id=:id
                 """).setParameter("amount",amount).setParameter("id",accountId).executeUpdate();
         if(accountUpdated!=1)throw conflict("现金赔偿反转账户余额失败");
-        int reconciliationUpdated=em.createNativeQuery("""
-                UPDATE finance_reconciliations SET is_deleted=TRUE,deleted_at=now(),updated_at=now()
-                WHERE id=:id AND COALESCE(is_deleted,FALSE)=FALSE
-                """).setParameter("id",reconciliationId).executeUpdate();
-        if(reconciliationUpdated!=1)throw conflict("现金赔偿资金流水已变化，禁止反转");
+        accountFlowLedger.reverse(
+                "SUPPLIER_CLAIM_RECEIPT",receiptId,java.time.OffsetDateTime.now(),reason);
         int receiptUpdated=em.createNativeQuery("""
                 UPDATE supplier_claim_cash_receipts
                 SET status='REVERSED',row_version=row_version+1,reversed_by=:actor,
@@ -804,18 +810,11 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 ||decimal(claim[3]).compareTo(BigDecimal.ONE)!=0){
             throw conflict("现金赔偿索赔应收余额、币种或供应商不一致");
         }
-        @SuppressWarnings("unchecked")
-        List<Object[]> accounts=em.createNativeQuery("""
-                SELECT account.currency_id,account_style_id(account.id)
-                FROM accounts account WHERE account.id=:id AND account.status='使用'
-                  AND COALESCE(account.is_deleted,FALSE)=FALSE FOR UPDATE
-                """).setParameter("id",request.accountId()).getResultList();
-        if(accounts.size()!=1)throw conflict("赔偿到账账户不存在或已停用");
-        UUID accountCurrency=uuid(accounts.getFirst()[0]);
-        if(accountCurrency!=null&&!Objects.equals(accountCurrency,currencyId)){
+        AccountCashTarget account=lockActiveBaseCurrencyCashAccount(request.accountId());
+        if(!Objects.equals(account.currencyId(),currencyId)){
             throw conflict("赔偿到账账户币种与索赔币种不一致");
         }
-        if(accounts.getFirst()[1]==null)throw conflict("赔偿到账账户未绑定可用总账科目");
+        if(account.styleId()==null)throw conflict("赔偿到账账户未绑定可用总账科目");
         glPostingService.lockAutoProjectionPeriod(request.cashReceiptDate());
         int accountUpdated=em.createNativeQuery("""
                 UPDATE accounts SET balance_current=COALESCE(balance_current,0)+:amount,
@@ -832,11 +831,11 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         em.createNativeQuery("""
                 INSERT INTO finance_reconciliations(
                     id,bill_no,source_doc_type,source_doc_id,account_id,counterpart_name,
-                    in_amount,out_amount,bill_date,settled_date,source_remark,
+                    in_amount,out_amount,amount_local,bill_date,settled_date,source_remark,
                     created_at,updated_at,is_deleted)
                 VALUES(:id,:billNo,'SUPPLIER_CLAIM_RECEIPT',:sourceId,:accountId,
                     (SELECT name FROM suppliers WHERE id=:supplierId),
-                    :amount,0,:billDate,now(),:remark,now(),now(),FALSE)
+                    :amount,0,:amount,:billDate,now(),:remark,now(),now(),FALSE)
                 """).setParameter("id",reconciliationId).setParameter("billNo",billNo)
                 .setParameter("sourceId",cashReceiptId).setParameter("accountId",request.accountId())
                 .setParameter("supplierId",supplierId).setParameter("amount",cashLocal)
@@ -871,6 +870,28 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 .setParameter("reconciliationId",reconciliationId)
                 .setParameter("actor",currentUser.requireId()).executeUpdate();
     }
+
+    private AccountCashTarget lockActiveBaseCurrencyCashAccount(UUID accountId){
+        @SuppressWarnings("unchecked")
+        List<Object[]> accounts=em.createNativeQuery("""
+                SELECT account.currency_id,account_style_id(account.id)
+                FROM accounts account
+                JOIN currencies currency ON currency.id=account.currency_id
+                WHERE account.id=:id AND account.status='使用'
+                  AND COALESCE(account.is_deleted,FALSE)=FALSE
+                  AND currency.status='使用'
+                  AND COALESCE(currency.is_deleted,FALSE)=FALSE
+                  AND currency.is_base_currency
+                FOR UPDATE OF account,currency
+                """).setParameter("id",accountId).getResultList();
+        if(accounts.size()!=1){
+            throw conflict("赔偿到账账户必须是启用的本位币账户");
+        }
+        return new AccountCashTarget(
+                uuid(accounts.getFirst()[0]),uuid(accounts.getFirst()[1]));
+    }
+
+    private record AccountCashTarget(UUID currencyId,UUID styleId){}
 
     private void recordFulfillmentDocument(CaseRow loss, ResolutionRow resolution,
                                            FulfillmentRequest request) {
@@ -991,7 +1012,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         List<UUID> rows = em.createNativeQuery("""
                 SELECT id FROM currencies
                 WHERE COALESCE(is_deleted,FALSE)=FALSE AND status='使用'
-                  AND (UPPER(BTRIM(code)) IN ('CNY','RMB') OR BTRIM(name)='人民币')
+                  AND is_base_currency
                 ORDER BY id
                 """).getResultList();
         return rows.size() == 1 ? rows.getFirst() : null;
@@ -1167,11 +1188,18 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     }
 
     private CaseSummary summary(Object[] row) {
+        boolean priceMasked = !canViewFinanceAmounts();
         return new CaseSummary(uuid(row[0]), uuid(row[1]), text(row[2]), uuid(row[3]),
                 text(row[4]), text(row[5]), text(row[6]), quantity(row[7]), quantity(row[8]),
-                quantity(row[9]), money(row[10]), money(row[11]),
-                ((Number) row[12]).longValue(), text(row[13]));
+                quantity(row[9]), priceMasked ? null : money(row[10]),
+                priceMasked ? null : money(row[11]),
+                ((Number) row[12]).longValue(), text(row[13]), priceMasked);
     }
+
+    private boolean canViewFinanceAmounts() {
+        return commercialPriceVisibility.canViewFinance();
+    }
+
 
     private static void bind(Query query, Map<String, Object> params) {
         params.forEach(query::setParameter);

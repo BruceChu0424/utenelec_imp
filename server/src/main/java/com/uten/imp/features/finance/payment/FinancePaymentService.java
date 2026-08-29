@@ -11,10 +11,10 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver.EmployeeReference;
 import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
-import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentDetail;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentLineDto;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput;
@@ -40,18 +40,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 采购付款单服务：CRUD（主 + 明细）+ 审核状态机（核销 AP / 直接付款 / 账户扣减 / 写流水）。
+ * 采购付款单服务：CRUD（主 + 明细）+ 审核状态机（核销 AP / 账户扣减 / 写流水）。
  *
  * <p>与 {@code FinanceReceiptService} 对称（Client↔Vend、receipt↔payment、AR↔AP）。
  *
@@ -79,7 +83,6 @@ public class FinancePaymentService {
     private final FinancePaymentRepository paymentRepo;
     private final FinancePaymentLineRepository lineRepo;
     private final ArApLedgerRepository ledgerRepo;
-    private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
@@ -87,6 +90,7 @@ public class FinancePaymentService {
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
     private final GlPostingService glPostingService;
+    private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional(readOnly = true)
     public PageResponse<FinancePaymentListItem> list(FinancePaymentQueryFilter f, int page, int size, String sort, String order) {
@@ -125,19 +129,34 @@ public class FinancePaymentService {
     @PreAuthorize("hasAuthority('finance_payment:create')")
     public FinancePaymentDetail create(FinancePaymentSaveRequest req) {
         tx.bind();
+        UUID makerId = currentUser.requireEmployeeId();
+        String idempotencyKey = normalizeIdempotencyKey(req.getCreateIdempotencyKey());
+        String requestHash = requestHash(req);
+        lockCreateIdempotency(makerId, idempotencyKey);
+        FinancePayment replay = findCreateReplay(makerId, idempotencyKey);
+        if (replay != null) {
+            if (!Objects.equals(replay.getCreateRequestHash(), requestHash)) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "付款创建幂等键已用于不同内容，请刷新后重新提交");
+            }
+            return detail(replay.getId());
+        }
         if (req.getPaymentMethodId() != null || req.getPaymentMethodLegacyId() != null) {
             PaymentStyleHierarchyLock.lock(em);
         }
         assertBillNoFree(req.getBillNo(), null);
         FinancePayment p = new FinancePayment();
+        p.setMakerId(makerId);
+        p.setCreateIdempotencyKey(idempotencyKey);
+        p.setCreateRequestHash(requestHash);
         applyHeader(req, p);
         p.setStatus(STATUS_DRAFT);
-        p.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         applyMakerIdentity(p);
         paymentRepo.save(p);
         List<FinancePaymentLineDto> items = saveLines(p, req.getItems());
         applyLineTotals(p, items);
         markAmountsAuthoritative(p);
+        paymentRepo.flush();
         return toDetail(p, items);
     }
 
@@ -155,6 +174,12 @@ public class FinancePaymentService {
         if (p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        if (req.getExpectedVersion() == null
+                || p.getVersion() == null
+                || req.getExpectedVersion().longValue() != p.getVersion().longValue()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "付款草稿已被其他操作更新，请刷新后重试");
+        }
         assertBillNoFree(req.getBillNo(), id);
         applyHeader(req, p);
         applyMakerIdentity(p);
@@ -163,6 +188,7 @@ public class FinancePaymentService {
         List<FinancePaymentLineDto> items = saveLines(p, req.getItems());
         applyLineTotals(p, items);
         markAmountsAuthoritative(p);
+        paymentRepo.flush();
         return toDetail(p, items);
     }
 
@@ -209,7 +235,7 @@ public class FinancePaymentService {
         assertNoExistingPosting(p.getId()); // M19：幂等护栏，finance_reconciliations 已存在该单流水则禁止重复审核
         UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         if (p.getMakerId() != null && p.getMakerId().equals(approver)) {
-            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
+            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同(职责分离)");
         }
         glPostingService.lockAutoProjectionPeriod(p.getBillDate());
         p.setApproverId(approver);
@@ -256,53 +282,15 @@ public class FinancePaymentService {
 
     private void settlePayment(FinancePayment p) {
         List<FinancePaymentLine> lines = lineRepo.findByPaymentIdOrderByLineNoAsc(p.getId());
-        Map<UUID, ArApLedger> lockedLedgers = lines.isEmpty()
-                ? Map.of()
-                : lockAppliedLedgers(lines);
-        if (!lines.isEmpty()) {
-            settleAppliedLines(p, lines, lockedLedgers);
-            BigDecimal accountAmount = adjustAccount(
-                    p.getAccountId(), p.getCurrencyId(), p.getAmountOriginal(), p.getAmountLocal());
-            insertReconciliation(p, accountAmount);
-            return;
+        if (lines.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "无应付核销明细的直接付款属于供应商预付；供应商预付资产科目、应用、退款和总账链未完成，当前禁止审核");
         }
-
-        if (p.getSupplierId() == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "直接付款必须指定供应商");
-        }
-        if (p.getCurrencyId() == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "直接付款必须指定币别");
-        }
-        BigDecimal rate = positiveRate(p.getExchangeRate());
-        BigDecimal amountOriginal = positiveMoney(p.getAmountOriginal(), "直接付款金额");
-        BigDecimal amountLocal = money(amountOriginal.multiply(rate));
-        p.setExchangeRate(rate);
-        p.setAmountOriginal(amountOriginal);
-        p.setAmountLocal(amountLocal);
-        paymentRepo.save(p);
-
-        arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
-                "AP", SRC_DIRECT_PAYMENT, p.getId(), p.getBillNo(), p.getBillDate(),
-                null, p.getSupplierId(), p.getCurrencyId(), rate,
-                BigDecimal.ZERO, (short) 21, "直接付款", BigDecimal.ZERO));
-        List<ArApLedger> created = ledgerRepo.findBySourceForUpdate(
-                p.getId(), SRC_DIRECT_PAYMENT);
-        if (created.size() != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "直接付款立账结果不唯一");
-        }
-        ArApLedger ledger = created.getFirst();
-        ledger.setAmountReceivedOriginal(amountOriginal);
-        ledger.setAmountReceivedLocal(amountLocal);
-        ledger.setAmountWriteOffOriginal(BigDecimal.ZERO.setScale(MONEY_SCALE));
-        ledger.setAmountWriteOffLocal(BigDecimal.ZERO.setScale(MONEY_SCALE));
-        ledger.setAmountBalanceOriginal(amountOriginal.negate());
-        ledger.setAmountSettled(amountLocal);
-        ledger.setAmountBalance(money(nz(ledger.getAmountOriginalLocal()).subtract(amountLocal)));
-        refreshSettlement(ledger, p.getBillDate());
-        ledgerRepo.save(ledger);
-
+        Map<UUID, ArApLedger> lockedLedgers = lockAppliedLedgers(lines);
+        settleAppliedLines(p, lines, lockedLedgers);
         BigDecimal accountAmount = adjustAccount(
-                p.getAccountId(), p.getCurrencyId(), amountOriginal, amountLocal);
+                p.getAccountId(), p.getCurrencyId(), p.getAmountOriginal(), p.getAmountLocal());
         insertReconciliation(p, accountAmount);
     }
 
@@ -312,7 +300,7 @@ public class FinancePaymentService {
             reverseAppliedLines(p, lines, lockAppliedLedgers(lines));
             adjustAccount(p.getAccountId(), p.getCurrencyId(),
                     nz(p.getAmountOriginal()).negate(), nz(p.getAmountLocal()).negate());
-            deleteReconciliation(p.getId());
+            reverseReconciliation(p.getId());
             return;
         }
 
@@ -330,7 +318,7 @@ public class FinancePaymentService {
         }
         adjustAccount(p.getAccountId(), p.getCurrencyId(),
                 nz(p.getAmountOriginal()).negate(), nz(p.getAmountLocal()).negate());
-        deleteReconciliation(p.getId());
+        reverseReconciliation(p.getId());
     }
 
     private void settleAppliedLines(
@@ -525,7 +513,7 @@ public class FinancePaymentService {
         }
         if (money(newSettledLocal.add(offsetLocal)).compareTo(originalLocal) > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "应付累计账面核销金额超过应付账面本币总额（含已抵销金额），禁止审核");
+                    "应付累计账面核销金额超过应付账面本币总额(含已抵销金额)，禁止审核");
         }
         BigDecimal appliedLocal = money(newSettledLocal.subtract(oldSettledLocal));
         if (appliedLocal.signum() <= 0) {
@@ -572,7 +560,8 @@ public class FinancePaymentService {
             BigDecimal localDelta) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                        SELECT account.currency_id, currency.code, currency.name
+                        SELECT account.currency_id, currency.code, currency.name,
+                               currency.is_base_currency
                         FROM accounts account
                         LEFT JOIN currencies currency
                           ON currency.id=account.currency_id
@@ -592,13 +581,13 @@ public class FinancePaymentService {
         UUID accountCurrencyId = (UUID) row[0];
         String currencyCode = row[1] == null ? null : row[1].toString();
         String currencyName = row[2] == null ? null : row[2].toString();
-        if (accountCurrencyId != null && currencyCode == null && currencyName == null) {
+        boolean baseCurrency = Boolean.TRUE.equals(row[3]);
+        if (accountCurrencyId == null) {
+            throw new ApiException(ErrorCode.BUSINESS, "付款账户未设置币种");
+        }
+        if (currencyCode == null && currencyName == null) {
             throw new ApiException(ErrorCode.BUSINESS, "付款账户币种不存在或已停用");
         }
-        boolean baseCurrency = accountCurrencyId == null
-                || "CNY".equalsIgnoreCase(currencyCode)
-                || "RMB".equalsIgnoreCase(currencyCode)
-                || "人民币".equals(currencyName == null ? null : currencyName.trim());
         BigDecimal accountDelta;
         if (baseCurrency) {
             accountDelta = money(localDelta);
@@ -606,7 +595,8 @@ public class FinancePaymentService {
             accountDelta = money(originalDelta);
         } else {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "付款账户币别与本次付款币别不兼容：" + accountId);
+                    "付款账户必须为人民币本位币账户或与付款原币相同的账户，"
+                            + "不能直接使用第三币种账户：" + accountId);
         }
         int updated = em.createNativeQuery("""
                         UPDATE accounts
@@ -629,8 +619,10 @@ public class FinancePaymentService {
         em.createNativeQuery("""
                 INSERT INTO finance_reconciliations
                   (bill_no, source_doc_type, source_doc_id, account_id, check_no, counterpart_name,
-                   in_amount, out_amount, bill_date, settled_date, source_remark, legacy_bstyle, created_at, updated_at, is_deleted)
-                VALUES (:billNo, :src, :sid, :acc, :chk, :cpn, 0, :outAmt, :bd, :sd, :sr, 21, now(), now(), false)
+                   in_amount, out_amount, amount_local, bill_date, settled_date, source_remark,
+                   legacy_bstyle, created_at, updated_at, is_deleted)
+                VALUES (:billNo, :src, :sid, :acc, :chk, :cpn, 0, :outAmt, :localAmt,
+                        :bd, :sd, :sr, 21, now(), now(), false)
                 """)
                 .setParameter("billNo", p.getBillNo())
                 .setParameter("src", RECON_SOURCE)
@@ -639,18 +631,16 @@ public class FinancePaymentService {
                 .setParameter("chk", p.getInvoiceNo())
                 .setParameter("cpn", counterpart)
                 .setParameter("outAmt", accountAmount)
+                .setParameter("localAmt", p.getAmountLocal())
                 .setParameter("bd", p.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime()) // M17：bill_date 用单据日期，settled_date 保持审核时刻
                 .setParameter("sd", OffsetDateTime.now())
                 .setParameter("sr", p.getSourceRemark())
                 .executeUpdate();
     }
 
-    private void deleteReconciliation(UUID paymentId) {
-        em.createNativeQuery(
-                "DELETE FROM finance_reconciliations WHERE source_doc_id = :sid AND source_doc_type = :src")
-                .setParameter("sid", paymentId)
-                .setParameter("src", RECON_SOURCE)
-                .executeUpdate();
+    private void reverseReconciliation(UUID paymentId) {
+        accountFlowLedger.reverse(
+                RECON_SOURCE, paymentId, OffsetDateTime.now(), "采购付款红冲");
     }
 
     private void assertNoExistingPosting(UUID paymentId) {
@@ -663,7 +653,7 @@ public class FinancePaymentService {
         long actual = postingCount(paymentId);
         if (actual != expectedRows) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "付款流水不完整，禁止红冲（期望 " + expectedRows + "，实际 " + actual + "）");
+                    "付款流水不完整，禁止红冲(期望 " + expectedRows + "，实际 " + actual + ")");
         }
     }
 
@@ -823,7 +813,9 @@ public class FinancePaymentService {
                 p.getPaymentMethodLegacyId(), p.getInvoiceNo(), p.getCancelDate(),
                 p.getOperatorName(), p.getOperatorId(), p.getMakerId(), p.getApproverId(),
                 p.getSourceRemark(), p.getRemark(), p.getStatus(), p.isClosed(), items,
-                nameResolver.nameOf(p.getMakerId()), p.getCreatedAt());
+                nameResolver.nameOf(p.getMakerId()), p.getCreatedAt(),
+                p.getVersion() == null ? 0L : p.getVersion(),
+                p.getCreateIdempotencyKey());
     }
 
     private FinancePayment require(UUID id) {
@@ -831,6 +823,95 @@ public class FinancePaymentService {
 
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购付款单不存在"));
     }
+
+    private String normalizeIdempotencyKey(String raw) {
+        String value = raw == null ? null : raw.trim();
+        if (value == null || value.length() < 8 || value.length() > 128
+                || !value.matches("[A-Za-z0-9._:-]+")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "付款创建幂等键格式不正确");
+        }
+        return value;
+    }
+
+    private void lockCreateIdempotency(UUID makerId, String key) {
+        em.createNativeQuery(
+                        "SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
+                .setParameter("key", "FIN_PAYMENT_CREATE|" + makerId + "|" + key)
+                .getSingleResult();
+    }
+
+    private FinancePayment findCreateReplay(UUID makerId, String key) {
+        @SuppressWarnings("unchecked")
+        List<Object> ids = em.createNativeQuery("""
+                        SELECT id FROM finance_payments
+                        WHERE maker_id=:maker AND create_idempotency_key=:key
+                        """)
+                .setParameter("maker", makerId)
+                .setParameter("key", key)
+                .getResultList();
+        if (ids.isEmpty()) return null;
+        if (ids.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "付款创建幂等键存在重复历史，请先完成数据核对");
+        }
+        FinancePayment payment = paymentRepo.findById((UUID) ids.getFirst())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.CONFLICT, "付款幂等记录缺少来源单据"));
+        if (payment.isDeleted()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该付款创建请求曾生成后删除，不能用同一幂等键重新造单");
+        }
+        access.requireReadable(payment.getMakerId(), "采购付款单不存在");
+        return payment;
+    }
+
+    private static String requestHash(FinancePaymentSaveRequest request) {
+        StringBuilder value = new StringBuilder();
+        appendHash(value, request.getBillDate());
+        appendHash(value, request.getSupplierId());
+        appendHash(value, request.getAccountId());
+        appendHash(value, request.getCounterpartAccountId());
+        appendHash(value, request.getCurrencyId());
+        appendHash(value, decimalText(request.getExchangeRate()));
+        List<FinancePaymentLineInput> items =
+                request.getItems() == null ? List.of() : request.getItems();
+        appendHash(value, items.isEmpty()
+                ? decimalText(request.getAmountOriginal()) : null);
+        appendHash(value, request.getPaymentMethodId());
+        appendHash(value, request.getPaymentMethodLegacyId());
+        appendHash(value, request.getInvoiceNo());
+        appendHash(value, request.getOperatorName());
+        appendHash(value, request.getOperatorId());
+        appendHash(value, request.getSourceRemark());
+        appendHash(value, request.getRemark());
+        appendHash(value, items.size());
+        for (FinancePaymentLineInput item : items) {
+            appendHash(value, item == null ? null : item.getLineNo());
+            appendHash(value, item == null ? null : item.getAppliedLedgerId());
+            appendHash(value, item == null ? null : item.getAppliedBillNo());
+            appendHash(value, item == null ? null : item.getSupplierId());
+            appendHash(value, item == null ? null : decimalText(item.getAmountOriginal()));
+            appendHash(value, item == null ? null : item.getRemark());
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.toString().getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    private static void appendHash(StringBuilder target, Object value) {
+        String text = value == null ? "" : value.toString();
+        target.append(text.length()).append(':').append(text).append('|');
+    }
+
+    private static String decimalText(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
     private static void requirePeriodIdentityUnchanged(
             FinancePayment payment,UUID supplierId,UUID currencyId,LocalDate billDate){
         if(!Objects.equals(payment.getSupplierId(),supplierId)

@@ -479,62 +479,426 @@ void main() {
     expect(store.writeCalls, 0);
   });
 
-  testWidgets('normal important and urgent arrivals all enqueue top banners', (
-    tester,
-  ) async {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    late BuildContext dispatchContext;
+  testWidgets(
+    'important arrival keeps a center alert until explicit close and close only popup-acks',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final requests = <RequestOptions>[];
+      final notices = <String, Notice>{};
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            requests.add(request);
+            Object data = <String, dynamic>{};
+            if (request.method == 'GET' &&
+                request.path.startsWith('/notices/') &&
+                !request.path.endsWith('/unread-count')) {
+              final id = request.path.split('/').last;
+              final notice = notices[id];
+              if (notice != null) data = _noticeJson(notice);
+            } else if (request.path == '/notices/unread-count') {
+              data = <String, dynamic>{'count': 0};
+            }
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: data,
+              ),
+            );
+          },
+        ),
+      );
+      final repository = DioNoticeRepository(ApiClient(dio));
+      final container = ProviderContainer(
+        overrides: [
+          noticeRepositoryProvider.overrideWithValue(repository),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+      );
+      late BuildContext dispatchContext;
+      var delivered = 0;
+      var opens = 0;
+      final rejected = Notice(
+        id: '00000000-0000-0000-0000-000000000501',
+        title: '订单被财务驳回：SO-001',
+        content: '销售订货单 SO-001 未通过财务确认。驳回原因：金额有误。请修改后重新提交。',
+        type: NoticeType.approval,
+        publisher: '财务部',
+        publishedAt: DateTime.utc(2026, 8, 22, 1, 3),
+        isRead: false,
+        priority: NoticePriority.important,
+        sourceEvent: 'SALES_ORDER_FINANCE_REJECTED',
+        actionRoute: '/sales/orders/order-1',
+      );
+      notices[rejected.id] = rejected;
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          home: Stack(
-            children: [
-              Builder(
-                builder: (context) {
-                  dispatchContext = context;
-                  return const SizedBox.shrink();
-                },
-              ),
-              const Align(
-                alignment: Alignment.topCenter,
-                child: AppNotificationHost(),
-              ),
-            ],
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Stack(
+              children: [
+                Builder(
+                  builder: (context) {
+                    dispatchContext = context;
+                    return const Scaffold(body: Text('首页'));
+                  },
+                ),
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: AppNotificationHost(),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    for (final notice in <Notice>[
-      _notice('normal-1', minute: 1, title: '同一标题'),
-      _notice('normal-2', minute: 2, title: '同一标题'),
-      _notice('important', minute: 3, priority: NoticePriority.important),
-      _notice('urgent', minute: 4, priority: NoticePriority.urgent),
-    ]) {
-      dispatchNoticeArrival(dispatchContext, notice, onOpenDetail: () {});
-    }
-    await tester.pump();
+      dispatchNoticeArrival(
+        dispatchContext,
+        rejected,
+        onOpenDetail: () => opens++,
+        onDelivered: () => delivered++,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
-    final queued = container.read(appNotificationProvider);
-    expect(queued, hasLength(4));
-    expect(
-      queued.map((notification) => notification.kind),
-      <AppNotificationKind>[
-        AppNotificationKind.info,
-        AppNotificationKind.info,
-        AppNotificationKind.warning,
-        AppNotificationKind.error,
-      ],
-    );
-    expect(
-      queued.where((notification) => notification.message == '同一标题'),
-      hasLength(2),
-      reason: '不同 Notice ID 的同文案不能被 600ms 文案去重吞掉',
-    );
-  });
+      expect(find.byType(UtenTopBannerCard), findsOneWidget);
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('原因'), findsOneWidget);
+      expect(find.text('金额有误'), findsOneWidget);
+      expect(find.text('查看订单并修改'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 30));
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(delivered, 0);
+
+      await tester.tapAt(const Offset(5, 595));
+      await tester.pump();
+      expect(find.byType(Dialog), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.byType(Dialog), findsOneWidget);
+
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(delivered, 1);
+      expect(opens, 0);
+      expect(
+        requests.any(
+          (request) =>
+              request.method == 'POST' &&
+              request.path == '/notices/${rejected.id}/popup-ack',
+        ),
+        isTrue,
+      );
+      expect(
+        requests.any(
+          (request) =>
+              request.method == 'POST' &&
+              request.path == '/notices/${rejected.id}/read',
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets(
+    'important primary action popup-acks, marks read, and opens once',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final requests = <RequestOptions>[];
+      late Notice rejected;
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            requests.add(request);
+            final data =
+                request.method == 'GET' &&
+                    request.path == '/notices/${rejected.id}'
+                ? _noticeJson(rejected)
+                : request.path == '/notices/unread-count'
+                ? <String, dynamic>{'count': 0}
+                : <String, dynamic>{};
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: data,
+              ),
+            );
+          },
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          noticeRepositoryProvider.overrideWithValue(
+            DioNoticeRepository(ApiClient(dio)),
+          ),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+      );
+      late BuildContext dispatchContext;
+      var delivered = 0;
+      var opens = 0;
+      rejected = Notice(
+        id: '00000000-0000-0000-0000-000000000502',
+        title: '订单被财务驳回：SO-002',
+        content: '销售订货单 SO-002 未通过财务确认。驳回原因：币种错误。',
+        type: NoticeType.approval,
+        publisher: '财务部',
+        publishedAt: DateTime.utc(2026, 8, 22, 1, 4),
+        isRead: false,
+        priority: NoticePriority.urgent,
+        sourceEvent: 'SALES_ORDER_FINANCE_REJECTED',
+        actionRoute: '/sales/orders/order-2',
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) {
+                dispatchContext = context;
+                return const Scaffold(body: Text('首页'));
+              },
+            ),
+          ),
+        ),
+      );
+      dispatchNoticeArrival(
+        dispatchContext,
+        rejected,
+        onOpenDetail: () => opens++,
+        onDelivered: () => delivered++,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查看订单并修改'));
+      await tester.pumpAndSettle();
+
+      expect(opens, 1);
+      expect(delivered, 1);
+      expect(
+        requests.where(
+          (request) =>
+              request.method == 'POST' &&
+              request.path == '/notices/${rejected.id}/popup-ack',
+        ),
+        hasLength(1),
+      );
+      expect(
+        requests.where(
+          (request) =>
+              request.method == 'POST' &&
+              request.path == '/notices/${rejected.id}/read',
+        ),
+        hasLength(1),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+    },
+  );
+
+  testWidgets(
+    'session interruption removes the exact strong alert without popup ack',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final requests = <RequestOptions>[];
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            requests.add(request);
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: <String, dynamic>{},
+              ),
+            );
+          },
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          noticeRepositoryProvider.overrideWithValue(
+            DioNoticeRepository(ApiClient(dio)),
+          ),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+      );
+      final interruptSignal = ValueNotifier<int>(0);
+      late BuildContext dispatchContext;
+      var delivered = 0;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) {
+                dispatchContext = context;
+                return const Scaffold(body: Text('首页'));
+              },
+            ),
+          ),
+        ),
+      );
+      final notice = _notice(
+        '00000000-0000-0000-0000-000000000503',
+        minute: 5,
+        priority: NoticePriority.urgent,
+      );
+      dispatchNoticeArrival(
+        dispatchContext,
+        notice,
+        interruptSignal: interruptSignal,
+        onOpenDetail: () {},
+        onDelivered: () => delivered++,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(Dialog), findsOneWidget);
+
+      interruptSignal.value++;
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Dialog), findsNothing);
+      expect(delivered, 0);
+      expect(
+        requests.where(
+          (request) => request.path == '/notices/${notice.id}/popup-ack',
+        ),
+        isEmpty,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      interruptSignal.dispose();
+      container.dispose();
+    },
+  );
+
+  testWidgets(
+    'listener presents urgent before important and keeps one center window at a time',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final base = _notice('00000000-0000-0000-0000-000000000511', minute: 1);
+      final first = _notice(
+        '00000000-0000-0000-0000-000000000512',
+        minute: 2,
+        priority: NoticePriority.important,
+      );
+      final second = _notice(
+        '00000000-0000-0000-0000-000000000513',
+        minute: 3,
+        priority: NoticePriority.urgent,
+      );
+      final feed = <Notice>[second, first, base];
+      final store = _MemoryCursorStore()
+        ..values['buyer'] = _cursorOf(base)
+        ..deliveredValues['buyer'] = <String>{base.id};
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) => handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: <String, dynamic>{},
+            ),
+          ),
+        ),
+      );
+      final navigatorKey = GlobalKey<NavigatorState>();
+      final router = GoRouter(
+        navigatorKey: navigatorKey,
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => const Scaffold(body: Text('首页')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            noticeArrivalLoaderProvider.overrideWithValue(
+              (after) async => _pageFromFeed(feed, after ?? _epochCursor()),
+            ),
+            noticeArrivalCursorStoreProvider.overrideWithValue(store),
+            noticeArrivalRefreshProvider.overrideWithValue(() async {}),
+            noticeRepositoryProvider.overrideWithValue(
+              DioNoticeRepository(ApiClient(dio)),
+            ),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            builder: (context, child) => Stack(
+              children: [
+                NoticeArrivalListener(
+                  identityKey: 'buyer',
+                  pollInterval: const Duration(hours: 1),
+                  routeContext: () => navigatorKey.currentContext,
+                  child: child!,
+                ),
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: AppNotificationHost(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.text(second.title),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(first.title), findsNothing);
+
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.text(first.title),
+        ),
+        findsOneWidget,
+      );
+      expect(store.deliveredValues['buyer'], contains(second.id));
+      expect(store.deliveredValues['buyer'], isNot(contains(first.id)));
+
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(
+        store.deliveredValues['buyer'],
+        containsAll(<String>[first.id, second.id]),
+      );
+    },
+  );
 
   testWidgets('periodic ticks keep only one arrival request in flight', (
     tester,
@@ -1009,6 +1373,7 @@ Map<String, dynamic> _noticeJson(Notice notice) => <String, dynamic>{
   'priority': notice.priority.name,
   'attachments': <String>[],
   'actionRoute': notice.actionRoute,
+  'sourceEvent': notice.sourceEvent,
 };
 
 Notice _notice(

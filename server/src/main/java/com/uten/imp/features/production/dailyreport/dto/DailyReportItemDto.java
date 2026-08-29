@@ -26,6 +26,7 @@ public class DailyReportItemDto {
     private UUID planItemId;
     private UUID executionSegmentId;
     private UUID executionSegmentSalesAllocationId;
+    private UUID fqcRecoveryAuthorizationId;
     private String planNo;
     private String outboundNo;
     private BigDecimal outboundQty;

@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/china_datetime.dart';
 import 'required_field_decoration.dart';
+import 'uten_field_message.dart';
 
 /// outlined 日期选择字段。点按弹 showDatePicker；值/占位"未选择"显示在框内。
 class UtenDateField extends StatefulWidget {
@@ -30,7 +31,8 @@ class UtenDateField extends StatefulWidget {
     this.firstDate,
     this.lastDate,
     this.enabled = true,
-    this.errorText,
+    this.helperMessage,
+    this.errorMessage,
   });
 
   final String label;
@@ -41,8 +43,11 @@ class UtenDateField extends StatefulWidget {
   final DateTime? lastDate;
   final bool enabled;
 
+  /// 字段辅助说明；超出一行时可展开查看全文。
+  final String? helperMessage;
+
   /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
-  final String? errorText;
+  final String? errorMessage;
 
   @override
   State<UtenDateField> createState() => _UtenDateFieldState();
@@ -68,7 +73,7 @@ class _UtenDateFieldState extends State<UtenDateField> {
         widget.enabled &&
         widget.required &&
         !hasValue &&
-        widget.errorText == null;
+        widget.errorMessage == null;
     return IgnorePointer(
       // IgnorePointer 让整框可点（含框内空白），同时禁用时不响应。
       ignoring: !widget.enabled,
@@ -84,7 +89,12 @@ class _UtenDateFieldState extends State<UtenDateField> {
                 required: widget.required,
                 base: theme.inputDecorationTheme.labelStyle,
               ),
-              errorText: widget.errorText,
+              helper: widget.helperMessage == null
+                  ? null
+                  : UtenFieldMessage.helper(widget.helperMessage!),
+              error: widget.errorMessage == null
+                  ? null
+                  : UtenFieldMessage.error(widget.errorMessage!),
               suffixIcon: const Icon(Icons.event_outlined, size: 18),
             ),
             theme,

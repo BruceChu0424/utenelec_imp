@@ -13,6 +13,8 @@ import 'package:flutter/semantics.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/master_facet.dart';
@@ -55,6 +57,10 @@ class MasterDataGroup<T> {
     this.icon,
     this.total,
     this.detailLabel = '下拉查看详情', // TODO(l10n): 补 arb
+    this.loading = false,
+    this.error,
+    this.onExpand,
+    this.onRetry,
   });
 
   /// 分组唯一 id（折叠/展开态键）；同一表格内不应重复。
@@ -80,6 +86,18 @@ class MasterDataGroup<T> {
 
   /// 标题行右侧的展开提示文案（默认「下拉查看详情」）。渲染为加粗深红，老人易看清。
   final String detailLabel;
+
+  /// 首次展开或手动刷新时的加载态。既有 [items] 保留展示，避免刷新跳动。
+  final bool loading;
+
+  /// 分组数据加载失败的可恢复提示；标题行就地提供重试。
+  final String? error;
+
+  /// 从折叠切换为展开时触发。调用方可在这里首次懒加载。
+  final VoidCallback? onExpand;
+
+  /// 加载失败后的重试回调；未传时回退到 [onExpand]。
+  final VoidCallback? onRetry;
 }
 
 /// 主档通用表格视图：横排 autofilter 筛选 + 逐行数据（列对齐）+ 分页。
@@ -115,6 +133,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.embedded = false,
     this.primary = false,
     this.showFullscreenToggle,
+    this.showColumnChooser = true,
     this.rowColor,
     this.leadingGroups,
     this.selectable = false,
@@ -160,9 +179,9 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 页面配置了 [rowMenuBuilder] 就获得空菜单手势或伪可交互状态。
   final bool Function(T item)? canShowRowMenu;
 
-  /// 批量操作条构建器：selectable 且 [selectedIds] 非空时，在工具条（表头设置右侧）
-  /// 渲染「已选 N 项」+ 本构建器返回的操作按钮（批量删除/批量禁用等）+「清除选择」。
-  /// 未选中任何行时整段不渲染——没选中就不显示按钮，避免误点。
+  /// 批量业务动作构建器：selectable 时，表头工具条只显示「已选 N 项 + 清除」，
+  /// 本构建器返回的按钮统一悬浮在表格右下角，普通视图和全屏路由都会渲染。
+  /// 未选中时动作保留位置但灰显并拦截点击，调用方仍应保留空集业务守卫。
   final List<Widget> Function(BuildContext context, Set<String> selectedIds)?
   batchActionsBuilder;
 
@@ -203,6 +222,10 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 明细表）默认隐藏全屏按钮，避免整屏路由在受限容器里铺满屏幕（详细排产滑窗 bug 修复）；
   /// 非嵌入主页面默认显示。显式传 true 可在嵌入场景放开。
   final bool? showFullscreenToggle;
+
+  /// 是否显示工具条「表头设置」。窄屏页面可关闭以把有限高度留给数据，
+  /// 桌面/全屏默认保留完整列显隐能力。
+  final bool showColumnChooser;
 
   /// 行底色（按行数据定，如货品按状态：使用=浅蓝/禁用=浅红）；返回 null = 默认透明。
   /// 单击选中时组件自动把该色加深加亮（提高不透明度），无底色行维持原 primary 高亮。
@@ -343,7 +366,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     super.initState();
     assert(
       !widget.selectable || widget.idOf != null,
-      'MasterDataTableView: selectable:true 需提供 idOf（行→业务 id 提取器）。',
+      'MasterDataTableView: selectable:true 需提供 idOf(行→业务 id 提取器)。',
     );
     assert(
       !widget.embedded || !widget.selectable,
@@ -351,7 +374,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     );
     assert(
       !widget.primary || !widget.embedded,
-      'MasterDataTableView: primary 不能与 embedded 同用（embedded 场景无 NestedScrollView 祖先）。',
+      'MasterDataTableView: primary 不能与 embedded 同用(embedded 场景无 NestedScrollView 祖先)。',
     );
     _headerH = ScrollController();
     _bodyH = ScrollController();
@@ -453,7 +476,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   child: Column(
                     children: [
-                      Expanded(child: _buildTable(ctx2)),
+                      Expanded(child: _buildTableStage(ctx2)),
                       if (!widget.embedded && widget.totalPages > 1)
                         _buildPager(ctx2),
                     ],
@@ -827,8 +850,28 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     }
     return Column(
       children: [
-        Expanded(child: _buildTable(context)),
+        Expanded(child: _buildTableStage(context)),
         if (widget.totalPages > 1) _buildPager(context),
+      ],
+    );
+  }
+
+  bool get _hasFloatingBatchActions =>
+      widget.selectable && widget.batchActionsBuilder != null;
+
+  /// 表格批量动作与采购任务工作台一致：选择摘要仍在表头上方，真正业务动作
+  /// 悬浮在右下角。动作层属于表格自身，因此普通视图和全屏路由使用同一实现。
+  Widget _buildTableStage(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildTable(context),
+        if (_hasFloatingBatchActions)
+          PositionedDirectional(
+            end: UtenSpacing.s16,
+            bottom: UtenSpacing.s16,
+            child: _buildFloatingBatchActions(context),
+          ),
       ],
     );
   }
@@ -874,7 +917,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     }
     final groups = widget.leadingGroups ?? <MasterDataGroup<T>>[];
     final hasGroupRows = groups.any(
-      (g) => g.items.isNotEmpty || (g.total ?? 0) > 0,
+      (g) =>
+          g.items.isNotEmpty ||
+          (g.total ?? 0) > 0 ||
+          g.loading ||
+          g.error != null ||
+          g.onExpand != null,
     );
     // 主数据为空且无任何前导分组 → 空态占位（有分组时仍渲染表头 + 分组行）。
     if (widget.items.isEmpty && !hasGroupRows) {
@@ -891,7 +939,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     // 展开=其 items 按主表同款列逐行渲染（与主行共用 _widths / _visibleIndices / 横滚）。
     final plan = <({bool header, MasterDataGroup<T>? group, T? item})>[];
     for (final g in groups) {
-      if (g.items.isEmpty && (g.total ?? 0) == 0) continue; // N=0 分组不渲染
+      if (g.items.isEmpty &&
+          (g.total ?? 0) == 0 &&
+          !g.loading &&
+          g.error == null &&
+          g.onExpand == null) {
+        continue; // 明确 N=0 且不可加载的分组不渲染
+      }
       plan.add((header: true, group: g, item: null));
       if (_expandedGroups.contains(g.id)) {
         for (final it in g.items) {
@@ -919,14 +973,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
             runSpacing: UtenSpacing.s8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _ColumnChooserButton(
-                columns: [
-                  for (final c in widget.columns) (key: c.key, label: c.label),
-                ],
-                hiddenKeys: _hiddenKeys,
-                onToggle: _toggleColumn,
-                onToggleAll: _toggleAllColumns,
-              ),
+              if (widget.showColumnChooser)
+                _ColumnChooserButton(
+                  columns: [
+                    for (final c in widget.columns)
+                      (key: c.key, label: c.label),
+                  ],
+                  hiddenKeys: _hiddenKeys,
+                  onToggle: _toggleColumn,
+                  onToggleAll: _toggleAllColumns,
+                ),
               if (showFullscreen)
                 // 全屏切换：表格放大到整屏显示（行列多时能看更多内容），再点退出。
                 UtenButton(
@@ -937,9 +993,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                   onPressed: _toggleFullscreen,
                   child: Text(_fullscreen ? '退出全屏' : '全屏'),
                 ),
-              // 已选计数条：selectable 且配置了批量操作时常驻显示（不因未选中而消失）；
-              // 未选中时整条灰色禁用——「已选 0 项」+ ✕ 禁用。紧贴内容宽度
-              // （仅「已选 N 项 + ✕」，批量动作走右键/长按菜单）。
+              // 选择摘要常驻表头上方；真正业务动作由 _buildTableStage 放到右下悬浮区。
               if (widget.selectable && widget.batchActionsBuilder != null)
                 _buildBatchBar(theme),
               if (widget.toolbarActions != null) ...widget.toolbarActions!,
@@ -1004,8 +1058,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                               : const ClampingScrollPhysics(),
                           // 底部留一点可滚余量，避免钉底的横向滚动条正好挡住最后一行
                           // （问题 #10：内容多的表格拖到底应该还能再往下滚一点）。
-                          padding: const EdgeInsets.only(
-                            bottom: UtenSpacing.s16,
+                          padding: EdgeInsets.only(
+                            bottom: _hasFloatingBatchActions
+                                ? 88
+                                : UtenSpacing.s16,
                           ),
                           itemCount: plan.length + (widget.loadingMore ? 1 : 0),
                           itemBuilder: (ctx, i) {
@@ -1063,11 +1119,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   Widget _maybeSelectionArea(Widget child) =>
       widget.selectable ? child : SelectionArea(child: child);
 
-  /// 批量操作条：已选 N 项 + [batchActionsBuilder] 的操作按钮 + 「清除选择」。
-  /// selectable 且配置了批量操作时常驻显示（不因未选中而消失）；未选中任何行时整条
-  /// 转灰——计数文字/✕ 取 outline 色、底/边框降级为中性灰、批量按钮被 AbsorbPointer
-  /// 吞掉点击并 Opacity 变淡、✕ 清除不可点。固定占位让"批量删除/禁用"始终可见，没选中
-  /// 只是灰着不让点（调用方方法本就有空集守卫，AbsorbPointer 为视觉/交互双保险）。
+  /// 选择摘要：已选 N 项 + 清除。业务动作在右下悬浮区，不再塞进表头工具条。
   Widget _buildBatchBar(ThemeData theme) {
     final ids = widget.selectedIds;
     final hasSelection = ids.isNotEmpty;
@@ -1081,22 +1133,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     final barBorder = hasSelection
         ? theme.colorScheme.primary
         : theme.colorScheme.outlineVariant;
-
-    // 调用方提供的批量按钮：未选中时仍在（保持位置/尺寸常驻），但 AbsorbPointer 吞掉
-    // 点击、Opacity 变淡，视觉上即"灰着不可点"。
-    final actions =
-        widget.batchActionsBuilder?.call(context, ids) ?? const <Widget>[];
-    Widget actionsArea = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final a in actions) ...[a, const SizedBox(width: UtenSpacing.s8)],
-      ],
-    );
-    if (!hasSelection) {
-      actionsArea = AbsorbPointer(
-        child: Opacity(opacity: 0.4, child: actionsArea),
-      );
-    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
@@ -1120,10 +1156,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
               color: accent,
             ),
           ),
-          if (actions.isNotEmpty) ...[
-            const SizedBox(width: UtenSpacing.s8),
-            actionsArea,
-          ],
           const SizedBox(width: UtenSpacing.s4),
           // 清除选择：一键把选中集合清空（回交空集，不就地改调用方状态）；未选中时不可点。
           InkWell(
@@ -1143,6 +1175,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     );
   }
 
+  Widget _buildFloatingBatchActions(BuildContext context) {
+    final ids = widget.selectedIds;
+    final actions =
+        widget.batchActionsBuilder?.call(context, ids) ?? const <Widget>[];
+    if (actions.isEmpty) return const SizedBox.shrink();
+
+    Widget group = UtenFloatingActionGroup(children: actions);
+    if (ids.isEmpty) {
+      group = AbsorbPointer(child: Opacity(opacity: 0.4, child: group));
+    }
+    return group;
+  }
+
   /// 前导分组标题行：跨满表宽（_totalWidth），与表头/数据行同处一个横向 ScrollView，
   /// 故横滚同步、列边界对齐。底色取 [MasterDataGroup.tint]（禁用=浅红等）；点击切换展开。
   /// 单行布局：图标 + 标题（加粗）+ 副标题（灰、可省略号）+ 「下拉查看详情」加粗深红 + 旋转箭头。
@@ -1150,88 +1195,133 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   Widget _buildGroupHeader(ThemeData theme, MasterDataGroup<T> group) {
     final expanded = _expandedGroups.contains(group.id);
     final tint = group.tint ?? theme.colorScheme.surfaceContainerHigh;
-    final moreLeft = (group.total ?? group.items.length) > group.items.length;
+    final error = group.error?.trim();
+    final hasError = error != null && error.isNotEmpty;
+    final moreLeft =
+        !group.loading &&
+        !hasError &&
+        (group.total ?? group.items.length) > group.items.length;
     final detailStyle = theme.textTheme.labelLarge?.copyWith(
       fontWeight: FontWeight.bold,
       color: UtenColors.error,
     );
-    return InkWell(
-      onTap: () {
-        setState(() {
-          if (expanded) {
-            _expandedGroups.remove(group.id);
-          } else {
-            _expandedGroups.add(group.id);
-          }
-        });
-        // 全屏路由经 _fsTick 驱动重建；bump 使全屏里展开/折叠同步（与列显隐同款）。
-        _fsTick.value++;
-      },
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: tint,
-          border: Border(
-            bottom: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+    final expansionDuration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 150);
+    return Semantics(
+      button: true,
+      expanded: expanded,
+      label: '${group.title}，${expanded ? '已展开' : '已折叠'}',
+      child: InkWell(
+        onTap: () {
+          final willExpand = !expanded;
+          setState(() {
+            if (expanded) {
+              _expandedGroups.remove(group.id);
+            } else {
+              _expandedGroups.add(group.id);
+            }
+          });
+          // 全屏路由经 _fsTick 驱动重建；bump 使全屏里展开/折叠同步（与列显隐同款）。
+          _fsTick.value++;
+          if (willExpand) group.onExpand?.call();
+        },
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: tint,
+            border: Border(
+              bottom: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+            ),
           ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12,
-            vertical: UtenSpacing.s8,
-          ),
-          child: Row(
-            children: [
-              if (group.icon != null) ...[
-                Icon(
-                  group.icon,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-              ],
-              Text(
-                group.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: UtenSpacing.s12,
+                vertical: UtenSpacing.s8,
               ),
-              if (group.subtitle != null) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                Flexible(
-                  child: Text(
-                    group.subtitle!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
+              child: Row(
+                children: [
+                  if (group.icon != null) ...[
+                    Icon(
+                      group.icon,
+                      size: 18,
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  ),
-                ),
-              ],
-              if (moreLeft && expanded)
-                Padding(
-                  padding: const EdgeInsets.only(left: UtenSpacing.s8),
-                  child: Text(
-                    '仅前 ${group.items.length}/${group.total}', // TODO(l10n): 补 arb
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                    const SizedBox(width: UtenSpacing.s8),
+                  ],
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            group.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (group.subtitle != null) ...[
+                          const SizedBox(width: UtenSpacing.s8),
+                          Flexible(
+                            child: Text(
+                              group.subtitle!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (moreLeft && expanded)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              left: UtenSpacing.s8,
+                            ),
+                            child: Text(
+                              '仅前 ${group.items.length}/${group.total}', // TODO(l10n): 补 arb
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                ),
-              const SizedBox(width: UtenSpacing.s12),
-              Text(group.detailLabel, style: detailStyle),
-              AnimatedRotation(
-                turns: expanded ? 0.5 : 0,
-                duration: const Duration(milliseconds: 150),
-                child: const Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 22,
-                  color: UtenColors.error,
-                ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  if (expanded && group.loading) ...[
+                    const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text('正在加载', style: theme.textTheme.labelLarge),
+                  ] else if (expanded && hasError)
+                    Tooltip(
+                      message: error,
+                      child: TextButton.icon(
+                        onPressed: group.onRetry ?? group.onExpand,
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('加载失败，重试'),
+                      ),
+                    )
+                  else
+                    Text(group.detailLabel, style: detailStyle),
+                  AnimatedRotation(
+                    turns: expanded ? 0.5 : 0,
+                    duration: expansionDuration,
+                    child: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 22,
+                      color: UtenColors.error,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1558,6 +1648,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                 SizedBox(
                   width: 54,
                   child: TextFormField(
+                    errorBuilder: utenTextFieldErrorBuilder,
                     controller: _pageCtrl,
                     keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
@@ -2058,6 +2149,7 @@ class _ColumnChooserButton extends StatefulWidget {
 
 class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
   final LayerLink _link = LayerLink();
+  final ScrollController _scroll = ScrollController();
   OverlayEntry? _overlay;
 
   void _open() {
@@ -2085,6 +2177,7 @@ class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
   @override
   void dispose() {
     _close();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -2107,6 +2200,9 @@ class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
     final theme = Theme.of(ctx);
     final allVisible = widget.hiddenKeys.isEmpty;
     final visibleCount = widget.columns.length - widget.hiddenKeys.length;
+    final maxHeight = (MediaQuery.sizeOf(ctx).height * 0.65)
+        .clamp(240.0, 520.0)
+        .toDouble();
     return Stack(
       children: [
         // 点菜单外空白关闭。
@@ -2128,35 +2224,41 @@ class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
               borderRadius: BorderRadius.circular(8),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: const BoxConstraints(
-                  maxHeight: 360,
-                  maxWidth: 240,
+                constraints: BoxConstraints(
+                  maxHeight: maxHeight,
+                  maxWidth: 260,
                 ),
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  children: [
-                    _checkRow(
-                      label: '全选', // TODO(l10n): 补 arb
-                      checked: allVisible,
-                      enabled: true,
-                      bold: true,
-                      onTap: () => _toggleAll(!allVisible),
-                      theme: theme,
-                    ),
-                    const Divider(height: 1, thickness: 1),
-                    for (final c in widget.columns)
+                child: Scrollbar(
+                  controller: _scroll,
+                  thumbVisibility: widget.columns.length > 8,
+                  child: ListView(
+                    key: const ValueKey('master-column-chooser-scroll'),
+                    controller: _scroll,
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    children: [
                       _checkRow(
-                        label: c.label,
-                        checked: !widget.hiddenKeys.contains(c.key),
-                        // 最后一列不允许再隐藏，避免表格没列。
-                        enabled:
-                            widget.hiddenKeys.contains(c.key) ||
-                            visibleCount > 1,
-                        onTap: () => _toggle(c.key),
+                        label: '全选', // TODO(l10n): 补 arb
+                        checked: allVisible,
+                        enabled: true,
+                        bold: true,
+                        onTap: () => _toggleAll(!allVisible),
                         theme: theme,
                       ),
-                  ],
+                      const Divider(height: 1, thickness: 1),
+                      for (final c in widget.columns)
+                        _checkRow(
+                          label: c.label,
+                          checked: !widget.hiddenKeys.contains(c.key),
+                          // 最后一列不允许再隐藏，避免表格没列。
+                          enabled:
+                              widget.hiddenKeys.contains(c.key) ||
+                              visibleCount > 1,
+                          onTap: () => _toggle(c.key),
+                          theme: theme,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -2177,39 +2279,47 @@ class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
     final disabledColor = theme.colorScheme.onSurfaceVariant.withValues(
       alpha: 0.4,
     );
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s8,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              checked
-                  ? Icons.check_box_rounded
-                  : Icons.check_box_outline_blank_rounded,
-              size: 18,
-              color: !enabled
-                  ? disabledColor
-                  : checked
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-                  color: enabled ? null : disabledColor,
+    return Semantics(
+      button: true,
+      checked: checked,
+      enabled: enabled,
+      label: label,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s12,
+            vertical: UtenSpacing.s8,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                checked
+                    ? Icons.check_box_rounded
+                    : Icons.check_box_outline_blank_rounded,
+                size: 18,
+                color: !enabled
+                    ? disabledColor
+                    : checked
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                    color: enabled ? null : disabledColor,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

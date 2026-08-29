@@ -166,7 +166,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                         isExpanded: true,
                         decoration: const InputDecoration(
                           isDense: true,
-                          labelText: '抬头仓库（打印标题）', // TODO(l10n): 补 arb
+                          labelText: '抬头仓库(打印标题)', // TODO(l10n): 补 arb
                         ),
                         items: [
                           for (final e in names.warehouseEntries.entries)
@@ -184,7 +184,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                         controller: _titleOverride,
                         decoration: const InputDecoration(
                           isDense: true,
-                          labelText: '标题覆盖（可选）', // TODO(l10n): 补 arb
+                          labelText: '标题覆盖(可选)', // TODO(l10n): 补 arb
                           hintText: '如：五金仓库物料库',
                         ),
                         onChanged: (_) => setState(() {}),
@@ -216,7 +216,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                     SizedBox(
                       width: 240,
                       child: UtenSearchBar(
-                        hint: '搜索（名称/编码/系列/库位号）', // TODO(l10n): 补 arb
+                        hint: '搜索(名称/编码/系列/库位号)', // TODO(l10n): 补 arb
                         onChanged: (kw) {
                           setState(() => _keyword = kw);
                           _load();
@@ -269,7 +269,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                     : total == 0
                     ? const Center(
                         child: Text(
-                          '暂无已维护库位号的货品\n请先在货品资料中填写「库位号」（如 A31-3-1）',
+                          '暂无已维护库位号的货品\n请先在货品资料中填写「库位号」(如 A31-3-1)',
                           textAlign: TextAlign.center,
                         ), // TODO(l10n): 补 arb
                       )

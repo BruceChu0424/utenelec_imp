@@ -24,6 +24,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/employee_display.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 import '../widgets/admin_department_perm_view.dart';
@@ -479,7 +480,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '员工还没有登录账号？点此补开（初始密码首登强制修改）',
+                    '员工还没有登录账号？点此补开(初始密码首登强制修改)',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -557,15 +558,21 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      u.employeeName ?? u.loginAccount,
+                      formatEmployeeDisplayName(
+                        u.employeeName ?? u.loginAccount,
+                        u.employeeCode,
+                      ),
                       style: Theme.of(context).textTheme.titleMedium,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '${u.loginAccount}'
-                      '${u.departmentName != null ? ' · ${u.departmentName}' : ''}',
+                      [
+                        if (u.departmentName?.trim().isNotEmpty == true)
+                          u.departmentName!.trim(),
+                        u.loginAccount,
+                      ].join(' · '),
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         fontWeight: FontWeight.w400,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,

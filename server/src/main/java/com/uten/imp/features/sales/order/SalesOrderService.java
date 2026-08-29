@@ -140,16 +140,19 @@ public class SalesOrderService {
             if (f.chain() != null && !f.chain().isEmpty()) {
                 jakarta.persistence.criteria.Subquery<UUID> sub = q.subquery(UUID.class);
                 Root<SalesOrderItem> i = sub.from(SalesOrderItem.class);
-                sub.select(i.get("orderId")).where(i.get("chainStatus").in(f.chain()));
+                sub.select(i.get("orderId")).where(
+                        cb.isFalse(i.get("deleted")),
+                        i.get("chainStatus").in(f.chain()));
                 ps.add(root.get("id").in(sub));
             }
             if (shippableFirst) {
                 // 可发货置顶：Σ行预留 > 0 的单排前（CASE 1/0 DESC），次按交货日升序、开单日期倒序
-                // （明细实体未映射 is_deleted，与上方 chain 钻取子查询同口径不滤删除行）
                 jakarta.persistence.criteria.Subquery<BigDecimal> sum = q.subquery(BigDecimal.class);
                 Root<SalesOrderItem> i2 = sum.from(SalesOrderItem.class);
                 sum.select(cb.coalesce(cb.sum(i2.get("reservedQty")), BigDecimal.ZERO))
-                        .where(cb.equal(i2.get("orderId"), root.get("id")));
+                        .where(
+                                cb.equal(i2.get("orderId"), root.get("id")),
+                                cb.isFalse(i2.get("deleted")));
                 q.orderBy(
                         cb.desc(cb.selectCase()
                                 .when(cb.gt(sum, BigDecimal.ZERO), 1).otherwise(0).as(Integer.class)),
@@ -201,6 +204,7 @@ public class SalesOrderService {
                     GROUP BY si.order_item_id
                 ) draft ON draft.order_item_id = i.id
                 WHERE o.status = 1 AND o.is_closed = false AND o.is_stopped = false
+                  AND COALESCE(o.finance_rejected, false) = false
                   AND COALESCE(o.is_deleted,false) = false AND COALESCE(i.is_deleted,false) = false
                   AND GREATEST(COALESCE(i.reserved_qty,0)
                       - COALESCE(draft.allocated_qty,0), 0) > 0
@@ -284,14 +288,19 @@ public class SalesOrderService {
             double reservedQty = pgNum(row, 8);
             double plannedQty = pgNum(row, 9);
             boolean financeConfirmed = Boolean.TRUE.equals(row[10]);
+            boolean financeRejected = Boolean.TRUE.equals(row[11]);
             double pct = orderQty > 0 ? Math.min(1.0, producedQty / orderQty) : 0.0;
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
                     orderQty, producedQty, shippedQty, reservedQty, plannedQty,
                     pct, progressStageOf(
                             orderQty, producedQty, shippedQty,
-                            reservedQty, plannedQty),
-                    financeConfirmed);
+                            reservedQty, plannedQty, financeRejected),
+                    financeConfirmed,
+                    financeRejected,
+                    pgStr(row, 12),
+                    pgStr(row, 13),
+                    offsetDateTime(row[14]));
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -314,12 +323,20 @@ public class SalesOrderService {
     }
 
     /** 订单进度按单聚合子查询（progress 列表/计数与阶段计数共用，避免口径漂移）。 */
-    private String progressGroupedSql(NativeReadScope ownerScope) {
+    static String progressGroupedSql(NativeReadScope ownerScope) {
         String base = """
                 FROM sales_orders o
                 LEFT JOIN clients c ON c.id = o.client_id
+                LEFT JOIN employees finance_reviewer
+                  ON finance_reviewer.id = o.finance_rejected_by
                 LEFT JOIN sales_order_items i ON i.order_id = o.id AND i.is_deleted = false
-                WHERE o.is_deleted = false AND o.status = 1
+                WHERE o.is_deleted = false
+                  AND (
+                    o.status = 1
+                    OR (o.status = 0
+                        AND o.finance_confirmed = false
+                        AND o.finance_rejected = true)
+                  )
                 """ + " AND " + ownerScope.predicate();
         return """
                 SELECT o.id::text, o.bill_no,
@@ -328,14 +345,23 @@ public class SalesOrderService {
                        COALESCE(SUM(i.qty),0) AS order_qty, COALESCE(SUM(i.produced_qty),0) AS produced_qty,
                        COALESCE(SUM(i.shipped_qty),0) AS shipped_qty, COALESCE(SUM(i.reserved_qty),0) AS reserved_qty,
                        COALESCE(SUM(i.planned_qty),0) AS planned_qty,
-                       o.finance_confirmed
-                """ + base + " GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name, o.finance_confirmed";
+                       o.finance_confirmed, o.finance_rejected,
+                       o.finance_rejected_reason,
+                       COALESCE(finance_reviewer.full_name, ''),
+                       o.finance_rejected_at
+                """ + base + "\n" + """
+                GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
+                         o.finance_confirmed, o.finance_rejected,
+                         o.finance_rejected_reason, finance_reviewer.full_name,
+                         o.finance_rejected_at
+                """;
     }
 
     /** 阶段派生 SQL（作用于聚合子查询别名 t）：口径必须与 {@link #progressStageOf} 保持一致。 */
-    private static String progressStageExpr() {
+    static String progressStageExpr() {
         return """
                 CASE
+                  WHEN t.finance_rejected THEN 'REJECTED'
                   WHEN t.order_qty <= 0 THEN 'PENDING'
                   WHEN t.shipped_qty >= t.order_qty - 0.000001 THEN 'SHIPPED'
                   WHEN t.reserved_qty > 0.000001 THEN 'SHIPPABLE'
@@ -355,7 +381,7 @@ public class SalesOrderService {
     static String normalizeProgressStage(String stage) {
         String normalized = stage == null ? "" : stage.strip().toUpperCase();
         return switch (normalized) {
-            case "", "OPEN", "PENDING", "PRODUCING", "SHIPPABLE", "SHIPPED" -> normalized;
+            case "", "OPEN", "REJECTED", "PENDING", "PRODUCING", "SHIPPABLE", "SHIPPED" -> normalized;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单进度阶段无效");
         };
     }
@@ -374,6 +400,18 @@ public class SalesOrderService {
             double shippedQty,
             double reservedQty,
             double plannedQty) {
+        return progressStageOf(
+                orderQty, producedQty, shippedQty, reservedQty, plannedQty, false);
+    }
+
+    static String progressStageOf(
+            double orderQty,
+            double producedQty,
+            double shippedQty,
+            double reservedQty,
+            double plannedQty,
+            boolean financeRejected) {
+        if (financeRejected) return "REJECTED";
         if (orderQty <= 0) return "PENDING";
         if (shippedQty + 1e-6 >= orderQty) return "SHIPPED";
         if (reservedQty > 1e-6) return "SHIPPABLE";
@@ -385,7 +423,8 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:view')")
     public OrderDetail detail(UUID id) {
         SalesOrder o = requireReadableOrder(id);
-        List<SalesOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        List<SalesOrderItem> items =
+                itemRepo.findByOrderIdAndDeletedFalseOrderByLineNoAsc(id);
         List<OrderItemDto> itemDtos = items.stream().map(this::toItemDto).toList();
         List<OrderCostItemDto> costDtos = items.isEmpty() ? List.of()
                 : costItemRepo.findByOrderItemIdIn(items.stream().map(SalesOrderItem::getId).toList())
@@ -687,7 +726,10 @@ public class SalesOrderService {
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
-        if (o.getStatus() != STATUS_DRAFT) {
+        boolean rejectedRevision = o.isFinanceRejected()
+                && !o.isFinanceConfirmed()
+                && (o.getStatus() == STATUS_APPROVED || o.getStatus() == STATUS_DRAFT);
+        if (o.getStatus() != STATUS_DRAFT && !rejectedRevision) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
         // 历史单只读保留 CUSTOMER_CONFIRM：不允许把其它策略的订单改回该历史值。
@@ -699,12 +741,15 @@ public class SalesOrderService {
                     "「客户确认后分批」仅历史单保留，请选择允许分批发货或整单齐套后发货");
         }
         referenceValidator.validate(req);
+        if (rejectedRevision) {
+            return reviseFinanceRejectedOrder(o, req);
+        }
         applyHeader(req, o);
         // 发运策略必选：保存后草稿不得处于未选/历史未指定状态（历史草稿补选后才能保存）。
         if (o.getShipmentPolicy() == null || o.getShipmentPolicy().isBlank()
                 || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(o.getShipmentPolicy())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "请选择发运策略（允许分批发货 / 整单齐套后发货）");
+                    "请选择发运策略(允许分批发货 / 整单齐套后发货)");
         }
         costItemRepo.deleteByOrderId(id);
         itemRepo.deleteByOrderId(id);
@@ -712,6 +757,257 @@ public class SalesOrderService {
         List<OrderItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
         return toDetail(o, items, List.of(), true);
+    }
+
+    /**
+     * 财务驳回后的受控修订。已审核订单先确认没有任何不可逆下游事实，再释放有效预留；
+     * 旧行通过 is_deleted 留存，避免库存预留台账的 order_item_id 变成悬空引用。
+     */
+    private OrderDetail reviseFinanceRejectedOrder(
+            SalesOrder order, OrderSaveRequest req) {
+        if (!order.isFinanceRejected() || order.isFinanceConfirmed()
+                || (order.getStatus() != STATUS_APPROVED
+                    && order.getStatus() != STATUS_DRAFT)) {
+            throw new ApiException(ErrorCode.CONFLICT, "订单当前不允许按财务驳回修订");
+        }
+
+        List<SalesOrderItem> existing = lockOrderItems(order.getId());
+        if (existing.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT, "被驳回订单没有可修订的有效明细");
+        }
+        Map<UUID, List<PlanOrderItemLink>> activeLinks = lockActivePlanLinks(existing);
+        for (SalesOrderItem item : existing) {
+            if (hasRejectedRevisionBlockingLineFacts(item)) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "订单已有发货、退货、核销、排产或完工事实，不能直接修订");
+            }
+            List<PlanOrderItemLink> links =
+                    activeLinks.getOrDefault(item.getId(), List.of());
+            requireConsistentPlanningLedger(item, links);
+            if (!links.isEmpty()) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "订单已有活动排产关联，须先完成受控反向后再修订");
+            }
+        }
+        assertNoShipmentReferences(order.getId());
+        assertNoFinanceFactsForRevision(order.getId());
+        assertNoMaterialAnalysisForRevision(
+                existing.stream().map(SalesOrderItem::getId).toList());
+
+        reservationService.releaseByOrderItems(
+                existing.stream().map(SalesOrderItem::getId).toList());
+
+        applyHeader(req, order);
+        if (order.getShipmentPolicy() == null || order.getShipmentPolicy().isBlank()
+                || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(order.getShipmentPolicy())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "请选择发运策略(允许分批发货 / 整单齐套后发货)");
+        }
+        List<OrderItemDto> revised =
+                reconcileRejectedRevisionItems(order, existing, req.getItems());
+        order.setStatus(STATUS_DRAFT);
+        order.setFinanceConfirmed(false);
+        clearPartialShipmentConfirmation(order);
+        orderRepo.save(order);
+        applyTotals(order, revised);
+        return toDetail(order, revised, List.of(), true);
+    }
+
+    static boolean hasRejectedRevisionBlockingLineFacts(SalesOrderItem item) {
+        return nz(item.getShippedQty()).signum() != 0
+                || nz(item.getReturnedQty()).signum() != 0
+                || nz(item.getFlagQty()).signum() != 0
+                || nz(item.getPlannedQty()).signum() != 0
+                || nz(item.getProducedQty()).signum() != 0
+                || nz(item.getInboundQty()).signum() != 0;
+    }
+
+    private void assertNoShipmentReferences(UUID orderId) {
+        @SuppressWarnings("unchecked")
+        List<String> shipmentNos = em.createNativeQuery("""
+                SELECT DISTINCT shipment.bill_no
+                FROM sales_shipment_items shipment_item
+                JOIN sales_shipments shipment
+                  ON shipment.id = shipment_item.shipment_id
+                JOIN sales_order_items order_item
+                  ON order_item.id = shipment_item.order_item_id
+                WHERE order_item.order_id = :orderId
+                  AND COALESCE(shipment_item.is_deleted, FALSE) = FALSE
+                  AND COALESCE(shipment.is_deleted, FALSE) = FALSE
+                ORDER BY shipment.bill_no
+                """, String.class)
+                .setParameter("orderId", orderId)
+                .getResultList();
+        if (!shipmentNos.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订单已有出货作业，须先撤销相关出货单："
+                            + String.join("、", shipmentNos));
+        }
+    }
+
+    private void assertNoFinanceFactsForRevision(UUID orderId) {
+        long count = ((Number) em.createNativeQuery("""
+                SELECT CASE WHEN EXISTS(
+                    SELECT 1
+                    FROM finance_receipts receipt
+                    WHERE receipt.sales_order_id = :orderId
+                      AND receipt.status = 1
+                      AND COALESCE(receipt.is_deleted, FALSE) = FALSE)
+                  OR EXISTS(
+                    SELECT 1
+                    FROM customer_open_item_offsets offset_row
+                    WHERE offset_row.sales_order_id = :orderId
+                      AND offset_row.status = 'APPLIED')
+                  OR EXISTS(
+                    SELECT 1
+                    FROM ar_ap_source_refs source_ref
+                    WHERE source_ref.source_type = 'SALES_ORDER'
+                      AND source_ref.source_id = :orderId)
+                  THEN 1 ELSE 0 END
+                """)
+                .setParameter("orderId", orderId)
+                .getSingleResult()).longValue();
+        if (count > 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订单已有预收、核销或应收来源事实，不能通过普通修订改写商业内容");
+        }
+    }
+
+    private void assertNoMaterialAnalysisForRevision(List<UUID> orderItemIds) {
+        if (orderItemIds.isEmpty()) return;
+        long count = ((Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM production_material_analysis_items analysis_item
+                WHERE analysis_item.sales_order_item_id IN (:ids)
+                  AND COALESCE(analysis_item.is_deleted, FALSE) = FALSE
+                """)
+                .setParameter("ids", orderItemIds)
+                .getSingleResult()).longValue();
+        if (count > 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订单已有物料分析事实，须先完成受控反向后再修订");
+        }
+    }
+
+    private List<OrderItemDto> reconcileRejectedRevisionItems(
+            SalesOrder order,
+            List<SalesOrderItem> existing,
+            List<OrderItemLine> requested) {
+        if (requested == null || requested.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
+        }
+        Map<UUID, SalesOrderItem> existingById = existing.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        SalesOrderItem::getId, item -> item));
+        java.util.Set<UUID> seenExistingIds = new java.util.HashSet<>();
+        Map<UUID, SalesGoodsSnapshot> goodsSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                requested.stream().map(OrderItemLine::getGoodsId).toList(),
+                SalesGoodsSnapshot.MASTER_AT_SAVE);
+        List<OrderItemDto> result = new ArrayList<>(requested.size());
+        int autoLine = 1;
+        for (OrderItemLine line : requested) {
+            requireSafeCommercialLine(line);
+            SalesOrderItem target = null;
+            if (line.getId() != null) {
+                if (!seenExistingIds.add(line.getId())) {
+                    throw new ApiException(
+                            ErrorCode.VALIDATION_FAILED, "修订明细 UUID 不能重复");
+                }
+                SalesOrderItem stored = existingById.get(line.getId());
+                if (stored == null) {
+                    throw new ApiException(
+                            ErrorCode.CONFLICT, "修订明细不存在、已删除或不属于本订单");
+                }
+                if (sameRejectedRevisionIdentity(stored, line)) {
+                    target = stored;
+                } else {
+                    stored.setDeleted(true);
+                    itemRepo.save(stored);
+                }
+            }
+            if (target == null) {
+                target = new SalesOrderItem();
+                target.setOrderId(order.getId());
+            }
+            applyRejectedRevisionLine(
+                    order, target, line, autoLine, goodsSnapshots);
+            itemRepo.save(target);
+            result.add(toItemDto(target));
+            autoLine++;
+        }
+        for (SalesOrderItem stored : existing) {
+            if (!seenExistingIds.contains(stored.getId())) {
+                stored.setDeleted(true);
+                itemRepo.save(stored);
+            }
+        }
+        itemRepo.flush();
+        return result;
+    }
+
+    static boolean sameRejectedRevisionIdentity(
+            SalesOrderItem stored, OrderItemLine requested) {
+        return java.util.Objects.equals(stored.getGoodsId(), requested.getGoodsId())
+                && java.util.Objects.equals(stored.getColorId(), requested.getColorId())
+                && java.util.Objects.equals(stored.getUnitId(), requested.getUnitId())
+                && sameDecimal(stored.getUnitRate(), requested.getUnitRate());
+    }
+
+    private static boolean sameDecimal(BigDecimal left, BigDecimal right) {
+        if (left == null || right == null) return left == right;
+        return left.compareTo(right) == 0;
+    }
+
+    private void applyRejectedRevisionLine(
+            SalesOrder order,
+            SalesOrderItem item,
+            OrderItemLine line,
+            int autoLine,
+            Map<UUID, SalesGoodsSnapshot> goodsSnapshots) {
+        item.setDeleted(false);
+        item.setBillNo(order.getBillNo());
+        item.setBillDate(order.getBillDate());
+        item.setLineNo(line.getLineNo() == null ? autoLine : line.getLineNo());
+        item.setGoodsId(line.getGoodsId());
+        applyGoodsSnapshot(
+                item,
+                SalesGoodsSnapshot.require(
+                        goodsSnapshots, line.getGoodsId(), "销售订单修订明细"),
+                null);
+        item.setColorId(line.getColorId());
+        item.setUnitId(line.getUnitId());
+        item.setUnitRate(line.getUnitRate());
+        item.setQty(line.getQty());
+        item.setPrice(line.getPrice());
+        item.setAmountOriginal(authoritativeOrderAmount(
+                line.getQty(), line.getPrice(), line.getDiscount()));
+        item.setAmountLocal(null);
+        item.setShippedQty(BigDecimal.ZERO);
+        item.setReturnedQty(BigDecimal.ZERO);
+        item.setFlagQty(BigDecimal.ZERO);
+        item.setDiscount(line.getDiscount());
+        item.setTaxAmount(BigDecimal.ZERO);
+        item.setWeight(line.getWeight());
+        item.setClientNo(line.getClientNo());
+        item.setClientModel(line.getClientModel());
+        item.setDeliverDate(line.getDeliverDate());
+        item.setSourceDocNo(line.getSourceDocNo());
+        item.setMachiningPrice(line.getMachiningPrice());
+        item.setCircumference(line.getCircumference());
+        item.setInboundQty(BigDecimal.ZERO);
+        item.setInNo(null);
+        item.setOutNo(null);
+        item.setReservedQty(BigDecimal.ZERO);
+        item.setPlannedQty(BigDecimal.ZERO);
+        item.setProducedQty(BigDecimal.ZERO);
+        item.setChainStatus((short) 0);
+        item.setRemark(line.getRemark());
     }
 
     @Transactional
@@ -740,7 +1036,7 @@ public class SalesOrderService {
         if (o.getShipmentPolicy() == null || o.getShipmentPolicy().isBlank()
                 || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(o.getShipmentPolicy())) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "请先编辑订单选择发运策略（允许分批发货 / 整单齐套后发货）再审核");
+                    "请先编辑订单选择发运策略(允许分批发货 / 整单齐套后发货)再审核");
         }
         List<SalesOrderItem> items = lockOrderItems(id);
         if (items.isEmpty()) {
@@ -756,6 +1052,10 @@ public class SalesOrderService {
         reserveOnApprove(o, items);
         o.setStatus(STATUS_APPROVED);
         o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        if (o.isFinanceRejected()) {
+            // 当前驳回已由销售显式修订并重新审核；保留最后一次原因/人员/时间供时间线展示。
+            o.setFinanceRejected(false);
+        }
         orderRepo.save(o);
         // V294 闸门：审核后先通知财务确认；财务确认后才通知计划部接手物料分析。
         chainNotice.notifyOrderPendingFinanceConfirmation(id);
@@ -848,7 +1148,12 @@ public class SalesOrderService {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可改量（草稿请直接编辑）");
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可改量(草稿请直接编辑)");
+        }
+        if (o.isFinanceRejected()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订单已被财务驳回，请使用“修改订单”完成受控修订并重新审核");
         }
         if (o.isStopped()) {
             throw new ApiException(ErrorCode.BUSINESS, "已中止订单不可改量");
@@ -884,7 +1189,7 @@ public class SalesOrderService {
                     it.getShippedQty(), it.getReturnedQty(), it.getFlagQty());
             if (l.getNewQty().compareTo(floor) < 0) {
                 throw new ApiException(ErrorCode.BUSINESS,
-                        "新数量不能低于已履约净量（" + floor.stripTrailingZeros().toPlainString() + "）");
+                        "新数量不能低于已履约净量(" + floor.stripTrailingZeros().toPlainString() + ")");
             }
             if (l.getNewQty().compareTo(nz(it.getQty())) != 0) {
                 actualQtyChanged = true;
@@ -953,7 +1258,7 @@ public class SalesOrderService {
                             rem = rem.subtract(c);
                         }
                         if (rem.compareTo(new BigDecimal("0.0001")) > 0) {
-                            throw new ApiException(ErrorCode.BUSINESS, "减量超过可调整范围（已发/已产部分不可减）");
+                            throw new ApiException(ErrorCode.BUSINESS, "减量超过可调整范围(已发/已产部分不可减)");
                         }
                     }
                 }
@@ -1014,7 +1319,7 @@ public class SalesOrderService {
         tx.bind();
         SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可取消（草稿直接删除）");
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可取消(草稿直接删除)");
         }
         if (o.isStopped()) {
             throw new ApiException(ErrorCode.BUSINESS, "订单已中止");
@@ -1057,6 +1362,10 @@ public class SalesOrderService {
             itemRepo.save(it);
         }
         o.setStopped(true);
+        if (o.isFinanceRejected()) {
+            // 取消是本次驳回的终止处置；保留原因/人员/时间作历史，只清当前返工态。
+            o.setFinanceRejected(false);
+        }
         clearPartialShipmentConfirmation(o);
         orderRepo.save(o);
         chainNotice.notifyOrderCanceled(id); // 旁路通知：取消确认→销售 + 无需排产→调度，提交后发送
@@ -1140,7 +1449,7 @@ public class SalesOrderService {
     public OrderDetail setLinePriority(UUID orderItemId, OrderPriorityRequest req) {
         tx.bind();
         if (req == null || req.getPriority() == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "优先级必填（1急单/2普通/3现货）");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "优先级必填(1急单/2普通/3现货)");
         }
         short priority = req.getPriority();
         if (priority < 1 || priority > 3) {
@@ -1156,6 +1465,11 @@ public class SalesOrderService {
         SalesOrder order = requireOrder(it.getOrderId());
         accessPolicy.requireWritable(order.getOwnerEmployeeId(), "无权设置该订单行优先级",
                 "sales_order:priority");
+        if (order.isFinanceRejected()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订单已被财务驳回，请先使用“修改订单”完成受控修订");
+        }
         short old = it.getPriority() == null ? 3 : it.getPriority();
         it.setPriority(priority);
         itemRepo.save(it);
@@ -1192,6 +1506,11 @@ public class SalesOrderService {
         SalesOrder o = requireOrder(it.getOrderId());
         accessPolicy.requireWritable(o.getOwnerEmployeeId(), "无权让出该订单行预留",
                 "sales_order:reallocate");
+        if (o.isFinanceRejected()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订单已被财务驳回，请先使用“修改订单”完成受控修订");
+        }
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单的预留可让单");
         }
@@ -1259,6 +1578,7 @@ public class SalesOrderService {
                 LEFT JOIN goods g ON g.id = r.goods_id
                 LEFT JOIN clients c ON c.id = o.client_id
                 WHERE r.is_deleted = FALSE AND r.status = 0
+                  AND COALESCE(i.is_deleted, FALSE) = FALSE
                   AND (r.qty - r.consumed_qty - r.released_qty) > 0
                   AND r.goods_id = :gid
                   AND (CAST(:cid AS uuid) IS NULL
@@ -1438,6 +1758,12 @@ public class SalesOrderService {
                 return cancel(id);
             }
             if (!stopped && o.isStopped()) {
+                if (!o.isFinanceConfirmed()
+                        && o.getFinanceRejectedAt() != null) {
+                    throw new ApiException(
+                            ErrorCode.CONFLICT,
+                            "曾被财务驳回的取消订单不能直接恢复，请重新修订并走销售/财务审核");
+                }
                 List<SalesOrderItem> items = lockOrderItems(id);
                 reserveOnApprove(o, items); // 重预留（行状态 7/1/2 自动重算）
                 o.setStopped(false);
@@ -1523,51 +1849,22 @@ public class SalesOrderService {
         }
     }
 
-    /**
-     * 报价转订单的默认币种解析。项目当前没有本位币 system setting，因此先认标准 code=CNY；
-     * 没有标准编码时才兼容唯一 name=人民币。候选为 0 或多条都失败关闭，绝不按 rate=1 或排序取首条。
-     */
+    /** 报价转订单只使用 V403 冻结到币种 UUID 的唯一启用本位币。 */
     private UUID resolveQuoteConversionCurrencyId() {
-        List<UUID> standardCny = com.uten.imp.common.util.NativeQueryResults.typedRows(
+        List<UUID> baseCurrencies = com.uten.imp.common.util.NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                         SELECT id
                         FROM currencies
                         WHERE COALESCE(is_deleted, false) = false
                           AND status = '使用'
-                          AND UPPER(BTRIM(COALESCE(code, ''))) = 'CNY'
-                        ORDER BY id
-                        LIMIT 2
+                          AND is_base_currency
                         """), UUID.class);
-        if (standardCny.size() == 1) {
-            return standardCny.get(0);
-        }
-        if (standardCny.size() > 1) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "报价转订货无法确定默认币种：存在多条启用的 CNY 币种主档");
-        }
-
-        List<UUID> namedRenminbi = com.uten.imp.common.util.NativeQueryResults.typedRows(
-                em.createNativeQuery("""
-                        SELECT id
-                        FROM currencies
-                        WHERE COALESCE(is_deleted, false) = false
-                          AND status = '使用'
-                          AND BTRIM(COALESCE(name, '')) = '人民币'
-                        ORDER BY id
-                        LIMIT 2
-                        """), UUID.class);
-        if (namedRenminbi.size() == 1) {
-            return namedRenminbi.get(0);
-        }
-        if (namedRenminbi.size() > 1) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "报价转订货无法确定默认币种：存在多条启用的人民币币种主档");
+        if (baseCurrencies.size() == 1) {
+            return baseCurrencies.getFirst();
         }
         throw new ApiException(
                 ErrorCode.CONFLICT,
-                "报价转订货前请先维护唯一启用的人民币币种（标准编码 CNY）");
+                "报价转订货前必须存在唯一启用的本位币 UUID 权威");
     }
 
     private String normalizeShipmentPolicy(String raw) {
@@ -1588,7 +1885,7 @@ public class SalesOrderService {
         if (!SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL.equals(policy)
                 && !SalesOrder.SHIPMENT_POLICY_REQUIRE_COMPLETE.equals(policy)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "请选择发运策略（允许分批发货 / 整单齐套后发货）");
+                    "请选择发运策略(允许分批发货 / 整单齐套后发货)");
         }
     }
 

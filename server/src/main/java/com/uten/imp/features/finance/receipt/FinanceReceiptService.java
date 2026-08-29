@@ -8,8 +8,10 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver.EmployeeReference;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
@@ -39,14 +41,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -58,11 +65,13 @@ import java.util.UUID;
  *       + amount_balance 重算 + balance = 0 自动 is_settled=true。</li>
  *   <li>明细为空（直接收款 / 客户预付）：调 {@link ArApLedgerService#postArAp} 建 DIRECT_RECEIPT 立帐行
  *       （amount_original_local=0），再置 settled=amount_local、balance=-amount_local（负值 = 客户预付）。</li>
- *   <li>账户 {@code accounts.balance_current += amount_local, receipts_total += amount_local}。</li>
- *   <li>INSERT finance_reconciliations(source_doc_type=RECEIPT, in_amount=amount_local)。</li>
+ *   <li>人民币账户增加本批 {@code amount_local}；同币种外币账户增加本批
+ *       {@code amount_original}。</li>
+ *   <li>账户流水使用账户自身币种，与 {@code balance_current} 保持同一单位。</li>
  * </ul>
  *
- * <p>红冲（1→-1）反向：回减核销 / 删 DIRECT_RECEIPT 行 / 回滚账户 / 删流水。
+ * <p>红冲（1→-1）反向：回减核销 / 保留预收历史 / 回滚账户 /
+ * 追加账户与总账反向事实；原始流水和凭证均不删除。
  */
 @Service
 @RequiredArgsConstructor
@@ -73,6 +82,13 @@ public class FinanceReceiptService {
     private static final short STATUS_REVERSED = -1;
     private static final int MONEY_SCALE = 4;
     private static final int RATE_SCALE = 6;
+    private static final short SETTLEMENT_AUTHORITY_V1 = 1;
+    private static final String FEE_NONE = "NONE";
+    private static final String FEE_DEDUCTED = "DEDUCTED_FROM_PROCEEDS";
+    private static final String FEE_SEPARATE = "PAID_SEPARATELY";
+    private static final String FEE_BEARER_NONE = "NONE";
+    private static final String FEE_BEARER_COMPANY = "COMPANY";
+    private static final String RECON_FEE_SOURCE = "RECEIPT_FEE";
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "amountLocal", "amountLocal");
@@ -95,6 +111,7 @@ public class FinanceReceiptService {
     private final FinanceDocumentAccessPolicy access;
     private final GlPostingService glPosting;
     private final FinanceReceiptSourceAllocationService sourceAllocation;
+    private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceReceiptListItem> list(FinanceReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -140,21 +157,34 @@ public class FinanceReceiptService {
     public FinanceReceiptDetail create(FinanceReceiptSaveRequest req) {
         tx.bind();
         requirePrepaymentView(req.getReceiptKind());
-        if (req.getOtherFeeStyleId() != null
-                || req.getReceiptMethodId() != null
-                || req.getReceiptMethodLegacyId() != null) {
-            PaymentStyleHierarchyLock.lock(em);
+        UUID makerId = currentUser.requireEmployeeId();
+        String idempotencyKey = normalizeIdempotencyKey(req.getCreateIdempotencyKey());
+        String requestHash = requestHash(req);
+        lockCreateIdempotency(makerId, idempotencyKey);
+        FinanceReceipt replay = findCreateReplay(makerId, idempotencyKey);
+        if (replay != null) {
+            if (!Objects.equals(replay.getCreateRequestHash(), requestHash)) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "收款创建幂等键已用于不同内容，请刷新后重新提交");
+            }
+            return detail(replay.getId());
         }
+        PaymentStyleHierarchyLock.lock(em);
         assertBillNoFree(req.getBillNo(), null);
         FinanceReceipt r = new FinanceReceipt();
+        r.setMakerId(makerId);
+        r.setCreateIdempotencyKey(idempotencyKey);
+        r.setCreateRequestHash(requestHash);
         applyHeader(req, r);
         r.setStatus(STATUS_DRAFT);
-        r.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         applyMakerIdentity(r);
         receiptRepo.save(r);
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
         applyLineTotals(r, items);
+        finalizeSettlementAuthority(r, req.getAccountCurrencyId(),
+                req.getAccountAmount(), false);
         validateReceiptShape(r, items, false);
+        receiptRepo.flush();
         return toDetail(r, items);
     }
 
@@ -164,17 +194,19 @@ public class FinanceReceiptService {
             + "or (hasAuthority('customer_prepayment:view') and hasAuthority('finance:view:all')))")
     public FinanceReceiptDetail update(UUID id, FinanceReceiptSaveRequest req) {
         tx.bind();
-        if (req.getOtherFeeStyleId() != null
-                || req.getReceiptMethodId() != null
-                || req.getReceiptMethodLegacyId() != null) {
-            PaymentStyleHierarchyLock.lock(em);
-        }
+        PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         requirePrepaymentView(r);
         requirePrepaymentView(req.getReceiptKind());
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        }
+        if (req.getExpectedVersion() == null
+                || r.getVersion() == null
+                || req.getExpectedVersion().longValue() != r.getVersion().longValue()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款草稿已被其他操作更新，请刷新后重试");
         }
         assertBillNoFree(req.getBillNo(), id);
         applyHeader(req, r);
@@ -183,7 +215,10 @@ public class FinanceReceiptService {
         lineRepo.flush();
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
         applyLineTotals(r, items);
+        finalizeSettlementAuthority(r, req.getAccountCurrencyId(),
+                req.getAccountAmount(), false);
         validateReceiptShape(r, items, false);
+        receiptRepo.flush();
         return toDetail(r, items);
     }
 
@@ -223,24 +258,31 @@ public class FinanceReceiptService {
         if (r.getClientId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收款单需指定客户");
         }
+        // Global money lock order is period -> accounts -> AR/open items.
+        // Account-balance adjustment already uses this order; taking account
+        // locks first here would create a real deadlock cycle.
+        glPosting.lockAutoProjectionPeriod(r.getBillDate());
         validateReceiptShape(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()), true);
+        finalizeSettlementAuthority(r, r.getAccountCurrencyId(),
+                r.getAccountAmount(), true);
         assertNoExistingPosting(r.getId()); // M19：幂等护栏，finance_reconciliations 已存在该单流水则禁止重复审核
         UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         if (r.getMakerId() != null && r.getMakerId().equals(approver)) {
-            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
+            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同(职责分离)");
         }
-        glPosting.lockAutoProjectionPeriod(r.getBillDate());
         r.setApproverId(approver);
         r.setApproverLegacyId(null);
         r.setApproverName(nameResolver.nameOf(approver));
         settleReceipt(r);
         r.setStatus(STATUS_APPROVED);
         r.setCancelDate(OffsetDateTime.now());
-        receiptRepo.save(r);
+        receiptRepo.saveAndFlush(r);
+        glPosting.postReceiptDoc(r.getId());
+        assertV1ProjectionIntegrity(r.getId());
         return detail(id);
     }
 
-    /** 红冲：status 1→-1，反向冲销（回减核销 / 删 DIRECT_RECEIPT 行 / 回滚账户 / 删流水）。 */
+    /** 红冲：status 1→-1，AR、真实账户、账户流水和 GL 在同一事务追加反向事实。 */
     @Transactional
     @PreAuthorize("hasAuthority('finance_receipt:reverse')")
     public FinanceReceiptDetail reverse(UUID id) {
@@ -252,13 +294,17 @@ public class FinanceReceiptService {
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
-        assertCompletePosting(r.getId(), 1L); // M19：红冲前确认流水完整（收款每单恰 1 行）
-        glPosting.removeAutoProjection(RECON_SOURCE, r.getId(), r.getBillNo(), r.getBillDate());
+        assertCompletePosting(r); // 红冲前确认收款与另付费用流水完整
+        OffsetDateTime reversedAt = OffsetDateTime.now();
+        glPosting.reverseReceiptDoc(r.getId(), reversedAt);
         // Allocation reversal is database-guarded against a reversed receipt header.
         r.setStatus(STATUS_REVERSED);
-        r.setReversedAt(OffsetDateTime.now()); // V390：一次写入，数据库触发器锁定
+        r.setReversedAt(reversedAt); // V390：一次写入，数据库触发器锁定
         receiptRepo.saveAndFlush(r);
         reverseSettlement(r);
+        if (r.getSettlementAuthorityVersion()==SETTLEMENT_AUTHORITY_V1) {
+            assertV1ProjectionIntegrity(r.getId());
+        }
         return detail(id);
     }
 
@@ -276,14 +322,17 @@ public class FinanceReceiptService {
         BigDecimal amountLocal = nz(r.getAmountLocal());
         if (!lines.isEmpty()) {
             settleAppliedLines(r, lines, lockedLedgers);
+            refreshGlFxStyleSnapshot(r, lines);
+            // Freeze every authoritative line snapshot while the header is
+            // still DRAFT. V407 correctly forbids monetary line changes once
+            // the parent status advances to APPROVED.
+            lineRepo.flush();
             // Freeze exact receipt-to-order allocations only after authoritative line snapshots exist.
             r.setStatus(STATUS_APPROVED);
             receiptRepo.saveAndFlush(r);
             sourceAllocation.allocateApprovedReceipt(r, lines);
             amountLocal = nz(r.getAmountLocal());
-            BigDecimal accountAmount = adjustAccount(
-                    r.getAccountId(), r.getCurrencyId(), nz(r.getAmountOriginal()), amountLocal);
-            insertReconciliation(r, accountAmount);
+            applyAccountPosting(r, 1);
             return;
         }
         if (r.getCurrencyId() == null) {
@@ -295,7 +344,9 @@ public class FinanceReceiptService {
         r.setExchangeRate(directRate);
         r.setAmountOriginal(directOriginal);
         r.setAmountLocal(amountLocal);
-        if (nz(r.getBankFee()).signum() != 0 || nz(r.getOtherFee()).signum() != 0) {
+        if (r.getSettlementAuthorityVersion() == 0
+                && (nz(r.getBankFee()).signum() != 0
+                    || nz(r.getOtherFee()).signum() != 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "客户预收款暂不支持费用冲销；费用必须分配到引用的应收明细");
         }
         // 直接收款 / 客户预付：建 DIRECT_RECEIPT 立帐行（amount=0），到账与负余额随 INSERT
@@ -317,9 +368,7 @@ public class FinanceReceiptService {
         refreshSettlement(led, r.getBillDate());
         ledgerRepo.save(led);
         // 账户累加 + 写流水
-        BigDecimal accountAmount = adjustAccount(
-                r.getAccountId(), r.getCurrencyId(), nz(r.getAmountOriginal()), amountLocal);
-        insertReconciliation(r, accountAmount);
+        applyAccountPosting(r, 1);
     }
 
     /** 红冲反向：lines 非空 → 回减 AR 核销；lines 空 → 删 DIRECT_RECEIPT 立帐行。 */
@@ -355,7 +404,8 @@ public class FinanceReceiptService {
             if (line.getCurrencyId() == null
                     || !Objects.equals(ledger.getCurrencyId(), line.getCurrencyId())) {
                 throw new ApiException(ErrorCode.BUSINESS,
-                        "跨币种核销需要双币金额与双汇率；当前收款明细只能使用应收币别");
+                        "核销原币必须与应收币种一致；美元应收可按本批实际到账汇率"
+                                + "结汇进入人民币账户，不能以第三币种金额直接改写应收原币");
             }
 
             BigDecimal receiptRate = positiveRate(line.getExchangeRate());
@@ -419,7 +469,13 @@ public class FinanceReceiptService {
         if (nz(receipt.getOtherFee()).signum() > 0) {
             assertExpenseStyleActive(receipt.getOtherFeeStyleId());
         }
-        if (money(writeOffLocalTotal).compareTo(headerFees) != 0) {
+        if (receipt.getSettlementAuthorityVersion() == SETTLEMENT_AUTHORITY_V1
+                && money(writeOffLocalTotal).signum() != 0) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "新收款的AR商业冲销必须为0，手续费由独立费用快照承担");
+        }
+        if (receipt.getSettlementAuthorityVersion() == 0
+                && money(writeOffLocalTotal).compareTo(headerFees) != 0) {
             throw new ApiException(ErrorCode.BUSINESS,
                     "明细冲销人民币合计必须等于手续费与其它费用合计");
         }
@@ -434,9 +490,7 @@ public class FinanceReceiptService {
         if (!lines.isEmpty()) {
             sourceAllocation.reverseApprovedReceipt(r, lines);
             reverseAppliedLines(r, lines, lockAppliedLedgers(lines));
-            adjustAccount(r.getAccountId(), r.getCurrencyId(),
-                    nz(r.getAmountOriginal()).negate(), amountLocal.negate());
-            deleteReconciliation(r.getId());
+            applyAccountPosting(r, -1);
             return;
         }
         // Direct prepayment reversal retains the AR history row. Any applications
@@ -460,10 +514,8 @@ public class FinanceReceiptService {
         led.setDeletedAt(OffsetDateTime.now());
         ledgerRepo.save(led);
         if (amountLocal.signum() != 0) {
-            adjustAccount(r.getAccountId(), r.getCurrencyId(),
-                    nz(r.getAmountOriginal()).negate(), amountLocal.negate());
+            applyAccountPosting(r, -1);
         }
-        deleteReconciliation(r.getId());
     }
 
     private void reverseAppliedLines(
@@ -578,6 +630,103 @@ public class FinanceReceiptService {
      * <p>人民币账户记本币；与到账币种相同的外币账户记原币。审核为正、红冲为负，
      * 账户余额与 finance_reconciliations 始终保持同一账户币种口径。
      */
+    private void applyAccountPosting(FinanceReceipt receipt, int sign) {
+        if (receipt.getSettlementAuthorityVersion() != SETTLEMENT_AUTHORITY_V1) {
+            BigDecimal accountAmount = adjustAccount(
+                    receipt.getAccountId(),
+                    receipt.getCurrencyId(),
+                    nz(receipt.getAmountOriginal()).multiply(BigDecimal.valueOf(sign)),
+                    nz(receipt.getAmountLocal()).multiply(BigDecimal.valueOf(sign)));
+            if (sign > 0) {
+                insertReconciliation(receipt, accountAmount);
+            } else {
+                accountFlowLedger.reverse(
+                        RECON_SOURCE, receipt.getId(), receipt.getReversedAt(), "销售收款红冲");
+            }
+            return;
+        }
+
+        List<UUID> ids = new ArrayList<>();
+        ids.add(receipt.getAccountId());
+        if (FEE_SEPARATE.equals(receipt.getFeeSettlementMode())
+                && receipt.getFeePaymentAccountId() != null
+                && !receipt.getFeePaymentAccountId().equals(receipt.getAccountId())) {
+            ids.add(receipt.getFeePaymentAccountId());
+        }
+        Map<UUID, AccountCurrencySnapshot> accounts =
+                loadAccountCurrencySnapshots(ids, true);
+        AccountCurrencySnapshot receiving = accounts.get(receipt.getAccountId());
+        if (receiving == null
+                || !Objects.equals(receiving.currencyId(), receipt.getAccountCurrencyId())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款账户或币种已变化，禁止继续过账");
+        }
+        BigDecimal incoming = money(receipt.getAccountAmount())
+                .multiply(BigDecimal.valueOf(sign));
+        updateIncomingAccount(receipt.getAccountId(), incoming);
+
+        if (FEE_SEPARATE.equals(receipt.getFeeSettlementMode())) {
+            AccountCurrencySnapshot feeAccount =
+                    accounts.get(receipt.getFeePaymentAccountId());
+            if (feeAccount == null
+                    || !Objects.equals(
+                            feeAccount.currencyId(), receipt.getFeeAccountCurrencyId())) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "手续费付款账户或币种已变化，禁止继续过账");
+            }
+            BigDecimal feeAmount = money(nz(receipt.getBankFeeAccountAmount())
+                    .add(nz(receipt.getOtherFeeAccountAmount())))
+                    .multiply(BigDecimal.valueOf(sign));
+            updateOutgoingAccount(receipt.getFeePaymentAccountId(), feeAmount);
+        }
+
+        if (sign > 0) {
+            insertV1Reconciliations(receipt);
+        } else {
+            accountFlowLedger.reverse(
+                    RECON_SOURCE, receipt.getId(), receipt.getReversedAt(), "销售收款红冲");
+            if (FEE_SEPARATE.equals(receipt.getFeeSettlementMode())) {
+                accountFlowLedger.reverse(
+                        RECON_FEE_SOURCE, receipt.getId(), receipt.getReversedAt(),
+                        "销售收款另付费用红冲");
+            }
+        }
+    }
+
+    private void updateIncomingAccount(UUID accountId, BigDecimal delta) {
+        int updated = em.createNativeQuery("""
+                        UPDATE accounts
+                        SET balance_current=balance_current+:amount,
+                            receipts_total=receipts_total+:amount,
+                            updated_at=now()
+                        WHERE id=:id
+                        """)
+                .setParameter("amount", delta)
+                .setParameter("id", accountId)
+                .executeUpdate();
+        if (updated != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款账户余额更新失败：" + accountId);
+        }
+    }
+
+    private void updateOutgoingAccount(UUID accountId, BigDecimal delta) {
+        int updated = em.createNativeQuery("""
+                        UPDATE accounts
+                        SET balance_current=balance_current-:amount,
+                            payments_total=payments_total+:amount,
+                            updated_at=now()
+                        WHERE id=:id
+                        """)
+                .setParameter("amount", delta)
+                .setParameter("id", accountId)
+                .executeUpdate();
+        if (updated != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "手续费付款账户余额更新失败：" + accountId);
+        }
+    }
+
     private BigDecimal adjustAccount(
             UUID accountId,
             UUID receiptCurrencyId,
@@ -585,7 +734,8 @@ public class FinanceReceiptService {
             BigDecimal localDelta) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                        SELECT account.currency_id, currency.code, currency.name
+                        SELECT account.currency_id, currency.code, currency.name,
+                               currency.is_base_currency
                         FROM accounts account
                         LEFT JOIN currencies currency
                           ON currency.id=account.currency_id
@@ -606,12 +756,13 @@ public class FinanceReceiptService {
         UUID accountCurrencyId = (UUID) row[0];
         String currencyCode = row[1] == null ? null : row[1].toString();
         String currencyName = row[2] == null ? null : row[2].toString();
-        if (accountCurrencyId != null && currencyCode == null && currencyName == null) {
+        boolean baseCurrency = Boolean.TRUE.equals(row[3]);
+        if (accountCurrencyId == null) {
+            throw new ApiException(ErrorCode.BUSINESS, "收款账户未设置币种");
+        }
+        if (currencyCode == null && currencyName == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收款账户币种不存在或已停用");
         }
-        boolean baseCurrency = accountCurrencyId == null
-                || "CNY".equalsIgnoreCase(currencyCode)
-                || "人民币".equals(currencyName == null ? null : currencyName.trim());
         BigDecimal accountDelta;
         if (baseCurrency) {
             accountDelta = money(localDelta);
@@ -619,7 +770,9 @@ public class FinanceReceiptService {
             accountDelta = money(originalDelta);
         } else {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "收款账户币别与本次到账币别不兼容：" + accountId);
+                    "收款账户必须为人民币账户或与应收原币相同的账户；"
+                            + "美元应收可结汇进入人民币账户，不能直接进入第三币种账户："
+                            + accountId);
         }
         int updated = em.createNativeQuery("""
                         UPDATE accounts
@@ -658,37 +811,123 @@ public class FinanceReceiptService {
                 .executeUpdate();
     }
 
-    private void deleteReconciliation(UUID receiptId) {
-        em.createNativeQuery(
-                "DELETE FROM finance_reconciliations WHERE source_doc_id = :sid AND source_doc_type = :src")
-                .setParameter("sid", receiptId)
-                .setParameter("src", RECON_SOURCE)
+    private void insertV1Reconciliations(FinanceReceipt receipt) {
+        String counterpart = receipt.getClientId() == null
+                ? null : lookupClientName(receipt.getClientId());
+        em.createNativeQuery("""
+                        INSERT INTO finance_reconciliations(
+                            bill_no,source_doc_type,source_doc_id,account_id,
+                            account_currency_id,in_amount,out_amount,amount_local,
+                            bill_date,settled_date,source_remark,remark,
+                            entry_kind,created_at,updated_at,is_deleted)
+                        VALUES(
+                            :billNo,:source,:sourceId,:account,:currency,
+                            :amount,0,:local,:bookedAt,now(),:sourceRemark,:remark,
+                            'POSTING',now(),now(),FALSE)
+                        """)
+                .setParameter("billNo", receipt.getBillNo())
+                .setParameter("source", RECON_SOURCE)
+                .setParameter("sourceId", receipt.getId())
+                .setParameter("account", receipt.getAccountId())
+                .setParameter("currency", receipt.getAccountCurrencyId())
+                .setParameter("amount", receipt.getAccountAmount())
+                .setParameter("local", receipt.getAccountAmountLocal())
+                .setParameter("bookedAt", receipt.getBankBookedAt())
+                .setParameter("sourceRemark", receipt.getSettlementChannel())
+                .setParameter("remark", counterpart == null
+                        ? receipt.getRemark() : counterpart + " " + Objects.toString(receipt.getRemark(), ""))
+                .executeUpdate();
+
+        if (!FEE_SEPARATE.equals(receipt.getFeeSettlementMode())) return;
+        BigDecimal feeAmount = money(nz(receipt.getBankFeeAccountAmount())
+                .add(nz(receipt.getOtherFeeAccountAmount())));
+        BigDecimal feeLocal = money(nz(receipt.getBankFee())
+                .add(nz(receipt.getOtherFee())));
+        em.createNativeQuery("""
+                        INSERT INTO finance_reconciliations(
+                            bill_no,source_doc_type,source_doc_id,account_id,
+                            account_currency_id,in_amount,out_amount,amount_local,
+                            bill_date,settled_date,source_remark,remark,
+                            entry_kind,created_at,updated_at,is_deleted)
+                        VALUES(
+                            :billNo,:source,:sourceId,:account,:currency,
+                            0,:amount,:local,:bookedAt,now(),'收款费用另付',:remark,
+                            'POSTING',now(),now(),FALSE)
+                        """)
+                .setParameter("billNo", receipt.getBillNo())
+                .setParameter("source", RECON_FEE_SOURCE)
+                .setParameter("sourceId", receipt.getId())
+                .setParameter("account", receipt.getFeePaymentAccountId())
+                .setParameter("currency", receipt.getFeeAccountCurrencyId())
+                .setParameter("amount", feeAmount)
+                .setParameter("local", feeLocal)
+                .setParameter("bookedAt", receipt.getBankBookedAt())
+                .setParameter("remark", "银行手续费/外贸代理费")
                 .executeUpdate();
     }
 
     private void assertNoExistingPosting(UUID receiptId) {
-        if (postingCount(receiptId) != 0) {
+        if (postingCount(receiptId, RECON_SOURCE) != 0
+                || postingCount(receiptId, RECON_FEE_SOURCE) != 0) {
             throw new ApiException(ErrorCode.CONFLICT, "该单据已存在账户流水，禁止重复审核");
         }
     }
 
-    private void assertCompletePosting(UUID receiptId, long expectedRows) {
-        long actual = postingCount(receiptId);
-        if (actual != expectedRows) {
+    private void assertCompletePosting(FinanceReceipt receipt) {
+        if(receipt.getSettlementAuthorityVersion()==SETTLEMENT_AUTHORITY_V1){
+            long integrity=((Number)em.createNativeQuery("""
+                    SELECT COUNT(*) FROM v_receipt_flow_integrity
+                    WHERE receipt_id=:id AND is_consistent
+                    """).setParameter("id",receipt.getId()).getSingleResult()).longValue();
+            if(integrity!=1L){
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "收款账户流水与冻结的账户、币种、原币/本位币或反向引用不一致，禁止红冲");
+            }
+        }else{
+            long legacyGl=((Number)em.createNativeQuery("""
+                    SELECT COUNT(*) FROM v_receipt_v0_gl_reconciliation
+                    WHERE receipt_id=:id AND reconciliation_state='OK'
+                    """).setParameter("id",receipt.getId()).getSingleResult()).longValue();
+            if(legacyGl!=1L){
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "历史 V0 收款总账凭证缺失、歧义或不平，禁止自动红冲");
+            }
+        }
+        long actual = postingCount(receipt.getId(), RECON_SOURCE);
+        long feeActual = postingCount(receipt.getId(), RECON_FEE_SOURCE);
+        long expectedFee = receipt.getSettlementAuthorityVersion() == SETTLEMENT_AUTHORITY_V1
+                && FEE_SEPARATE.equals(receipt.getFeeSettlementMode()) ? 1L : 0L;
+        if (actual != 1L || feeActual != expectedFee) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "收款流水不完整，禁止红冲（期望 " + expectedRows + "，实际 " + actual + "）");
+                    "收款流水不完整，禁止红冲(收款 " + actual
+                            + "，另付费用 " + feeActual + ")");
         }
     }
 
-    private long postingCount(UUID receiptId) {
+    private void assertV1ProjectionIntegrity(UUID receiptId){
+        Object[] proof=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT
+                  (SELECT COUNT(*) FROM v_receipt_flow_integrity
+                   WHERE receipt_id=:id AND is_consistent),
+                  (SELECT COUNT(*) FROM v_receipt_gl_integrity
+                   WHERE receipt_id=:id AND is_consistent)
+                """).setParameter("id",receiptId)).getFirst();
+        if(((Number)proof[0]).longValue()!=1L || ((Number)proof[1]).longValue()!=1L){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款账户流水或总账投影未通过事务内完整性校验");
+        }
+    }
+
+    private long postingCount(UUID receiptId, String sourceType) {
         return ((Number) em.createNativeQuery("""
                         SELECT COUNT(*)
                         FROM finance_reconciliations
                         WHERE source_doc_type = :src
                           AND source_doc_id = :id
+                          AND entry_kind IN ('POSTING','ADJUSTMENT')
                           AND COALESCE(is_deleted, false) = false
                         """)
-                .setParameter("src", RECON_SOURCE)
+                .setParameter("src", sourceType)
                 .setParameter("id", receiptId)
                 .getSingleResult()).longValue();
     }
@@ -799,6 +1038,10 @@ public class FinanceReceiptService {
         r.setClientId(req.getClientId());
         r.setAccountId(req.getAccountId());
         r.setCounterpartAccountId(req.getCounterpartAccountId());
+        // AR validation queries may auto-flush this draft. Keep the first write
+        // legacy-compatible; finalizeSettlementAuthority upgrades it to V1 only
+        // after every account/fee snapshot has been derived in this transaction.
+        r.setSettlementAuthorityVersion((short) 0);
         r.setCurrencyId(req.getCurrencyId());
         // null 必须清掉实体默认值/旧草稿值；直收与预收也只能使用财务显式填写的到账汇率。
         r.setExchangeRate(req.getExchangeRate());
@@ -810,14 +1053,333 @@ public class FinanceReceiptService {
                 ? null
                 : req.getAmountOriginal().multiply(rate)
                         .setScale(4, java.math.RoundingMode.HALF_UP));
-        if (req.getBankFee() != null) r.setBankFee(req.getBankFee());
-        if (req.getOtherFee() != null) r.setOtherFee(req.getOtherFee());
+        r.setBankFee(BigDecimal.ZERO.setScale(MONEY_SCALE));
+        r.setOtherFee(BigDecimal.ZERO.setScale(MONEY_SCALE));
+        r.setBankFeeAccountAmount(money(req.getBankFeeAccountAmount() != null
+                ? req.getBankFeeAccountAmount() : req.getBankFee()));
+        r.setOtherFeeAccountAmount(money(req.getOtherFeeAccountAmount() != null
+                ? req.getOtherFeeAccountAmount() : req.getOtherFee()));
         r.setOtherFeeStyleId(req.getOtherFeeStyleId());
+        r.setSettlementChannel(upper(req.getSettlementChannel()));
+        r.setSettlementAgentSupplierId(req.getSettlementAgentSupplierId());
+        r.setSettlementAgentNameSnapshot(null);
+        r.setSettlementRateQuoteDirection("BASE_PER_SETTLEMENT");
+        r.setExchangeRateSource(upper(req.getExchangeRateSource()));
+        r.setExchangeRateEffectiveAt(req.getExchangeRateEffectiveAt());
+        r.setBankBookedAt(req.getBankBookedAt());
+        r.setBankReference(trimToNull(req.getBankReference()));
+        r.setAgentStatementNo(trimToNull(req.getAgentStatementNo()));
+        r.setAccountCurrencyId(req.getAccountCurrencyId());
+        r.setAccountAmount(req.getAccountAmount() == null
+                ? null : money(req.getAccountAmount()));
+        r.setAccountAmountLocal(null);
+        r.setAccountExchangeRate(null);
+        r.setAccountExchangeRateSource(null);
+        r.setFeeSettlementMode(upper(req.getFeeSettlementMode()));
+        r.setFeeBearer(upper(req.getFeeBearer()));
+        r.setFeePaymentAccountId(req.getFeePaymentAccountId());
+        r.setFeeAccountCurrencyId(null);
+        r.setFeeAccountExchangeRate(null);
         applyReceiptMethod(req, r);
-        r.setInvoiceNo(req.getInvoiceNo());
+        r.setInvoiceNo(trimToNull(req.getInvoiceNo()));
         applyOperator(req.getOperatorId(), r);
-        r.setSourceRemark(req.getSourceRemark());
-        r.setRemark(req.getRemark());
+        r.setSourceRemark(trimToNull(req.getSourceRemark()));
+        r.setRemark(trimToNull(req.getRemark()));
+    }
+
+    /**
+     * Derive every V1 account/fee amount from locked account currency facts.
+     * Client-derived values are only optimistic expectations and never the authority.
+     */
+    private void finalizeSettlementAuthority(
+            FinanceReceipt receipt,
+            UUID expectedAccountCurrencyId,
+            BigDecimal expectedAccountAmount,
+            boolean lockAccounts) {
+        if (receipt.getAccountId() == null || receipt.getCurrencyId() == null
+                || receipt.getAmountOriginal() == null
+                || receipt.getAmountOriginal().signum() <= 0
+                || receipt.getAmountLocal() == null
+                || receipt.getAmountLocal().signum() <= 0
+                || receipt.getExchangeRate() == null
+                || receipt.getExchangeRate().signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "收款账户、结算原币、原币毛额和实际结算汇率必须完整");
+        }
+        String channel = upper(receipt.getSettlementChannel());
+        String rateSource = upper(receipt.getExchangeRateSource());
+        if (channel == null
+                || !Set.of("DIRECT_ACCOUNT", "TRADE_AGENT_CONVERSION").contains(channel)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "收款渠道只能是公司账户直收或外贸公司代收结汇");
+        }
+        if (receipt.getExchangeRateEffectiveAt() == null
+                || receipt.getBankBookedAt() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "必须填写汇率生效时间和银行实际入账时间");
+        }
+        if (trimToNull(receipt.getBankReference()) == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "必须填写真实银行入账流水号");
+        }
+        if ("TRADE_AGENT_CONVERSION".equals(channel)
+                && !"TRADE_AGENT_STATEMENT".equals(rateSource)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "外贸公司代收结汇必须使用外贸公司结汇单作为汇率来源");
+        }
+        if ("DIRECT_ACCOUNT".equals(channel)
+                && !"BANK_STATEMENT".equals(rateSource)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "公司账户直收必须使用银行回单作为汇率来源");
+        }
+
+        BigDecimal bankFeeAccount = nonNegativeMoney(
+                receipt.getBankFeeAccountAmount(), "银行手续费");
+        BigDecimal otherFeeAccount = nonNegativeMoney(
+                receipt.getOtherFeeAccountAmount(), "外贸代理费或其它费用");
+        BigDecimal feeAccountTotal = money(bankFeeAccount.add(otherFeeAccount));
+        String feeMode = upper(receipt.getFeeSettlementMode());
+        String feeBearer = upper(receipt.getFeeBearer());
+        if (feeAccountTotal.signum() == 0) {
+            feeMode = FEE_NONE;
+            feeBearer = FEE_BEARER_NONE;
+        } else if (feeMode == null
+                || !Set.of(FEE_DEDUCTED, FEE_SEPARATE).contains(feeMode)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "有手续费时必须选择从到账扣除或另行支付");
+        }
+        if (feeAccountTotal.signum() > 0
+                && !FEE_BEARER_COMPANY.equals(feeBearer)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "有费用时必须明确由本公司承担；客户或外贸公司承担会形成新的应收/索赔，"
+                            + "不能直接记为本公司费用");
+        }
+        UUID feePaymentAccountId = FEE_SEPARATE.equals(feeMode)
+                ? receipt.getFeePaymentAccountId() : null;
+        if (FEE_SEPARATE.equals(feeMode) && feePaymentAccountId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "手续费另行支付时必须选择真实付款账户");
+        }
+
+        List<UUID> accountIds = new ArrayList<>();
+        accountIds.add(receipt.getAccountId());
+        if (feePaymentAccountId != null
+                && !feePaymentAccountId.equals(receipt.getAccountId())) {
+            accountIds.add(feePaymentAccountId);
+        }
+        Map<UUID, AccountCurrencySnapshot> accounts =
+                loadAccountCurrencySnapshots(accountIds, lockAccounts);
+        AccountCurrencySnapshot receiving = accounts.get(receipt.getAccountId());
+        if (receiving == null) {
+            throw new ApiException(ErrorCode.BUSINESS, "收款账户不存在、已停用或币种不可用");
+        }
+        if (expectedAccountCurrencyId != null
+                && !expectedAccountCurrencyId.equals(receiving.currencyId())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款账户币种已变化，请刷新账户资料后重新保存");
+        }
+
+        BigDecimal settlementRate = positiveRate(receipt.getExchangeRate());
+        BigDecimal receivingRate;
+        BigDecimal receivingGross;
+        String receivingRateSource;
+        if (receiving.baseCurrency()) {
+            receivingRate = BigDecimal.ONE.setScale(RATE_SCALE);
+            receivingGross = money(receipt.getAmountLocal());
+            receivingRateSource = "BASE_CURRENCY_IDENTITY";
+        } else if (receiving.currencyId().equals(receipt.getCurrencyId())) {
+            receivingRate = settlementRate;
+            receivingGross = money(receipt.getAmountOriginal());
+            receivingRateSource = "SETTLEMENT_RATE";
+        } else {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "收款账户必须是本位币账户或与应收原币相同的真实外币账户；第三币种暂不支持");
+        }
+        if ("TRADE_AGENT_CONVERSION".equals(channel)) {
+            if (!receiving.baseCurrency()) {
+                throw new ApiException(ErrorCode.BUSINESS,
+                        "外贸公司代收结汇只能进入本位币账户；真实外币保留请使用公司账户直收");
+            }
+            if (receipt.getSettlementAgentSupplierId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "外贸公司代收结汇必须选择合作外贸公司");
+            }
+            if (trimToNull(receipt.getAgentStatementNo()) == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "外贸公司代收结汇必须填写代理结算单号");
+            }
+            receipt.setSettlementAgentNameSnapshot(activeSupplierName(
+                    receipt.getSettlementAgentSupplierId(), lockAccounts));
+        } else {
+            if (receipt.getSettlementAgentSupplierId() != null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "公司账户直收不能同时填写外贸代理公司");
+            }
+            if (trimToNull(receipt.getAgentStatementNo()) != null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "公司账户直收不能填写外贸代理结算单号");
+            }
+            receipt.setSettlementAgentNameSnapshot(null);
+        }
+
+        AccountCurrencySnapshot feeAccount = FEE_SEPARATE.equals(feeMode)
+                ? accounts.get(feePaymentAccountId) : receiving;
+        if (feeAccount == null) {
+            throw new ApiException(ErrorCode.BUSINESS, "手续费付款账户不存在、已停用或币种不可用");
+        }
+        BigDecimal feeRate;
+        if (feeAccount.baseCurrency()) {
+            feeRate = BigDecimal.ONE.setScale(RATE_SCALE);
+        } else if (feeAccount.currencyId().equals(receipt.getCurrencyId())) {
+            feeRate = settlementRate;
+        } else {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "手续费账户必须是本位币账户或与本批结算原币相同的账户；第三币种暂不支持");
+        }
+        BigDecimal bankFeeLocal = money(bankFeeAccount.multiply(feeRate));
+        BigDecimal otherFeeLocal = money(otherFeeAccount.multiply(feeRate));
+        BigDecimal feeLocalTotal = money(bankFeeLocal.add(otherFeeLocal));
+
+        BigDecimal receivingAmount = FEE_DEDUCTED.equals(feeMode)
+                ? money(receivingGross.subtract(feeAccountTotal))
+                : receivingGross;
+        if (receivingAmount.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "手续费不能等于或超过本批到账毛额");
+        }
+        BigDecimal receivingLocal = FEE_DEDUCTED.equals(feeMode)
+                ? money(receipt.getAmountLocal().subtract(feeLocalTotal))
+                : money(receipt.getAmountLocal());
+        BigDecimal calculatedReceivingLocal =
+                money(receivingAmount.multiply(receivingRate));
+        if (calculatedReceivingLocal.subtract(receivingLocal).abs()
+                .compareTo(new BigDecimal("0.0001")) > 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "账户原币入账、账户折算汇率与本位币净额不一致");
+        }
+        if (expectedAccountAmount != null
+                && money(expectedAccountAmount).compareTo(receivingAmount) != 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "页面预计到账与服务端权威计算不一致，请刷新并核对费用与汇率");
+        }
+        if (otherFeeAccount.signum() > 0 && receipt.getOtherFeeStyleId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "填写外贸代理费或其它费用时必须选择费用项目");
+        }
+        if (otherFeeAccount.signum() > 0) {
+            assertExpenseStyleActive(receipt.getOtherFeeStyleId());
+        }
+
+        BigDecimal exchangeDifference=lineRepo
+                .findByReceiptIdOrderByLineNoAsc(receipt.getId()).stream()
+                .map(line->nz(line.getExchangeDiff()))
+                .reduce(BigDecimal.ZERO,BigDecimal::add);
+        UUID counterStyle=requiredPostingStyle(
+                "CUSTOMER_PREPAYMENT".equals(receipt.getReceiptKind())
+                        ?"CUSTOMER_ADVANCE":"AR_CONTROL");
+        UUID bankFeeStyle=bankFeeLocal.signum()==0
+                ?null:requiredPostingStyle("BANK_FEE_EXPENSE");
+        UUID fxStyle=exchangeDifference.signum()==0
+                ?null:requiredPostingStyle("FX_GAIN_LOSS");
+
+        receipt.setSettlementChannel(channel);
+        receipt.setExchangeRateSource(rateSource);
+        receipt.setExchangeRate(settlementRate);
+        receipt.setAccountCurrencyId(receiving.currencyId());
+        receipt.setAccountExchangeRate(receivingRate);
+        receipt.setAccountExchangeRateSource(receivingRateSource);
+        receipt.setAccountAmount(receivingAmount);
+        receipt.setAccountAmountLocal(receivingLocal);
+        receipt.setBankFeeAccountAmount(bankFeeAccount);
+        receipt.setOtherFeeAccountAmount(otherFeeAccount);
+        receipt.setBankFee(bankFeeLocal);
+        receipt.setOtherFee(otherFeeLocal);
+        receipt.setFeeSettlementMode(feeMode);
+        receipt.setFeeBearer(feeBearer);
+        receipt.setFeePaymentAccountId(feePaymentAccountId);
+        receipt.setFeeAccountCurrencyId(feeAccount.currencyId());
+        receipt.setFeeAccountExchangeRate(feeRate);
+        receipt.setGlAccountStyleId(receiving.styleId());
+        receipt.setGlCounterStyleId(counterStyle);
+        receipt.setGlBankFeeStyleId(bankFeeStyle);
+        receipt.setGlFxStyleId(fxStyle);
+        receipt.setGlFeePaymentStyleId(FEE_SEPARATE.equals(feeMode)
+                ?feeAccount.styleId():null);
+        // Set V1 last: any validation query before this point may auto-flush
+        // the managed draft, which must remain a complete V0 shape until all
+        // server-derived authority snapshots are ready.
+        receipt.setSettlementAuthorityVersion(SETTLEMENT_AUTHORITY_V1);
+        receiptRepo.save(receipt);
+    }
+
+    private UUID requiredPostingStyle(String roleKey){
+        Object value=em.createNativeQuery(
+                        "SELECT system_posting_style_id(:roleKey)")
+                .setParameter("roleKey",roleKey)
+                .getSingleResult();
+        if(!(value instanceof UUID id)){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款总账系统角色未配置有效科目 UUID："+roleKey);
+        }
+        return id;
+    }
+
+    private void refreshGlFxStyleSnapshot(
+            FinanceReceipt receipt,List<FinanceReceiptLine> lines){
+        BigDecimal difference=lines.stream()
+                .map(line->nz(line.getExchangeDiff()))
+                .reduce(BigDecimal.ZERO,BigDecimal::add);
+        receipt.setGlFxStyleId(difference.signum()==0
+                ?null:requiredPostingStyle("FX_GAIN_LOSS"));
+        receiptRepo.save(receipt);
+    }
+
+    private Map<UUID, AccountCurrencySnapshot> loadAccountCurrencySnapshots(
+            List<UUID> accountIds, boolean lock) {
+        List<UUID> ids = accountIds.stream().distinct().sorted().toList();
+        String sql = """
+                SELECT account.id,account.currency_id,currency.is_base_currency,
+                       currency.code,currency.name,account_style.id
+                FROM accounts account
+                JOIN currencies currency ON currency.id=account.currency_id
+                JOIN payment_styles account_style ON account_style.id=account.style_id
+                WHERE account.id IN (:ids)
+                  AND account.status='使用' AND COALESCE(account.is_deleted,FALSE)=FALSE
+                  AND currency.status='使用' AND COALESCE(currency.is_deleted,FALSE)=FALSE
+                  AND account_style.category='ACCOUNT' AND account_style.status='使用'
+                  AND COALESCE(account_style.is_deleted,FALSE)=FALSE
+                  AND NOT EXISTS(SELECT 1 FROM payment_styles child
+                                 WHERE child.parent_id=account_style.id
+                                   AND COALESCE(child.is_deleted,FALSE)=FALSE)
+                ORDER BY account.id
+                """ + (lock ? " FOR UPDATE OF account" : "");
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(sql)
+                .setParameter("ids", ids).getResultList();
+        Map<UUID, AccountCurrencySnapshot> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], new AccountCurrencySnapshot(
+                    (UUID) row[0], (UUID) row[1], Boolean.TRUE.equals(row[2]),
+                    Objects.toString(row[3], ""), Objects.toString(row[4], ""),
+                    (UUID)row[5]));
+        }
+        return result;
+    }
+
+    private String activeSupplierName(UUID supplierId, boolean lock) {
+        String sql = """
+                SELECT name FROM suppliers
+                WHERE id=:id AND status='使用' AND COALESCE(is_deleted,FALSE)=FALSE
+                """ + (lock ? " FOR SHARE" : "");
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery(sql)
+                .setParameter("id", supplierId).getResultList();
+        if (rows.size() != 1 || rows.getFirst() == null
+                || rows.getFirst().toString().isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "合作外贸公司不存在、已停用或名称缺失");
+        }
+        return rows.getFirst().toString();
     }
 
     private void applyReceiptMethod(FinanceReceiptSaveRequest req, FinanceReceipt receipt) {
@@ -870,13 +1432,19 @@ public class FinanceReceiptService {
             if (ledger != null && ledger.getCurrencyId() != null
                     && !Objects.equals(currencyId, ledger.getCurrencyId())) {
                 throw new ApiException(ErrorCode.BUSINESS,
-                        "跨币种核销需要同时记录到账币种和应收币种金额；当前收款明细只能使用应收币别");
+                        "核销原币必须与应收币种一致；美元应收可按本批实际到账汇率"
+                                + "结汇进入人民币账户，不能以第三币种金额直接改写应收原币");
             }
             // 到账汇率是本次收款事实，必须由财务在 AR 核销行显式填写；
             // 禁止回退主表默认值、主表请求值或应收开账汇率。
             BigDecimal rate = positiveRate(l.getExchangeRate());
             BigDecimal cashOriginal = positiveMoney(l.getAmountOriginal(), "本次收款金额");
             BigDecimal writeOffOriginal = nonNegativeMoney(l.getWriteOffAmount(), "冲销金额");
+            if (writeOffOriginal.signum() != 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "新收款不能把手续费、折让或坏账混入费用冲销；"
+                                + "手续费请使用费用区，商业冲销请走专用调整流程");
+            }
             BigDecimal cashLocal = money(cashOriginal.multiply(rate));
             BigDecimal writeOffLocal = money(writeOffOriginal.multiply(rate));
             BigDecimal recognitionRate = ledger == null
@@ -889,7 +1457,7 @@ public class FinanceReceiptService {
             ln.setBillDate(r.getBillDate());
             ln.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             ln.setAppliedLedgerId(l.getAppliedLedgerId());
-            ln.setAppliedBillNo(l.getAppliedBillNo());
+            ln.setAppliedBillNo(trimToNull(l.getAppliedBillNo()));
             ln.setClientId(l.getClientId() != null ? l.getClientId() : r.getClientId());
             ln.setCurrencyId(currencyId);
             ln.setExchangeRate(rate);
@@ -899,7 +1467,7 @@ public class FinanceReceiptService {
             ln.setWriteOffLocal(writeOffLocal);
             ln.setAppliedAmountLocal(appliedLocal);
             ln.setExchangeDiff(exchangeDiff);
-            ln.setRemark(l.getRemark());
+            ln.setRemark(trimToNull(l.getRemark()));
             lineRepo.save(ln);
             out.add(toLineDto(ln));
             auto++;
@@ -937,7 +1505,20 @@ public class FinanceReceiptService {
                 r.getOtherFeeStyleId(), r.getReceiptMethodId(), r.getReceiptMethodLegacyId(), r.getInvoiceNo(),
                 r.getCancelDate(), r.getOperatorId(), r.getMakerId(), r.getApproverId(),
                 r.getSourceRemark(), r.getRemark(), r.getStatus(), r.isClosed(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),
+                r.getVersion()==null?0L:r.getVersion(),
+                r.getSettlementAuthorityVersion(),
+                r.getCreateIdempotencyKey(), r.getSettlementChannel(),
+                r.getSettlementAgentSupplierId(), r.getSettlementAgentNameSnapshot(),
+                r.getSettlementRateQuoteDirection(), r.getExchangeRateSource(),
+                r.getExchangeRateEffectiveAt(), r.getBankBookedAt(),
+                r.getBankReference(), r.getAgentStatementNo(),
+                r.getAccountCurrencyId(), r.getAccountExchangeRate(),
+                r.getAccountExchangeRateSource(), r.getAccountAmount(),
+                r.getAccountAmountLocal(), r.getAmountLocal(),
+                r.getBankFeeAccountAmount(), r.getOtherFeeAccountAmount(),
+                r.getFeeSettlementMode(), r.getFeeBearer(), r.getFeePaymentAccountId(),
+                r.getFeeAccountCurrencyId(), r.getFeeAccountExchangeRate());
     }
 
     private FinanceReceipt require(UUID id) {
@@ -953,6 +1534,134 @@ public class FinanceReceiptService {
         }
         return receipt;
     }
+
+    private String normalizeIdempotencyKey(String raw) {
+        String value = trimToNull(raw);
+        if (value == null || value.length() < 8 || value.length() > 128
+                || !value.matches("[A-Za-z0-9._:-]+")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "收款创建幂等键格式不正确");
+        }
+        return value;
+    }
+
+    private void lockCreateIdempotency(UUID makerId, String key) {
+        em.createNativeQuery(
+                        "SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
+                .setParameter("key", "FIN_RECEIPT_CREATE|" + makerId + "|" + key)
+                .getSingleResult();
+    }
+
+    private FinanceReceipt findCreateReplay(UUID makerId, String key) {
+        @SuppressWarnings("unchecked")
+        List<Object> ids = em.createNativeQuery("""
+                        SELECT id FROM finance_receipts
+                        WHERE maker_id=:maker AND create_idempotency_key=:key
+                        """)
+                .setParameter("maker", makerId)
+                .setParameter("key", key)
+                .getResultList();
+        if (ids.isEmpty()) return null;
+        if (ids.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款创建幂等键存在重复历史，请先完成数据核对");
+        }
+        FinanceReceipt receipt = receiptRepo.findById((UUID) ids.getFirst())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.CONFLICT, "收款幂等记录缺少来源单据"));
+        if (receipt.isDeleted()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该收款创建请求曾生成后删除，不能用同一幂等键重新造单");
+        }
+        access.requireReadable(receipt.getMakerId(), "销售收款单不存在");
+        return receipt;
+    }
+
+    private static String requestHash(FinanceReceiptSaveRequest request) {
+        StringBuilder value = new StringBuilder();
+        appendHash(value, request.getBillDate());
+        appendHash(value, upper(request.getReceiptKind()));
+        appendHash(value, request.getSalesOrderId());
+        appendHash(value, request.getClientId());
+        appendHash(value, request.getAccountId());
+        appendHash(value, request.getCounterpartAccountId());
+        appendHash(value, request.getCurrencyId());
+        appendHash(value, decimalText(request.getExchangeRate()));
+        appendHash(value, decimalText(request.getAmountOriginal()));
+        appendHash(value, upper(request.getSettlementChannel()));
+        appendHash(value, request.getSettlementAgentSupplierId());
+        appendHash(value, upper(request.getExchangeRateSource()));
+        appendHash(value, request.getExchangeRateEffectiveAt());
+        appendHash(value, request.getBankBookedAt());
+        appendHash(value, trimToNull(request.getBankReference()));
+        appendHash(value, trimToNull(request.getAgentStatementNo()));
+        BigDecimal effectiveBankFee=request.getBankFeeAccountAmount()!=null
+                ?request.getBankFeeAccountAmount():request.getBankFee();
+        BigDecimal effectiveOtherFee=request.getOtherFeeAccountAmount()!=null
+                ?request.getOtherFeeAccountAmount():request.getOtherFee();
+        appendHash(value, decimalText(effectiveBankFee));
+        appendHash(value, decimalText(effectiveOtherFee));
+        boolean hasFees=nz(effectiveBankFee).add(nz(effectiveOtherFee)).signum()!=0;
+        appendHash(value, hasFees?upper(request.getFeeSettlementMode()):FEE_NONE);
+        appendHash(value, hasFees?upper(request.getFeeBearer()):FEE_BEARER_NONE);
+        appendHash(value, request.getFeePaymentAccountId());
+        appendHash(value, request.getOtherFeeStyleId());
+        appendHash(value, request.getReceiptMethodId());
+        appendHash(value, request.getReceiptMethodLegacyId());
+        appendHash(value, request.getInvoiceNo());
+        appendHash(value, request.getOperatorId());
+        appendHash(value, request.getSourceRemark());
+        appendHash(value, request.getRemark());
+        List<FinanceReceiptLineInput> items =
+                request.getItems() == null ? List.of() : request.getItems();
+        appendHash(value, items.size());
+        for (FinanceReceiptLineInput item : items) {
+            appendHash(value, item == null ? null : item.getLineNo());
+            appendHash(value, item == null ? null : item.getAppliedLedgerId());
+            appendHash(value, item == null ? null : item.getAppliedBillNo());
+            appendHash(value, item == null ? null : item.getClientId());
+            appendHash(value, item == null ? null : item.getCurrencyId());
+            appendHash(value, item == null ? null : decimalText(item.getExchangeRate()));
+            appendHash(value, item == null ? null : decimalText(item.getAmountOriginal()));
+            appendHash(value, item == null ? null : decimalText(item.getWriteOffAmount()));
+            appendHash(value, item == null ? null : item.getRemark());
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.toString().getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    private static void appendHash(StringBuilder target, Object value) {
+        String text = value == null ? "" : value.toString().trim();
+        target.append(text.length()).append(':').append(text).append('|');
+    }
+
+    private static String decimalText(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
+    private static String upper(String value) {
+        String trimmed = trimToNull(value);
+        return trimmed == null ? null : trimmed.toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private record AccountCurrencySnapshot(
+            UUID accountId,
+            UUID currencyId,
+            boolean baseCurrency,
+            String currencyCode,
+            String currencyName,
+            UUID styleId) {}
 
     private static BigDecimal positiveRate(BigDecimal value) {
         if (value == null || value.signum() <= 0) {

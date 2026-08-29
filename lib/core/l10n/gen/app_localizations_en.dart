@@ -2049,6 +2049,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileFieldGroupEmergency => 'Emergency contacts';
 
   @override
+  String get profileFieldGroupOrganization => 'Organization';
+
+  @override
+  String get profileEditPolicyHint =>
+      'Green \"direct edit\" fields apply immediately; yellow fields take effect after HR review; all other fields are maintained by HR.';
+
+  @override
+  String profileEditPendingConflictHint(int count) {
+    return 'You have $count pending request(s); editing the same fields again before approval may conflict with them.';
+  }
+
+  @override
+  String get profileEditFieldAction => 'Edit';
+
+  @override
   String get profileFieldGroupOrg => 'Organization';
 
   @override
@@ -2788,4 +2803,121 @@ class AppLocalizationsEn extends AppLocalizations {
   String exportDownloadSaved(String path) {
     return 'Saved to $path';
   }
+
+  @override
+  String get profileLoadingMessage => 'Loading employee record…';
+
+  @override
+  String get profileLoadFailed => 'Employee record failed to load';
+
+  @override
+  String get profileUnboundTitle =>
+      'This account is not linked to an employee record';
+
+  @override
+  String get profileUnboundDescription =>
+      'Contact an administrator or HR to link this account to an employee record.';
+
+  @override
+  String get profileSessionUnavailable =>
+      'You are not signed in or the session is unavailable';
+
+  @override
+  String get profileValueNotProvided => 'Not provided';
+
+  @override
+  String get profileValueNotRegistered => 'Not registered';
+
+  @override
+  String get profileAlternatePhoneLabel => 'Alternate phone';
+
+  @override
+  String get profileContractSummaryTitle => 'Contract summary';
+
+  @override
+  String get profileTabOrgContract => 'Org & contract';
+
+  @override
+  String get profileTabContactVehicle => 'Contact & vehicles';
+
+  @override
+  String get profileTabMyDocuments => 'My documents';
+
+  @override
+  String get profileEmploymentHistoryTitle => 'Employment history';
+
+  @override
+  String get profileScopeNoticeTitle => 'Information scope';
+
+  @override
+  String get profileCompensationBoundaryDescription =>
+      'Salary and bank information are intentionally not shown on My Profile. Check monthly income in Payslips, or contact authorized HR for other questions.';
+
+  @override
+  String get profileMissingEmergencyContact =>
+      'No emergency contact is registered. Ask HR to register one before requesting changes here.';
+
+  @override
+  String profileAlternatePhoneCount(int count) {
+    return '$count alternate phone(s) registered';
+  }
+
+  @override
+  String get profileVehiclesPhonesEmptyHint =>
+      'Register vehicles and alternate phones for quick plate lookup';
+
+  @override
+  String get historyEventConfirm => 'Confirmation';
+
+  @override
+  String get accountProvisionPermissionDenied =>
+      'You do not have permission to provision accounts. Contact account support.';
+
+  @override
+  String get accountProvisionAlreadyExists =>
+      'This employee already has an account or the account is inactive; it cannot be provisioned again.';
+
+  @override
+  String get accountProvisionConfirmTitle => 'Confirm account provisioning';
+
+  @override
+  String get accountProvisionFailed =>
+      'Account provisioning failed. Try again later.';
+
+  @override
+  String get accountProvisionInProgress => 'Provisioning';
+
+  @override
+  String get accountStatusNotProvisioned => 'Not provisioned';
+
+  @override
+  String get accountStatusInactive => 'Account inactive';
+
+  @override
+  String get pagePermissionAccountNotProvisionedTitle =>
+      'This person does not have an account, so permissions cannot be configured yet';
+
+  @override
+  String get pagePermissionAccountNotProvisionedCanProvision =>
+      'Provision the account first. After the one-time credentials are saved, this person\'s permissions will load automatically.';
+
+  @override
+  String get pagePermissionAccountNotProvisionedNoAccess =>
+      'Contact someone with Account Support permission to provision the login account.';
+
+  @override
+  String get employeePermissionSettingsTooltip =>
+      'Configure employee permissions';
+
+  @override
+  String get employeeAccountNotProvisionedTooltip =>
+      'Employee account not provisioned';
+
+  @override
+  String get employeeResignedCannotProvision =>
+      'A resigned employee cannot be given a login account';
+
+  @override
+  String get employeeAccountNotProvisionedContactSupport =>
+      'This employee does not have an account. Contact account support.';
 }

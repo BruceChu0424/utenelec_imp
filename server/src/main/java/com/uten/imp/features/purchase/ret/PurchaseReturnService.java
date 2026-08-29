@@ -23,6 +23,7 @@ import com.uten.imp.features.purchase.ret.dto.ReturnItemLine;
 import com.uten.imp.features.purchase.ret.dto.ReturnListItem;
 import com.uten.imp.features.purchase.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest;
+import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -32,6 +33,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -79,8 +81,12 @@ public class PurchaseReturnService {
     private final ProcurementArrivalControlPort arrivalControl;
     private final PurchaseDocumentAccessPolicy access;
 
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
+
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
+        boolean priceMasked = purchasePriceMasked();
         var readScope = access.scope();
         Specification<PurchaseReturn> spec = (Root<PurchaseReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
@@ -100,9 +106,12 @@ public class PurchaseReturnService {
         // 列排序：sort 命中白名单(日期/金额)才按实体属性排序，否则默认 billDate DESC。
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
-                        Map.of("billDate", "billDate", "total", "totalLocal")));
+                        priceMasked
+                                ? Map.of("billDate", "billDate")
+                                : Map.of("billDate", "billDate", "total", "totalLocal")));
         Page<PurchaseReturn> p = returnRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
@@ -288,8 +297,8 @@ public class PurchaseReturnService {
             BigDecimal capacity = ((BigDecimal) row[0]).subtract((BigDecimal) row[1]);
             if (it.getQty() != null && it.getQty().compareTo(capacity) > 0) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "第 " + it.getLineNo() + " 行退货数量超过来源收货明细可退余量（已收 − 已退 = "
-                                + capacity.stripTrailingZeros().toPlainString() + "），禁止超退");
+                        "第 " + it.getLineNo() + " 行退货数量超过来源收货明细可退余量(已收 − 已退 = "
+                                + capacity.stripTrailingZeros().toPlainString() + ")，禁止超退");
             }
         }
     }
@@ -510,9 +519,10 @@ public class PurchaseReturnService {
         returnRepo.save(r);
     }
 
-    private ReturnListItem toList(PurchaseReturn r) {
+    private ReturnListItem toList(PurchaseReturn r, boolean priceMasked) {
         return new ReturnListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getSupplierId(),
-                r.getWarehouseId(), r.getTotalLocal(), r.getStatus(), r.getLegacyId());
+                r.getWarehouseId(), priceMasked ? null : r.getTotalLocal(), r.getStatus(),
+                r.getLegacyId(), priceMasked);
     }
 
     private ReturnItemDto toItemDto(PurchaseReturnItem it) {
@@ -525,13 +535,32 @@ public class PurchaseReturnService {
     }
 
     private ReturnDetail toDetail(PurchaseReturn r, List<ReturnItemDto> items) {
+        boolean priceMasked = purchasePriceMasked();
+        List<ReturnItemDto> safeItems = priceMasked
+                ? items.stream().map(PurchaseReturnService::maskItemPrices).toList()
+                : items;
         return new ReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
-                r.getReceiverId(), r.getSettlementMethodId(),
-                r.getSettlementStyleLegacy() == null ? null : r.getSettlementStyleLegacy().intValue(),
+                r.getSupplierId(), r.getWarehouseId(), priceMasked ? null : r.getCurrencyId(),
+                priceMasked ? null : r.getExchangeRate(), priceMasked ? null : r.getTaxRate(),
+                r.getReceiverId(), priceMasked ? null : r.getSettlementMethodId(),
+                priceMasked || r.getSettlementStyleLegacy() == null
+                        ? null : r.getSettlementStyleLegacy().intValue(),
                 r.getMakerId(), r.getApproverId(), r.getRemark(),
-                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                priceMasked ? null : r.getTotalOriginal(), priceMasked ? null : r.getTotalLocal(),
+                r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), priceMasked);
+    }
+
+    private boolean purchasePriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewPurchase();
+    }
+
+    private static ReturnItemDto maskItemPrices(ReturnItemDto it) {
+        return new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
+                it.getQty(), null, null, null, it.getReceiptItemId(), it.getOrderItemId(),
+                it.getWeight(), it.getSourceDocNo(), it.getRemark());
     }
 
 

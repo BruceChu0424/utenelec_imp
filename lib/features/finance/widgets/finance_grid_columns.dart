@@ -12,8 +12,10 @@ import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../config/finance_doc_config.dart';
+import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import 'ar_ap_picker_dialog.dart';
@@ -43,9 +45,13 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   String? currencyId;
   String? currencyCode;
   double? receivableOriginal;
+  String? receivableOriginalText;
   double? receivedOriginal;
+  String? receivedOriginalText;
   double? writtenOffOriginal;
+  String? writtenOffOriginalText;
   double? balanceOriginal;
+  String? balanceOriginalText;
   String? prepaymentAppliedOriginal;
 
   // ---- allocate（分摊 expense/otherIncome）----
@@ -73,6 +79,10 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   final ValueNotifier<double> localAmountNotifier = ValueNotifier<double>(0);
   final ValueNotifier<double> writeOffLocalNotifier = ValueNotifier<double>(0);
   final ValueNotifier<double> balanceAfterNotifier = ValueNotifier<double>(0);
+  final ValueNotifier<String?> localAmountExactNotifier =
+      ValueNotifier<String?>(null);
+  final ValueNotifier<String?> balanceAfterExactNotifier =
+      ValueNotifier<String?>(null);
 
   /// 「从应收应付引入」构造：核销台账 id + 单据号 + 本次核销额 预填。
   factory FinanceGridRow.fromApplied(ItemMode mode, AppliedArAp a) {
@@ -87,9 +97,13 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
       ..currencyId = a.currencyId
       ..currencyCode = a.currencyCode
       ..receivableOriginal = a.receivableOriginal
+      ..receivableOriginalText = a.receivableOriginalText
       ..receivedOriginal = a.receivedOriginal
+      ..receivedOriginalText = a.receivedOriginalText
       ..writtenOffOriginal = a.writtenOffOriginal
+      ..writtenOffOriginalText = a.writtenOffOriginalText
       ..balanceOriginal = a.balanceOriginal;
+    r.balanceOriginalText = a.balanceOriginalText;
     r.prepaymentAppliedOriginal = a.prepaymentAppliedOriginal;
     r.amount.text = a.receiptAmountText;
     return r;
@@ -105,6 +119,20 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
     writeOffLocalNotifier.value = offset * rate;
     balanceAfterNotifier.value = (balanceOriginal ?? 0) - cash - offset;
     recalcAmount(() => mode == ItemMode.settle ? cash + offset : cash);
+    final localUnits = financeExactProductUnits(
+      amount.text.trim(),
+      exchangeRate.text.trim(),
+    );
+    localAmountExactNotifier.value = localUnits == null
+        ? null
+        : financeExactDecimalFromUnits(localUnits);
+    final balanceUnits = financeExactDecimalUnits(
+      balanceOriginalText ?? balanceOriginal?.toString(),
+    );
+    final cashUnits = financeExactDecimalUnits(amount.text.trim());
+    balanceAfterExactNotifier.value = balanceUnits == null || cashUnits == null
+        ? null
+        : financeExactDecimalFromUnits(balanceUnits - cashUnits);
   }
 
   @override
@@ -118,6 +146,8 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
     localAmountNotifier.dispose();
     writeOffLocalNotifier.dispose();
     balanceAfterNotifier.dispose();
+    localAmountExactNotifier.dispose();
+    balanceAfterExactNotifier.dispose();
     department.dispose();
     occurDateNotifier.dispose();
     super.dispose();
@@ -132,11 +162,15 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
   ItemMode mode, {
   required FinanceNameService names,
   required FinanceDocType type,
+  bool? accountBaseCurrency,
 }) {
   switch (mode) {
     case ItemMode.settle:
       return type == FinanceDocType.receipt
-          ? _receiptSettleColumns(names)
+          ? _receiptSettleColumns(
+              names,
+              accountBaseCurrency: accountBaseCurrency,
+            )
           : _settleColumns();
     case ItemMode.allocate:
       return _allocateColumns(names, type);
@@ -147,13 +181,19 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
 
 // ===== settle：核销单据号（只读）+ 本次金额（录入）=====
 List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
-  FinanceNameService names,
-) {
+  FinanceNameService names, {
+  bool? accountBaseCurrency,
+}) {
+  final localAmountLabel = accountBaseCurrency == true
+      ? '本批结汇毛额(人民币)'
+      : '本批本位币毛额(人民币)';
   return [
     EditableGridColumn<FinanceGridRow>(
       key: 'appliedBillNo',
       label: '应收单号',
       width: 160,
+      // 行 model 普通字段（AR 引入时随行回填）——只给 textOf，行集变化时整体量宽。
+      textOf: (r) => r.appliedBillNo ?? '',
       cellBuilder: (context, row) => Text(
         row.appliedBillNo ?? '—',
         style: TextStyle(
@@ -189,21 +229,24 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: '应收总额',
       width: 110,
       numeric: true,
-      cellBuilder: (context, row) => Text(_money(row.receivableOriginal)),
+      cellBuilder: (context, row) =>
+          Text(_moneyExact(row.receivableOriginalText, row.receivableOriginal)),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'receivedOriginal',
       label: '累计已收',
       width: 110,
       numeric: true,
-      cellBuilder: (context, row) => Text(_money(row.receivedOriginal)),
+      cellBuilder: (context, row) =>
+          Text(_moneyExact(row.receivedOriginalText, row.receivedOriginal)),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'writtenOffOriginal',
       label: '累计冲销',
       width: 110,
       numeric: true,
-      cellBuilder: (context, row) => Text(_money(row.writtenOffOriginal)),
+      cellBuilder: (context, row) =>
+          Text(_moneyExact(row.writtenOffOriginalText, row.writtenOffOriginal)),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'prepaymentAppliedOriginal',
@@ -219,19 +262,22 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       width: 110,
       numeric: true,
       cellBuilder: (context, row) => Text(
-        _money(row.balanceOriginal),
+        _moneyExact(row.balanceOriginalText, row.balanceOriginal),
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
-      label: '本次收款金额',
-      width: 140,
+      label: '本批 AR 核销(应收原币)',
+      width: 180,
       numeric: true,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.amount,
-        isEmpty: () => (double.tryParse(row.amount.text.trim()) ?? 0) <= 0,
+        isEmpty: () {
+          final units = financeExactDecimalUnits(row.amount.text.trim());
+          return units == null || units <= BigInt.zero;
+        },
         child: TextField(
           controller: row.amount,
           textAlign: TextAlign.right,
@@ -242,56 +288,48 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'currency',
-      label: '应收币别',
-      width: 130,
+      label: '应收/核销原币',
+      width: 150,
       required: true,
       // 销售收款只能按被引用应收的原币核销。币别由 AR 带入并保持只读，
       // 财务只填写到账汇率，避免选择其它币别后必然被服务端拒绝。
       cellBuilder: (context, row) => Text(
-        row.currencyCode?.trim().isNotEmpty == true
-            ? row.currencyCode!.trim()
-            : names.currency(row.currencyId),
+        financeCurrencyDisplayLabel(
+              name: names.currency(row.currencyId),
+              code: row.currencyCode,
+            ) ??
+            '原币',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'exchangeRate',
-      label: '到账汇率',
-      width: 120,
+      label: '批次汇率',
+      width: 190,
       numeric: true,
-      required: true,
-      cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.exchangeRate,
-        isEmpty: () =>
-            (double.tryParse(row.exchangeRate.text.trim()) ?? 0) <= 0,
-        child: TextField(
-          controller: row.exchangeRate,
+      textOf: (row) => row.exchangeRate.text,
+      listenableOf: (row) => row.exchangeRate,
+      cellBuilder: (context, row) => ValueListenableBuilder<TextEditingValue>(
+        valueListenable: row.exchangeRate,
+        builder: (_, value, _) => Text(
+          value.text.trim().isEmpty ? '待填写' : value.text.trim(),
           textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '财务填写'),
+          style: TextStyle(
+            color: value.text.trim().isEmpty
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amountLocal',
-      label: '换算人民币',
-      width: 130,
+      label: localAmountLabel,
+      width: 170,
       numeric: true,
-      cellBuilder: (context, row) => ValueListenableBuilder<double>(
-        valueListenable: row.localAmountNotifier,
-        builder: (_, value, _) => Text(value.toStringAsFixed(2)),
-      ),
-    ),
-    EditableGridColumn<FinanceGridRow>(
-      key: 'writeOff',
-      label: '冲销金额（原币）',
-      width: 120,
-      numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.writeOff,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+        valueListenable: row.localAmountExactNotifier,
+        builder: (_, value, _) => Text(financeExactMoneyDisplay(value)),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
@@ -299,21 +337,28 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: '收款后未收',
       width: 120,
       numeric: true,
-      cellBuilder: (context, row) => ValueListenableBuilder<double>(
-        valueListenable: row.balanceAfterNotifier,
-        builder: (_, value, _) => Text(
-          value.toStringAsFixed(2),
-          style: TextStyle(
-            color: value < 0 ? Theme.of(context).colorScheme.error : null,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+        valueListenable: row.balanceAfterExactNotifier,
+        builder: (_, value, _) {
+          final units = financeExactDecimalUnits(value);
+          return Text(
+            financeExactMoneyDisplay(value),
+            style: TextStyle(
+              color: units != null && units < BigInt.zero
+                  ? Theme.of(context).colorScheme.error
+                  : null,
+              fontWeight: FontWeight.w600,
+            ),
+          );
+        },
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'remark',
       label: '备注',
       width: 180,
+      textOf: (r) => r.remark.text,
+      listenableOf: (r) => r.remark,
       cellBuilder: (context, row) => TextField(
         controller: row.remark,
         decoration: const InputDecoration(isDense: true),
@@ -324,14 +369,18 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
 
 String _money(double? value) => value == null ? '—' : value.toStringAsFixed(2);
 
+String _moneyExact(String? text, double? fallback) =>
+    text == null ? _money(fallback) : financeExactMoneyDisplay(text);
+
 List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
   return [
     EditableGridColumn<FinanceGridRow>(
       key: 'appliedBillNo',
       label: '核销单据号',
       width: 260,
+      textOf: (r) => r.appliedBillNo ?? '',
       cellBuilder: (context, row) => Text(
-        row.appliedBillNo ?? '直接付款（未指定核销）',
+        row.appliedBillNo ?? '直接付款(未指定核销)',
         style: TextStyle(
           color: row.appliedBillNo == null
               ? Theme.of(context).colorScheme.onSurfaceVariant

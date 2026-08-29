@@ -41,6 +41,8 @@ class SalesDocConfig {
     this.clientRequired = false,
     this.hasWarehouse = false,
     this.hasCurrency = false,
+    this.hasSettlement = false,
+    this.settlementRequired = false,
     this.hasExchangeRate = true,
     this.hasSeller = false,
     this.sellerRequired = false,
@@ -82,6 +84,10 @@ class SalesDocConfig {
   final bool clientRequired;
   final bool hasWarehouse;
   final bool hasCurrency;
+  final bool hasSettlement;
+
+  /// 结账方式是否必填（仅销售订货单；下游单据保留来源快照/历史兼容）。
+  final bool settlementRequired;
 
   /// 汇率是否随币种组展示并提交；仅在 [hasCurrency] 为 true 时生效。
   final bool hasExchangeRate;
@@ -137,6 +143,8 @@ class SalesDocConfig {
     permissions: DocumentPermissionCatalog.salesOrder,
     clientRequired: true,
     hasCurrency: true,
+    hasSettlement: true,
+    settlementRequired: true,
     hasExchangeRate: false,
     hasSeller: true,
     sellerRequired: true,
@@ -156,6 +164,7 @@ class SalesDocConfig {
     permissions: DocumentPermissionCatalog.salesShipment,
     clientRequired: true,
     hasWarehouse: true,
+    hasSettlement: true,
     // 出货币种/税率由来源订单携带，销售端不可改；汇率不属于来源商业条件，草稿不保存，
     // 仅在 SHIPPED 时由财务汇率形成。这里保持隐藏，避免把销售输入误认作立账事实。
     hasSeller: true,
@@ -175,6 +184,7 @@ class SalesDocConfig {
     permissions: DocumentPermissionCatalog.salesOtherShipment,
     hasWarehouse: true,
     hasCurrency: true,
+    hasSettlement: true,
     hasSeller: true,
     hasSender: true,
     hasShipInfo: true,
@@ -191,6 +201,7 @@ class SalesDocConfig {
     clientRequired: true,
     hasWarehouse: true,
     hasCurrency: true,
+    hasSettlement: true,
     hasSeller: true,
     showArPosted: true,
     linkToOrderItem: true,

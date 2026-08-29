@@ -15,6 +15,17 @@ void main() {
       expect(keyScope.title, '货品资料');
       expect(pagePermissionScopeBySurfaceKey('unknown.surface'), isNull);
     });
+
+    test('account list and detail share the basic.account surface', () {
+      final list = pagePermissionScopeFor('/basicinfo/account');
+      final detail = pagePermissionScopeFor(
+        '/basicinfo/account/8dd0f270-4341-4ba0-90db-4db70f402cc4?edit=true',
+      );
+
+      expect(list?.surfaceKey, 'basic.account');
+      expect(detail?.surfaceKey, list?.surfaceKey);
+      expect(detail?.title, list?.title);
+    });
   });
 
   group('pagePermissionScopeFor', () {
@@ -152,6 +163,7 @@ Iterable<String> _businessPaths() sync* {
     '/basicinfo/currency',
     '/basicinfo/warehouse',
     '/basicinfo/account',
+    '/basicinfo/account/account-1',
     '/basicinfo/payment-style',
     '/finance/customers',
     '/finance/suppliers',
@@ -192,6 +204,7 @@ Iterable<String> _businessPaths() sync* {
     '/production/progress',
     '/production/material-analysis',
     '/production/material-analyses',
+    '/production/material-analyses/analysis-1/summary',
     '/production/plans',
     '/production/plans/new',
     '/production/plans/plan-1',

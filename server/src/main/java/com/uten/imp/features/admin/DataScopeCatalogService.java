@@ -16,7 +16,7 @@ public class DataScopeCatalogService {
     public List<DataScopeDefinitionDto> list() {
         return List.of(
                 definition(
-                        "client", "客户资料（内销、外贸、OEM统一）",
+                        "client", "客户资料(内销、外贸、OEM统一)",
                         "额外查看所选负责人名下的全部客户；不改变负责人，默认只读。",
                         "client:view:all", true, null, "客户与销售"),
                 definition(

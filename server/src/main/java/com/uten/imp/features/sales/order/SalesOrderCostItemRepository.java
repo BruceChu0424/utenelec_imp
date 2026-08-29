@@ -20,6 +20,6 @@ public interface SalesOrderCostItemRepository extends JpaRepository<SalesOrderCo
 
     @Modifying
     @Query("DELETE FROM SalesOrderCostItem c WHERE c.orderItemId IN "
-            + "(SELECT i.id FROM SalesOrderItem i WHERE i.orderId = :oid)")
+            + "(SELECT i.id FROM SalesOrderItem i WHERE i.orderId = :oid AND i.deleted = false)")
     void deleteByOrderId(@Param("oid") UUID orderId);
 }

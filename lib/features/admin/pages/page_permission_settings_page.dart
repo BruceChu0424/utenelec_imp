@@ -8,6 +8,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../department/widgets/uten_department_picker.dart';
@@ -16,6 +17,9 @@ import '../../../shared/auth/page_permission_delegation_models.dart';
 import '../../../shared/auth/permission_action_type.dart';
 import '../../../shared/auth/page_permission_delegation_repository.dart';
 import '../../../shared/auth/page_permission_scope.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/employee_display.dart';
+import '../../employee/widgets/employee_account_provision_flow.dart';
 import '../widgets/permission_action_badge.dart';
 
 /// 只管理来源业务页权限的人员主从工作台。
@@ -143,7 +147,11 @@ class _PagePermissionSettingsPageState
           _selected == null &&
           combined.isNotEmpty &&
           MediaQuery.sizeOf(context).width >= 1100) {
-        await _selectStaff(combined.first);
+        final autoSelected = combined.firstWhere(
+          (employee) => employee.hasAccount,
+          orElse: () => combined.first,
+        );
+        await _selectStaff(autoSelected, offerProvision: false);
       }
     } on ApiException catch (error) {
       if (!mounted || request != _staffRequest) return;
@@ -195,9 +203,17 @@ class _PagePermissionSettingsPageState
     _loadStaff();
   }
 
-  Future<void> _selectStaff(PagePermissionStaffSummary employee) async {
+  Future<void> _selectStaff(
+    PagePermissionStaffSummary employee, {
+    bool offerProvision = true,
+  }) async {
     if (_selected?.employeeId == employee.employeeId) {
       setState(() => _showDetail = true);
+      if (!employee.hasAccount &&
+          offerProvision &&
+          ref.read(currentPermissionsProvider).contains(Perm.accountSupport)) {
+        await _provisionSelectedEmployee(employee);
+      }
       return;
     }
     if (!await _confirmDiscard()) return;
@@ -208,12 +224,74 @@ class _PagePermissionSettingsPageState
       _pending.clear();
       _showDetail = true;
     });
+    if (!employee.hasAccount) {
+      if (offerProvision &&
+          ref.read(currentPermissionsProvider).contains(Perm.accountSupport)) {
+        await _provisionSelectedEmployee(employee);
+      }
+      return;
+    }
+    await _loadDetail();
+  }
+
+  Future<void> _provisionSelectedEmployee(
+    PagePermissionStaffSummary employee,
+  ) async {
+    final result = await showProvisionSelectedEmployeeAccountFlow(
+      context,
+      ref: ref,
+      employeeId: employee.employeeId,
+      employeeName: employee.fullName ?? '未命名员工',
+      employeeCode: employee.code,
+      hasAccount: employee.hasAccount,
+    );
+    if (result == null || !mounted) return;
+
+    await _loadStaff();
+    if (!mounted) return;
+    PagePermissionStaffSummary? refreshed;
+    for (final item in _staff) {
+      if (item.employeeId == employee.employeeId) {
+        refreshed = item;
+        break;
+      }
+    }
+    final updated = refreshed?.hasAccount == true
+        ? refreshed!
+        : PagePermissionStaffSummary(
+            employeeId: employee.employeeId,
+            departmentId: employee.departmentId,
+            departmentName: employee.departmentName,
+            code: employee.code,
+            fullName: employee.fullName,
+            positionName: employee.positionName,
+            departmentManager: employee.departmentManager,
+            hasAccount: true,
+            accountActive: true,
+          );
+    setState(() {
+      _staff = _staff
+          .map((item) => item.employeeId == updated.employeeId ? updated : item)
+          .toList(growable: false);
+      _selected = updated;
+      _detail = null;
+      _detailError = null;
+      _pending.clear();
+    });
     await _loadDetail();
   }
 
   Future<void> _loadDetail() async {
     final employee = _selected;
     if (employee == null) return;
+    if (!employee.hasAccount) {
+      setState(() {
+        _detail = null;
+        _detailLoading = false;
+        _detailError = null;
+      });
+      return;
+    }
     final departmentId = employee.departmentId.trim();
     if (departmentId.isEmpty) {
       setState(() => _detailError = '员工缺少部门信息，无法加载权限详情');
@@ -416,7 +494,7 @@ class _PagePermissionSettingsPageState
                 level: selected.level,
               ),
             ],
-      label: '部门筛选（可选）',
+      label: '部门筛选(可选)',
       hint: '全部可管理范围',
       allowClear: true,
       clearLabel: '显示全部可管理范围',
@@ -525,27 +603,21 @@ class _PagePermissionSettingsPageState
               key: ValueKey('page-permission-staff-${employee.employeeId}'),
               selected: selected,
               leading: CircleAvatar(child: Text(_initial(employee.fullName))),
-              title: Text(employee.fullName ?? '未命名员工'),
+              title: Text(
+                formatEmployeeDisplayName(
+                  employee.fullName ?? '未命名员工',
+                  employee.code,
+                ),
+              ),
               subtitle: Text(
                 [
-                  if ((employee.code ?? '').isNotEmpty) employee.code!,
                   if (employee.departmentName.trim().isNotEmpty)
                     employee.departmentName,
                   if ((employee.positionName ?? '').isNotEmpty)
                     employee.positionName!,
                 ].join(' · '),
               ),
-              trailing: employee.hasAccount
-                  ? employee.accountActive
-                        ? const Icon(Icons.chevron_right_rounded)
-                        : const Tooltip(
-                            message: '账号未启用',
-                            child: Icon(Icons.person_off_outlined),
-                          )
-                  : const Tooltip(
-                      message: '尚未开通账号',
-                      child: Icon(Icons.person_off_outlined),
-                    ),
+              trailing: _staffAccountStatus(employee),
               onTap: () => _selectStaff(employee),
             ),
           );
@@ -561,6 +633,23 @@ class _PagePermissionSettingsPageState
         icon: Icons.person_search_outlined,
         message: '从左侧选择一名员工',
         description: '右侧只会显示当前业务页面的权限。',
+      );
+    }
+    if (!employee.hasAccount) {
+      final l10n = AppLocalizations.of(context);
+      final canProvision = ref
+          .watch(currentPermissionsProvider)
+          .contains(Perm.accountSupport);
+      return UtenEmpty(
+        icon: Icons.person_off_outlined,
+        message: l10n.pagePermissionAccountNotProvisionedTitle,
+        description: canProvision
+            ? l10n.pagePermissionAccountNotProvisionedCanProvision
+            : l10n.pagePermissionAccountNotProvisionedNoAccess,
+        actionLabel: canProvision ? l10n.employeeActionProvision : null,
+        onAction: canProvision
+            ? () => _provisionSelectedEmployee(employee)
+            : null,
       );
     }
     if (_detailLoading && _detail == null) {
@@ -732,6 +821,52 @@ class _PagePermissionSettingsPageState
           ),
         ),
       ],
+    );
+  }
+
+  Widget _staffAccountStatus(PagePermissionStaffSummary employee) {
+    if (employee.hasAccount && employee.accountActive) {
+      return const Icon(Icons.chevron_right_rounded);
+    }
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final hasDisabledAccount = employee.hasAccount;
+    final label = hasDisabledAccount
+        ? l10n.accountStatusInactive
+        : l10n.accountStatusNotProvisioned;
+    final foreground = hasDisabledAccount
+        ? theme.colorScheme.error
+        : theme.colorScheme.onSurfaceVariant;
+    final background = hasDisabledAccount
+        ? theme.colorScheme.errorContainer.withValues(alpha: 0.55)
+        : theme.colorScheme.surfaceContainerHighest;
+    return Tooltip(
+      message: label,
+      child: Container(
+        key: ValueKey('page-permission-account-status-${employee.employeeId}'),
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s8,
+          vertical: UtenSpacing.s4,
+        ),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.person_off_outlined, size: 16, color: foreground),
+            const SizedBox(width: UtenSpacing.s4),
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: foreground,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -33,6 +33,172 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                     .withPassword("uten");
     private static final LocalDate BILL_DATE = LocalDate.of(2026, 8, 10);
 
+    @Test
+    void buyDemandAndPublicSafetyRemainSeparateThroughOrderReceiptAndIqc()
+            throws Exception {
+        try (Connection connection = connection()) {
+            Fixture fixture = createFixture(connection, Route.BUY);
+            execute(connection, "UPDATE goods SET min_qty=100 WHERE id=?",
+                    fixture.goodsId());
+
+            UUID actionId = UUID.randomUUID();
+            UUID allocationId = UUID.randomUUID();
+            UUID requestId = UUID.randomUUID();
+            UUID demandRequestItemId = UUID.randomUUID();
+            UUID safetyRequestItemId = UUID.randomUUID();
+            String requestNo = businessIdentifier("CS", BILL_DATE);
+            String actionKey = actionId.toString().replace("-", "").repeat(2);
+
+            inTransaction(connection, () -> {
+                execute(connection, """
+                        INSERT INTO preplan_supply_actions(
+                            id,analysis_id,warehouse_id,goods_id,unit_id,route,
+                            requested_qty,safety_replenishment_qty,
+                            safety_stock_snapshot_qty,
+                            public_available_snapshot_qty,
+                            open_safety_supply_snapshot_qty,
+                            status,idempotency_key,action_group_key,
+                            request_business_key,generation,request_hash,created_by)
+                        VALUES(?,?,?,?,?,'BUY',20,100,100,0,0,'OPEN',?,?,?,1,?,?)
+                        """, actionId, fixture.analysisId(), fixture.warehouseId(),
+                        fixture.goodsId(), fixture.unitId(), "split-" + actionId,
+                        actionKey, actionKey, "e".repeat(64), fixture.userId());
+                execute(connection, """
+                        INSERT INTO preplan_supply_action_allocations(
+                            id,analysis_id,action_id,analysis_material_id,
+                            allocated_qty,created_by)
+                        VALUES(?,?,?,?,20,?)
+                        """, allocationId, fixture.analysisId(), actionId,
+                        fixture.materialId(), fixture.userId());
+            });
+
+            execute(connection, """
+                    INSERT INTO purchase_requests(
+                        id,bill_no,bill_date,warehouse_id,need_date,status,
+                        created_by,updated_by)
+                    VALUES(?,?,?,?,?,1,?,?)
+                    """, requestId, requestNo, BILL_DATE, fixture.warehouseId(),
+                    BILL_DATE.plusDays(5), fixture.userId(), fixture.userId());
+            insertPurchaseRequestItem(connection, fixture, requestId,
+                    demandRequestItemId, requestNo, 1, "20", "生产需求精确备料");
+            insertPurchaseRequestItem(connection, fixture, requestId,
+                    safetyRequestItemId, requestNo, 2, "100",
+                    "公共安全库存补库(不绑定单一物料分析)");
+
+            inTransaction(connection, () -> {
+                execute(connection, """
+                        UPDATE preplan_supply_actions
+                        SET status='CREATED',
+                            external_document_type='PURCHASE_REQUEST',
+                            external_document_id=?, external_document_no=?,
+                            safety_external_item_id=?, updated_at=now()
+                        WHERE id=?
+                        """, requestId, requestNo, safetyRequestItemId, actionId);
+                execute(connection, """
+                        UPDATE preplan_supply_action_allocations
+                        SET external_item_id=? WHERE id=?
+                        """, demandRequestItemId, allocationId);
+            });
+
+            assertSplitProgress(connection, actionId,
+                    "20", "0", "20", "100", "0", "100", "0", "0");
+            assertConstraint(connection,
+                    "production_purchase_request_item_supply_guard",
+                    "UPDATE purchase_request_items SET qty=101 WHERE id=?",
+                    safetyRequestItemId);
+            assertEquals(0L, scalarLong(connection, """
+                    SELECT COUNT(*) FROM preplan_supply_action_allocations
+                    WHERE external_item_id=?
+                    """, safetyRequestItemId));
+            assertConstraint(connection,
+                    "preplan_safety_item_demand_allocation_guard",
+                    """
+                    UPDATE preplan_supply_action_allocations
+                    SET external_item_id=? WHERE id=?
+                    """, safetyRequestItemId, allocationId);
+
+            UUID orderId = UUID.randomUUID();
+            UUID demandOrderItemId = UUID.randomUUID();
+            UUID safetyOrderItemId = UUID.randomUUID();
+            String orderNo = businessIdentifier("CD", BILL_DATE);
+            execute(connection, """
+                    INSERT INTO purchase_orders(
+                        id,bill_no,bill_date,warehouse_id,status,created_by,updated_by)
+                    VALUES(?,?,?,?,1,?,?)
+                    """, orderId, orderNo, BILL_DATE, fixture.warehouseId(),
+                    fixture.userId(), fixture.userId());
+            insertPurchaseOrderItem(connection, fixture, orderId, demandOrderItemId,
+                    demandRequestItemId, orderNo, 1, "20");
+            insertPurchaseOrderItem(connection, fixture, orderId, safetyOrderItemId,
+                    safetyRequestItemId, orderNo, 2, "100");
+            execute(connection,
+                    "UPDATE purchase_request_items SET ordered_qty=qty WHERE id IN (?,?)",
+                    demandRequestItemId, safetyRequestItemId);
+            execute(connection, "UPDATE purchase_requests SET is_closed=TRUE WHERE id=?",
+                    requestId);
+
+            UUID receiptId = UUID.randomUUID();
+            UUID demandReceiptItemId = UUID.randomUUID();
+            UUID safetyReceiptItemId = UUID.randomUUID();
+            String receiptNo = businessIdentifier("CJ", BILL_DATE);
+            execute(connection, """
+                    INSERT INTO purchase_receipts(
+                        id,bill_no,bill_date,warehouse_id,status,is_deleted)
+                    VALUES(?,?,?,?,1,FALSE)
+                    """, receiptId, receiptNo, BILL_DATE, fixture.warehouseId());
+            insertPurchaseReceiptItem(connection, fixture, receiptId,
+                    demandReceiptItemId, demandOrderItemId, receiptNo, 1, "20");
+            insertPurchaseReceiptItem(connection, fixture, receiptId,
+                    safetyReceiptItemId, safetyOrderItemId, receiptNo, 2, "100");
+            execute(connection,
+                    "UPDATE purchase_order_items SET received_qty=qty WHERE id IN (?,?)",
+                    demandOrderItemId, safetyOrderItemId);
+
+            UUID demandInspectionId = UUID.randomUUID();
+            UUID safetyInspectionId = UUID.randomUUID();
+            insertInspection(connection, fixture, receiptId, demandReceiptItemId,
+                    demandInspectionId, "20", "20", "0", "RESOLVED");
+            insertInspection(connection, fixture, receiptId, safetyReceiptItemId,
+                    safetyInspectionId, "100", "60", "0", "PARTIAL");
+
+            assertSplitProgress(connection, actionId,
+                    "20", "20", "0", "100", "60", "40", "0", "0");
+
+            execute(connection, """
+                    UPDATE procurement_inspection_items
+                    SET passed_base_qty=60, failed_base_qty=40,
+                        status='RESOLVED', updated_at=now()
+                    WHERE id=?
+                    """, safetyInspectionId);
+            assertSplitProgress(connection, actionId,
+                    "20", "20", "0", "100", "60", "0", "0", "40");
+
+            UUID replacementUnitId = UUID.randomUUID();
+            execute(connection, "INSERT INTO units(id,code,name) VALUES(?,?,?)",
+                    replacementUnitId, "V422-U-" + replacementUnitId, "replacement");
+            execute(connection, "UPDATE goods SET unit_id=? WHERE id=?",
+                    replacementUnitId, fixture.goodsId());
+            execute(connection,
+                    "UPDATE preplan_supply_actions SET status='IN_PROGRESS' WHERE id=?",
+                    actionId);
+            execute(connection,
+                    "UPDATE preplan_supply_actions SET status='DONE' WHERE id=?",
+                    actionId);
+            execute(connection, """
+                    UPDATE preplan_supply_actions
+                    SET status='CANCELLED',cancelled_by=?,cancelled_at=now(),
+                        cancellation_reason='V422 frozen unit lifecycle test'
+                    WHERE id=?
+                    """, fixture.userId(), actionId);
+            assertEquals(fixture.unitId(), scalarUuid(connection,
+                    "SELECT unit_id FROM preplan_supply_actions WHERE id='"
+                            + actionId + "'"));
+            assertEquals(fixture.unitId(), scalarUuid(connection,
+                    "SELECT unit_id FROM purchase_request_items WHERE id='"
+                            + safetyRequestItemId + "'"));
+        }
+    }
+
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
@@ -391,6 +557,104 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                         approvalSource, order.orderItemId());
             }
         }
+    }
+
+    private static void insertPurchaseRequestItem(
+            Connection connection, Fixture fixture, UUID requestId, UUID itemId,
+            String billNo, int lineNo, String qty, String remark) throws Exception {
+        execute(connection, """
+                INSERT INTO purchase_request_items(
+                    id,bill_no,bill_date,request_id,line_no,goods_id,unit_id,
+                    goods_code_snapshot,goods_name_snapshot,
+                    goods_snapshot_source,goods_snapshot_locked_at,
+                    unit_rate,qty,ordered_qty,remark,created_by,updated_by)
+                VALUES(?,?,?,?,?,?,?, ?,?,'MASTER_AT_SAVE',now(),1,?,0,?,?,?)
+                """, itemId, billNo, BILL_DATE, requestId, lineNo,
+                fixture.goodsId(), fixture.unitId(),
+                "V420-G-" + fixture.goodsId(), "V420 split goods",
+                new BigDecimal(qty), remark, fixture.userId(), fixture.userId());
+    }
+
+    private static void insertPurchaseOrderItem(
+            Connection connection, Fixture fixture, UUID orderId, UUID itemId,
+            UUID requestItemId, String billNo, int lineNo, String qty) throws Exception {
+        execute(connection, """
+                INSERT INTO purchase_order_items(
+                    id,bill_no,bill_date,order_id,line_no,goods_id,unit_id,
+                    request_item_id,goods_code_snapshot,goods_name_snapshot,
+                    goods_snapshot_source,goods_snapshot_locked_at,
+                    unit_rate,qty,received_qty,returned_qty,created_by,updated_by)
+                VALUES(?,?,?,?,?,?,?, ?,?,?,'REQUEST_ITEM_AT_APPROVAL',now(),
+                       1,?,0,0,?,?)
+                """, itemId, billNo, BILL_DATE, orderId, lineNo,
+                fixture.goodsId(), fixture.unitId(), requestItemId,
+                "V420-G-" + fixture.goodsId(), "V420 split goods",
+                new BigDecimal(qty), fixture.userId(), fixture.userId());
+    }
+
+    private static void insertPurchaseReceiptItem(
+            Connection connection, Fixture fixture, UUID receiptId, UUID itemId,
+            UUID orderItemId, String billNo, int lineNo, String qty) throws Exception {
+        execute(connection, """
+                INSERT INTO purchase_receipt_items(
+                    id,bill_no,bill_date,receipt_id,line_no,order_item_id,
+                    goods_id,unit_id,goods_code_snapshot,goods_name_snapshot,
+                    goods_snapshot_source,goods_snapshot_locked_at,
+                    unit_rate,qty,amount_local,is_deleted)
+                VALUES(?,?,?,?,?,?, ?,?,?,?,'MASTER_AT_APPROVAL',now(),1,?,0,FALSE)
+                """, itemId, billNo, BILL_DATE, receiptId, lineNo, orderItemId,
+                fixture.goodsId(), fixture.unitId(),
+                "V420-G-" + fixture.goodsId(), "V420 split goods",
+                new BigDecimal(qty));
+    }
+
+    private static void insertInspection(
+            Connection connection, Fixture fixture, UUID receiptId, UUID receiptItemId,
+            UUID inspectionId, String received, String passed, String failed,
+            String status) throws Exception {
+        execute(connection, """
+                INSERT INTO procurement_inspection_items(
+                    id,receipt_type,receipt_id,receipt_item_id,warehouse_id,
+                    goods_id,unit_id,unit_rate,received_base_qty,
+                    received_amount_local,passed_base_qty,failed_base_qty,status)
+                VALUES(?,'PURCHASE',?,?,?,?,?,1,?,0,?,?,?)
+                """, inspectionId, receiptId, receiptItemId,
+                fixture.warehouseId(), fixture.goodsId(), fixture.unitId(),
+                new BigDecimal(received), new BigDecimal(passed),
+                new BigDecimal(failed), status);
+    }
+
+    private static void assertSplitProgress(
+            Connection connection, UUID actionId,
+            String demandRequested, String demandQualified, String demandFuture,
+            String safetyRequested, String safetyQualified, String safetyFuture,
+            String demandFailed, String safetyFailed) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT demand_requested_qty,demand_qualified_qty,demand_future_qty,
+                       safety_requested_qty,safety_qualified_qty,safety_future_qty,
+                       demand_failed_qty,safety_failed_qty,
+                       demand_source_valid,safety_source_valid
+                FROM v_preplan_buy_action_slice_progress WHERE action_id=?
+                """)) {
+            statement.setObject(1, actionId);
+            try (ResultSet rows = statement.executeQuery()) {
+                org.junit.jupiter.api.Assertions.assertTrue(rows.next());
+                assertDecimal(rows.getBigDecimal(1), demandRequested);
+                assertDecimal(rows.getBigDecimal(2), demandQualified);
+                assertDecimal(rows.getBigDecimal(3), demandFuture);
+                assertDecimal(rows.getBigDecimal(4), safetyRequested);
+                assertDecimal(rows.getBigDecimal(5), safetyQualified);
+                assertDecimal(rows.getBigDecimal(6), safetyFuture);
+                assertDecimal(rows.getBigDecimal(7), demandFailed);
+                assertDecimal(rows.getBigDecimal(8), safetyFailed);
+                org.junit.jupiter.api.Assertions.assertTrue(rows.getBoolean(9));
+                org.junit.jupiter.api.Assertions.assertTrue(rows.getBoolean(10));
+            }
+        }
+    }
+
+    private static void assertDecimal(BigDecimal actual, String expected) {
+        assertEquals(0, actual.compareTo(new BigDecimal(expected)));
     }
 
     private static Fixture createFixture(Connection connection, Route route)
@@ -801,6 +1065,18 @@ class PreplanExternalSupplySourceGuardPostgresTest {
             try (ResultSet rows = statement.executeQuery()) {
                 rows.next();
                 return rows.getString(1);
+            }
+        }
+    }
+
+    private static long scalarLong(
+            Connection connection, String sql, Object parameter)
+            throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, parameter);
+            try (ResultSet rows = statement.executeQuery()) {
+                rows.next();
+                return rows.getLong(1);
             }
         }
     }

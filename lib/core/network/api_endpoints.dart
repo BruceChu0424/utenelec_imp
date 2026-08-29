@@ -12,19 +12,26 @@ abstract final class ApiEndpoints {
   // 工作台权限化聚合读模型
   static const dashboardOverview = '/dashboard/overview';
 
-  // 财务订货审批：服务端按当前 assigneeUserId 返回个人任务与数量。
+  // 财务订货审批：服务端返回共享审核组任务；动作按 allowedActions 分权，
+  // 批量决定由 caseId + expectedVersion 精确绑定并整批原子提交。
   static const financeProcurementApprovalTasks =
       '/finance/procurement-approvals/tasks';
   static const financeProcurementApprovalCount =
       '/finance/procurement-approvals/count';
   static const financeProcurementApprovalTypeCounts =
       '/finance/procurement-approvals/type-counts';
+  static const financeProcurementApprovalBatchApprove =
+      '/finance/procurement-approvals/tasks/batch-approve';
+  static const financeProcurementApprovalBatchReject =
+      '/finance/procurement-approvals/tasks/batch-reject';
 
   // 销售订货单财务确认（V294 闸门）：待确认列表 / 徽标计数 / 确认动作。
   static const salesOrderFinanceConfirmationPending =
       '/sales/orders/finance-confirmation/pending';
   static const salesOrderFinanceConfirmationCount =
       '/sales/orders/finance-confirmation/count';
+  static const salesOrderFinanceConfirmationBatch =
+      '/sales/orders/finance-confirmation/batch';
   static String salesOrderFinanceConfirm(String orderId) =>
       '/sales/orders/$orderId/finance-confirmation';
   static String salesOrderFinanceReview(String orderId) =>
@@ -40,11 +47,31 @@ abstract final class ApiEndpoints {
       '/warehouse/inbound/arrival-exceptions';
   static const warehouseArrivalExceptionCount =
       '/warehouse/inbound/arrival-exceptions/count';
+  static const productionFinishedInboundTasks =
+      '/warehouse/production-finished-in/tasks';
+  static const productionFinishedInboundTaskCount =
+      '/warehouse/production-finished-in/tasks/count';
+  static const productionQualityInspections = '/production/quality-inspections';
+  static const productionQualityInspectionCount =
+      '/production/quality-inspections/count';
+  static const productionQualityInspectionCapability =
+      '/production/quality-inspections/capability';
+  static const productionQualityReplenishments =
+      '/production/quality-replenishments';
+  static const productionQualityReplenishmentMaterialTasks =
+      '/production/quality-replenishments/material-tasks';
+  static const productionQualityReplenishmentMaterialTaskCount =
+      '/production/quality-replenishments/material-tasks/count';
   static String warehouseArrivalExceptionStockIn(String id) =>
       '/warehouse/inbound/arrival-exceptions/$id/stock-in';
   // 货品资料「学习」回写：登记到货保存后回写库位号/系列/编码（对仓库端开放）。
   static const warehouseInboundGoodsProfileHints =
       '/warehouse/inbound/goods-profile-hints';
+  // 到货登记一步完成（登记 + 送检审核）：仓库只登记数量/库位，币族服务端权威回填。
+  static const warehouseInboundArrivals = '/warehouse/inbound/arrivals';
+  // 完成中断的到货登记（断点恢复）：草稿收货单一键继续送检，不进采购/委外单据页。
+  static String warehouseInboundArrivalComplete(String receiptId) =>
+      '/warehouse/inbound/arrivals/$receiptId/complete';
 
   // 委外出仓工作台（V304）：财务批准委外订货后按 BOM 展开发料计划并自动生出仓草稿；
   // 仓库在此看任务、拣货、审核出仓（编辑/审核走既有 /subcontract/material-issues 端点）。
@@ -72,6 +99,10 @@ abstract final class ApiEndpoints {
     String inspectionItemId,
   ) =>
       '/procurement/inspection/$receiptType/$receiptId/$inspectionItemId/dispose';
+  static String procurementInspectionPassBatch(
+    String receiptType,
+    String receiptId,
+  ) => '/procurement/inspection/$receiptType/$receiptId/pass-batch';
   static const procurementArrivalExceptionTasks =
       '/procurement/arrival-exceptions/tasks';
   static const procurementArrivalExceptionTaskCount =
@@ -327,6 +358,7 @@ abstract final class ApiEndpoints {
       '/org/employees/$id/change-phone';
 
   // 员工自助：本人车辆 / 备用手机号（ADR-021；profile:edit:self，仅本人）
+  static const myProfile = '/profile/me';
   static const myVehicles = '/profile/me/vehicles';
   static const myPhones = '/profile/me/phones';
 
@@ -450,6 +482,7 @@ abstract final class ApiEndpoints {
   static const noticesAudienceEmployees = '/notices/audience/employees';
   static const noticesTodos = '/notices/todos';
   static String noticeRead(String id) => '/notices/$id/read';
+  static String noticePopupAck(String id) => '/notices/$id/popup-ack';
   static String noticeComplete(String id) => '/notices/$id/complete';
   static String noticeAcknowledge(String id) => '/notices/$id/acknowledge';
   static String noticeBlessing(String id) => '/notices/$id/blessing';

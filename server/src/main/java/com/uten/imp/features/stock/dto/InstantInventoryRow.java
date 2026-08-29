@@ -14,7 +14,7 @@ import java.util.UUID;
  * <ul>
  *   <li>库存数量 = StockGoods 最新年 FactQTY（迁移）+ 单据审核增量 → stock_balances.qty</li>
  *   <li>库存重量 = FactWeight + 明细 weight×unit_rate 增量 → stock_balances.weight</li>
- *   <li>成本金额 = goods.c_total × 库存数量（老库 B_Goods.CTotal × FactQTY）</li>
+ *   <li>库存台账金额 = stock_balances.amount_local（多仓时按货品+颜色 SUM）</li>
  *   <li>多排数量 = production_plan_items 可排余量聚合（老库 View_ProductMore）</li>
  *   <li>备注 = goods.paper（老库 B_Goods.Paper，如「外购」）</li>
  * </ul>
@@ -45,7 +45,7 @@ public class InstantInventoryRow {
     private BigDecimal weight;
     /** 库存数量（多仓=SUM）。 */
     private BigDecimal qty;
-    /** 成本金额 = c_total × qty。 */
+    /** 库存台账金额（兼容既有 API 字段名 costAmount）。 */
     private BigDecimal costAmount;
     /** 多排数量（生产计划可排余量）。 */
     private BigDecimal moreQty;
@@ -57,4 +57,6 @@ public class InstantInventoryRow {
     private String stockPlace;
     /** 待检量（procurement_inspection_items 收货未放行量，基本单位；>0=货在 IQC 待检）。 */
     private BigDecimal pendingQty;
+    /** 当前用户无 goods:cost:view 时库存台账金额已由服务端置空。 */
+    private boolean costMasked;
 }

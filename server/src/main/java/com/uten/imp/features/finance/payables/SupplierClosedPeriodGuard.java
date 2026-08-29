@@ -52,8 +52,8 @@ public class SupplierClosedPeriodGuard {
         LocalDate closedThrough = value == null ? null : LocalDate.parse(value.toString());
         if (isClosed(businessDate, closedThrough)) {
             throw conflict(label(action) + "业务日期 " + businessDate
-                    + " 已被供应商月结封账（截止 " + closedThrough
-                    + "），请在下一开放期间登记调整");
+                    + " 已被供应商月结封账(截止 " + closedThrough
+                    + ")，请在下一开放期间登记调整");
         }
     }
 

@@ -17,6 +17,10 @@ class SalesOrderProgressRow {
     required this.productionPct,
     required this.stage,
     this.financeConfirmed = true,
+    this.financeRejected = false,
+    this.financeRejectedReason,
+    this.financeRejectedAt,
+    this.financeRejectedByName,
   });
 
   final String orderId;
@@ -38,6 +42,12 @@ class SalesOrderProgressRow {
 
   /// 财务确认（V300）：false = 等待财务审核，确认前不展示排产进度。
   final bool financeConfirmed;
+
+  /// 财务已驳回且尚未解决；服务端 `REJECTED` 阶段优先于生产阶段。
+  final bool financeRejected;
+  final String? financeRejectedReason;
+  final String? financeRejectedAt;
+  final String? financeRejectedByName;
 
   /// 是否有可发货量（reserved_qty>0）。
   bool get shippable => reservedQty > 0.0001;
@@ -61,11 +71,16 @@ class SalesOrderProgressRow {
         productionPct: (json['productionPct'] as num?)?.toDouble() ?? 0,
         stage: json['stage'] as String? ?? 'PENDING',
         financeConfirmed: (json['financeConfirmed'] as bool?) ?? true,
+        financeRejected: (json['financeRejected'] as bool?) ?? false,
+        financeRejectedReason: json['financeRejectedReason'] as String?,
+        financeRejectedAt: json['financeRejectedAt'] as String?,
+        financeRejectedByName: json['financeRejectedByName'] as String?,
       );
 }
 
 /// 进度阶段标签。
 String salesProgressStageLabel(String stage) => switch (stage) {
+  'REJECTED' => '财务驳回',
   'PENDING' => '待排产',
   'PRODUCING' => '生产中',
   'SHIPPABLE' => '可分批发货',
@@ -75,6 +90,7 @@ String salesProgressStageLabel(String stage) => switch (stage) {
 
 /// 进度阶段色（绿=可发/已发，橙=生产中，灰=未上链）。
 Color salesProgressStageColor(String stage, ThemeData theme) => switch (stage) {
+  'REJECTED' => theme.colorScheme.error,
   'SHIPPABLE' || 'SHIPPED' => Colors.green,
   'PRODUCING' => Colors.orange,
   'PENDING' => theme.colorScheme.error,

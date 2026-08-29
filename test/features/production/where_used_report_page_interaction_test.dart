@@ -314,13 +314,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('墙壁插座成品'));
       await tester.pumpAndSettle();
-      expect(find.text('全部历史 · A 螺丝（MAT-001）'), findsOneWidget);
+      expect(find.text('全部历史 · A 螺丝(MAT-001)'), findsOneWidget);
       expect(
         find.byKey(const Key('where-used-current-bom-section')),
         findsOneWidget,
       );
-      expect(find.text('退料痕迹数量（待核）'), findsOneWidget);
-      expect(find.text('损耗痕迹数量（待核）'), findsOneWidget);
+      expect(find.text('退料痕迹数量(待核)'), findsOneWidget);
+      expect(find.text('损耗痕迹数量(待核)'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('where-used-open-bom')));
       await tester.pumpAndSettle();

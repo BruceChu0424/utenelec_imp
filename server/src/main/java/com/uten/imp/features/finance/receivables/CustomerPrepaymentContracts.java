@@ -73,6 +73,7 @@ public final class CustomerPrepaymentContracts {
             String clientName,
             UUID currencyId,
             String currencyCode,
+            String currencyName,
             String exchangeRate,
             String receivedOriginal,
             String receivedLocal,

@@ -240,7 +240,7 @@ public class TxSessionVars {
             return null;
         }
         if (crypto.getHmacKey() == null || crypto.getHmacKey().isBlank()) {
-            throw new IllegalStateException("缺少 UTEN_HMAC_KEY（在 server/.env 或环境变量配置）");
+            throw new IllegalStateException("缺少 UTEN_HMAC_KEY(在 server/.env 或环境变量配置)");
         }
         try {
             Mac mac = Mac.getInstance("HmacSHA256");

@@ -127,7 +127,7 @@ class _ProcurementReturnTasksPageState
           children: [
             Text(
               '将记录以下 ${tasks.length} 条超量已实际退回供应商，'
-              '并关闭对应退回任务（超量未入库，不冲库存/应付）。',
+              '并关闭对应退回任务(超量未入库，不冲库存/应付)。',
             ),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
@@ -136,7 +136,7 @@ class _ProcurementReturnTasksPageState
               maxLines: 4,
               maxLength: 1000,
               decoration: const InputDecoration(
-                labelText: '退回说明（可选，批量共用）',
+                labelText: '退回说明(可选，批量共用)',
                 hintText: '例如：供应商司机已带回',
               ),
             ),
@@ -188,7 +188,7 @@ class _ProcurementReturnTasksPageState
     if (fail == 0) {
       context.appSuccess('已确认退回 $ok 条');
     } else {
-      context.appWarning('已确认 $ok 条，$fail 条失败（可能已被处理，请刷新）');
+      context.appWarning('已确认 $ok 条，$fail 条失败(可能已被处理，请刷新)');
     }
     if (mounted) setState(() => _batchSaving = false);
   }
@@ -526,7 +526,7 @@ class _ProcurementReturnTaskDetailPageState
               maxLines: 4,
               maxLength: 1000,
               decoration: const InputDecoration(
-                labelText: '退回说明（可选）',
+                labelText: '退回说明(可选)',
                 hintText: '例如：供应商司机已带回',
               ),
             ),

@@ -24,6 +24,7 @@ public class OrderSaveRequest {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private UUID purchaserId;
+    @NotNull(message = "采购订货单必须选择结账方式")
     private UUID settlementMethodId;
     private Integer settlementStyleLegacy;
     private LocalDate deliverDate;

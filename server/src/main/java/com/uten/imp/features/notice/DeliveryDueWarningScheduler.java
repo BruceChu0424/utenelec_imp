@@ -55,7 +55,7 @@ public class DeliveryDueWarningScheduler {
                 log.info("延期预警扫描完成：{} 笔订单在 {} 天窗口内", rows.size(), DUE_DAYS);
             }
         } catch (Exception e) {
-            log.warn("延期预警扫描失败（不影响业务）: {}", e.toString());
+            log.warn("延期预警扫描失败(不影响业务): {}", e.toString());
         }
     }
 }

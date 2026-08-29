@@ -47,7 +47,7 @@ void main() {
 
     await tester.tap(find.text('请选择员工'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('交出人甲'));
+    await tester.tap(find.text('交出人甲(E001)'));
     await tester.pump();
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
@@ -70,7 +70,7 @@ void main() {
     expect(repository.executeCalls, 1);
     expect(find.textContaining('第 4/4 步'), findsOneWidget);
     expect(find.text('交接批次：18'), findsOneWidget);
-    expect(find.text('执行回执项次（分类合计）：5'), findsOneWidget);
+    expect(find.text('执行回执项次(分类合计)：5'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

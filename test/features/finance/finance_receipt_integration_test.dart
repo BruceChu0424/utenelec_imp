@@ -17,14 +17,30 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../support/document_scope_capability_overrides.dart';
 
 void main() {
-  test('receipt line requires a positive rate and auto-converts to RMB', () {
+  test('receipt v1 model preserves exact authority snapshots', () {
+    final detail = FinanceDocDetail.fromJson(_receiptDetail());
+
+    expect(detail.version, 3);
+    expect(detail.settlementAuthorityVersion, 1);
+    expect(detail.accountCurrencyId, 'currency-cny');
+    expect(detail.settlementAgentNameSnapshot, '历史外贸代理快照');
+    expect(detail.settlementRateQuoteDirection, 'BASE_PER_SETTLEMENT');
+    expect(detail.accountExchangeRateSource, 'BASE_CURRENCY_IDENTITY');
+    expect(detail.accountAmountText, '324');
+    expect(detail.settlementGrossLocalText, '360');
+    expect(detail.bankFeeAccountAmountText, '20');
+    expect(detail.feeBearer, 'COMPANY');
+    expect(detail.items.single.writeOffAmountText, '0');
+  });
+
+  test('each receipt batch uses its own positive arrival rate', () {
     final row = FinanceGridRow(mode: ItemMode.settle);
     addTearDown(row.dispose);
 
     row.amount.text = '50';
     row.exchangeRate.text = '7.2';
 
-    expect(row.localAmountNotifier.value, 360);
+    expect(row.localAmountExactNotifier.value, '360.0000');
     expect(row.amountNotifier.value, 50);
   });
 
@@ -57,7 +73,7 @@ void main() {
       expect(grid.controller.rows.single.currencyId, 'currency-usd');
       expect(grid.controller.rows.single.exchangeRate.text, '7.2');
       expect(grid.controller.rows.single.amount.text, '50');
-      expect(grid.controller.rows.single.writeOff.text, '5');
+      expect(grid.controller.rows.single.writeOff.text, '0');
       expect(grid.controller.rows.single.remark.text, '行备注');
       final currencyColumn = grid.columns.singleWhere(
         (column) => column.key == 'currency',
@@ -65,10 +81,15 @@ void main() {
       final rateColumn = grid.columns.singleWhere(
         (column) => column.key == 'exchangeRate',
       );
-      expect(currencyColumn.label, '应收币别');
+      expect(currencyColumn.label, '应收/核销原币');
       expect(currencyColumn.required, isTrue);
-      expect(rateColumn.label, '到账汇率');
-      expect(rateColumn.required, isTrue);
+      expect(rateColumn.label, '批次汇率');
+      expect(rateColumn.required, isFalse);
+      final accountField = tester.widget<UtenDropdownField>(
+        _dropdownWithLabel('真实收款账户'),
+      );
+      expect(accountField.items.single.label, 'ZH000001 · 人民币账户 · 人民币');
+      expect(find.textContaining('扣费模式增加净额，另付模式增加毛额'), findsOneWidget);
       expect(
         grid.columns.map((column) => column.label),
         containsAllInOrder(const [
@@ -88,13 +109,15 @@ void main() {
       expect(currencyCell, isA<Text>());
       expect((currencyCell as Text).data, '美元');
 
-      expect(find.text('本次收到金额（人民币） ¥360.00'), findsOneWidget);
-      expect(find.text('冲销费用（人民币） ¥36.00'), findsOneWidget);
-      expect(find.text('本次总收到金额（人民币） ¥396.00'), findsOneWidget);
+      expect(find.text('本批结算毛额(人民币) ¥360.00'), findsOneWidget);
+      expect(find.text('费用 人民币 36.00'), findsOneWidget);
+      expect(find.text('真实账户实际入账 人民币 324.00'), findsOneWidget);
 
       grid.controller.rows.single.amount.text = '50.1234';
-      grid.controller.rows.single.exchangeRate.text = '7.200000';
-      grid.controller.rows.single.writeOff.text = '5.0000';
+      final accountAmount = tester.widget<TextField>(
+        find.byKey(const ValueKey('finance-receipt-account-amount')),
+      );
+      accountAmount.controller!.text = '324.8885';
 
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
@@ -104,11 +127,27 @@ void main() {
       expect(body!['clientId'], 'client-1');
       expect(body['accountId'], 'account-1');
       expect(body['receiptKind'], 'AR_SETTLEMENT');
+      expect(body['settlementAuthorityVersion'], 1);
+      expect(body['expectedVersion'], 3);
+      expect(body['settlementChannel'], 'TRADE_AGENT_CONVERSION');
+      expect(body['settlementAgentSupplierId'], 'agent-1');
+      expect(body['exchangeRateSource'], 'TRADE_AGENT_STATEMENT');
+      expect(body['exchangeRateEffectiveAt'], '2026-08-08T01:00:00.000Z');
+      expect(body['bankBookedAt'], '2026-08-08T02:00:00.000Z');
+      expect(body['bankReference'], 'BANK-20260808-001');
+      expect(body['agentStatementNo'], 'AGENT-20260808-001');
+      expect(body['accountCurrencyId'], 'currency-cny');
+      expect(body['accountAmount'], '324.8885');
+      expect(body['bankFeeAccountAmount'], '20.0000');
+      expect(body['otherFeeAccountAmount'], '16.0000');
+      expect(body['feeSettlementMode'], 'DEDUCTED_FROM_PROCEEDS');
+      expect(body['feeBearer'], 'COMPANY');
       expect(body.containsKey('salesOrderId'), isFalse);
       expect(body['receiptMethodId'], 'receipt-method-1');
       expect(body['otherFeeStyleId'], 'expense-1');
-      expect(body.containsKey('currencyId'), isFalse);
-      expect(body.containsKey('exchangeRate'), isFalse);
+      expect(body['currencyId'], 'currency-usd');
+      expect(body['exchangeRate'], '7.200000');
+      expect(body['amountOriginal'], '50.1234');
 
       final item = Map<String, dynamic>.from(
         (body['items'] as List<dynamic>).single as Map,
@@ -120,11 +159,133 @@ void main() {
       expect(item['currencyId'], 'currency-usd');
       expect(item['exchangeRate'], '7.200000');
       expect(item['amountOriginal'], '50.1234');
-      expect(item['writeOffAmount'], '5.0000');
+      expect(item['writeOffAmount'], '0.0000');
       expect(item['remark'], '行备注');
       expect(item.containsKey('amountLocal'), isFalse);
     },
   );
+
+  testWidgets('third-currency receipt account is rejected before API', (
+    tester,
+  ) async {
+    final api = await _pumpEditor(
+      tester,
+      detail: _receiptDetail(),
+      accountBaseCurrency: false,
+      accountCurrencyId: 'currency-eur',
+      accountCurrencyCode: 'EUR',
+      accountCurrencyName: '欧元',
+    );
+
+    await tester.tap(find.text('保存'));
+    await tester.pump();
+
+    expect(api.lastPutBody, isNull);
+    final notifications = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceDocEditPage)),
+    ).read(appNotificationProvider);
+    expect(notifications.single.message, contains('暂不支持第三币种收款'));
+  });
+
+  testWidgets('real USD account accepts direct same-currency receipt', (
+    tester,
+  ) async {
+    final detail = _receiptDetail()
+      ..['settlementChannel'] = 'DIRECT_ACCOUNT'
+      ..['settlementAgentSupplierId'] = null
+      ..['exchangeRateSource'] = 'BANK_STATEMENT'
+      ..['agentStatementNo'] = null
+      ..['accountCurrencyId'] = 'currency-usd'
+      ..['accountExchangeRate'] = 7.2
+      ..['accountAmount'] = 50
+      ..['accountAmountLocal'] = 360
+      ..['bankFeeAccountAmount'] = 0
+      ..['otherFeeAccountAmount'] = 0
+      ..['otherFeeStyleId'] = null
+      ..['feeSettlementMode'] = 'NONE'
+      ..['feeBearer'] = 'NONE'
+      ..['feeAccountCurrencyId'] = 'currency-usd';
+    final api = await _pumpEditor(
+      tester,
+      detail: detail,
+      accountBaseCurrency: false,
+    );
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(api.lastPutBody, isNotNull);
+    expect(api.lastPutBody!['settlementChannel'], 'DIRECT_ACCOUNT');
+    expect(api.lastPutBody!['accountCurrencyId'], 'currency-usd');
+    expect(api.lastPutBody!['accountAmount'], '50.0000');
+    expect(api.lastPutBody!['bankFeeAccountAmount'], '0.0000');
+    expect(api.lastPutBody!['feeBearer'], 'NONE');
+  });
+
+  testWidgets('direct bank conversion can post to the real CNY account', (
+    tester,
+  ) async {
+    final detail = _receiptDetail()
+      ..['settlementChannel'] = 'DIRECT_ACCOUNT'
+      ..['settlementAgentSupplierId'] = null
+      ..['exchangeRateSource'] = 'BANK_STATEMENT'
+      ..['agentStatementNo'] = null;
+    final api = await _pumpEditor(tester, detail: detail);
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    final body = api.lastPutBody;
+    expect(body, isNotNull);
+    expect(body!['settlementChannel'], 'DIRECT_ACCOUNT');
+    expect(body['exchangeRateSource'], 'BANK_STATEMENT');
+    expect(body['settlementAgentSupplierId'], isNull);
+    expect(body['agentStatementNo'], isNull);
+    expect(body['accountCurrencyId'], 'currency-cny');
+    expect(body['accountAmount'], '324.0000');
+  });
+
+  testWidgets('separately-paid fees post from the selected real account', (
+    tester,
+  ) async {
+    final detail = _receiptDetail()
+      ..['feeSettlementMode'] = 'PAID_SEPARATELY'
+      ..['feePaymentAccountId'] = 'fee-account-cny'
+      ..['accountAmount'] = 360;
+    final api = await _pumpEditor(
+      tester,
+      detail: detail,
+      includeFeeAccount: true,
+    );
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(api.lastPutBody, isNotNull);
+    expect(api.lastPutBody!['feeSettlementMode'], 'PAID_SEPARATELY');
+    expect(api.lastPutBody!['feeBearer'], 'COMPANY');
+    expect(api.lastPutBody!['feePaymentAccountId'], 'fee-account-cny');
+    expect(api.lastPutBody!['accountAmount'], '360.0000');
+  });
+
+  testWidgets('account authority load failure prevents receipt save', (
+    tester,
+  ) async {
+    final api = await _pumpEditor(
+      tester,
+      detail: _receiptDetail(),
+      failAccounts: true,
+    );
+
+    await tester.tap(find.text('保存'));
+    await tester.pump();
+
+    expect(api.lastPutBody, isNull);
+    final notifications = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceDocEditPage)),
+    ).read(appNotificationProvider);
+    expect(notifications.single.message, contains('账户币种资料未加载成功'));
+  });
 
   testWidgets('cancelling client clear keeps customer and referenced lines', (
     tester,
@@ -181,26 +342,25 @@ void main() {
     expect(find.text('暂无明细，请点击顶部“引用应收”添加'), findsOneWidget);
   });
 
-  testWidgets('receipt save identifies an invalid rate as the arrival rate', (
-    tester,
-  ) async {
-    final api = await _pumpEditor(tester, detail: _receiptDetail());
-    final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
-      find.byWidgetPredicate(
-        (widget) => widget is UtenEditableGrid<FinanceGridRow>,
-      ),
-    );
-    grid.controller.rows.single.exchangeRate.clear();
+  testWidgets(
+    'receipt save identifies an invalid rate as this batch arrival rate',
+    (tester) async {
+      final api = await _pumpEditor(tester, detail: _receiptDetail());
+      final rate = tester.widget<TextField>(
+        find.byKey(const ValueKey('finance-receipt-exchange-rate')),
+      );
+      rate.controller!.clear();
 
-    await tester.tap(find.text('保存'));
-    await tester.pump();
+      await tester.tap(find.text('保存'));
+      await tester.pump();
 
-    expect(api.lastPutBody, isNull);
-    final notifications = ProviderScope.containerOf(
-      tester.element(find.byType(FinanceDocEditPage)),
-    ).read(appNotificationProvider);
-    expect(notifications.single.message, '请填写大于 0 的到账汇率');
-  });
+      expect(api.lastPutBody, isNull);
+      final notifications = ProviderScope.containerOf(
+        tester.element(find.byType(FinanceDocEditPage)),
+      ).read(appNotificationProvider);
+      expect(notifications.single.message, '请填写大于 0、最多 6 位小数的当前批次实际汇率');
+    },
+  );
 
   testWidgets('compact receipt keeps primary actions and summaries reachable', (
     tester,
@@ -214,7 +374,8 @@ void main() {
     expect(find.byTooltip('资金引用').hitTestable(), findsOneWidget);
     expect(find.byTooltip('查看历史').hitTestable(), findsOneWidget);
     expect(find.text('保存').hitTestable(), findsOneWidget);
-    expect(find.textContaining('本次收到金额（人民币）'), findsOneWidget);
+    expect(find.text('本批结算毛额(人民币) ¥360.00'), findsOneWidget);
+    expect(find.text('真实账户实际入账 人民币 324.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byTooltip('资金引用'));
@@ -254,35 +415,81 @@ void main() {
 
       expect(find.text('其它费用项目'), findsOneWidget);
       expect(find.text('银行费用'), findsOneWidget);
-      expect(find.text('本次收到金额（人民币）'), findsOneWidget);
+      expect(find.text('V1 到账与 AR 核销分层'), findsOneWidget);
+      expect(find.text('外贸代理代收结汇'), findsOneWidget);
+      expect(find.text('历史外贸代理快照'), findsOneWidget);
+      expect(find.text('汇率报价方向'), findsOneWidget);
+      expect(find.text('本位币/结算原币（1 原币对应本位币金额）'), findsOneWidget);
+      expect(find.text('账户折算汇率来源'), findsOneWidget);
+      expect(find.text('本位币同值'), findsOneWidget);
+      expect(find.text('本批结算毛额(人民币)'), findsOneWidget);
       expect(find.text('360.00'), findsWidgets);
-      expect(find.text('冲销费用（人民币）'), findsOneWidget);
-      expect(find.text('36.00'), findsWidgets);
-      expect(find.text('本次总收到金额（人民币）'), findsOneWidget);
-      expect(find.text('冲减应收账面金额（人民币）'), findsOneWidget);
-      expect(find.text('396.00'), findsOneWidget);
+      expect(find.text('真实账户实际入账(人民币)'), findsOneWidget);
+      expect(find.text('324.00'), findsWidgets);
+      expect(find.text('银行手续费(人民币)'), findsOneWidget);
+      expect(find.text('20.00'), findsWidgets);
+      expect(find.text('其它费用(人民币)'), findsOneWidget);
+      expect(find.text('16.00'), findsWidgets);
+      expect(find.text('费用承担方'), findsOneWidget);
+      expect(find.text('本公司承担'), findsOneWidget);
+      expect(find.text('冲减应收账面金额(人民币)'), findsWidgets);
+      expect(find.text('汇兑差额(人民币)'), findsOneWidget);
+      expect(find.text('350.00'), findsWidgets);
+      expect(find.text('10.00'), findsWidgets);
 
       for (final column in const [
         '应收单号',
-        '币别',
-        '本次收款金额',
-        '汇率',
-        '换算人民币',
-        '冲销金额（原币）',
-        '冲销人民币',
+        '应收/核销原币',
+        '本批 AR 核销(应收原币)',
+        '当前批次实际到账汇率',
+        '分配折算毛额(人民币)',
+        '冲减应收账面金额(人民币)',
+        '汇兑差额(人民币)',
         '收款前未收',
         '收款后未收',
         '备注',
       ]) {
-        expect(find.text(column), findsOneWidget);
+        expect(
+          find.text(column),
+          column == '应收/核销原币' ||
+                  column == '分配折算毛额(人民币)' ||
+                  column == '冲减应收账面金额(人民币)'
+              ? findsWidgets
+              : findsOneWidget,
+        );
       }
-      expect(find.text('美元'), findsOneWidget);
-      expect(find.text('50.00'), findsOneWidget);
-      expect(find.text('7.2000'), findsOneWidget);
-      expect(find.text('5.00'), findsOneWidget);
+      expect(find.text('美元'), findsWidgets);
+      expect(find.text('50.00'), findsWidgets);
+      expect(find.text('7.2'), findsWidgets);
       expect(find.text('100.00'), findsOneWidget);
-      expect(find.text('45.00'), findsOneWidget);
+      expect(find.text('50.00'), findsWidgets);
       expect(find.text('行备注'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'real USD account labels local amount as book conversion, not RMB cash entry',
+    (tester) async {
+      final detail = _receiptDetail()
+        ..['settlementChannel'] = 'DIRECT_ACCOUNT'
+        ..['settlementAgentSupplierId'] = null
+        ..['exchangeRateSource'] = 'BANK_STATEMENT'
+        ..['agentStatementNo'] = null
+        ..['accountCurrencyId'] = 'currency-usd'
+        ..['accountExchangeRate'] = 7.2
+        ..['accountAmount'] = 50
+        ..['accountAmountLocal'] = 360
+        ..['bankFeeAccountAmount'] = 0
+        ..['otherFeeAccountAmount'] = 0
+        ..['feeSettlementMode'] = 'NONE'
+        ..['feeBearer'] = 'NONE'
+        ..['feeAccountCurrencyId'] = 'currency-usd';
+      await _pumpDetail(tester, detail: detail, accountBaseCurrency: false);
+
+      expect(find.text('真实账户直接到账'), findsOneWidget);
+      expect(find.text('真实账户实际入账(美元)'), findsOneWidget);
+      expect(find.text('实际入账本位币(人民币)'), findsOneWidget);
+      expect(find.textContaining('人民币实际入账'), findsNothing);
     },
   );
 }
@@ -300,13 +507,27 @@ Future<_ReceiptApi> _pumpEditor(
   required Map<String, dynamic> detail,
   Size size = const Size(1600, 1200),
   Set<String> permissions = const {},
+  bool accountBaseCurrency = true,
+  String? accountCurrencyId,
+  String? accountCurrencyCode,
+  String? accountCurrencyName,
+  bool includeFeeAccount = false,
+  bool failAccounts = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final api = _ReceiptApi(detail);
+  final api = _ReceiptApi(
+    detail,
+    accountBaseCurrency: accountBaseCurrency,
+    accountCurrencyId: accountCurrencyId,
+    accountCurrencyCode: accountCurrencyCode,
+    accountCurrencyName: accountCurrencyName,
+    includeFeeAccount: includeFeeAccount,
+    failAccounts: failAccounts,
+  );
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -330,11 +551,12 @@ Future<_ReceiptApi> _pumpEditor(
 Future<void> _pumpDetail(
   WidgetTester tester, {
   required Map<String, dynamic> detail,
+  bool accountBaseCurrency = true,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final api = _ReceiptApi(detail);
+  final api = _ReceiptApi(detail, accountBaseCurrency: accountBaseCurrency);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -357,6 +579,7 @@ Future<void> _pumpDetail(
 
 Map<String, dynamic> _receiptDetail() => <String, dynamic>{
   'id': 'receipt-1',
+  'version': 3,
   'makerId': 'maker-1',
   'billNo': 'XS202608080001',
   'billDate': '2026-08-08',
@@ -366,6 +589,29 @@ Map<String, dynamic> _receiptDetail() => <String, dynamic>{
   'receiptMethodId': 'receipt-method-1',
   'currencyId': 'currency-usd',
   'exchangeRate': 7.2,
+  'amountOriginal': 50,
+  'settlementAuthorityVersion': 1,
+  'settlementChannel': 'TRADE_AGENT_CONVERSION',
+  'settlementAgentSupplierId': 'agent-1',
+  'settlementAgentNameSnapshot': '历史外贸代理快照',
+  'settlementRateQuoteDirection': 'BASE_PER_SETTLEMENT',
+  'exchangeRateSource': 'TRADE_AGENT_STATEMENT',
+  'exchangeRateEffectiveAt': '2026-08-08T01:00:00Z',
+  'bankBookedAt': '2026-08-08T02:00:00Z',
+  'bankReference': 'BANK-20260808-001',
+  'agentStatementNo': 'AGENT-20260808-001',
+  'accountCurrencyId': 'currency-cny',
+  'accountExchangeRate': 1,
+  'accountExchangeRateSource': 'BASE_CURRENCY_IDENTITY',
+  'accountAmount': 324,
+  'accountAmountLocal': 324,
+  'bankFeeAccountAmount': 20,
+  'otherFeeAccountAmount': 16,
+  'feeSettlementMode': 'DEDUCTED_FROM_PROCEEDS',
+  'feeBearer': 'COMPANY',
+  'feeAccountCurrencyId': 'currency-cny',
+  'feeAccountExchangeRate': 1,
+  'settlementGrossLocal': 360,
   'bankFee': 20,
   'otherFee': 16,
   'otherFeeStyleId': 'expense-1',
@@ -382,10 +628,12 @@ Map<String, dynamic> _receiptDetail() => <String, dynamic>{
       'exchangeRate': 7.2,
       'amountOriginal': 50,
       'amountLocal': 360,
-      'writeOffAmount': 5,
-      'writeOffLocal': 36,
+      'writeOffAmount': 0,
+      'writeOffLocal': 0,
+      'appliedAmountLocal': 350,
+      'exchangeDiff': 10,
       'balanceBeforeOriginal': 100,
-      'balanceAfterOriginal': 45,
+      'balanceAfterOriginal': 50,
       'remark': '行备注',
     },
   ],
@@ -397,9 +645,23 @@ class _TestSessionNotifier extends SessionNotifier {
 }
 
 class _ReceiptApi extends ApiClient {
-  _ReceiptApi(this.detail) : super(Dio());
+  _ReceiptApi(
+    this.detail, {
+    this.accountBaseCurrency = true,
+    this.accountCurrencyId,
+    this.accountCurrencyCode,
+    this.accountCurrencyName,
+    this.includeFeeAccount = false,
+    this.failAccounts = false,
+  }) : super(Dio());
 
   final Map<String, dynamic> detail;
+  final bool accountBaseCurrency;
+  final String? accountCurrencyId;
+  final String? accountCurrencyCode;
+  final String? accountCurrencyName;
+  final bool includeFeeAccount;
+  final bool failAccounts;
   Map<String, dynamic>? lastPutBody;
 
   @override
@@ -420,14 +682,48 @@ class _ReceiptApi extends ApiClient {
         {'id': 'client-1', 'name': '甲客户'},
       ];
     }
-    if (path == '/master/accounts/dict') {
+    if (path == '/master/suppliers/dict') {
       return const [
-        {'id': 'account-1', 'name': '人民币账户'},
+        {'id': 'agent-1', 'name': '测试外贸代理'},
+      ];
+    }
+    if (path == '/master/accounts/dict') {
+      if (failAccounts) throw StateError('offline');
+      final resolvedCurrencyId =
+          accountCurrencyId ??
+          (accountBaseCurrency ? 'currency-cny' : 'currency-usd');
+      final resolvedCurrencyCode =
+          accountCurrencyCode ?? (accountBaseCurrency ? 'CNY' : 'USD');
+      final resolvedCurrencyName =
+          accountCurrencyName ?? (accountBaseCurrency ? '人民币' : '美元');
+      return [
+        {
+          'id': 'account-1',
+          'code': 'ZH000001',
+          'name': '$resolvedCurrencyName账户',
+          'currencyId': resolvedCurrencyId,
+          'currencyCode': resolvedCurrencyCode,
+          'currencyName': resolvedCurrencyName,
+          'baseCurrency': accountBaseCurrency,
+          'status': '使用',
+        },
+        if (includeFeeAccount)
+          {
+            'id': 'fee-account-cny',
+            'code': 'ZH-FEE',
+            'name': '费用人民币账户',
+            'currencyId': 'currency-cny',
+            'currencyCode': 'CNY',
+            'currencyName': '人民币',
+            'baseCurrency': true,
+            'status': '使用',
+          },
       ];
     }
     if (path == '/master/currencies/dict') {
       return const [
         {'id': 'currency-usd', 'name': '美元'},
+        {'id': 'currency-cny', 'name': '人民币'},
       ];
     }
     if (path == '/master/reference-methods/finance') {

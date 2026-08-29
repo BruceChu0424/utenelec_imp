@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -348,13 +349,14 @@ class _StockBalanceDetailSheetState extends State<_StockBalanceDetailSheet> {
           _infoRow('当前数量', _quantity(_currentQty), theme, emphasized: true),
           const SizedBox(height: UtenSpacing.s8),
           TextFormField(
+            errorBuilder: utenTextFieldErrorBuilder,
             controller: _targetQty,
             autofocus: true,
             enabled: !_submitting,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(
               labelText: '调整后数量 *',
-              helperText: '填写最终库存数量，不是增减量；最多 4 位小数',
+              helper: UtenFieldMessage.helper('填写最终库存数量，不是增减量；最多 4 位小数'),
               prefixIcon: Icon(Icons.edit_note_rounded),
             ),
             validator: _validateTarget,
@@ -390,6 +392,7 @@ class _StockBalanceDetailSheetState extends State<_StockBalanceDetailSheet> {
           ),
           const SizedBox(height: UtenSpacing.s12),
           TextFormField(
+            errorBuilder: utenTextFieldErrorBuilder,
             controller: _reason,
             enabled: !_submitting,
             minLines: 3,

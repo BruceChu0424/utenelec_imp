@@ -26,6 +26,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
+import '../inputs/uten_field_message.dart';
 import '../../shared/models/paged_result.dart';
 import '../forms/link_quantity_validator.dart';
 import '../inputs/uten_dropdown_field.dart';
@@ -497,7 +498,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
 
   Widget _buildHeader(ThemeData theme, N names, bool inStep2) {
     final title = inStep2
-        ? '选择明细（${_cfg.partyName(names, _upDetail!.partyId)}）'
+        ? '选择明细(${_cfg.partyName(names, _upDetail!.partyId)})'
         : _cfg.step1Title;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -564,7 +565,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
                 width: 240,
                 child: UtenDropdownField(
                   label: _partyLocked
-                      ? '${_cfg.partyNoun}（已锁定）'
+                      ? '${_cfg.partyNoun}(已锁定)'
                       : _cfg.partyNoun,
                   value: _partyId ?? '',
                   enabled: !_partyLocked,
@@ -749,7 +750,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
           decoration: InputDecoration(
             isDense: true,
             hintText: '0',
-            errorText: error,
+            error: utenFieldError(error),
           ),
           onChanged: (value) {
             if (row.qtyError.value != null) {

@@ -19,6 +19,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
+    var progressReads = 0;
     final router = GoRouter(
       initialLocation: '/',
       routes: [
@@ -28,8 +29,17 @@ void main() {
         ),
         GoRoute(
           path: '/production/plans/:id',
-          builder: (context, state) =>
-              Scaffold(body: Text('已打开计划 ${state.pathParameters['id']}')),
+          builder: (context, state) => Scaffold(
+            body: Column(
+              children: [
+                Text('已打开计划 ${state.pathParameters['id']}'),
+                FilledButton(
+                  onPressed: () => context.pop(),
+                  child: const Text('返回进度看板'),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -38,7 +48,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          productionPlanRepositoryProvider.overrideWithValue(_repository()),
+          productionPlanRepositoryProvider.overrideWithValue(
+            _repository(onProgressRead: () => progressReads++),
+          ),
           currentPermissionsProvider.overrideWithValue(const <String>{}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
@@ -47,14 +59,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('物料已齐 6 / 10（1/2 段） · 可开工'), findsOneWidget);
-    await tester.tap(find.text('子计划 1 张（点开展示进度）'));
+    expect(find.text('物料已齐 6 / 10(1/2 段) · 部分段待派工/发料'), findsOneWidget);
+    await tester.tap(find.text('子计划 1 张(点开展示进度)'));
     await tester.pumpAndSettle();
-    expect(find.text('物料待齐套（0/1 段）'), findsOneWidget);
+    expect(find.text('物料待齐套(0/1 段)'), findsOneWidget);
     await tester.tap(find.text('SJ-CHILD'));
     await tester.pumpAndSettle();
 
     expect(find.text('已打开计划 child-plan-1'), findsOneWidget);
+    final readsBeforeReturn = progressReads;
+    await tester.tap(find.text('返回进度看板'));
+    await tester.pumpAndSettle();
+    expect(progressReads, greaterThan(readsBeforeReturn));
   });
 
   testWidgets('compact board child-plan stays usable at 1.3 text scale', (
@@ -102,7 +118,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    final expand = find.text('子计划 1 张（点开展示进度）');
+    final expand = find.text('子计划 1 张(点开展示进度)');
     await tester.ensureVisible(expand);
     final boardScroll = find.ancestor(
       of: expand,
@@ -121,7 +137,7 @@ void main() {
 
     expect(find.text('已报工 2'), findsOneWidget);
     expect(find.text('已入库 1 / 排产 5'), findsOneWidget);
-    expect(find.text('物料待齐套（0/1 段）'), findsOneWidget);
+    expect(find.text('物料待齐套(0/1 段)'), findsOneWidget);
     final childBill = find.text('SJ-CHILD');
     await tester.ensureVisible(childBill);
     await tester.drag(boardScroll, const Offset(0, -80));
@@ -141,11 +157,14 @@ void main() {
   });
 }
 
-ProductionPlanRepository _repository() {
+ProductionPlanRepository _repository({VoidCallback? onProgressRead}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) {
+        if (request.path == '/production/plans/progress') {
+          onProgressRead?.call();
+        }
         final data = switch (request.path) {
           '/production/plans/progress/summary' => {
             'count': 1,

@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_toast.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../models/department_node.dart';
@@ -362,7 +363,7 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
                   labelText: widget.label,
                   hintText: widget.hint,
                   enabled: widget.enabled,
-                  errorText: field.errorText,
+                  errorMessage: field.errorText,
                   suffixIcon: display != null && widget.allowClear
                       ? IconButton(
                           key: const ValueKey('uten-department-picker-clear'),
@@ -410,7 +411,7 @@ InputDecoration utenPickerFieldDecoration(
   String? labelText,
   required String hintText,
   required bool enabled,
-  String? errorText,
+  String? errorMessage,
   Widget? suffixIcon,
 }) {
   final theme = Theme.of(context);
@@ -419,7 +420,7 @@ InputDecoration utenPickerFieldDecoration(
     labelText: labelText,
     hintText: hintText,
     enabled: enabled,
-    errorText: errorText,
+    error: utenFieldError(errorMessage),
     isDense: true,
     suffixIcon: suffixIcon,
     suffixIconConstraints: suffixIcon == null
@@ -571,7 +572,7 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
                 ? null
                 : _selected.values.first.name,
             onClear: _isMulti ? () => setState(_selected.clear) : null,
-            confirmLabel: _isMulti ? '确定（${_selected.length}）' : '确定',
+            confirmLabel: _isMulti ? '确定(${_selected.length})' : '确定',
             onConfirm: () => Navigator.of(context).pop(
               _isMulti ? _selected.values.toList() : [_selected.values.first],
             ),

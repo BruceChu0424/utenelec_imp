@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../components/inputs/uten_field_message.dart';
 import '../network/api_error.dart';
 import '../network/api_exception.dart';
 import '../theme/uten_colors.dart';
@@ -441,6 +442,24 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     widget.notification.onDismissed?.call();
   }
 
+  Widget _notificationText({
+    required String text,
+    required int maxLines,
+    required TextStyle? style,
+    required Color foreground,
+  }) {
+    if (widget.notification.onTap == null) {
+      return Text(text, style: style);
+    }
+    return UtenOverflowMessage(
+      message: text,
+      maxLines: maxLines,
+      style: style,
+      iconColor: foreground,
+      disclosureLabel: '查看完整通知',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -523,35 +542,30 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                     if (n.title != null && n.title!.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 2),
-                        child: Text(
-                          n.title!,
-                          maxLines: n.onTap == null ? null : 2,
-                          overflow: n.onTap == null
-                              ? TextOverflow.clip
-                              : TextOverflow.ellipsis,
+                        child: _notificationText(
+                          text: n.title!,
+                          maxLines: 2,
+                          foreground: fg,
                           style: theme.textTheme.titleSmall?.copyWith(
                             color: fg,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                    Text(
-                      n.message,
-                      maxLines: n.onTap == null ? null : 3,
-                      overflow: n.onTap == null
-                          ? TextOverflow.clip
-                          : TextOverflow.ellipsis,
+                    _notificationText(
+                      text: n.message,
+                      maxLines: 3,
+                      foreground: fg,
                       style: theme.textTheme.bodyMedium?.copyWith(color: fg),
                     ),
                     if (n.fieldErrors != null && n.fieldErrors!.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
-                          maxLines: n.onTap == null ? null : 2,
-                          overflow: n.onTap == null
-                              ? TextOverflow.clip
-                              : TextOverflow.ellipsis,
+                        child: _notificationText(
+                          text:
+                              '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
+                          maxLines: 2,
+                          foreground: fg,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: fg.withValues(alpha: 0.85),
                           ),

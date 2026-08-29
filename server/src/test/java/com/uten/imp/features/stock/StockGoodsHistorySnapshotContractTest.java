@@ -19,7 +19,8 @@ class StockGoodsHistorySnapshotContractTest {
     private static final Path MIGRATION = MAIN.resolve(
             "resources/db/migration/V262__stock_goods_history_snapshots.sql");
     private static final List<String> AUTOMATED_WRITERS = List.of(
-            "features/production/dailyreport/ProductionDailyReportService.java",
+            "features/production/dailyreport/ProductionFqcFinishedInboundService.java",
+            "features/production/dailyreport/ProductionLegacyFinishedInboundService.java",
             "features/production/fulfillment/ProductionExecutionReadinessService.java",
             "features/production/fulfillment/ProductionPurchaseSupplyTransitionService.java",
             "features/production/mrp/ProductionExecutionPackageCommandService.java");
@@ -94,7 +95,7 @@ class StockGoodsHistorySnapshotContractTest {
             assertThat(occurrences(source, ".applyto(")).isEqualTo(constructors);
             itemWriters += constructors;
         }
-        assertThat(itemWriters).isEqualTo(4);
+        assertThat(itemWriters).isEqualTo(5);
     }
 
     @Test

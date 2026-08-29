@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -320,7 +321,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: '显示顺序',
-                  helperText: '数字越小越靠前',
+                  helper: UtenFieldMessage.helper('数字越小越靠前'),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s12),
@@ -332,11 +333,11 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 decoration: const InputDecoration(
                   labelText: '编号前缀',
                   hintText: '例如 V6',
-                  helperText:
-                      '留空继承最近上级。显式前缀是全系统专用 token，'
-                      '忽略大小写且终身保留；保存以服务端事务校验为准。'
-                      '若返回 409 冲突，当前输入会保留供修改。',
-                  helperMaxLines: 3,
+                  helper: UtenFieldMessage.helper(
+                    '留空继承最近上级。显式前缀是全系统专用 token，'
+                    '忽略大小写且终身保留；保存以服务端事务校验为准。'
+                    '若返回 409 冲突，当前输入会保留供修改。',
+                  ),
                   counterText: '',
                 ),
               ),
@@ -356,7 +357,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: '备注',
-                  helperText: '旧分类编码已迁移到这里，可按业务需要修改',
+                  helper: UtenFieldMessage.helper('旧分类编码已迁移到这里，可按业务需要修改'),
                 ),
               ),
               if (_formError != null) ...[

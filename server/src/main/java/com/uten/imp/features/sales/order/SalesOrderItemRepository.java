@@ -11,9 +11,9 @@ import java.util.UUID;
 /** 销售订货明细仓库（明细独立管理）。 */
 public interface SalesOrderItemRepository extends JpaRepository<SalesOrderItem, UUID> {
 
-    List<SalesOrderItem> findByOrderIdOrderByLineNoAsc(UUID orderId);
+    List<SalesOrderItem> findByOrderIdAndDeletedFalseOrderByLineNoAsc(UUID orderId);
 
     @Modifying
-    @Query("DELETE FROM SalesOrderItem i WHERE i.orderId = :oid")
+    @Query("DELETE FROM SalesOrderItem i WHERE i.orderId = :oid AND i.deleted = false")
     void deleteByOrderId(@Param("oid") UUID orderId);
 }

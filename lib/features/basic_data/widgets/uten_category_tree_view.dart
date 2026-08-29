@@ -278,7 +278,7 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  node.code.isEmpty ? node.name : '${node.name}（${node.code}）',
+                  node.code.isEmpty ? node.name : '${node.name}(${node.code})',
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,

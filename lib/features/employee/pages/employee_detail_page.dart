@@ -12,6 +12,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -29,7 +30,7 @@ import '../models/employee_api_models.dart';
 import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/contract_attachments_dialog.dart';
-import '../widgets/employee_credential_dialog.dart';
+import '../widgets/employee_account_provision_flow.dart';
 import '../widgets/employee_status_badge.dart';
 import '../widgets/employee_leadership_badge.dart';
 import '../widgets/employee_transfer_dialog.dart';
@@ -113,18 +114,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           if (canManageAuthorization && _profile != null)
             IconButton(
               icon: const Icon(Icons.admin_panel_settings_outlined),
-              tooltip: _profile!.accountStatus == null ? '该员工未开通账号' : '设置员工权限',
-              onPressed: () {
-                if (_profile!.accountStatus == null) {
-                  context.appError('该员工未开通登录账号，暂不能设置权限');
-                  return;
-                }
-                final target = Uri(
-                  path: RouteName.adminPermissions,
-                  queryParameters: {'employeeId': widget.employeeId},
-                );
-                context.push(target.toString());
-              },
+              tooltip: _profile!.accountStatus == null
+                  ? l10n.employeeAccountNotProvisionedTooltip
+                  : l10n.employeePermissionSettingsTooltip,
+              onPressed: _openPermissionSettings,
             ),
           IconButton(
             tooltip: '刷新',
@@ -231,7 +224,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         child: UtenEmpty(
           icon: Icons.folder_off_outlined,
           message: '无档案文件查看权限',
-          description: '档案文件属员工敏感信息（证件/合同扫描件），需人事敏感信息查看权限（employee:pii:view）。',
+          description: '档案文件属员工敏感信息(证件/合同扫描件)，需人事敏感信息查看权限(employee:pii:view)。',
         ),
       );
     }
@@ -245,7 +238,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         onChanged: _load,
         title: '档案文件',
         emptyHint: canUploadFiles
-            ? '暂无档案文件，点击上传合同 / 证件 / 照片（PDF 或图片）'
+            ? '暂无档案文件，点击上传合同 / 证件 / 照片(PDF 或图片)'
             : '暂无档案文件',
         categories: const ['合同', '身份证件', '学历证书', '照片', '其他'],
         onSetAvatar: perms.contains(Perm.employeeAvatarEdit)
@@ -751,17 +744,19 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                 ),
                 // 简化：开始/结束用文本输入（YYYY-MM-DD）；生产可换日期选择器。
                 TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   decoration: const InputDecoration(
                     labelText: '开始日期',
-                    hintText: 'YYYY-MM-DD（留空=今天）',
+                    hintText: 'YYYY-MM-DD(留空=今天)',
                   ),
                   onChanged: (v) =>
                       startDate = v.trim().isEmpty ? null : v.trim(),
                 ),
                 TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   decoration: const InputDecoration(
                     labelText: '结束日期',
-                    hintText: 'YYYY-MM-DD（无固定期限留空）',
+                    hintText: 'YYYY-MM-DD(无固定期限留空)',
                   ),
                   onChanged: (v) =>
                       endDate = v.trim().isEmpty ? null : v.trim(),
@@ -1097,40 +1092,57 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     }
   }
 
-  /// 给批量导入等「未开通账号」的存量员工补开登录账号：账号=手机号，初始密码=身份证后6位。
-  Future<void> _onProvisionAccount() async {
+  Future<void> _openPermissionSettings() async {
+    final profile = _profile;
+    if (profile == null) return;
     final l10n = AppLocalizations.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.employeeActionProvision),
-        content: Text(l10n.employeeProvisionConfirm),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.commonConfirm),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    try {
-      final result = await ref
-          .read(employeeRepositoryProvider)
-          .provisionAccount(widget.employeeId);
-      if (!mounted) return;
-      await showEmployeeCredentialDialog(context, result);
-      if (!mounted) return;
-      _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
+    if (profile.accountStatus == null) {
+      if (profile.status == 'resigned') {
+        context.appError(l10n.employeeResignedCannotProvision);
+        return;
+      }
+      if (!ref.read(currentPermissionsProvider).contains(Perm.accountSupport)) {
+        context.appError(l10n.employeeAccountNotProvisionedContactSupport);
+        return;
+      }
+      final result = await showProvisionSelectedEmployeeAccountFlow(
+        context,
+        ref: ref,
+        employeeId: widget.employeeId,
+        employeeName: profile.fullName ?? '未命名员工',
+        employeeCode: profile.code,
+        hasAccount: false,
+      );
+      if (result == null || !mounted) return;
+      setState(() => _profile = result.employee);
     }
+    if (!mounted) return;
+    final target = Uri(
+      path: RouteName.adminPermissions,
+      queryParameters: {'employeeId': widget.employeeId},
+    );
+    context.push(target.toString());
+  }
+
+  /// 给批量导入等「未开通账号」的存量员工补开登录账号。
+  Future<void> _onProvisionAccount() async {
+    final profile = _profile;
+    if (profile == null ||
+        profile.accountStatus != null ||
+        profile.status == 'resigned') {
+      return;
+    }
+    final result = await showProvisionSelectedEmployeeAccountFlow(
+      context,
+      ref: ref,
+      employeeId: widget.employeeId,
+      employeeName: profile.fullName ?? '未命名员工',
+      employeeCode: profile.code,
+      hasAccount: false,
+    );
+    if (result == null || !mounted) return;
+    setState(() => _profile = result.employee);
+    await _load();
   }
 
   Future<void> _onLockAccount() => _toggleAccountLock(lock: true);

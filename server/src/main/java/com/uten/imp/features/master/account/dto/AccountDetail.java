@@ -19,13 +19,34 @@ public class AccountDetail {
     private String bankAccountNo;
     private String accountType;
     private UUID currencyId;
+    private String currencyCode;
+    private String currencyName;
+    private BigDecimal exchangeRate;
+    private boolean baseCurrency;
     private BigDecimal initBalance;
     private BigDecimal receiptsTotal;
     private BigDecimal paymentsTotal;
+    private BigDecimal adjustmentsTotal;
     private BigDecimal balanceCurrent;
+    private BigDecimal balanceFloor;
+    private String initBalanceText;
+    private String receiptsTotalText;
+    private String paymentsTotalText;
+    private String adjustmentsTotalText;
+    private String balanceCurrentText;
+    private String balanceFloorText;
+    private String exchangeRateText;
     private Integer parentLegacyId;
     private Integer styleLegacyId;
     private UUID styleId;
     private String status;
     private boolean autoCreated;
+    /** Native-currency balance rebuilt from active append-only account flows. */
+    private BigDecimal flowBalance;
+    private BigDecimal balanceDifference;
+    private String flowBalanceText;
+    private String balanceDifferenceText;
+    private Boolean flowIntegrity;
+    private Long activeFlowCount;
+    private String latestFlowAt;
 }

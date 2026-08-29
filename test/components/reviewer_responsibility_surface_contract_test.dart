@@ -86,7 +86,7 @@ void main() {
       contains('reviewerResponsibility: true'),
     );
     expect(
-      _between(sales, 'Future<void> _reverse()', 'Future<void> _setStopped'),
+      _between(sales, 'Future<void> _reverse()', 'Future<void> _cancel'),
       isNot(contains('reviewerResponsibility: true')),
     );
 

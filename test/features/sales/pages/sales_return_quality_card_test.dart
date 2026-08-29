@@ -28,7 +28,7 @@ void main() {
       find.byKey(const ValueKey('sales-return-quality-card')),
       findsOneWidget,
     );
-    expect(find.text('待质检（PENDING）'), findsOneWidget);
+    expect(find.text('待质检(PENDING)'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('quality-remaining-return-item-1')),
@@ -203,7 +203,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('部分处置（PARTIAL）'), findsOneWidget);
+    expect(find.text('部分处置(PARTIAL)'), findsOneWidget);
     expect(find.text('红冲'), findsNothing);
     expect(find.textContaining('已发生质检处置'), findsOneWidget);
   });

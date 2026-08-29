@@ -366,7 +366,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _filterLabel('反查物料（必选）'),
+          _filterLabel('反查物料(必选)'),
           SizedBox(
             width: double.infinity,
             child: UtenButton(
@@ -603,7 +603,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       onRowTap: _openProductDetail,
       isLoading: _loading,
       emptyMessage:
-          '未找到可识别的已知关系（来源：${_source.label}，历史范围：$range）。'
+          '未找到可识别的已知关系(来源：${_source.label}，历史范围：$range)。'
           '可切换到“全部已知关系”或“全部历史”；当前仍可能受 BOM 拒绝行影响。',
       currentPage: data.page,
       totalPages: data.totalPages,
@@ -699,7 +699,7 @@ class _UnattributedNotice extends StatelessWidget {
         borderRadius: UtenRadius.lgAll,
       ),
       child: Text(
-        '另有 $count 条旧版生产需求（需求量 ${quantity ?? '—'}）没有执行段，'
+        '另有 $count 条旧版生产需求(需求量 ${quantity ?? '—'})没有执行段，'
         '无法可靠归属到具体产成品，系统未作猜配。',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onTertiaryContainer,
@@ -734,7 +734,7 @@ class _SelectedMaterialCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            material.name ?? '（无名称）',
+            material.name ?? '(无名称)',
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium?.copyWith(

@@ -76,7 +76,8 @@ void main() {
       ).readAsStringSync();
 
       expect(source, contains('确认成品实收数量'));
-      expect(source, contains('报工数量只是生产申报'));
+      expect(source, contains('已审核报工或 FQC PASS 形成的待点收上限'));
+      expect(source, contains("label: '待点收上限'"));
       expect(source, contains("labelText: '仓库实收'"));
       expect(source, contains('少收时必须填写差异原因'));
       expect(source, contains("label: const Text('确认实收并入库')"));

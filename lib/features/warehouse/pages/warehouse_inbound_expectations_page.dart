@@ -6,6 +6,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -20,8 +21,6 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/widgets/metric_filter_cards.dart';
-import '../../purchase/models/purchase_doc.dart';
-import '../../subcontract/models/subcontract_doc.dart';
 import '../providers/procurement_inbound_count_providers.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../repositories/procurement_inspection_repository.dart';
@@ -71,7 +70,7 @@ class _WarehouseInboundExpectationsPageState
   /// 一致），口径说明放卡片下方的整行提示条，点击卡片随选中态切换。
   String get _scopeHint => _inspectionHintShown
       ? '待检处置已移交品质部：到货登记审核通过后转品质部检验'
-            '（品质任务中心 → 待检处置），检验通过后自动入库，仓库无需跟进。'
+            '(品质任务中心 → 待检处置)，检验通过后自动入库，仓库无需跟进。'
       : '只显示财务已批准、可准备收货的采购和委外订货单。';
 
   /// 搜索：防抖后回到第 1 页重新加载（只让最新 GET 回写，见 _requestVersion）。
@@ -137,24 +136,61 @@ class _WarehouseInboundExpectationsPageState
       context.appWarning('该预计到货任务暂不能登记，请刷新后重试');
       return;
     }
-    // 登记页保存成功会 pop(新建收货单 id)：重载当前页后直达审核页（收货单详情），
-    // 仓库在详情页点「审核」即转品质部待检；从审核页返回时再刷一次（状态可能已变）。
-    final createdId = await context.push<String>(route, extra: prefill);
-    if (createdId == null || !mounted) return;
-    await _load(_result?.page ?? 1);
-    if (!mounted) return;
-    await context.push(
-      expectation.orderType == ProcurementInboundOrderType.subcontract
-          ? RoutePath.subcontractDocDetail(
-              SubcontractDocType.receipt.pathSegment,
-              createdId,
-            )
-          : RoutePath.purchaseDocDetail(
-              PurchaseDocType.receipt.pathSegment,
-              createdId,
-            ),
+    // 登记页「登记并送检」一步完成（保存+审核同事务）：返回结果即终态——
+    // 正常已转品质部待检，超量已隔离待财务。回本页就地刷新一次并提示下一步，
+    // 不再跳采购/委外收货单详情页（仓库流程全程留在仓储模块，也消除闪跳）。
+    final registration = await context.push<WarehouseArrivalRegistration>(
+      route,
+      extra: prefill,
     );
-    if (mounted) await _load(_result?.page ?? 1);
+    if (registration == null || !mounted) return;
+    await _load(_result?.page ?? 1);
+    if (mounted) _announceRegistration(registration);
+  }
+
+  /// 断点恢复：草稿收货单一键「继续送检」（服务端按订货单修复币族后走同一审核
+  /// 链路）——中途退出的仓库人员在任务卡上直接完成停止的步骤，不进采购/委外单据页。
+  Future<void> _completeRegistration(InboundExpectation expectation) async {
+    if (expectation.draftReceiptIds.isEmpty) return;
+    final confirmed = await showUtenReviewerConfirmDialog(
+      context,
+      title: '继续送检',
+      actionLabel: '送检',
+      confirmLabel: '确认送检',
+      message:
+          '将把已登记的到货数量送品质部待检(IQC)：检验合格放行后库存增加；'
+          '实到超过财务批准量时系统自动隔离并通知财务审核组，不会入库、不会生成应付。'
+          '单价按订货单自动带入，无需填写。',
+    );
+    if (confirmed != true) return;
+    try {
+      final registration = await ref
+          .read(procurementInboundRepositoryProvider)
+          .completeArrival(expectation.draftReceiptIds.first);
+      if (!mounted) return;
+      await _load(_result?.page ?? 1);
+      if (mounted) _announceRegistration(registration);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('送检失败，请稍后重试');
+    }
+  }
+
+  /// 到货登记/送检结果的下一步提示（正常 → 品质放行自动入库；超量 → 财务定案）。
+  void _announceRegistration(WarehouseArrivalRegistration registration) {
+    switch (registration.outcome) {
+      case WarehouseArrivalRegistrationOutcome.submittedForInspection:
+        context.appSuccess(
+          '到货已送检(${registration.receiptBillNo ?? ''})：'
+          '品质部检验合格后自动入库，无需仓库跟进',
+        );
+      case WarehouseArrivalRegistrationOutcome.excessQuarantined:
+        context.appWarning(
+          '实到超过财务批准量，已隔离未入库(${registration.receiptBillNo ?? ''})：'
+          '待财务在到货异常审批定案后，可在「到货异常任务中心」一键入库',
+        );
+    }
   }
 
   @override
@@ -291,6 +327,8 @@ class _WarehouseInboundExpectationsPageState
                   key: Key('inbound-expectation-${result.items[i].id}'),
                   expectation: result.items[i],
                   onCreateReceipt: () => _createReceipt(result.items[i]),
+                  onCompleteRegistration: () =>
+                      _completeRegistration(result.items[i]),
                 ),
                 if (i != result.items.length - 1)
                   const SizedBox(height: UtenSpacing.s12),
@@ -317,10 +355,24 @@ class _ExpectationCard extends StatelessWidget {
     super.key,
     required this.expectation,
     required this.onCreateReceipt,
+    required this.onCompleteRegistration,
   });
 
   final InboundExpectation expectation;
   final VoidCallback onCreateReceipt;
+
+  /// 「已登记待送检」恢复入口：草稿收货单一键继续送检（断点续走，不进采购模块）。
+  final VoidCallback onCompleteRegistration;
+
+  InboundArrivalStep get _step => expectation.arrivalStep;
+
+  static String _stepLabel(InboundArrivalStep step) => switch (step) {
+    InboundArrivalStep.readyToRegister => '待登记到货',
+    InboundArrivalStep.draftPendingInspection => '已登记 · 待送检',
+    InboundArrivalStep.excessPendingFinance => '超量 · 待财务审批',
+    InboundArrivalStep.awaitingQuality => '已送检 · 待品质检验',
+    InboundArrivalStep.blocked => '暂不能登记',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -384,7 +436,7 @@ class _ExpectationCard extends StatelessWidget {
                 icon: Icons.pending_actions_outlined,
                 label: '在途',
                 value:
-                    '已登记待审核 ${procurementQty(expectation.registeredQty)}（审核通过后转品质部检验）',
+                    '已登记待审核 ${procurementQty(expectation.registeredQty)}(审核通过后转品质部检验)',
               ),
             const Divider(height: UtenSpacing.s24),
             Text(
@@ -418,43 +470,100 @@ class _ExpectationCard extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: UtenSpacing.s8),
+            // 流水线步骤徽章：一眼看出这个到货任务停在哪一步。
+            Row(
+              children: [
+                Icon(
+                  switch (_step) {
+                    InboundArrivalStep.readyToRegister =>
+                      Icons.inventory_2_outlined,
+                    InboundArrivalStep.draftPendingInspection =>
+                      Icons.pending_actions_outlined,
+                    InboundArrivalStep.excessPendingFinance =>
+                      Icons.account_balance_outlined,
+                    InboundArrivalStep.awaitingQuality =>
+                      Icons.fact_check_outlined,
+                    InboundArrivalStep.blocked => Icons.block_outlined,
+                  },
+                  size: 16,
+                  color: _step == InboundArrivalStep.excessPendingFinance
+                      ? theme.colorScheme.error
+                      : _step == InboundArrivalStep.awaitingQuality
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: UtenSpacing.s4),
+                Text(
+                  _stepLabel(_step),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: _step == InboundArrivalStep.excessPendingFinance
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s8),
             SizedBox(
               width: double.infinity,
               child: UtenButton(
                 key: Key('create-receipt-${expectation.id}'),
                 size: UtenButtonSize.large,
-                icon: expectation.awaitingReceiptReview
-                    ? Icons.pending_actions_outlined
-                    : Icons.inventory_2_outlined,
-                onPressed: expectation.canCreateReceipt
-                    ? onCreateReceipt
-                    : null,
-                child: Text(
-                  expectation.canCreateReceipt
-                      ? '登记实际到货'
-                      : expectation.awaitingReceiptReview
-                      ? '已登记待审核'
-                      : '暂不能登记',
-                ),
+                icon: switch (_step) {
+                  InboundArrivalStep.readyToRegister =>
+                    Icons.inventory_2_outlined,
+                  InboundArrivalStep.draftPendingInspection =>
+                    Icons.fact_check_outlined,
+                  InboundArrivalStep.excessPendingFinance =>
+                    Icons.account_balance_outlined,
+                  _ => Icons.hourglass_empty_outlined,
+                },
+                onPressed: switch (_step) {
+                  InboundArrivalStep.readyToRegister => onCreateReceipt,
+                  InboundArrivalStep.draftPendingInspection =>
+                    onCompleteRegistration,
+                  InboundArrivalStep.excessPendingFinance => () => context.go(
+                    RouteName.warehouseArrivalExceptions,
+                  ),
+                  _ => null,
+                },
+                child: Text(switch (_step) {
+                  InboundArrivalStep.readyToRegister => '登记实际到货',
+                  InboundArrivalStep.draftPendingInspection => '继续送检',
+                  InboundArrivalStep.excessPendingFinance =>
+                    '超量待财务(${expectation.openArrivalExceptions}) · 去处理',
+                  InboundArrivalStep.awaitingQuality =>
+                    '待品质检验(${expectation.pendingInspectionReceipts})',
+                  InboundArrivalStep.blocked => '暂不能登记',
+                }),
               ),
             ),
-            if (expectation.awaitingReceiptReview) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '到货已登记，待收货审核；审核通过后由品质部检验入库。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                ),
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              switch (_step) {
+                InboundArrivalStep.readyToRegister =>
+                  expectation.awaitingReceiptReview
+                      ? '本批已登记待送检；上方「继续送检」完成后再登记剩余量。'
+                      : '按实际到货数量登记，保存即送品质部检验。',
+                InboundArrivalStep.draftPendingInspection =>
+                  '到货已登记待送检：点「继续送检」完成这一步，送检后由品质部检验入库。',
+                InboundArrivalStep.excessPendingFinance =>
+                  '实到超过财务批准量，已隔离：未入库、未生成应付。'
+                      '财务定案后可在「到货异常任务中心」一键入库或办理退回。',
+                InboundArrivalStep.awaitingQuality =>
+                  '已送检待品质部放行：检验合格后自动入库存，仓库无需操作。',
+                InboundArrivalStep.blocked => '任务数据或服务端授权不完整，请刷新；前端不会代替服务端放行。',
+              },
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: _step == InboundArrivalStep.excessPendingFinance
+                    ? theme.colorScheme.error
+                    : _step == InboundArrivalStep.awaitingQuality ||
+                          _step == InboundArrivalStep.draftPendingInspection
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
               ),
-            ] else if (!expectation.canCreateReceipt) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '任务数据或服务端授权不完整，请刷新；前端不会代替服务端放行。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            ],
+            ),
           ],
         ),
       ),

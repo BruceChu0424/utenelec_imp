@@ -39,17 +39,17 @@ public class EmployeeNameResolver {
     }
 
     /**
-     * 「姓名（工号）」解析：进度追踪/责任追溯场景用，避免重名歧义。
+     * 「姓名(工号)」解析：进度追踪/责任追溯场景用，避免重名歧义。
      * 解析路径与 {@link #nameOf} 相同（employees.id 直查 → users.id 兼容）；
      * 工号缺失时退化为纯姓名，皆无返回 null。
      */
     public String nameWithCodeOf(UUID id) {
         if (id == null) return null;
         Object direct = findFirst(
-                "SELECT full_name || '（' || code || '）' FROM employees WHERE id = :id", id);
+                "SELECT full_name || '(' || code || ')' FROM employees WHERE id = :id", id);
         if (direct != null) return direct.toString();
         Object viaUser = findFirst(
-                "SELECT e.full_name || '（' || e.code || '）' FROM users u"
+                "SELECT e.full_name || '(' || e.code || ')' FROM users u"
                         + " JOIN employees e ON e.id = u.employee_id WHERE u.id = :id", id);
         return viaUser != null ? viaUser.toString() : null;
     }

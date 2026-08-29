@@ -57,4 +57,6 @@ public class StockDocDetail {
     private String finishedInboundDecision;
     /** 仓库实收差异/拒收原因（确认记录为权威，不写入被守卫的单据备注列）。 */
     private String finishedInboundVarianceReason;
+    /** 当前用户无 goods:cost:view 时主表合计及明细单价/金额已由服务端置空。 */
+    private boolean costMasked;
 }

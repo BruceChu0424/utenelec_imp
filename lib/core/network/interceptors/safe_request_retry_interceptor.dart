@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import '../connection_recovery.dart';
 
 const _retryCountKey = 'utenSafeRetryCount';
+const safeRequestRetryDisabledKey = 'utenSafeRetryDisabled';
 
 typedef RetryDelay = Future<void> Function(Duration duration);
 
@@ -97,6 +98,9 @@ Duration retryDelayForAttempt(int completedRetries) =>
 
 bool shouldRetrySafeRequest(DioException error, {int maxRetries = 2}) {
   final options = error.requestOptions;
+  if (options.extra[safeRequestRetryDisabledKey] == true) {
+    return false;
+  }
   final attempts = (options.extra[_retryCountKey] as int?) ?? 0;
   if (attempts >= maxRetries || options.cancelToken?.isCancelled == true) {
     return false;

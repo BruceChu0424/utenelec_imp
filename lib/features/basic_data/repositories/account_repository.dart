@@ -14,7 +14,12 @@ abstract final class AccountEndpoints {
   static const base = '/master/accounts';
   static const facets = '$base/facets';
   static const dict = '$base/dict';
+  static const summary = '$base/summary';
+  static const balanceAdjustmentBatch =
+      '/finance/account-balance-adjustments/batch';
+  static const statement = '/finance/reports/account/statement';
   static String one(String id) => '$base/$id';
+  static String warning(String id) => '${one(id)}/warning';
 }
 
 abstract interface class AccountRepository {
@@ -29,6 +34,8 @@ abstract interface class AccountRepository {
 
   Future<AccountFacets> facets();
 
+  Future<AccountSummary> summary();
+
   /// 全量字典（钱流单据选账户用）。
   Future<List<AccountListItem>> dict();
 
@@ -36,7 +43,26 @@ abstract interface class AccountRepository {
 
   Future<void> create(Map<String, dynamic> body);
 
-  Future<void> update(String id, Map<String, dynamic> body);
+  Future<AccountDetail> update(String id, Map<String, dynamic> body);
+
+  Future<AccountDetail> updateWarning(String id, {String? balanceFloor});
+
+  Future<AccountStatementPage> statement({
+    required String accountId,
+    required String dateFrom,
+    required String dateTo,
+    String? keyword,
+    int page = 1,
+    int size = 50,
+  });
+
+  Future<AccountBalanceAdjustmentBatchResult> adjustBalances({
+    required AccountBalanceAdjustmentScope scope,
+    required String effectiveDate,
+    required String reason,
+    required String idempotencyKey,
+    required List<AccountBalanceAdjustmentInput> items,
+  });
 
   Future<void> delete(String id);
 }
@@ -83,6 +109,12 @@ class DioAccountRepository implements AccountRepository {
   }
 
   @override
+  Future<AccountSummary> summary() async {
+    final json = await api.get(AccountEndpoints.summary);
+    return AccountSummary.fromJson(json);
+  }
+
+  @override
   Future<List<AccountListItem>> dict() async {
     final list = await api.getList(AccountEndpoints.dict);
     return list.map(AccountListItem.fromJson).toList();
@@ -100,8 +132,63 @@ class DioAccountRepository implements AccountRepository {
   }
 
   @override
-  Future<void> update(String id, Map<String, dynamic> body) async {
-    await api.put(AccountEndpoints.one(id), body: body);
+  Future<AccountDetail> update(String id, Map<String, dynamic> body) async {
+    final json = await api.put(AccountEndpoints.one(id), body: body);
+    return AccountDetail.fromJson(json);
+  }
+
+  @override
+  Future<AccountDetail> updateWarning(String id, {String? balanceFloor}) async {
+    final json = await api.patch(
+      AccountEndpoints.warning(id),
+      body: {'balanceFloor': balanceFloor},
+    );
+    return AccountDetail.fromJson(json);
+  }
+
+  @override
+  Future<AccountStatementPage> statement({
+    required String accountId,
+    required String dateFrom,
+    required String dateTo,
+    String? keyword,
+    int page = 1,
+    int size = 50,
+  }) async {
+    final json = await api.get(
+      AccountEndpoints.statement,
+      query: <String, dynamic>{
+        'accountId': accountId,
+        'dateFrom': dateFrom,
+        'dateTo': dateTo,
+        if (keyword != null && keyword.trim().isNotEmpty)
+          'keyword': keyword.trim(),
+        'page': page,
+        'size': size,
+      },
+    );
+    return AccountStatementPage.fromJson(json);
+  }
+
+  @override
+  Future<AccountBalanceAdjustmentBatchResult> adjustBalances({
+    required AccountBalanceAdjustmentScope scope,
+    required String effectiveDate,
+    required String reason,
+    required String idempotencyKey,
+    required List<AccountBalanceAdjustmentInput> items,
+  }) async {
+    final json = await api.post(
+      AccountEndpoints.balanceAdjustmentBatch,
+      body: <String, dynamic>{
+        'scope': scope.value,
+        'effectiveDate': effectiveDate,
+        'reason': reason.trim(),
+        'idempotencyKey': idempotencyKey,
+        'items': [for (final item in items) item.toJson()],
+      },
+    );
+    return AccountBalanceAdjustmentBatchResult.fromJson(json);
   }
 
   @override

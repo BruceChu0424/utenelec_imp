@@ -220,9 +220,6 @@ public class Goods extends SoftDeletableEntity {
     /** 来源（自制/采购/委外）。新增；源自新 ERP 产品列表「产品角色」。 */
     @Column(name = "source_type")
     private String sourceType;
-    /** Explicit production/BOM intent; absence of a BOM never implies direct make. */
-    @Column(name = "production_bom_policy", nullable = false)
-    private String productionBomPolicy = "BOM_REQUIRED";
     /** 迁移/运行时自动补录标记（兜底占位货品）。范式同 Warehouse.autoCreated。 */
     @Column(name = "auto_created", nullable = false)
     private boolean autoCreated = false;

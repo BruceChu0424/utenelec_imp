@@ -47,11 +47,23 @@ void main() {
       keys.indexOf('amountBalanceOriginal'),
       lessThan(keys.indexOf('amountBalance')),
     );
-    expect(columns['currency']?.value(item), 'USD');
+    expect(columns['currency']?.value(item), '人民币');
     expect(columns['amountOriginal']?.value(item), '100.00');
     expect(columns['amountReceivedOriginal']?.value(item), '40.00');
     expect(columns['amountBalanceOriginal']?.value(item), '55.00');
     expect(columns['amountBalance']?.value(item), '396.00');
+    expect(
+      table.facets.keys,
+      containsAll(<String>['direction', 'sourceDocType', 'party', 'settled']),
+    );
+    expect(
+      table.facets['direction']?.map((bucket) => bucket.value),
+      containsAll(<String>['AR', 'AP']),
+    );
+    expect(
+      table.facets['settled']?.map((bucket) => bucket.value),
+      containsAll(<String>['false', 'true']),
+    );
   });
 
   test('AR ledger settlement mapping matches the finance sales dictionary', () {
@@ -86,7 +98,8 @@ class _ArApApi extends ApiClient {
             'billDate': '2026-08-08',
             'dueDate': '2026-09-07',
             'settlementStyleLegacy': 6,
-            'currencyCode': 'USD',
+            'currencyCode': '001',
+            'currencyName': '人民币',
             'exchangeRate': 7.2,
             'amountOriginal': 100,
             'amountReceivedOriginal': 40,

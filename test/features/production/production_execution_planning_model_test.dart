@@ -279,7 +279,7 @@ void main() {
     );
     expect(
       formatProductionPlanningGroupedMaterialUsage('EXACT_SNAPSHOT', 0.4),
-      '按包/批（分段合计均耗） 0.4',
+      '按包/批(分段合计均耗) 0.4',
     );
     expect(
       formatProductionPlanningGroupedMaterialUsage('LINEAR', 0.4),

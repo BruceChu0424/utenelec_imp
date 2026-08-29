@@ -36,13 +36,13 @@ void main() {
       ),
     );
 
-    expect(find.text('保存并提交财务'), findsOneWidget);
-    expect(find.text('保存'), findsOneWidget);
+    expect(find.text('保存并提交财务审核'), findsOneWidget);
+    expect(find.text('保存，下一步审核'), findsOneWidget);
     expect(find.byIcon(Icons.send_outlined), findsOneWidget);
     expect(find.byIcon(Icons.save_outlined), findsOneWidget);
 
-    await tester.tap(find.text('保存并提交财务'));
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存并提交财务审核'));
+    await tester.tap(find.text('保存，下一步审核'));
     expect(orderPressed, 1);
     expect(receiptPressed, 1);
   });
@@ -65,15 +65,15 @@ void main() {
         ),
       );
 
-      expect(find.text('\u4fdd\u5b58'), findsOneWidget);
+      expect(find.text('保存订货单草稿'), findsOneWidget);
       expect(
-        find.text('\u4fdd\u5b58\u5e76\u63d0\u4ea4\u8d22\u52a1'),
+        find.text('保存并提交财务审核'),
         findsNothing,
       );
       expect(find.byIcon(Icons.save_outlined), findsOneWidget);
       expect(find.byIcon(Icons.send_outlined), findsNothing);
 
-      await tester.tap(find.text('\u4fdd\u5b58'));
+      await tester.tap(find.text('保存订货单草稿'));
       expect(pressed, 1);
     },
   );

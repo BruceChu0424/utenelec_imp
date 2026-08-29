@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** 账户流水列表行（只读，@PreAuthorize finance_reconciliation:view）。 */
+/** 账户流水列表行（只读，要求 account:view + account:balance:view + account:flow:view）。 */
 @Getter
 @AllArgsConstructor
 public class FinanceReconciliationListItem {
@@ -24,4 +24,6 @@ public class FinanceReconciliationListItem {
     private OffsetDateTime settledDate;
     private String sourceRemark;
     private Integer legacyBstyle;
+    private String entryKind;
+    private UUID reversalOfId;
 }

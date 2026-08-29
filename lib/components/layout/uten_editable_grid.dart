@@ -8,6 +8,9 @@
 //   表体 content-tall：内容不超高时横滚条贴最后一行下；超高时横滚条钉视口底，随拖随用。
 // - Excel 交互：表头全左对齐；每个单元格右竖线分隔；按住列右边界竖线左右拖拽调宽窄
 //   （复用 MasterDataTableView 的 grip 范式，下限 48 防拖没）。
+// - 列宽随内容自动加宽（2026-08-27）：列定义提供 textOf（+listenableOf）的列，输入/换值
+//   内容变宽时列自动加长——只增不减、封顶 480；用户手动拖拽过的列锁定用户宽度，不再
+//   自动加宽（列集合变化才解锁）。详见 EditableGridColumn.textOf 文档。
 // - "添加行"(加1) + "添加多行"(对话框填 N，1-50)；行尾删除。
 // - 全尺寸 Excel（手机横向滚动，与报表一致）；不做列隐藏，单套代码。
 
@@ -59,7 +62,8 @@ mixin AmountRowMixin on EditableGridRow {
 }
 
 /// 一列定义：[key]（标识）、[label]（表头）、[width]（初始列宽，可被用户拖拽覆盖）、
-/// [cellBuilder]（单元格控件，从行 model 取控制器/通知器）、[numeric]（金额/数量→数据右对齐+tabular）。
+/// [cellBuilder]（单元格控件，从行 model 取控制器/通知器）、[numeric]（金额/数量→数据右对齐+tabular）、
+/// [textOf]+[listenableOf]（可选，随内容自动加宽）。
 class EditableGridColumn<T extends EditableGridRow> {
   const EditableGridColumn({
     required this.key,
@@ -68,6 +72,8 @@ class EditableGridColumn<T extends EditableGridRow> {
     required this.cellBuilder,
     this.numeric = false,
     this.required = false,
+    this.textOf,
+    this.listenableOf,
   });
 
   final String key;
@@ -78,6 +84,21 @@ class EditableGridColumn<T extends EditableGridRow> {
 
   /// 该列是否必填：表头文案后显红 *；单元为空时由 [RequiredCellFrame] 描红边。
   final bool required;
+
+  /// 「随内容自动加宽」取文本：返回该列在 [row] 上当前显示/输入的文本，如备注列
+  /// `(r) => r.remark.text`、货品列 `(r) => r.goods?.name ?? ''`、只读主档列
+  /// `(r) => colorEntries[r.colorId] ?? ''`。
+  ///
+  /// 提供后该列参与自动加宽：初始行/整批换行时量前若干行最宽文本撑列（只增不减，
+  /// 封顶 480，超出后单元内滚动）；同时提供 [listenableOf] 则敲字/换值实时加宽。
+  /// 用户手动拖过的列锁定用户宽度，不再自动加宽。null（默认）= 固定列宽。
+  final String Function(T row)? textOf;
+
+  /// 「随内容自动加宽」的变更源：该列单元绑定的 TextEditingController / ValueNotifier
+  /// （须与 cellBuilder 里绑定的是同一个）。任一格内容变化 → 量 [textOf] 的新文本 →
+  /// 超宽自动加列宽。仅提供 [textOf] 而不提供本字段时，只在行集变化时整体量一次
+  /// （适合行model普通字段的只读列）。数值/日期等短内容列建议不接，保持固定宽。
+  final Listenable? Function(T row)? listenableOf;
 }
 
 /// 必填单元的**实时**红框：订阅 [listenable]，当 [isEmpty] 为真时给 [child] 描红边，
@@ -466,6 +487,40 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 删除列宽（行尾 × 按钮）。
   static const double _deleteColWidth = 48;
 
+  // —— 列宽随内容自动加宽（textOf/listenableOf 列）——
+  /// 用户已手动拖拽过的列 key：锁定用户宽度，不再随内容自动加宽；列集合变化
+  /// （如切 docType）时随列宽一起重置。与 MasterDataTableView._manualResized
+  /// 同款语义（那边按下标存、这边列有 key 按 key 存）。
+  final Set<String> _manualResized = {};
+
+  /// 自动加宽待重算标记：初始行 / 行集变化时置 true，build 里量完清掉。
+  bool _autoGrowDirty = true;
+
+  /// 上次量宽的字号系数与文字样式快照：敲字监听回调里拿不到 BuildContext，
+  /// 复用 build 时捕获的（bodyLarge + tabular 数字，覆盖 TextField/Text 两种单元）。
+  TextScaler? _lastScaler;
+  TextStyle _measureStyle = const TextStyle();
+
+  /// 已挂自动加宽监听的行快照：按对象身份比对，行集变化才拆线重挂
+  /// （勾选/全选等 notifyListeners 不动行集，不触发重挂）。
+  List<T> _wiredRows = const [];
+  List<VoidCallback> _autoGrowUnsubs = const [];
+
+  /// 自动加宽上限：超长文本（如备注）封顶后单元内横向滚动，用户可再手动拖宽。
+  static const double _maxColWidth = 480;
+
+  /// 自动加宽取样行数：初始行/整批换行时量前 N 行的最宽值即可（与
+  /// MasterDataTableView 自动适配同款取舍；更靠后的行靠"边输入边加宽"兜底）。
+  static const int _autoGrowSampleSize = 200;
+
+  /// 单元横向装饰总宽：格 Padding(8×2) + 输入框 contentPadding(14×2，全局
+  /// inputDecorationTheme)。只读 Text 单元实为 40（12+8×2），按 44 量略偏宽——
+  /// 只增不减语义下偏宽无害。
+  static const double _cellChromeX = 44;
+
+  /// 加宽富余：一次加到位后预留几个字符的余量，避免每敲一个字都触发布局。
+  static const double _autoGrowBuffer = 24;
+
   @override
   void initState() {
     super.initState();
@@ -478,6 +533,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _widths = widget.columns
         .map((c) => c.width.clamp(_minColWidth, double.infinity))
         .toList();
+    // 挂各行自动加宽监听（初始行已带内容时首帧即量宽撑列）。
+    _rewireAutoGrowListeners();
     // 增删行改变表体高度 → sticky 表头/钉底横滚条位置需重算。
     widget.controller.addListener(_onControllerChanged);
     _scheduleStickyUpdate();
@@ -486,16 +543,22 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void didUpdateWidget(covariant UtenEditableGrid<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 列集合变了（数量或 key 序列不同，如切换 docType）→ 按新 columns.width 重置列宽。
+    // 列集合变了（数量或 key 序列不同，如切换 docType）→ 按新 columns.width 重置列宽，
+    // 清手动锁定（新列集合下标/语义已变），重挂监听并重算自动加宽。
     if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
       _widths = widget.columns
           .map((c) => c.width.clamp(_minColWidth, double.infinity))
           .toList();
+      _manualResized.clear();
+      _autoGrowDirty = true;
+      _rewireAutoGrowListeners(force: true);
     }
-    // 行控制器换实例 → 重挂监听（增删行驱动 sticky 位置重算）。
+    // 行控制器换实例 → 重挂监听（增删行驱动 sticky 位置重算 + 自动加宽绑到新行集）。
     if (!identical(oldWidget.controller, widget.controller)) {
       oldWidget.controller.removeListener(_onControllerChanged);
       widget.controller.addListener(_onControllerChanged);
+      _autoGrowDirty = true;
+      _rewireAutoGrowListeners(force: true);
     }
   }
 
@@ -545,6 +608,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// （表头全选 checkbox、_totalWidth 列宽需随之刷新）+ 重算 sticky。
   void _onControllerChanged() {
     if (!mounted) return;
+    // 行集变化（增删/替换/粘贴）→ 拆线重挂自动加宽监听 + 标记整体重算列宽；
+    // 仅选择变化的通知不动行集，两个操作都跳过。
+    if (_rewireAutoGrowListeners()) _autoGrowDirty = true;
     _scheduleStickyUpdate();
     setState(() {});
   }
@@ -600,10 +666,133 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   /// 拖拽改第 [index] 列宽：按本次横向增量更新，下限 [_minColWidth] 防拖没。
+  /// 手动拖过的列即锁定（进 [_manualResized]），不再随内容自动加宽——用户拖到哪就
+  /// 停在哪（缩小的位置就是默认位置），列集合变化时才随列宽重置一起解锁。
   void _resizeColumn(int index, double dx) {
     final next = _widths[index] + dx;
     if (next < _minColWidth) return;
+    _manualResized.add(widget.columns[index].key);
     setState(() => _widths[index] = next);
+  }
+
+  /// 拆/挂各行的自动加宽监听：列同时提供 [EditableGridColumn.textOf] 与
+  /// [EditableGridColumn.listenableOf] 才订阅（只量不挂的只读列除外）。
+  /// 返回行集是否变化。[force]=true 强制重挂（列集合或 controller 实例变化，
+  /// 行集不变也要换绑，否则闭包里的列下标已失效）。
+  bool _rewireAutoGrowListeners({bool force = false}) {
+    final rows = widget.controller.rows;
+    if (!force && _sameRowIdentities(_wiredRows, rows)) return false;
+    for (final u in _autoGrowUnsubs) {
+      u();
+    }
+    _wiredRows = List.of(rows);
+    final unsubs = <VoidCallback>[];
+    for (var i = 0; i < widget.columns.length; i++) {
+      final textOf = widget.columns[i].textOf;
+      final listenableOf = widget.columns[i].listenableOf;
+      if (textOf == null || listenableOf == null) continue;
+      for (final row in rows) {
+        final listenable = listenableOf(row);
+        if (listenable == null) continue;
+        void onChanged() => _onAutoGrowCellChanged(i, row);
+        listenable.addListener(onChanged);
+        unsubs.add(() => listenable.removeListener(onChanged));
+      }
+    }
+    _autoGrowUnsubs = unsubs;
+    return true;
+  }
+
+  bool _sameRowIdentities(List<T> a, List<T> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  /// 某格内容变了（敲字/点选货品/换下拉值）：量该格新文本宽，超宽自动加列宽。
+  /// 一次只量一格（TextPainter 单行布局，微秒级），不触碰其他行。
+  void _onAutoGrowCellChanged(int index, T row) {
+    if (!mounted) return;
+    if (index >= widget.columns.length || index >= _widths.length) return;
+    final col = widget.columns[index];
+    if (_manualResized.contains(col.key)) return;
+    final scaler = _lastScaler;
+    final textOf = col.textOf;
+    if (scaler == null || textOf == null) return; // 首帧未量过，由 build 兜底。
+    final next = _growOnly(
+      _widths[index],
+      _measureText(textOf(row), _measureStyle, scaler) +
+          _cellChromeX +
+          _autoGrowBuffer,
+    );
+    if (next > _widths[index]) {
+      setState(() => _widths[index] = next);
+    }
+  }
+
+  /// 自动加宽量宽入口（build 首行调用）：首帧 / 行集变化 / 字号档变化时，对所有
+  /// 提供 textOf 且未被手动锁定的列量前 [_autoGrowSampleSize] 行的最宽文本。
+  /// 只增不减（普通行集变化不会把列缩回去）；字号档变化时回列定义基准重算（可缩，
+  /// 保证系统改大字号后列重新适配）。量宽直接写 [_widths]，同帧布局即用新值
+  /// （与 MasterDataTableView._ensureWidths 同款做法，不经 setState）。
+  void _ensureAutoFit(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final scaleChanged =
+        _lastScaler != null && _lastScaler!.scale(1) != scaler.scale(1);
+    if (_lastScaler == null || scaleChanged) _autoGrowDirty = true;
+    _lastScaler = scaler;
+    // TextField 单元默认 bodyLarge（16px），只读 Text 单元为 bodyMedium（14px）；
+    // 统一按 bodyLarge + tabular 数字量（偏宽不超过一档，只增不减下无害）。
+    _measureStyle = (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
+        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    if (!_autoGrowDirty) return;
+    _autoGrowDirty = false;
+    final rows = widget.controller.rows;
+    final sample = rows.length < _autoGrowSampleSize
+        ? rows.length
+        : _autoGrowSampleSize;
+    for (var i = 0; i < widget.columns.length && i < _widths.length; i++) {
+      final col = widget.columns[i];
+      final textOf = col.textOf;
+      if (textOf == null || _manualResized.contains(col.key)) continue;
+      var w = scaleChanged
+          ? col.width.clamp(_minColWidth, double.infinity)
+          : _widths[i];
+      for (var r = 0; r < sample; r++) {
+        w = _growOnly(
+          w,
+          _measureText(textOf(rows[r]), _measureStyle, scaler) +
+              _cellChromeX +
+              _autoGrowBuffer,
+        );
+      }
+      _widths[i] = w;
+    }
+  }
+
+  /// 只增不减：needed 不超 current 时不变；超过则封顶 [_maxColWidth]。
+  /// current ≥ 上限时保持（列定义初始宽本身超限时尊重初始宽，不自动收窄）。
+  double _growOnly(double current, double needed) {
+    if (needed <= current || current >= _maxColWidth) return current;
+    return needed.clamp(current, _maxColWidth);
+  }
+
+  /// 测量单行文本渲染宽度（TextPainter，maxLines:1）。测完 dispose 防泄漏。
+  /// [textScaler] 必须传当前生效的字号系数——单元文字渲染会自动吃该缩放，
+  /// 量宽不带则按 1.0 量偏窄（与 MasterDataTableView._measureText 同款实现）。
+  double _measureText(String text, TextStyle style, TextScaler textScaler) {
+    if (text.isEmpty) return 0;
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    final w = tp.width;
+    tp.dispose();
+    return w;
   }
 
   double get _totalWidth =>
@@ -615,6 +804,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void dispose() {
     _pagePos?.removeListener(_scheduleStickyUpdate);
     widget.controller.removeListener(_onControllerChanged);
+    for (final u in _autoGrowUnsubs) {
+      u();
+    }
+    _autoGrowUnsubs = const [];
     _headerY.dispose();
     _pinnedBarY.dispose();
     _headerH.dispose();
@@ -646,6 +839,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   @override
   Widget build(BuildContext context) {
+    _ensureAutoFit(context); // 随内容自动加宽：首帧/行集/字号档变化时量宽（手动锁定列除外）。
     final theme = Theme.of(context);
     final total = _totalWidth;
     final divider = BorderSide(

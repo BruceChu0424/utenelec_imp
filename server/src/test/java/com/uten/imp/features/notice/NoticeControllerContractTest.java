@@ -3,6 +3,7 @@ package com.uten.imp.features.notice;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.lang.reflect.Method;
@@ -56,5 +57,29 @@ class NoticeControllerContractTest {
 
         assertEquals(page, response);
         verify(service).arrivals(null, null, 37);
+    }
+
+    @Test
+    void popupAcknowledgementRequiresNoticeReadAndDelegatesToService()
+            throws Exception {
+        Method endpoint = NoticeController.class.getMethod(
+                "acknowledgePopup", UUID.class);
+        assertArrayEquals(
+                new String[]{"/{id}/popup-ack"},
+                endpoint.getAnnotation(PostMapping.class).value());
+        assertEquals(
+                "hasAuthority('notice:read')",
+                endpoint.getAnnotation(PreAuthorize.class).value());
+
+        NoticeService service = mock(NoticeService.class);
+        NoticeController controller = new NoticeController(
+                service,
+                mock(NoticeAudienceService.class),
+                mock(com.uten.imp.security.SecurityContextCurrentUser.class));
+        UUID noticeId = UUID.randomUUID();
+
+        controller.acknowledgePopup(noticeId);
+
+        verify(service).acknowledgePopup(noticeId);
     }
 }

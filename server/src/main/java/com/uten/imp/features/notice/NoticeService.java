@@ -65,6 +65,22 @@ public class NoticeService {
     /** 合法重要度。 */
     private static final Set<String> PRIORITIES = Set.of("normal", "important", "urgent");
     private static final Set<String> KINDS = Set.of("NORMAL", "TODO");
+    /**
+     * 只有明确责任人的阻断事件进入持久强提醒。部门/角色广播由调用方显式覆盖为 normal，
+     * 防止同一公共任务给整个部门弹阻塞窗。
+     */
+    private static final Set<String> URGENT_SYSTEM_EVENTS = Set.of(
+            "SALES_ORDER_FINANCE_REJECTED",
+            "SALES_SHIPMENT_REJECTED",
+            "PRODUCTION_FINISHED_INBOUND_REJECTED",
+            "PRODUCTION_FINISHED_INBOUND_REVERSED",
+            "PRODUCTION_DRAW_ISSUE_REVERSED",
+            "PROCUREMENT_ARRIVAL_EXCEPTION_DETECTED");
+    private static final Set<String> IMPORTANT_SYSTEM_EVENTS = Set.of(
+            "PROCUREMENT_SUPPLIER_RETURN_REQUIRED",
+            "PROCUREMENT_ARRIVAL_RECEIPT_POSTED",
+            "SALES_RESERVATION_HOLD_OVERDUE",
+            "SALES_RESERVATION_YIELDED");
     /** 互动模式=祝福的类型。 */
     public static final Set<String> BLESS_TYPES =
             Set.of("birthday", "anniversary", "wedding", "newborn");
@@ -156,8 +172,8 @@ public class NoticeService {
     /**
      * Keyset-paginated arrival feed used by the foreground listener.
      *
-     * <p>Without a cursor the server starts at the epoch and pages every unread
-     * visible notice. Later calls return rows strictly after
+     * <p>Without a cursor the server starts at the epoch and pages every visible
+     * notice that is both unread and not popup-acknowledged. Later calls return rows strictly after
      * ({@code publishedAt}, {@code id}) in ascending order.
      */
     @Transactional(readOnly = true)
@@ -682,8 +698,40 @@ public class NoticeService {
         }
         st = java.util.Optional.ofNullable(st)
                 .orElseGet(() -> newState(id, userId));
+        Instant now = Instant.now();
+        boolean changed = false;
         if (st.getReadAt() == null) {
-            st.setReadAt(Instant.now());
+            st.setReadAt(now);
+            changed = true;
+        }
+        if (st.getPopupAcknowledgedAt() == null) {
+            st.setPopupAcknowledgedAt(now);
+            changed = true;
+        }
+        if (changed) {
+            stateRepo.save(st);
+        }
+    }
+
+    /**
+     * 显式关闭/打开强提醒弹窗（幂等）。只停止该弹窗跨登录重放；通知仍可保持未读，
+     * 业务 TODO 也不会因此完成。可见性和对象边界与 markRead 完全一致。
+     */
+    @Transactional
+    public void acknowledgePopup(UUID id) {
+        UUID userId = requireStaffId();
+        tx.bind();
+        Notice n = noticeRepo.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "通知不存在"));
+        NoticeUserState st = stateRepo.findById(new NoticeUserStateId(id, userId))
+                .orElse(null);
+        if (!visibleTo(n, userId, st)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "通知不存在");
+        }
+        st = java.util.Optional.ofNullable(st)
+                .orElseGet(() -> newState(id, userId));
+        if (st.getPopupAcknowledgedAt() == null) {
+            st.setPopupAcknowledgedAt(Instant.now());
             stateRepo.save(st);
         }
     }
@@ -708,6 +756,9 @@ public class NoticeService {
         Instant now = Instant.now();
         if (st.getReadAt() == null) {
             st.setReadAt(now);
+        }
+        if (st.getPopupAcknowledgedAt() == null) {
+            st.setPopupAcknowledgedAt(now);
         }
         if (st.getTaskCompletedAt() == null) {
             st.setTaskCompletedAt(now);
@@ -822,6 +873,25 @@ public class NoticeService {
     @Transactional
     public Notice publishForUser(UUID audienceUserId, String title, String content,
                                  String type, String publisher, String actionRoute, String sourceEvent) {
+        return publishForUser(
+                audienceUserId,
+                title,
+                content,
+                type,
+                publisher,
+                actionRoute,
+                sourceEvent,
+                null);
+    }
+
+    /**
+     * 系统定向通知的显式优先级入口。explicitPriority=null 使用集中事件策略；
+     * 部门/角色广播必须显式传 normal，避免公共队列升级为持久强提醒。
+     */
+    @Transactional
+    public Notice publishForUser(UUID audienceUserId, String title, String content,
+                                 String type, String publisher, String actionRoute,
+                                 String sourceEvent, String explicitPriority) {
         if (audienceUserId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "定向通知缺少接收人");
         }
@@ -834,7 +904,7 @@ public class NoticeService {
         n.setType(type);
         n.setPublisher(publisher == null || publisher.isBlank() ? "系统" : publisher);
         n.setPublishedAt(Instant.now());
-        n.setPriority("normal");
+        n.setPriority(systemNoticePriority(type, sourceEvent, explicitPriority));
         n.setKind("NORMAL");
         n.setAudienceUserId(audienceUserId);
         n.setAudienceScope("selected");
@@ -851,6 +921,27 @@ public class NoticeService {
         Notice saved = noticeRepo.saveAndFlush(n);
         stateRepo.save(newState(saved.getId(), audienceUserId));
         return saved;
+    }
+
+    private static String systemNoticePriority(
+            String type, String sourceEvent, String explicitPriority) {
+        if (explicitPriority != null && !explicitPriority.isBlank()) {
+            String normalized = explicitPriority.strip().toLowerCase(java.util.Locale.ROOT);
+            if (!PRIORITIES.contains(normalized)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "非法系统通知重要度: " + explicitPriority);
+            }
+            return normalized;
+        }
+        String event = sourceEvent == null ? "" : sourceEvent.strip();
+        if ("urgent".equals(type) || URGENT_SYSTEM_EVENTS.contains(event)) {
+            return "urgent";
+        }
+        if (IMPORTANT_SYSTEM_EVENTS.contains(event)) {
+            return "important";
+        }
+        return "normal";
     }
 
     // =========================== 内部工具 ===========================
@@ -995,7 +1086,8 @@ public class NoticeService {
                 myBlessing,
                 recentAckers,
                 recentBlessings,
-                readAttachments(n.getBlessingTemplates()));
+                readAttachments(n.getBlessingTemplates()),
+                n.getSourceEvent());
     }
 
     private String validatedActionRoute(String raw, String kind) {

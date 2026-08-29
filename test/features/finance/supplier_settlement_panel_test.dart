@@ -32,6 +32,8 @@ void main() {
       find.byKey(const ValueKey('supplier-settlement-search')),
       findsOneWidget,
     );
+    expect(find.text('人民币'), findsOneWidget);
+    expect(find.text('001'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -49,7 +51,7 @@ void main() {
       },
     );
 
-    expect(find.text('到期日（服务端）'), findsOneWidget);
+    expect(find.text('到期日(服务端)'), findsOneWidget);
     expect(find.textContaining('sha256-value'), findsOneWidget);
     expect(find.text('供应商确认'), findsOneWidget);
     expect(find.text('公司确认'), findsOneWidget);
@@ -83,7 +85,8 @@ const _summary = <String, dynamic>{
   'supplierId': 'supplier-1',
   'supplierName': '示例供应商',
   'currencyId': 'currency-cny',
-  'currencyCode': 'CNY',
+  'currencyCode': '001',
+  'currencyName': '人民币',
   'periodStart': '2026-07-01',
   'periodEnd': '2026-07-31',
   'dueDate': '2026-08-30',

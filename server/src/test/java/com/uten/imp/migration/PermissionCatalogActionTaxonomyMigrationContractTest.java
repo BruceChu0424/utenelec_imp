@@ -100,6 +100,7 @@ class PermissionCatalogActionTaxonomyMigrationContractTest {
                 .contains("'lab:test:upload'")
                 .contains("'planning_supply_request:view'")
                 .contains("'production_plan_cost:view'")
+                // 迁移 SQL 已应用于生产、不可改动（Flyway 校验和），故此处保留全角括号与文件内容严格一致。
                 .contains("('inventory:view', '历史库存查看权限（已停用）'")
                 .contains("('stock:edit', '历史库存编辑权限（已停用）'")
                 .contains("('purchase_request:edit', '历史采购申请编辑权限（已停用）'")

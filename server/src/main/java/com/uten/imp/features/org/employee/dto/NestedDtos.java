@@ -16,7 +16,7 @@ public final class NestedDtos {
     public static class EmergencyContactDto {
         private UUID id;
         private String name;
-        private String phone;   // employee:pii:view 决定明文，否则脱敏
+        private String phone;   // 本人或 employee:pii:view 可见明文，否则脱敏
         private String relationship;
     }
 
@@ -67,7 +67,7 @@ public final class NestedDtos {
         private String remark;
     }
 
-    /** 备用手机号（employee:pii:view 明文，否则掩码）。 */
+    /** 备用手机号（本人或 employee:pii:view 明文，否则掩码）。 */
     @Getter
     @AllArgsConstructor
     public static class PhoneDto {

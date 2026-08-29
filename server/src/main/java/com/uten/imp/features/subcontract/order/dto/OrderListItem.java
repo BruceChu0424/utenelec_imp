@@ -24,4 +24,6 @@ public class OrderListItem {
     private boolean fulfill;
     private Integer legacyId;
     private FinanceApproval financeApproval;
+    /** 当前用户无委外商业金额权限时为 true，结算方式和合计金额同时置 null。 */
+    private boolean priceMasked;
 }

@@ -12,10 +12,106 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/stock/models/stock_query.dart';
 import 'package:uten_imp/features/stock/pages/instant_inventory_page.dart';
 import 'package:uten_imp/features/stock/repositories/stock_query_repository.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets(
+    'warehouse user keeps quantity columns but has no cost column candidate',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1600, 1000);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            apiClientProvider.overrideWithValue(_InventoryApi()),
+            productCategoryRepositoryProvider.overrideWithValue(
+              _ProductCategoryRepo(),
+            ),
+            stockQueryRepositoryProvider.overrideWithValue(
+              _HeldStockQueryRepository(_InventoryApi()),
+            ),
+            currentPermissionsProvider.overrideWithValue(const <String>{}),
+          ],
+          child: const MaterialApp(home: InstantInventoryPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
+        find.byType(MasterDataTableView<InstantInventoryRow>),
+      );
+      final keys = table.columns.map((column) => column.key).toSet();
+      expect(
+        keys,
+        containsAll(<String>{'weight', 'qty', 'pendingQty', 'moreQty'}),
+      );
+      expect(keys, isNot(contains('costAmount')));
+    },
+  );
+
+  testWidgets(
+    'goods cost permission restores the instant-inventory cost column',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = _InventoryApi();
+
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1600, 1000);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            apiClientProvider.overrideWithValue(api),
+            productCategoryRepositoryProvider.overrideWithValue(
+              _ProductCategoryRepo(),
+            ),
+            stockQueryRepositoryProvider.overrideWithValue(
+              _HeldStockQueryRepository(api),
+            ),
+            currentPermissionsProvider.overrideWithValue(const <String>{
+              Perm.goodsCostView,
+            }),
+          ],
+          child: const MaterialApp(home: InstantInventoryPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
+        find.byType(MasterDataTableView<InstantInventoryRow>),
+      );
+      expect(table.columns.map((column) => column.key), contains('costAmount'));
+      expect(
+        table.columns.singleWhere((column) => column.key == 'costAmount').label,
+        '库存台账金额',
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('instant-inventory-cost-basis')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('库存台账金额口径'), findsOneWidget);
+      expect(find.textContaining('不是“货品标准成本 × 当前数量”'), findsOneWidget);
+    },
+  );
+
   testWidgets(
     'failed locator clears a superseded in-flight table loading state',
     (tester) async {

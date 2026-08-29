@@ -43,14 +43,34 @@ class ApiClient {
   }) async {
     try {
       final r = await _dio.get<dynamic>(path, queryParameters: query);
-      final data = r.data;
-      if (data is List) {
-        return data.cast<Map<String, dynamic>>();
-      }
-      if (data is Map && data['data'] is List) {
-        return (data['data'] as List).cast<Map<String, dynamic>>();
-      }
-      return const [];
+      return _asMapList(r.data);
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
+  /// Optional enrichment read with one bounded attempt and real cancellation.
+  ///
+  /// Use this for data that must never keep a page or dialog alive through the
+  /// normal safe-read retry window. Business-critical reads continue to use
+  /// [getList] and its standard retry policy.
+  Future<List<Map<String, dynamic>>> getListOnce(
+    String path, {
+    Map<String, dynamic>? query,
+    required Duration receiveTimeout,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final r = await _dio.get<dynamic>(
+        path,
+        queryParameters: query,
+        cancelToken: cancelToken,
+        options: Options(
+          receiveTimeout: receiveTimeout,
+          extra: const {safeRequestRetryDisabledKey: true},
+        ),
+      );
+      return _asMapList(r.data);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -319,6 +339,16 @@ class ApiClient {
       return NetworkException();
     }
     return null;
+  }
+
+  static List<Map<String, dynamic>> _asMapList(dynamic data) {
+    if (data is List) {
+      return data.cast<Map<String, dynamic>>();
+    }
+    if (data is Map && data['data'] is List) {
+      return (data['data'] as List).cast<Map<String, dynamic>>();
+    }
+    return const [];
   }
 }
 

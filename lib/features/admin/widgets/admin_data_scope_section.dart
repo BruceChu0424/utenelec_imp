@@ -229,6 +229,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
       UtenEmployeePickerItem(
         id: candidate.employeeId,
         name: candidate.name,
+        employeeCode: candidate.code,
         departmentName: candidate.historicalOnly
             ? '历史只读 · 原负责人名下 ${candidate.count} 条数据'
             : '负责 ${candidate.count} 条数据',

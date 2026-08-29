@@ -155,6 +155,7 @@ class SubcontractOrderProgress {
     required this.supplierLedger,
     required this.apPostedTotal,
     required this.wasteDeductTotal,
+    this.priceMasked = false,
   });
 
   final String orderId;
@@ -175,6 +176,7 @@ class SubcontractOrderProgress {
 
   /// 后端历史字段名；前端按“建议索赔合计（不计入应付）”展示。
   final double wasteDeductTotal;
+  final bool priceMasked;
 
   factory SubcontractOrderProgress.fromJson(Map<String, dynamic> json) =>
       SubcontractOrderProgress(
@@ -216,5 +218,6 @@ class SubcontractOrderProgress {
         ],
         apPostedTotal: (json['apPostedTotal'] as num?)?.toDouble() ?? 0,
         wasteDeductTotal: (json['wasteDeductTotal'] as num?)?.toDouble() ?? 0,
+        priceMasked: json['priceMasked'] == true,
       );
 }

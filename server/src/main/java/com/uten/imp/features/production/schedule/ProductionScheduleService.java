@@ -6,12 +6,8 @@ import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.mrp.MrpService;
-import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchRequest;
-import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchResult;
-import com.uten.imp.features.production.schedule.dto.ForwardBomGapRequest;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import com.uten.imp.features.production.schedule.dto.ScheduleOrderLine;
-import com.uten.imp.features.rd_task.RdTaskService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -53,7 +49,6 @@ public class ProductionScheduleService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final MrpService mrpService;
-    private final RdTaskService rdTaskService;
 
     /** 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天或已逾期）。
      *  keyword 模糊 订单号/客户/货品名/货品编码；dateFrom/dateTo 交货日期范围（行级优先、缺省取单头）。
@@ -77,7 +72,6 @@ public class ProductionScheduleService {
         int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
         if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退
 
-        UUID currentEmployeeId = currentUser.employeeId().orElse(null);
         var dataQ = em.createNativeQuery("""
                 SELECT i.id, o.id, o.bill_no, o.client_id, c.name,
                        i.goods_id, g.code, g.name, g.spec,
@@ -86,19 +80,6 @@ public class ProductionScheduleService {
                        %s AS need,
                        COALESCE(i.deliver_date, o.deliver_date) AS deliver,
                        i.chain_status,
-                       EXISTS (SELECT 1 FROM goods_bom_items b
-                               WHERE b.goods_id = i.goods_id
-                                 AND b.is_deleted = false) AS bom_ready,
-                       EXISTS (SELECT 1 FROM rd_tasks rt
-                               WHERE rt.is_deleted = false AND rt.category = 'BOM'
-                                 AND rt.status IN ('OPEN','IN_PROGRESS')
-                                 AND rt.goods_id = i.goods_id) AS rd_handoff,
-                       EXISTS (SELECT 1 FROM rd_task_forwarders f
-                               JOIN rd_tasks rt2 ON rt2.id = f.rd_task_id
-                               WHERE rt2.is_deleted = false AND rt2.category = 'BOM'
-                                 AND rt2.status IN ('OPEN','IN_PROGRESS')
-                                 AND rt2.goods_id = i.goods_id
-                                 AND f.reporter_employee_id = :empId) AS my_forward,
                        latest_analysis.analysis_id,
                        latest_analysis.analysis_item_id,
                        latest_analysis.analysis_status,
@@ -116,7 +97,6 @@ public class ProductionScheduleService {
                 """.formatted(SCHEDULING_NEED_SQL) + filters
                 + " " + pendingOrderBy(sort, order) + " LIMIT :lim OFFSET :off");
         bindPendingFilters(dataQ, kw, dateFrom, dateTo, warn, needsWarn);
-        dataQ.setParameter("empId", currentEmployeeId);
         @SuppressWarnings("unchecked")
         List<Object[]> rs = (List<Object[]>) dataQ
                 .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
@@ -131,104 +111,14 @@ public class ProductionScheduleService {
                     (UUID) r[9], (String) r[10], (UUID) r[11], (String) r[12],
                     bd(r[13]), bd(r[14]), bd(r[15]), bd(r[16]),
                     deliver, r[18] == null ? null : ((Number) r[18]).shortValue(),
-                    Boolean.TRUE.equals(r[19]),
                     deliver != null && !deliver.isAfter(warn),
-                    Boolean.TRUE.equals(r[20]),
-                    Boolean.TRUE.equals(r[21]),
-                    (UUID) r[22], (UUID) r[23], (String) r[24],
-                    r[25] == null ? null : ((Number) r[25]).longValue(),
-                    offsetDateTime(r[26]), bdOrNull(r[27]), bdOrNull(r[28]),
-                    bdOrNull(r[29]), bdOrNull(r[30]), bdOrNull(r[31]),
-                    bdOrNull(r[32])));
+                    (UUID) r[19], (UUID) r[20], (String) r[21],
+                    r[22] == null ? null : ((Number) r[22]).longValue(),
+                    offsetDateTime(r[23]), bdOrNull(r[24]), bdOrNull(r[25]),
+                    bdOrNull(r[26]), bdOrNull(r[27]), bdOrNull(r[28]),
+                    bdOrNull(r[29])));
         }
         return new com.uten.imp.common.web.PageResponse<>(out, p, sz, total, totalPages);
-    }
-
-    /** 待排产 BOM 缺失 → 转发工程研发部（建/复用 BOM 类 rd_task + 通知研发）。返回任务 id。 */
-    @Transactional
-    public UUID forwardToRd(ForwardBomGapRequest req) {
-        tx.bind();
-        UUID employeeId = currentUser.requireEmployeeId();
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                SELECT i.id, i.goods_id, i.order_id, o.bill_no
-                FROM sales_order_items i
-                JOIN sales_orders o ON o.id = i.order_id
-                WHERE i.id = :id AND i.is_deleted = false
-                  AND o.is_deleted = false AND o.status = 1
-                  AND o.finance_confirmed = true
-                """).setParameter("id", req.orderItemId()).getResultList();
-        if (rows.isEmpty()) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在、订单未审核或未通过财务确认");
-        }
-        Object[] r = rows.get(0);
-        return rdTaskService.forwardBomGap(
-                (UUID) r[0], (UUID) r[1], "SALES_ORDER_ITEM",
-                (UUID) r[2], (String) r[3], req.note(), employeeId);
-    }
-
-    /**
-     * 一键批量转发 BOM 缺失（成品 + 自制组件）给工程研发部。
-     * 每货品按 goods 去重，研发每货品只收一条通知；当前计划员登记为每个货品的等待者。
-     * 成品转发（line 有 orderItemId）来源取订单行；组件转发（无 orderItemId）来源填计划单。
-     */
-    @Transactional
-    public ForwardBomGapBatchResult forwardBomGapsBatch(ForwardBomGapBatchRequest req) {
-        tx.bind();
-        UUID employeeId = currentUser.requireEmployeeId();
-        int created = 0;
-        int reused = 0;
-        List<ForwardBomGapBatchResult.Item> items = new ArrayList<>();
-        for (ForwardBomGapBatchRequest.Line line : req.items()) {
-            UUID goodsId = line.goodsId();
-            UUID orderItemId = line.orderItemId();
-            String sourceDocType;
-            UUID sourceDocId;
-            String sourceDocNo;
-            if (orderItemId != null) {
-                Object[] row;
-                try {
-                    row = (Object[]) em.createNativeQuery("""
-                            SELECT i.order_id, o.bill_no
-                            FROM sales_order_items i
-                            JOIN sales_orders o ON o.id = i.order_id
-                            WHERE i.id = :id AND i.is_deleted = false
-                              AND o.is_deleted = false AND o.status = 1
-                              AND o.finance_confirmed = true
-                            """).setParameter("id", orderItemId).getSingleResult();
-                } catch (jakarta.persistence.NoResultException e) {
-                    throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在、订单未审核或未通过财务确认: " + orderItemId);
-                }
-                sourceDocType = "SALES_ORDER_ITEM";
-                sourceDocId = (UUID) row[0]; // 来源=销售订单（与单条 forwardToRd 一致）
-                sourceDocNo = (String) row[1];
-            } else {
-                sourceDocType = "PRODUCTION_PLAN";
-                sourceDocId = req.sourcePlanId();
-                sourceDocNo = req.sourcePlanNo();
-            }
-            boolean existedBefore = openBomTaskExists(goodsId);
-            UUID taskId = rdTaskService.forwardBomGap(
-                    orderItemId, goodsId, sourceDocType, sourceDocId, sourceDocNo, req.note(), employeeId);
-            boolean isNew = !existedBefore;
-            if (isNew) {
-                created++;
-            } else {
-                reused++;
-            }
-            items.add(new ForwardBomGapBatchResult.Item(goodsId, taskId, isNew));
-        }
-        return new ForwardBomGapBatchResult(created, reused, items);
-    }
-
-    /** 该货品是否已有未完成 BOM 类研发任务（用于批量转发判定 isNew）。 */
-    private boolean openBomTaskExists(UUID goodsId) {
-        Number n = (Number) em.createNativeQuery("""
-                SELECT COUNT(*) FROM rd_tasks
-                WHERE is_deleted = false AND category = 'BOM'
-                  AND status IN ('OPEN','IN_PROGRESS') AND goods_id = :g
-                """).setParameter("g", goodsId).getSingleResult();
-        return n != null && n.longValue() > 0;
     }
 
     /** 绑定 pending 过滤参数（未出现的条件不绑；:warn 始终绑——状态筛选/facets 会用到，未用也无害）。 */
@@ -241,9 +131,6 @@ public class ProductionScheduleService {
         if (needsWarn && warn != null) q.setParameter("warn", warn);
     }
 
-    /** BOM 就绪判定（行级货品存在未删除 BOM）。 */
-    private static final String BOM_READY_EXISTS =
-            "EXISTS (SELECT 1 FROM goods_bom_items b WHERE b.goods_id = i.goods_id AND b.is_deleted = false)";
     /** 行级交货日期（行级优先、缺省取单头）。 */
     private static final String DELIVER_EXPR = "COALESCE(i.deliver_date, o.deliver_date)";
 
@@ -295,13 +182,11 @@ public class ProductionScheduleService {
                         : "  AND " + DELIVER_EXPR + " <= :dateTo\n");
     }
 
-    /** 状态筛选 WHERE 片段（status = bom_missing/urgent/normal；未知值不过滤）。引用 :warn。 */
+    /** 状态筛选 WHERE 片段（status = urgent/normal；未知值不过滤）。引用 :warn。 */
     private static String pendingStatusFilter(String status) {
         return switch (status == null ? "" : status) {
-            case "bom_missing" -> "  AND NOT " + BOM_READY_EXISTS + "\n";
-            case "urgent" -> "  AND " + BOM_READY_EXISTS + " AND " + DELIVER_EXPR + " <= :warn\n";
-            case "normal" -> "  AND " + BOM_READY_EXISTS
-                    + " AND (" + DELIVER_EXPR + " IS NULL OR " + DELIVER_EXPR + " > :warn)\n";
+            case "urgent" -> "  AND " + DELIVER_EXPR + " <= :warn\n";
+            case "normal" -> "  AND (" + DELIVER_EXPR + " IS NULL OR " + DELIVER_EXPR + " > :warn)\n";
             default -> "";
         };
     }
@@ -322,8 +207,8 @@ public class ProductionScheduleService {
                 : "ORDER BY " + expr + " " + dir + " NULLS LAST, deliver ASC NULLS LAST, o.bill_date";
     }
 
-    /** 待排产状态 facets：{status:[{value,count,label}]}（BOM缺失/紧急/正常 三桶，全量计数）。
-     *  复用 pendingFiltersBase（不含 status 条件，故三桶计数互补）；SUM(CASE WHEN ...) 聚合。 */
+    /** 待排产状态 facets：{status:[{value,count,label}]}（紧急/正常 两桶，全量计数）。
+     *  复用 pendingFiltersBase（不含 status 条件，故两桶计数互补）；SUM(CASE WHEN ...) 聚合。 */
     @Transactional(readOnly = true)
     public Map<String, List<Map<String, Object>>> pendingFacets(
             String keyword, LocalDate dateFrom, LocalDate dateTo) {
@@ -332,20 +217,15 @@ public class ProductionScheduleService {
         String filters = pendingFiltersBase(kw, dateFrom, dateTo);
         var q = em.createNativeQuery("""
                 SELECT
-                  SUM(CASE WHEN NOT %s THEN 1 ELSE 0 END),
-                  SUM(CASE WHEN %s AND %s <= :warn THEN 1 ELSE 0 END),
-                  SUM(CASE WHEN %s AND (%s IS NULL OR %s > :warn) THEN 1 ELSE 0 END)
-                """.formatted(
-                        BOM_READY_EXISTS, BOM_READY_EXISTS, DELIVER_EXPR,
-                        BOM_READY_EXISTS, DELIVER_EXPR, DELIVER_EXPR)
+                  SUM(CASE WHEN %s <= :warn THEN 1 ELSE 0 END),
+                  SUM(CASE WHEN (%s IS NULL OR %s > :warn) THEN 1 ELSE 0 END)
+                """.formatted(DELIVER_EXPR, DELIVER_EXPR, DELIVER_EXPR)
                 + filters);
         bindPendingFilters(q, kw, dateFrom, dateTo, warn, true);
         Object[] r = (Object[]) q.getSingleResult();
-        long bomMissing = r[0] == null ? 0 : ((Number) r[0]).longValue();
-        long urgent = r[1] == null ? 0 : ((Number) r[1]).longValue();
-        long normal = r[2] == null ? 0 : ((Number) r[2]).longValue();
+        long urgent = r[0] == null ? 0 : ((Number) r[0]).longValue();
+        long normal = r[1] == null ? 0 : ((Number) r[1]).longValue();
         return Map.of("status", List.of(
-                facetBucket("bom_missing", bomMissing, "BOM缺失"),
                 facetBucket("urgent", urgent, "紧急"),
                 facetBucket("normal", normal, "正常")));
     }
@@ -556,7 +436,7 @@ public class ProductionScheduleService {
         out.put("planDays", anyHistory ? maxDays + buffer : null);
         out.put("bomBufferDays", buffer);
         out.put("lines", lines);
-        out.put("note", anyHistory ? null : "所选货品近 180 天无报工记录，无法推算（给出各行 dailyAvg 为空）");
+        out.put("note", anyHistory ? null : "所选货品近 180 天无报工记录，无法推算(给出各行 dailyAvg 为空)");
         return out;
     }
 

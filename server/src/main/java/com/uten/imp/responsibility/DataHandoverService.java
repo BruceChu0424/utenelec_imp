@@ -429,10 +429,10 @@ public class DataHandoverService {
                     "SELECT count(*) FROM moulds WHERE keeper_id=:source AND is_deleted=false", source.id()), DataHandoverAction.TRANSFER);
         }
         if (scopes.contains("client")) {
-            add(items, "client.owner", "客户负责人（内销、外贸、OEM统一）", "client", count(
+            add(items, "client.owner", "客户负责人(内销、外贸、OEM统一)", "client", count(
                     "SELECT count(*) FROM clients WHERE owner_employee_id=:source AND is_deleted=false", source.id()), DataHandoverAction.TRANSFER);
             add(items, "client.scopeDelegations",
-                    "查看该员工全部客户的授权（精确展开到本次转出客户）", "client",
+                    "查看该员工全部客户的授权(精确展开到本次转出客户)", "client",
                     count("""
                             SELECT count(*) FROM user_data_scopes data_scope
                             JOIN users recipient ON recipient.id=data_scope.user_id
@@ -547,7 +547,7 @@ public class DataHandoverService {
                 add(items, "organization.supervisorCycle", "接手人位于原下级链，转移会形成循环", "organization",
                         supervisorCycle(source.id(), target.id()) ? 1 : 0, DataHandoverAction.BLOCKING);
             }
-            add(items, "workflow.claims", "临时任务认领（自动释放，不转给接手人）", "workflow", count("""
+            add(items, "workflow.claims", "临时任务认领(自动释放，不转给接手人)", "workflow", count("""
                     SELECT (SELECT count(*) FROM task_claims WHERE claimed_by=:source AND released_at IS NULL)
                          + (SELECT count(*) FROM hr_task_claims WHERE claimed_by=:source AND released_at IS NULL)
                     """, source.id()), DataHandoverAction.RELEASE);
@@ -602,43 +602,43 @@ public class DataHandoverService {
                         DataHandoverAction.BLOCKING);
             }
         }
-        add(items, "workflow.claims", "临时任务认领（自动释放，不转给接手人）",
+        add(items, "workflow.claims", "临时任务认领(自动释放，不转给接手人)",
                 "workflow", count("""
                         SELECT (SELECT count(*) FROM task_claims
                                 WHERE claimed_by=:source AND released_at IS NULL)
                              + (SELECT count(*) FROM hr_task_claims
                                 WHERE claimed_by=:source AND released_at IS NULL)
                         """, source.id()), DataHandoverAction.RELEASE);
-        add(items, "workflow.profileChanges", "待处理个人资料申请（自动驳回）",
+        add(items, "workflow.profileChanges", "待处理个人资料申请(自动驳回)",
                 "workflow", count("""
                         SELECT count(*) FROM profile_change_requests
                         WHERE employee_id=:source AND status='pending'
                         """, source.id()), DataHandoverAction.RELEASE);
-        add(items, "access.dataScopes", "离职账号的数据查看范围（自动清除）",
+        add(items, "access.dataScopes", "离职账号的数据查看范围(自动清除)",
                 "access", count("""
                         SELECT count(*) FROM user_data_scopes data_scope
                         JOIN users account ON account.id=data_scope.user_id
                         WHERE account.employee_id=:source
                         """, source.id()), DataHandoverAction.RELEASE);
         add(items, "access.attachmentUploads",
-                "未完成附件上传会话（自动失效并清理暂存对象）", "access", count("""
+                "未完成附件上传会话(自动失效并清理暂存对象)", "access", count("""
                         SELECT count(*) FROM attachment_upload_sessions upload_session
                         JOIN users account ON account.id=upload_session.user_id
                         WHERE account.employee_id=:source
                           AND upload_session.status IN ('PENDING','SCANNING')
                         """, source.id()), DataHandoverAction.RELEASE);
-        add(items, "access.clientViewerGrants", "作为其他客户可见人的权限（自动撤销）",
+        add(items, "access.clientViewerGrants", "作为其他客户可见人的权限(自动撤销)",
                 "access", count("""
                         SELECT count(*) FROM client_visibility_grants
                         WHERE grantee_employee_id=:source AND active=true
                         """, source.id()), DataHandoverAction.RELEASE);
-        add(items, "access.personalOverrides", "个人权限覆盖（自动停用，不随复职恢复）",
+        add(items, "access.personalOverrides", "个人权限覆盖(自动停用，不随复职恢复)",
                 "access", count("""
                         SELECT count(*) FROM user_permission_overrides permission_override
                         JOIN users account ON account.id=permission_override.user_id
                         WHERE account.employee_id=:source AND permission_override.active=true
                         """, source.id()), DataHandoverAction.RELEASE);
-        add(items, "access.managerDelegations", "本人获得或发出的经理权限委派（自动停用）",
+        add(items, "access.managerDelegations", "本人获得或发出的经理权限委派(自动停用)",
                 "access", count("""
                         SELECT count(*) FROM manager_permission_delegations delegation
                         WHERE delegation.enabled=true AND (
@@ -1388,7 +1388,7 @@ public class DataHandoverService {
                                 Map<String, Long> result) {
         long anticipated = expected.getOrDefault(key, 0L);
         if (actual != anticipated) {
-            throw conflict("交接预览后数据已变化（" + key + "），请刷新后重试");
+            throw conflict("交接预览后数据已变化(" + key + ")，请刷新后重试");
         }
         if (actual > 0) result.put(key, actual);
     }

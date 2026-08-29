@@ -198,7 +198,7 @@ class HrTaskListPage extends ConsumerWidget {
       if (!context.mounted) return;
       context.appSuccess(
         result.skipped > 0
-            ? '已为 ${result.published} 人发布祝福（${result.skipped} 人今日已祝福）'
+            ? '已为 ${result.published} 人发布祝福(${result.skipped} 人今日已祝福)'
             : '已为 ${result.published} 人发布祝福',
       );
     } on ApiException catch (e) {

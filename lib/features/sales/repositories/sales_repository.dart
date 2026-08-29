@@ -154,7 +154,8 @@ class SalesRepository {
     return json;
   }
 
-  /// 订货工作台切中止位（POST /{id}/stopped?stopped=true|false）。
+  /// 恢复已中止订单（POST /{id}/stopped?stopped=false）。
+  /// 中止方向不再从前端调用：后端对已审订单的 stopped=true 就是 cancel，统一走 [cancel]。
   /// @RequestParam 走 query —— 直接把 query 串拼到 URL，dio 以原样发送，Spring 解析。
   Future<SalesDocDetail> setStopped(String id, {required bool stopped}) async {
     final json = await api.post(

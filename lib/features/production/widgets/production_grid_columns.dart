@@ -96,6 +96,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'productNo',
       label: '产品编号',
       width: 120,
+      textOf: (r) => r.productNo.text,
+      listenableOf: (r) => r.productNo,
       cellBuilder: (context, row) => TextField(
         controller: row.productNo,
         decoration: const InputDecoration(isDense: true, hintText: '留空由系统生成'),
@@ -106,6 +108,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       label: '货品',
       width: 220,
       required: true,
+      textOf: (r) => r.goods?.name ?? '',
+      listenableOf: (r) => r.goodsNotifier,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,
@@ -139,6 +143,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'color',
       label: '颜色',
       width: 130,
+      textOf: (r) => colorEntries[r.colorId ?? ''] ?? '',
+      listenableOf: (r) => r.colorIdNotifier,
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
@@ -146,6 +152,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'unit',
       label: '单位',
       width: 110,
+      textOf: (r) => unitEntries[r.unitId ?? ''] ?? '',
+      listenableOf: (r) => r.unitIdNotifier,
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
     ),
@@ -182,6 +190,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'salesOrderNo',
       label: '关联销售订单号',
       width: 150,
+      textOf: (r) => r.salesOrderNo.text,
+      listenableOf: (r) => r.salesOrderNo,
       cellBuilder: (context, row) => InkWell(
         onTap: () => onPickSalesOrder(row),
         child: InputDecorator(
@@ -211,6 +221,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'remark',
       label: '备注',
       width: 180,
+      textOf: (r) => r.remark.text,
+      listenableOf: (r) => r.remark,
       cellBuilder: (context, row) => TextField(
         controller: row.remark,
         decoration: const InputDecoration(isDense: true),

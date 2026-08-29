@@ -144,6 +144,12 @@ public class SalesOrderItem extends BaseEntity {
     private Short chainStatus = 0;
 
     /**
+     * 修订时旧行只做软删除，保留库存预留及历史单据的 UUID 谱系。
+     */
+    @Column(name = "is_deleted", nullable = false)
+    private boolean deleted = false;
+
+    /**
      * 订单行优先级（稀缺重排用）：1急单 / 2普通 / 3现货(默认)。
      * 急单需 sales_order:priority 权限 + 原因 + 审计；让单时低优先级行预留可被释放回退待排产。
      */

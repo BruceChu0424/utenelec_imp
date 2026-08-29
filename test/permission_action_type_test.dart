@@ -26,7 +26,7 @@ void main() {
       final admin = AdminPermission.fromJson({
         'id': 'permission-1',
         'code': 'goods:delete',
-        'name': '删除货品资料（保留历史）',
+        'name': '删除货品资料(保留历史)',
         'module': '基础资料',
         'category': '货品资料',
         'actionType': 'DELETE',
@@ -37,7 +37,7 @@ void main() {
 
       final page = PageStaffPermissionState.fromJson({
         'code': 'goods:delete',
-        'name': '删除货品资料（保留历史）',
+        'name': '删除货品资料(保留历史)',
         'actionType': 'DELETE',
         'description': '删除货品主档并保留历史引用',
         'baseEffective': false,

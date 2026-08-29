@@ -179,10 +179,34 @@ class AuditTriggerCoverageMigrationContractTest {
      * covered by an explicit trigger in their own forward migration.
      */
     private static final Map<String, Integer> POST_SWEEP_EXPLICIT_AUDIT_TABLES =
-            Map.of(
-                    "permission_surfaces", 328,
-                    "permission_surface_permissions", 328,
-                    "employee_offboarding_events", 398);
+            Map.ofEntries(
+                    Map.entry("permission_surfaces", 328),
+                    Map.entry("permission_surface_permissions", 328),
+                    Map.entry("employee_offboarding_events", 398),
+                    Map.entry("account_balance_adjustment_batches", 400),
+                    Map.entry("account_balance_adjustment_items", 400),
+                    Map.entry("account_flow_monthly_summaries", 408),
+                    Map.entry("production_daily_report_commands", 409),
+                    Map.entry("production_fqc_inspections", 410),
+                    Map.entry("production_fqc_decision_events", 410),
+                    Map.entry("production_fqc_release_commands", 410),
+                    Map.entry("production_fqc_release_allocations", 410),
+                    Map.entry("production_fqc_cancellation_events", 412),
+                    Map.entry("production_fqc_legacy_exemptions", 414),
+                    Map.entry("production_fqc_recovery_authorizations", 414),
+                    Map.entry("production_fqc_recovery_cancellation_events", 414),
+                    Map.entry("production_fqc_recovery_allocation_events", 414),
+                    Map.entry("production_fqc_contribution_adjustments", 414),
+                    Map.entry("production_fqc_replenishment_tasks", 414),
+                    Map.entry("production_fqc_replenishment_analysis_links", 414),
+                    Map.entry("production_fqc_replenishment_cycles", 415),
+                    Map.entry("production_fqc_replenishment_attempts", 415),
+                    Map.entry("production_fqc_replenishment_supply_gaps", 415),
+                    Map.entry("production_fqc_replenishment_draw_links", 415),
+                    Map.entry("production_fqc_replenishment_ready_events", 415),
+                    Map.entry("production_fqc_replenishment_ready_reversals", 415),
+                    Map.entry("production_fqc_replenishment_cycle_cancellations", 415),
+                    Map.entry("warehouse_arrival_registration_commands", 419));
 
     @Test
     void latestTrustedSweepValidatesTheFullTriggerContract() throws IOException {

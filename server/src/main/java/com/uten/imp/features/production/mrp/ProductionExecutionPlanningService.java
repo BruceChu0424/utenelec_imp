@@ -490,9 +490,8 @@ public class ProductionExecutionPlanningService {
                 SELECT i.id, COALESCE(i.line_no,0), i.goods_id, i.color_id,
                        i.unit_id, COALESCE(i.unit_rate,1), i.qty,
                        i.plan_begin_date, i.plan_end_date, p.worker_id,
-                       g.code, g.name, i.updated_at, g.production_bom_policy,
-                       p.material_analysis_id, p.bom_override_reason,
-                       p.bom_override_by
+                       g.code, g.name, i.updated_at,
+                       p.material_analysis_id
                 FROM production_plan_items i
                 JOIN production_plans p ON p.id = i.plan_id
                                        AND p.is_deleted = FALSE
@@ -506,12 +505,9 @@ public class ProductionExecutionPlanningService {
                 .setParameter("ids", noBomPlanItemIds));
         List<CompleteKitAllocator.ProductLine> result = new ArrayList<>();
         for (Object[] row : rows) {
-            if (row[14] == null) {
+            if (row[13] == null) {
                 continue; // legacy/history remains visible as unresolved no-BOM.
             }
-            String policy = Objects.toString(row[13], "BOM_REQUIRED");
-            String zeroMaterialReason = authorizedZeroMaterialReason(
-                    row[14], policy, row[15], row[16]);
             UUID itemId = (UUID) row[0];
             BigDecimal unitRate = decimal(row[5]);
             BigDecimal plannedQty = decimal(row[6]);
@@ -522,9 +518,8 @@ public class ProductionExecutionPlanningService {
             String fingerprint = PlanningPackageFingerprint.sha256(List.of(
                     "ZERO-MATERIAL-PRODUCT-V1", itemId.toString(), row[2].toString(),
                     Objects.toString(row[3], ""), row[4].toString(),
-                    decimalText(unitRate), decimalText(plannedQty), policy,
-                    Objects.toString(row[14], ""),
-                    Objects.toString(row[15], ""), Objects.toString(row[16], ""),
+                    decimalText(unitRate), decimalText(plannedQty),
+                    Objects.toString(row[13], ""),
                     Objects.toString(row[12], "")));
             result.add(new CompleteKitAllocator.ProductLine(
                     itemId, ((Number) row[1]).intValue(), (UUID) row[2], (UUID) row[3],
@@ -534,44 +529,13 @@ public class ProductionExecutionPlanningService {
                     Objects.toString(row[11], null),
                     new CompleteKitAllocator.Priority(
                             begin, ((Number) row[1]).intValue(), itemId),
-                    List.of(), fingerprint, zeroMaterialReason,
-                    (UUID) row[14],
-                    ProductionExecutionSegment
-                                    .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE
-                            .equals(zeroMaterialReason)
-                            ? row[15].toString().strip()
-                            : null,
-                    ProductionExecutionSegment
-                                    .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE
-                            .equals(zeroMaterialReason)
-                            ? (UUID) row[16]
-                            : null));
+                    List.of(), fingerprint,
+                    ProductionExecutionSegment.ZERO_MATERIAL_REASON_DIRECT_MAKE,
+                    (UUID) row[13],
+                    null,
+                    null));
         }
         return List.copyOf(result);
-    }
-
-    static String authorizedZeroMaterialReason(
-            Object materialAnalysisId,
-            String policy,
-            Object overrideReason,
-            Object overrideBy) {
-        if (materialAnalysisId == null) {
-            throw conflict("生产计划尚未形成已确认的物料分析事实，禁止无物料排产");
-        }
-        if ("NOT_PRODUCED".equals(policy)) {
-            throw conflict("明确标记为不生产的货品不能形成执行分段");
-        }
-        if ("DIRECT_MAKE".equals(policy)) {
-            return ProductionExecutionSegment.ZERO_MATERIAL_REASON_DIRECT_MAKE;
-        }
-        if ("BOM_REQUIRED".equals(policy)
-                && overrideReason != null
-                && !overrideReason.toString().isBlank()
-                && overrideBy instanceof UUID) {
-            return ProductionExecutionSegment
-                    .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE;
-        }
-        throw conflict("货品要求 BOM 但当前缺失，且没有有效的逐计划例外放行");
     }
 
     private Map<CompleteKitAllocator.MaterialKey, BigDecimal>

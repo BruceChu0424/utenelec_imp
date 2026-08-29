@@ -49,21 +49,21 @@
   builder 返回空数组，否则页面级菜单配置仍会给该行留下伪手势。
 - **不占布局的无障碍打开入口**：非 embedded 且该行允许打开时，组件除双击外还提供读屏
   自定义动作“打开详情”；业务工作台可再用 `rowMenuBuilder` 提供右键/长按“打开关联单据”。
-- **受控多选 + 表头三态全选 + 批量操作条**：列表页可设 `selectable:true`，组件在首列显示
+- **受控多选 + 表头三态全选 + 右下悬浮批量动作**：列表页可设 `selectable:true`，组件在首列显示
   复选框。表头 `false/true/null` 分别表示当前页全未选/全选/部分选；点击表头全选/取消当前页。
   选中集合由调用方的 `selectedIds` 持有（跨页保留）；组件只增加/移除当前页 ID，不擅自清空。
-  多选模式下**单击行 = 切换勾选（与点勾选框等价），双击行 = 打开详情**。工具条（表头设置
-  右侧）**常驻**渲染批量操作条：「已选 N 项」+ `batchActionsBuilder` 的操作按钮（批量禁用/批量
-  删除等）+「清除选择」；**未选中任何行时整条灰色禁用**（计数/按钮/✕ 转灰、按钮被
-  `AbsorbPointer` 拦截不可点）——固定占位不消失，让"批量删除/禁用"始终可见，没选中只是灰着
-  不让点（调用方方法本就有空集守卫，组件层拦截为视觉/交互双保险）。
+  多选模式下**单击行 = 切换勾选（与点勾选框等价），双击行 = 打开详情**。表头上方只保留
+  常驻选择摘要「已选 N 项 + 清除选择」；`batchActionsBuilder` 返回的真正业务动作（批量审核/
+  禁用/删除等）统一悬浮在表格右下角，与采购任务工作台同一视觉。未选中时动作仍可发现但灰显，
+  由 `AbsorbPointer` 拦截；表体同时预留底部滚动空间，末行不会被遮挡。
 - **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。
 - **空/错/加载态**：内置 `UtenEmpty` / loading / 重试。
-- **`toolbarActions` 与全屏（2026-08-13 补充契约）**：`toolbarActions` 的按钮排在工具条
+- **`toolbarActions`、批量悬浮动作与全屏**：`toolbarActions` 的按钮排在工具条
   「全屏」切换右侧，**全屏路由里同位置同样渲染**（全屏由 `showGeneralDialog` 整屏路由 +
   `_fsTick` 驱动重建，按钮闭包仍指向调用方 State 的方法，选中/数据变化经
-  `didUpdateWidget → _fsTick` 实时刷新按钮可用态）。调用方需要「全屏里也能操作」的按钮
-  （如 BOM 页签的 编辑/删除/添加组件/审计模式）应挂 `toolbarActions`，勿放在表格外层工具条
+  `didUpdateWidget → _fsTick` 实时刷新按钮可用态）。右下批量动作属于表格内部 Stack，全屏
+  路由同样渲染。调用方需要「全屏里也能操作」的非批量按钮（如 BOM 页签的编辑/删除/添加组件/
+  审计模式）应挂 `toolbarActions`，勿放在表格外层工具条
   （外层工具条在全屏时被整屏路由遮盖）。
 
 ---
@@ -85,7 +85,7 @@ MasterDataTableView<T>(
   onSelectionChanged: (item)?,         // 可选：单击选中行上抛（BOM 据此定"添加组件"默认父级）
   isSelected: (item)?,                 // 可选：外部受控选中判定（item 重建场景用，按业务键比较）
   rowMenuBuilder: (item) => [...],     // 可选：行右键/长按菜单条目（UtenContextMenuEntry）
-  batchActionsBuilder: (ctx, ids) => [...], // 可选：批量操作按钮（selectable 时常驻；未选整条灰色禁用）
+  batchActionsBuilder: (ctx, ids) => [...], // 可选：右下悬浮批量动作；选择摘要仍在表头上方
   selectable: true,                    // 列表页受控多选；embedded/picker/明细表禁止开启
   idOf: (item) => item.id,             // 多选业务键；无单一 id 时传稳定复合键
   selectedIds: selectedIds,            // 调用方持有的唯一选中真值

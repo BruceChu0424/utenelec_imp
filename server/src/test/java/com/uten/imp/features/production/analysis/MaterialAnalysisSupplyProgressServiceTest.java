@@ -105,6 +105,34 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 .doesNotContain("0 / 0");
     }
 
+    @Test
+    void safetyOnlyActionIsLinkedByPhysicalDimensionAndExplainedAsPublicStock() {
+        ProjectionScenario scenario = new ProjectionScenario(true, false);
+        scenario.splitProgress = new Object[]{
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("100"), new BigDecimal("40"),
+                new BigDecimal("60")};
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "REQUEST_SUBMITTED").detail())
+                .contains("生产需求绑定 0/0")
+                .contains("公共安全补库 40/100(在途 60)");
+        assertThat(scenario.executions)
+                .filteredOn(execution -> execution.sql().contains("LIMIT 1"))
+                .singleElement()
+                .satisfies(execution -> {
+                    assertThat(execution.sql())
+                            .contains("action.safety_replenishment_qty > 0")
+                            .contains("action.goods_id = :goodsId")
+                            .contains("action.warehouse_id = (");
+                    assertThat(execution.parameters())
+                            .containsEntry("goodsId", scenario.goodsId)
+                            .containsEntry("colorId", scenario.colorId);
+                });
+    }
+
     private static MaterialAnalysisContracts.SupplyProgressStep step(
             MaterialAnalysisContracts.SupplyProgressView view, String key) {
         return view.steps().stream()
@@ -125,11 +153,14 @@ class MaterialAnalysisSupplyProgressServiceTest {
         private BigDecimal requiredQty = BigDecimal.TEN;
         private BigDecimal shortageQty = BigDecimal.TEN;
         private BigDecimal delegatedQty = BigDecimal.ZERO;
+        private Object[] splitProgress;
         private final UUID analysisId = UUID.randomUUID();
         private final UUID materialLineId = UUID.randomUUID();
         private final UUID analysisItemId = UUID.randomUUID();
         private final UUID makerId = UUID.randomUUID();
         private final UUID actionId = UUID.randomUUID();
+        private final UUID goodsId = UUID.randomUUID();
+        private final UUID colorId = UUID.randomUUID();
         private final UUID externalItemId = UUID.randomUUID();
         private final UUID orderId = UUID.randomUUID();
         private final UUID targetOrderItemId = UUID.randomUUID();
@@ -180,7 +211,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
             }
             if (sql.contains("FROM production_material_analysis_materials material")) {
                 return rows(new Object[]{analysisItemId, requiredQty,
-                        shortageQty, "MAT-01", "目标物料"});
+                        shortageQty, "MAT-01", "目标物料", goodsId, colorId});
             }
             if (sql.contains("SELECT DISTINCT request.bill_no")) {
                 return rows(new Object[]{purchase ? "SQ-001" : "WW-001", AT});
@@ -228,6 +259,9 @@ class MaterialAnalysisSupplyProgressServiceTest {
                                 new BigDecimal("10"), null})
                         : rows(new Object[]{2L, 0L, new BigDecimal("10"),
                                 new BigDecimal("10"), AT});
+            }
+            if (sql.contains("FROM v_preplan_buy_action_slice_progress progress")) {
+                return splitProgress == null ? List.of() : rows(splitProgress);
             }
             if (sql.contains("FROM preplan_supply_action_allocations allocation")
                     && sql.contains("LIMIT 1")) {

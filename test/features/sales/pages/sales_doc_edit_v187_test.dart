@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
@@ -26,11 +27,28 @@ void main() {
 
       // 销售订单仍需选择币种、填写税率，但汇率改由财务维护。
       expect(_dropdownWithLabel('币种'), findsOneWidget);
+      final settlementFinder = _dropdownWithLabel('结账方式');
+      expect(settlementFinder, findsOneWidget);
+      final settlement = tester.widget<UtenDropdownField>(settlementFinder);
+      expect(settlement.required, isTrue);
+      expect(settlement.value, isNull);
+      expect(settlement.allowClear, isFalse);
+      final decorator = tester.widget<InputDecorator>(
+        find.descendant(
+          of: settlementFinder,
+          matching: find.byType(InputDecorator),
+        ),
+      );
+      final border = decorator.decoration.enabledBorder! as OutlineInputBorder;
+      expect(
+        border.borderSide.color,
+        Theme.of(tester.element(settlementFinder)).colorScheme.error,
+      );
       expect(_textFieldWithLabel('税率(%)'), findsOneWidget);
       expect(_textFieldWithLabel('汇率'), findsNothing);
-      expect(find.text('金额（订单币种）'), findsOneWidget);
-      expect(find.text('总金额（订单币种） 0.00'), findsOneWidget);
-      expect(find.text('合计（订单币种） 0.00'), findsOneWidget);
+      expect(find.text('金额(订单币种)'), findsOneWidget);
+      expect(find.text('总金额(订单币种) 0.00'), findsOneWidget);
+      expect(find.text('合计(订单币种) 0.00'), findsOneWidget);
       expect(find.textContaining('¥'), findsNothing);
     },
   );
@@ -68,7 +86,7 @@ void main() {
       find.byKey(const ValueKey('sales-order-shipment-policy-readonly')),
       findsOneWidget,
     );
-    expect(find.text('历史订单（未指定）'), findsOneWidget);
+    expect(find.text('历史订单(未指定)'), findsOneWidget);
     expect(find.textContaining('编辑其它字段时系统会保留'), findsNothing);
   });
 
@@ -97,6 +115,7 @@ void main() {
           'writable': true,
           'clientId': 'client-1',
           'currencyId': 'currency-usd',
+          'settlementMethodId': 'settlement-net30',
           'exchangeRate': 7.2,
           'taxRate': 13,
           'sellerId': 'seller-1',
@@ -126,6 +145,7 @@ void main() {
       final item = Map<String, dynamic>.from(
         (api.lastPutBody!['items'] as List<dynamic>).single as Map,
       );
+      expect(item['id'], 'order-item-1');
       expect(item['amountOriginal'], 16);
       expect(item.containsKey('amountLocal'), isFalse);
     },
@@ -142,6 +162,56 @@ void main() {
     );
     expect(find.textContaining('销售出货必须从订货单引入'), findsOneWidget);
   });
+
+  testWidgets(
+    'finance-rejected order shows reason and save explains reapproval',
+    (tester) async {
+      await _pumpEditor(
+        tester,
+        type: SalesDocType.order,
+        id: 'order-finance-rejected',
+        detail: const {
+          'id': 'order-finance-rejected',
+          'billNo': 'SO-REJECTED',
+          'billDate': '2026-08-27',
+          'status': 1,
+          'writable': true,
+          'clientId': 'client-1',
+          'currencyId': 'currency-usd',
+          'settlementMethodId': 'settlement-net30',
+          'taxRate': 13,
+          'sellerId': 'seller-1',
+          'deliverDate': '2026-09-10',
+          'shipmentPolicy': 'ALLOW_PARTIAL',
+          'financeConfirmed': false,
+          'financeRejected': true,
+          'financeRejectedReason': '结账方式错误',
+          'financeRejectedAt': '2026-08-27T08:00:00+08:00',
+          'financeRejectedByName': '财务张经理',
+          'items': [
+            {
+              'id': 'order-item-1',
+              'goodsId': 'goods-1',
+              'qty': 2,
+              'price': 10,
+              'discount': 1,
+            },
+          ],
+        },
+      );
+
+      expect(
+        find.byKey(const ValueKey('sales-order-finance-rejection-edit-notice')),
+        findsOneWidget,
+      );
+      expect(find.text('结账方式错误'), findsOneWidget);
+      expect(find.textContaining('重新审核'), findsOneWidget);
+
+      await tester.tap(find.text('保存'));
+      await tester.pump();
+      expect(find.text('已转草稿，请重新审核提交财务'), findsOneWidget);
+    },
+  );
 }
 
 Finder _dropdownWithLabel(String label) => find.byWidgetPredicate(
@@ -173,6 +243,17 @@ Future<_EditorApi> _pumpEditor(
         sessionProvider.overrideWith(_TestSessionNotifier.new),
       ],
       child: MaterialApp(
+        builder: (context, child) => Stack(
+          children: [
+            Positioned.fill(child: child!),
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: AppNotificationHost(),
+            ),
+          ],
+        ),
         home: SalesDocEditPage(docType: type, id: id),
       ),
     ),

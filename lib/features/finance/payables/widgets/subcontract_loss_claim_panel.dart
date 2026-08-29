@@ -8,6 +8,7 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../shared/auth/permissions.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_loss_claim.dart';
 import '../repositories/subcontract_loss_claim_repository.dart';
@@ -89,7 +90,9 @@ class _SubcontractLossClaimPanelState
     if (mounted) await _load();
   }
 
-  List<MasterColumnDef<SubcontractLossClaimSummary>> get _columns => [
+  List<MasterColumnDef<SubcontractLossClaimSummary>> _columns({
+    required bool canViewFinancialAmounts,
+  }) => [
     MasterColumnDef(
       key: 'wasteBillNo',
       label: '损耗单号',
@@ -126,20 +129,22 @@ class _SubcontractLossClaimPanelState
       type: 'number',
       value: (item) => item.excessLossQty,
     ),
-    MasterColumnDef(
-      key: 'lossBookValueLocal',
-      label: '账面损失（本币）',
-      width: 150,
-      type: 'money',
-      value: (item) => item.lossBookValueLocal,
-    ),
-    MasterColumnDef(
-      key: 'claimAmountLocal',
-      label: '索赔额（本币）',
-      width: 140,
-      type: 'money',
-      value: (item) => item.claimAmountLocal,
-    ),
+    if (canViewFinancialAmounts) ...[
+      MasterColumnDef(
+        key: 'lossBookValueLocal',
+        label: '账面损失(本币)',
+        width: 150,
+        type: 'money',
+        value: (item) => item.lossBookValueLocal,
+      ),
+      MasterColumnDef(
+        key: 'claimAmountLocal',
+        label: '索赔额(本币)',
+        width: 140,
+        type: 'money',
+        value: (item) => item.claimAmountLocal,
+      ),
+    ],
     MasterColumnDef(
       key: 'status',
       label: '责任状态',
@@ -158,6 +163,9 @@ class _SubcontractLossClaimPanelState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final total = _result?.total ?? 0;
+    final canViewFinancialAmounts = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.financeViewAll);
     return Column(
       children: [
         Padding(
@@ -218,7 +226,7 @@ class _SubcontractLossClaimPanelState
         Expanded(
           child: MasterDataTableView<SubcontractLossClaimSummary>(
             primary: true,
-            columns: _columns,
+            columns: _columns(canViewFinancialAmounts: canViewFinancialAmounts),
             items: _result?.items ?? const [],
             facets: const {},
             nullCounts: const {},

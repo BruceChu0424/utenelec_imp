@@ -222,7 +222,7 @@ class _SalesOrderPickerSheetState
                 children: [
                   Expanded(
                     child: Text(
-                      '选择销售订单（来源单号）',
+                      '选择销售订单(来源单号)',
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -281,6 +281,7 @@ class _SalesOrderPickerSheetState
                           UtenEmployeePickerItem(
                             id: e.id,
                             name: e.fullName,
+                            employeeCode: e.code,
                             departmentName: e.departmentName,
                           ),
                       ];

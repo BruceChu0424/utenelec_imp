@@ -257,7 +257,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                       color: theme.colorScheme.primary,
                     ),
                     title: Text(
-                      '自动生成采购申请（必需）',
+                      '自动生成采购申请(必需)',
                       style: theme.textTheme.bodyMedium,
                     ),
                     subtitle: const Text('采购缺口必须形成可跟进的供给单据，此项不可取消。'),
@@ -268,20 +268,20 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                   theme,
                   icon: Icons.precision_manufacturing_outlined,
                   color: Colors.blue.shade700,
-                  title: '自制缺料（将派生子生产计划）',
+                  title: '自制缺料(将派生子生产计划)',
                   count: _buckets.makeShortage.length,
                   materials: _buckets.makeShortage,
                   hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
                   note:
                       '确认后系统自动生成自制件子计划：有下层 BOM 的进子计划后继续展开；'
-                      '叶子件（无 BOM，原料走车间领料）直接生产造 N 个，可报工入库。',
+                      '叶子件(无 BOM，原料走车间领料)直接生产造 N 个，可报工入库。',
                 ),
               if (_buckets.subcontractShortage.isNotEmpty)
                 _category(
                   theme,
                   icon: Icons.local_shipping_outlined,
                   color: Colors.purple.shade700,
-                  title: '委外缺料（将生成委外申请）',
+                  title: '委外缺料(将生成委外申请)',
                   count: _buckets.subcontractShortage.length,
                   materials: _buckets.subcontractShortage,
                   hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
@@ -294,7 +294,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                     color: theme.colorScheme.primary,
                     icon: Icons.info_outline_rounded,
                     text:
-                        '另有 $leafProductCount 个产品为原材料/叶子件（无组成 BOM，不能再细分），'
+                        '另有 $leafProductCount 个产品为原材料/叶子件(无组成 BOM，不能再细分)，'
                         '将按计划行直接投产报工。',
                   ),
                 ),
@@ -351,7 +351,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '$title（$count）',
+                      '$title($count)',
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: color,
                         fontWeight: FontWeight.w600,

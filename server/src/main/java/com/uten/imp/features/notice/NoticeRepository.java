@@ -42,7 +42,10 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                     OR (n.audienceScope = 'selected' AND s IS NOT NULL)
                   )
               AND (s IS NULL OR s.deletedAt IS NULL)
-              AND (s IS NULL OR s.readAt IS NULL)
+              AND (s IS NULL OR (
+                    s.readAt IS NULL
+                    AND s.popupAcknowledgedAt IS NULL
+                  ))
               AND (
                     n.publishedAt > :afterPublishedAt
                     OR (n.publishedAt = :afterPublishedAt AND n.id > :afterId)

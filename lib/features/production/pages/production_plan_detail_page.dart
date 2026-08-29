@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -181,9 +182,27 @@ class _ProductionPlanDetailPageState
       _hasPermission(Perm.productionExecutionDispatch);
   bool get _canStartExecution => _hasPermission(Perm.productionExecutionStart);
 
-  bool get _canReport => ref
-      .read(currentPermissionsProvider)
-      .contains(Perm.productionDailyReportEdit);
+  bool get _canReport {
+    final permissions = ref.read(currentPermissionsProvider);
+    return permissions.contains(Perm.productionDailyReportView) &&
+        permissions.contains(Perm.productionDailyReportCreate);
+  }
+
+  Future<void> _openLinkedPage(String path, {Object? extra}) async {
+    if (_commandBusy) {
+      context.appWarning('生产计划操作正在处理，请稍候', force: true);
+      return;
+    }
+    try {
+      await context.push(path, extra: extra);
+    } catch (_) {
+      if (mounted) context.appError('无法打开关联页面，请刷新后重试', force: true);
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _executionSegmentsRevision++);
+    await _load();
+  }
 
   Future<void> _load() async {
     if (!mounted) return;
@@ -743,8 +762,8 @@ class _ProductionPlanDetailPageState
           child: Text(
             '一键生成子计划需要每个成品在「货品资料」维护组成 BOM，'
             '并且计划尚有未排数量。可能原因：\n\n'
-            '• 成品尚未维护 BOM（请在货品资料为成品添加组成组件）\n'
-            '• 所有计划行的剩余可排数量已为 0（已全部排产）\n'
+            '• 成品尚未维护 BOM(请在货品资料为成品添加组成组件)\n'
+            '• 所有计划行的剩余可排数量已为 0(已全部排产)\n'
             '• 成品 BOM 中含自制/委外组件且路线尚未配置',
           ),
         ),
@@ -864,7 +883,7 @@ class _ProductionPlanDetailPageState
                 child: SingleChildScrollView(
                   child: Text(
                     routeSummary.isEmpty
-                        ? '无显式采购/委外路线（自制缺口由服务端推导）'
+                        ? '无显式采购/委外路线(自制缺口由服务端推导)'
                         : routeSummary,
                     style: Theme.of(ctx).textTheme.bodySmall,
                   ),
@@ -1060,7 +1079,7 @@ class _ProductionPlanDetailPageState
                   decoration: InputDecoration(
                     labelText: '$verb原因',
                     hintText: '请填写具体业务原因',
-                    errorText: validationError,
+                    error: utenFieldError(validationError),
                   ),
                 ),
               ],
@@ -1266,7 +1285,7 @@ class _ProductionPlanDetailPageState
                     ),
                     subtitle: Text(
                       segment.status == 'READY'
-                          ? '可开工 · 已按该执行段锁料 · 点击查看详情'
+                          ? '已齐套待派工/发料 · 已按该执行段锁料 · 点击查看详情'
                           : '待料或人工暂缓 · 当前零锁料 · 点击查看详情',
                     ),
                     trailing: const Icon(Icons.chevron_right_rounded),
@@ -1344,7 +1363,7 @@ class _ProductionPlanDetailPageState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '子任务 · 子计划（${subs.length} 张）',
+              '子任务 · 子计划(${subs.length} 张)',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -1509,7 +1528,7 @@ class _ProductionPlanDetailPageState
               children: [
                 Expanded(
                   child: Text(
-                    '物料需求只读估算（MRP）',
+                    '物料需求只读估算(MRP)',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -1714,7 +1733,7 @@ class _ProductionPlanDetailPageState
               names.color(row.colorId),
             ].where((value) => value != null && value != '—').join(' · ');
             return '${row.goodsName ?? names.goods(row.goodsId)}'
-                '${detail.isEmpty ? '' : '（$detail）'}';
+                '${detail.isEmpty ? '' : '($detail)'}';
           },
         ),
         MasterColumnDef(
@@ -2047,7 +2066,7 @@ class _ProductionPlanDetailPageState
                 ),
                 const SizedBox(width: UtenSpacing.s8),
                 Text(
-                  '关联单据（部分溯源）',
+                  '关联单据(部分溯源)',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -2056,7 +2075,7 @@ class _ProductionPlanDetailPageState
             ),
             const SizedBox(height: UtenSpacing.s4),
             Text(
-              '结构化关联投影：销售订单（含客户/业务员）、领料、成品入库、采购/委外申请、已审核报工；'
+              '结构化关联投影：销售订单(含客户/业务员)、领料、成品入库、采购/委外申请、已审核报工；'
               '采购/委外订货、收货、IQC 与发运仍需在各权威单据核对。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -2069,7 +2088,7 @@ class _ProductionPlanDetailPageState
                 icon: Icons.receipt_long_outlined,
                 links: d.traceSalesOrders,
                 onOpen: (id) =>
-                    context.push(RoutePath.salesDocDetail('orders', id)),
+                    _openLinkedPage(RoutePath.salesDocDetail('orders', id)),
               ),
             if (stockDraws.isNotEmpty)
               _traceGroup(
@@ -2078,7 +2097,7 @@ class _ProductionPlanDetailPageState
                 icon: Icons.outbound_outlined,
                 links: stockDraws,
                 onOpen: (id) =>
-                    context.push(RoutePath.stockDocDetail('DRAW', id)),
+                    _openLinkedPage(RoutePath.stockDocDetail('DRAW', id)),
               ),
             if (finishedIns.isNotEmpty)
               _traceGroup(
@@ -2086,8 +2105,9 @@ class _ProductionPlanDetailPageState
                 label: '成品入库单',
                 icon: Icons.inventory_2_outlined,
                 links: finishedIns,
-                onOpen: (id) =>
-                    context.push(RoutePath.stockDocDetail('FINISHED_IN', id)),
+                onOpen: (id) => _openLinkedPage(
+                  RoutePath.stockDocDetail('FINISHED_IN', id),
+                ),
               ),
             if (d.tracePurchaseRequests.isNotEmpty)
               _traceGroup(
@@ -2095,8 +2115,9 @@ class _ProductionPlanDetailPageState
                 label: '采购申请',
                 icon: Icons.shopping_cart_outlined,
                 links: d.tracePurchaseRequests,
-                onOpen: (id) =>
-                    context.push(RoutePath.purchaseDocDetail('requests', id)),
+                onOpen: (id) => _openLinkedPage(
+                  RoutePath.purchaseDocDetail('requests', id),
+                ),
               ),
             if (d.traceSubcontractApplications.isNotEmpty)
               _traceGroup(
@@ -2104,17 +2125,18 @@ class _ProductionPlanDetailPageState
                 label: '委外申请',
                 icon: Icons.precision_manufacturing_outlined,
                 links: d.traceSubcontractApplications,
-                onOpen: (id) => context.push(
+                onOpen: (id) => _openLinkedPage(
                   RoutePath.subcontractDocDetail('applications', id),
                 ),
               ),
             if (d.traceDailyReports.isNotEmpty)
               _traceGroup(
                 theme,
-                label: '报工单（已审核）',
+                label: '报工单(已审核)',
                 icon: Icons.edit_note_outlined,
                 links: d.traceDailyReports,
-                onOpen: (id) => context.push('/production/daily-reports/$id'),
+                onOpen: (id) =>
+                    _openLinkedPage('/production/daily-reports/$id'),
               ),
           ],
         ),
@@ -2276,7 +2298,7 @@ class _ProductionPlanDetailPageState
                 ].where((s) => s != '—').join(' · ');
                 final so = it.salesOrderNo;
                 return '${names.goods(it.goodsId)}'
-                    '${sub.isEmpty ? '' : '（$sub）'}'
+                    '${sub.isEmpty ? '' : '($sub)'}'
                     '${(so != null && so.isNotEmpty) ? ' · 销售订单：$so' : ''}';
               },
             ),
@@ -2339,7 +2361,7 @@ class _ProductionPlanDetailPageState
             icon: Icons.fact_check_outlined,
             onPressed: _commandBusy || !_canReturnToMaterialAnalysis
                 ? null
-                : () => context.push(
+                : () => _openLinkedPage(
                     RouteName.productionMaterialAnalysis,
                     extra: ProductionMaterialAnalysisSeed(
                       analysisId: _detail!.materialAnalysisId,
@@ -2380,7 +2402,8 @@ class _ProductionPlanDetailPageState
               icon: Icons.edit_outlined,
               onPressed: _commandBusy
                   ? null
-                  : () => context.push('/production/plans/${widget.id}/edit'),
+                  : () =>
+                        _openLinkedPage('/production/plans/${widget.id}/edit'),
               onDisabledTap: () =>
                   context.appWarning('预排或其他计划操作正在处理，请完成后再编辑', force: true),
               child: const Text('编辑'),

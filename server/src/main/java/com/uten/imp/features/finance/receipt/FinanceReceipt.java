@@ -4,6 +4,7 @@ import com.uten.imp.common.domain.SoftDeletableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -21,8 +22,8 @@ import java.util.UUID;
  *   <li>若 lines 非空（指定核销 AR）：每行 UPDATE ar_ap_ledger.amount_settled += line.amount_local；</li>
  *   <li>若 lines 为空（直接收款）：调 {@link com.uten.imp.features.finance.arap.ArApLedgerService#postArAp}
  *       建 DIRECT_RECEIPT 立帐行（amount_original=0, settled=收款额, balance=负 = 客户预付）；</li>
- *   <li>账户 {@code accounts.balance_current/receipts_total} += amount_local；</li>
- *   <li>INSERT finance_reconciliations(source_doc_type=RECEIPT, in_amount=amount_local)；</li>
+ *   <li>人民币账户增加本批实际到账本币；同币种外币账户增加本批到账原币；</li>
+ *   <li>账户流水始终使用所选账户自身币种，与账户余额保持同一单位；</li>
  *   <li>有 invoice_no（支票号）→ INSERT finance_check_register(source='收')。</li>
  * </ul>
  *
@@ -34,6 +35,10 @@ import java.util.UUID;
 @Entity
 @Table(name = "finance_receipts")
 public class FinanceReceipt extends SoftDeletableEntity {
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;            // M_Get.ID
@@ -133,4 +138,100 @@ public class FinanceReceipt extends SoftDeletableEntity {
 
     @Column(name = "is_closed", nullable = false)
     private boolean closed = false;
+
+    /** 0=历史含混口径，1=毛额/账户实际入账/费用分层口径。 */
+    @Column(name = "settlement_authority_version", nullable = false)
+    private short settlementAuthorityVersion;
+
+    @Column(name = "create_idempotency_key")
+    private String createIdempotencyKey;
+
+    @Column(name = "create_request_hash", length = 64)
+    private String createRequestHash;
+
+    /** DIRECT_ACCOUNT / TRADE_AGENT_CONVERSION. */
+    @Column(name = "settlement_channel")
+    private String settlementChannel;
+
+    @Column(name = "settlement_agent_supplier_id")
+    private UUID settlementAgentSupplierId;
+
+    @Column(name = "settlement_agent_name_snapshot")
+    private String settlementAgentNameSnapshot;
+
+    @Column(name = "settlement_rate_quote_direction")
+    private String settlementRateQuoteDirection;
+
+    @Column(name = "exchange_rate_source")
+    private String exchangeRateSource;
+
+    @Column(name = "exchange_rate_effective_at")
+    private OffsetDateTime exchangeRateEffectiveAt;
+
+    @Column(name = "bank_booked_at")
+    private OffsetDateTime bankBookedAt;
+
+    @Column(name = "bank_reference")
+    private String bankReference;
+
+    @Column(name = "agent_statement_no")
+    private String agentStatementNo;
+
+    /** Receiving-account currency UUID frozen at save/approval. */
+    @Column(name = "account_currency_id")
+    private UUID accountCurrencyId;
+
+    /** Functional/base currency per one receiving-account currency unit. */
+    @Column(name = "account_exchange_rate", precision = 18, scale = 6)
+    private BigDecimal accountExchangeRate;
+
+    @Column(name = "account_exchange_rate_source")
+    private String accountExchangeRateSource;
+
+    /** Actual amount posted to the receiving account in its native currency. */
+    @Column(name = "account_amount", precision = 18, scale = 4)
+    private BigDecimal accountAmount;
+
+    /** Functional-currency snapshot of {@link #accountAmount}. */
+    @Column(name = "account_amount_local", precision = 18, scale = 4)
+    private BigDecimal accountAmountLocal;
+
+    /** Fee source amounts use the real fee funding account currency. */
+    @Column(name = "bank_fee_account_amount", precision = 18, scale = 4)
+    private BigDecimal bankFeeAccountAmount;
+
+    @Column(name = "other_fee_account_amount", precision = 18, scale = 4)
+    private BigDecimal otherFeeAccountAmount;
+
+    /** NONE / DEDUCTED_FROM_PROCEEDS / PAID_SEPARATELY. */
+    @Column(name = "fee_settlement_mode")
+    private String feeSettlementMode;
+
+    /** NONE / COMPANY. Customer/agent borne fees require a separate claim/AR fact. */
+    @Column(name = "fee_bearer")
+    private String feeBearer;
+
+    @Column(name = "fee_payment_account_id")
+    private UUID feePaymentAccountId;
+
+    @Column(name = "fee_account_currency_id")
+    private UUID feeAccountCurrencyId;
+
+    @Column(name = "fee_account_exchange_rate", precision = 18, scale = 6)
+    private BigDecimal feeAccountExchangeRate;
+
+    @Column(name = "gl_account_style_id")
+    private UUID glAccountStyleId;
+
+    @Column(name = "gl_counter_style_id")
+    private UUID glCounterStyleId;
+
+    @Column(name = "gl_bank_fee_style_id")
+    private UUID glBankFeeStyleId;
+
+    @Column(name = "gl_fx_style_id")
+    private UUID glFxStyleId;
+
+    @Column(name = "gl_fee_payment_style_id")
+    private UUID glFeePaymentStyleId;
 }

@@ -1,15 +1,20 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（V328；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（V422；保留主档、人事、权限与治理证据）
 -- =====================================================================
--- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程与库存归零”的
+-- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
+--       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
---   · CLEAR 148 张：销售、采购、库存、生产、委外、财务、工资、通知、访客、
+--   · CLEAR 191 张：销售、采购、库存、生产、委外、财务、工资、通知、访客、
 --     建议、任务认领和业务 outbox。
---   · PRESERVE 87 张：主档、人事、账号/权限、系统配置、Flyway、审计日志、
---     人事附件、导入/迁移证据、编号终身占用和单调流水。
---   · 34 张分区子表不单列；随已分类的分区父表一同处理。
+--   · PRESERVE 92 张：主档、人事、账号/权限、系统配置、Flyway、审计日志、
+--     人事附件、导入/迁移证据、编号终身占用和单调流水。账户主档保留，
+--     init/收/付/调整/当前余额五个金额字段在业务事实清空后同事务归零；
+--     客户/供应商期初往来、货品 legacy 期初库存、安全库存、20 项成本金额/费率及
+--     结算类别期初金额也归零；货品 UUID/编号/名称/分类/单位/BOM、max_qty 与
+--     业务售价 price/a_price/price2 保持不变。
+--   · 分区子表不单列；随已分类的分区父表一同处理，实际数量以目标库为准。
 --
 -- 安全边界：
 --   · confirm、数据库名、PostgreSQL system_identifier 三重带外确认。
@@ -17,12 +22,14 @@
 --   · outbox 有待处理/失败事件，或存在非人事附件 owner 时拒绝执行。
 --   · 当前 public 非分区普通表/分区父表必须恰好分类一次；未知表失败关闭。
 --   · 不使用级联扩大范围；新增未分类 FK 表会让执行失败，而不是被静默删除。
---   · 单事务完成清空、六张物化视图刷新、CLEAR 逐表为零和 PRESERVE
---     逐表计数不变校验；任一失败全部回滚。
+--   · 单事务完成清空、账户金额/遗留期初/货品安全库存与成本预算归零、六张物化视图刷新、CLEAR 逐表为零和
+--     PRESERVE 逐表计数不变校验；保留主档 UPDATE 不停审计、共享 request ID 并使用可辨识 actor，
+--     客户/供应商/货品 @Version 与 updated_at 随真实变化推进，
+--     审计写入完成后才记录 PRESERVE 计数基线；任一失败全部回滚。
 --
 -- 先备份（示例；不要覆盖既有备份）：
 --   $resetStamp = Get-Date -Format 'yyyyMMdd_HHmmss'
---   $backupName = "uten_imp_pre_reset_v328_$resetStamp.dump"
+--   $backupName = "uten_imp_pre_reset_v422_$resetStamp.dump"
 --   docker exec uten-imp-postgres pg_dump -U uten -d uten_imp -Fc \
 --       -f "/tmp/$backupName"
 --   docker exec uten-imp-postgres pg_restore -l "/tmp/$backupName"
@@ -78,6 +85,15 @@ SELECT set_config('app.reset_business_confirm', :'confirm', false),
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '30min';
+SELECT set_config(
+    'app.actor_account',
+    'ops:reset_business_data',
+    true
+), set_config(
+    'app.audit_request_id',
+    gen_random_uuid()::text,
+    true
+);
 
 DO $$
 DECLARE
@@ -165,9 +181,14 @@ CREATE TEMP TABLE reset_business_table_policy (
 ) ON COMMIT DROP;
 
 INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
+('account_balance_adjustment_batches', 'CLEAR'),
+('account_balance_adjustment_items', 'CLEAR'),
+('account_flow_monthly_summaries', 'CLEAR'),
 ('ar_ap_ledger', 'CLEAR'),
 ('ar_ap_source_refs', 'CLEAR'),
 ('business_outbox', 'CLEAR'),
+('customer_open_item_offset_batches', 'CLEAR'),
+('customer_open_item_offsets', 'CLEAR'),
 ('da_amortization_log', 'CLEAR'),
 ('deferred_expenses', 'CLEAR'),
 ('execution_segment_sales_allocations', 'CLEAR'),
@@ -192,6 +213,7 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('finance_payment_lines', 'CLEAR'),
 ('finance_payments', 'CLEAR'),
 ('finance_receipt_lines', 'CLEAR'),
+('finance_receipt_source_allocations', 'CLEAR'),
 ('finance_receipts', 'CLEAR'),
 ('finance_reconciliations', 'CLEAR'),
 ('fixed_assets', 'CLEAR'),
@@ -223,10 +245,30 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('procurement_inspection_items', 'CLEAR'),
 ('procurement_order_approval_cases', 'CLEAR'),
 ('procurement_order_approval_events', 'CLEAR'),
+('production_daily_report_commands', 'CLEAR'),
 ('production_daily_report_items', 'CLEAR'),
 ('production_daily_reports', 'CLEAR'),
 ('production_execution_segment_events', 'CLEAR'),
 ('production_execution_segments', 'CLEAR'),
+('production_fqc_cancellation_events', 'CLEAR'),
+('production_fqc_contribution_adjustments', 'CLEAR'),
+('production_fqc_decision_events', 'CLEAR'),
+('production_fqc_inspections', 'CLEAR'),
+('production_fqc_legacy_exemptions', 'CLEAR'),
+('production_fqc_recovery_allocation_events', 'CLEAR'),
+('production_fqc_recovery_authorizations', 'CLEAR'),
+('production_fqc_recovery_cancellation_events', 'CLEAR'),
+('production_fqc_release_allocations', 'CLEAR'),
+('production_fqc_release_commands', 'CLEAR'),
+('production_fqc_replenishment_analysis_links', 'CLEAR'),
+('production_fqc_replenishment_attempts', 'CLEAR'),
+('production_fqc_replenishment_cycle_cancellations', 'CLEAR'),
+('production_fqc_replenishment_cycles', 'CLEAR'),
+('production_fqc_replenishment_draw_links', 'CLEAR'),
+('production_fqc_replenishment_ready_events', 'CLEAR'),
+('production_fqc_replenishment_ready_reversals', 'CLEAR'),
+('production_fqc_replenishment_supply_gaps', 'CLEAR'),
+('production_fqc_replenishment_tasks', 'CLEAR'),
 ('production_finished_in_confirmation_reversal_items', 'CLEAR'),
 ('production_finished_in_confirmation_reversals', 'CLEAR'),
 ('production_finished_in_confirmation_items', 'CLEAR'),
@@ -290,6 +332,11 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('subcontract_applications', 'CLEAR'),
 ('subcontract_inquiries', 'CLEAR'),
 ('subcontract_inquiry_items', 'CLEAR'),
+('subcontract_loss_case_lines', 'CLEAR'),
+('subcontract_loss_cases', 'CLEAR'),
+('subcontract_loss_events', 'CLEAR'),
+('subcontract_loss_fulfillment_allocations', 'CLEAR'),
+('subcontract_loss_resolutions', 'CLEAR'),
 ('subcontract_material_issue_items', 'CLEAR'),
 ('subcontract_material_issues', 'CLEAR'),
 ('subcontract_material_plan_items', 'CLEAR'),
@@ -309,13 +356,20 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('suggestion_likes', 'CLEAR'),
 ('suggestion_replies', 'CLEAR'),
 ('suggestions', 'CLEAR'),
+('supplier_claim_cash_receipts', 'CLEAR'),
+('supplier_claim_receivables', 'CLEAR'),
+('supplier_open_item_offsets', 'CLEAR'),
 ('supplier_return_tasks', 'CLEAR'),
+('supplier_settlement_batch_events', 'CLEAR'),
+('supplier_settlement_batch_lines', 'CLEAR'),
+('supplier_settlement_batches', 'CLEAR'),
 ('task_claims', 'CLEAR'),
 ('visitor_accounts', 'CLEAR'),
 ('visitor_applications', 'CLEAR'),
 ('visitor_approval_steps', 'CLEAR'),
 ('visitor_refresh_tokens', 'CLEAR'),
 ('visitor_sms_codes', 'CLEAR'),
+('warehouse_arrival_registration_commands', 'CLEAR'),
 ('website_inquiries', 'CLEAR'),
 ('accounts', 'PRESERVE'),
 ('attachment_object_outbox', 'PRESERVE'),
@@ -333,9 +387,11 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('business_prefix_reservation_members', 'PRESERVE'),
 ('business_prefix_reservations', 'PRESERVE'),
 ('category_master_code_sequences', 'PRESERVE'),
+('client_access_change_events', 'PRESERVE'),
 ('client_categories', 'PRESERVE'),
 ('client_default_settlement_migration_issues', 'PRESERVE'),
 ('client_ship_addresses', 'PRESERVE'),
+('client_visibility_grants', 'PRESERVE'),
 ('clients', 'PRESERVE'),
 ('colors', 'PRESERVE'),
 ('currencies', 'PRESERVE'),
@@ -347,7 +403,10 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('employee_compensation', 'PRESERVE'),
 ('employee_contracts', 'PRESERVE'),
 ('employee_credentials', 'PRESERVE'),
+('employee_data_handover_scopes', 'PRESERVE'),
+('employee_data_handovers', 'PRESERVE'),
 ('employee_education', 'PRESERVE'),
+('employee_offboarding_events', 'PRESERVE'),
 ('employee_phones', 'PRESERVE'),
 ('employee_sensitive', 'PRESERVE'),
 ('employee_vehicles', 'PRESERVE'),
@@ -468,9 +527,9 @@ BEGIN
     INTO clear_count, preserve_count
     FROM reset_business_table_policy;
 
-    IF clear_count <> 148 OR preserve_count <> 87 THEN
+    IF clear_count <> 191 OR preserve_count <> 92 THEN
         RAISE EXCEPTION
-            'V328 白名单数量异常：CLEAR %（应为148），PRESERVE %（应为87）',
+            'V422 白名单数量异常：CLEAR %（应为191），PRESERVE %（应为92）',
             clear_count, preserve_count;
     END IF;
 
@@ -517,24 +576,6 @@ CREATE TEMP TABLE reset_business_preserve_counts (
 
 DO $$
 DECLARE
-    t RECORD;
-    n BIGINT;
-BEGIN
-    FOR t IN
-        SELECT table_name
-        FROM reset_business_table_policy
-        WHERE disposition = 'PRESERVE'
-        ORDER BY table_name
-    LOOP
-        EXECUTE format('SELECT count(*) FROM public.%I', t.table_name)
-        INTO n;
-        INSERT INTO reset_business_preserve_counts(table_name, row_count)
-        VALUES (t.table_name, n);
-    END LOOP;
-END $$;
-
-DO $$
-DECLARE
     clear_tables TEXT;
 BEGIN
     SELECT string_agg(
@@ -553,6 +594,120 @@ BEGIN
     EXECUTE 'TRUNCATE TABLE ' || clear_tables || ' RESTART IDENTITY';
 END $$;
 
+-- accounts is a preserved master table, but its five monetary accumulators are
+-- projections of the business facts cleared above. Reset all active, disabled
+-- and soft-deleted account rows together so no hidden historical amount survives.
+-- The ordinary accounts audit trigger remains enabled; app.actor_account above
+-- makes every changed row attributable to this controlled local/test operation.
+UPDATE accounts
+SET init_balance = 0,
+    receipts_total = 0,
+    payments_total = 0,
+    balance_adjustments_total = 0,
+    balance_current = 0
+WHERE init_balance <> 0
+   OR receipts_total <> 0
+   OR payments_total <> 0
+   OR balance_adjustments_total <> 0
+   OR balance_current <> 0;
+
+-- Selected reset-baseline values live on preserved master tables. Keep master
+-- identities, business identifiers, category/unit relations, BOM, max_qty and
+-- business sales prices (price/a_price/price2),
+-- while clearing legacy opening facts plus goods safety-stock/cost-budget values
+-- under the same audited reset actor/request id. Versioned masters advance once.
+UPDATE clients
+SET init_total = 0,
+    init_total2 = 0,
+    version = version + 1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE COALESCE(init_total, 0) <> 0
+   OR COALESCE(init_total2, 0) <> 0;
+
+UPDATE suppliers
+SET init_total = 0,
+    init_total2 = 0,
+    version = version + 1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE COALESCE(init_total, 0) <> 0
+   OR COALESCE(init_total2, 0) <> 0;
+
+UPDATE goods
+SET init_stock = 0,
+    init_count = 0,
+    init_weight = 0,
+    min_qty = 0,
+    source_e = 0,
+    work_e = 0,
+    lacquer_e = 0,
+    incidental_e = 0,
+    plating_e = 0,
+    casing_e = 0,
+    manage_e = 0,
+    polish_e = 0,
+    electric_e = 0,
+    machining_e = 0,
+    lost_e = 0,
+    rent_e = 0,
+    make_e = 0,
+    work_rate = 0,
+    lost_rate = 0,
+    make_rate = 0,
+    rent_rate = 0,
+    total = 0,
+    c_total = 0,
+    g_total = 0,
+    version = version + 1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE COALESCE(init_stock, 0) <> 0
+   OR COALESCE(init_count, 0) <> 0
+   OR COALESCE(init_weight, 0) <> 0
+   OR min_qty IS DISTINCT FROM 0
+   OR source_e IS DISTINCT FROM 0
+   OR work_e IS DISTINCT FROM 0
+   OR lacquer_e IS DISTINCT FROM 0
+   OR incidental_e IS DISTINCT FROM 0
+   OR plating_e IS DISTINCT FROM 0
+   OR casing_e IS DISTINCT FROM 0
+   OR manage_e IS DISTINCT FROM 0
+   OR polish_e IS DISTINCT FROM 0
+   OR electric_e IS DISTINCT FROM 0
+   OR machining_e IS DISTINCT FROM 0
+   OR lost_e IS DISTINCT FROM 0
+   OR rent_e IS DISTINCT FROM 0
+   OR make_e IS DISTINCT FROM 0
+   OR work_rate IS DISTINCT FROM 0
+   OR lost_rate IS DISTINCT FROM 0
+   OR make_rate IS DISTINCT FROM 0
+   OR rent_rate IS DISTINCT FROM 0
+   OR total IS DISTINCT FROM 0
+   OR c_total IS DISTINCT FROM 0
+   OR g_total IS DISTINCT FROM 0;
+
+UPDATE payment_styles
+SET init_balance = 0
+WHERE COALESCE(init_balance, 0) <> 0;
+
+-- The audited preserved-master UPDATEs may append audit_log rows. Capture PRESERVE
+-- counts only after that intentional write, then require them to remain stable.
+DO $$
+DECLARE
+    t RECORD;
+    n BIGINT;
+BEGIN
+    FOR t IN
+        SELECT table_name
+        FROM reset_business_table_policy
+        WHERE disposition = 'PRESERVE'
+        ORDER BY table_name
+    LOOP
+        EXECUTE format('SELECT count(*) FROM public.%I', t.table_name)
+        INTO n;
+        INSERT INTO reset_business_preserve_counts(table_name, row_count)
+        VALUES (t.table_name, n);
+    END LOOP;
+END $$;
+
 REFRESH MATERIALIZED VIEW purchase_monthly_mv;
 REFRESH MATERIALIZED VIEW production_monthly_mv;
 REFRESH MATERIALIZED VIEW stock_monthly_mv;
@@ -565,6 +720,70 @@ DECLARE
     t RECORD;
     n BIGINT;
 BEGIN
+    SELECT count(*)
+    INTO n
+    FROM accounts
+    WHERE init_balance <> 0
+       OR receipts_total <> 0
+       OR payments_total <> 0
+       OR balance_adjustments_total <> 0
+       OR balance_current <> 0;
+    IF n <> 0 THEN
+        RAISE EXCEPTION
+            '账户金额归零校验失败：仍有 % 个账户存在非零期初/收款/付款/调整/当前余额，整体回滚',
+            n;
+    END IF;
+
+
+    SELECT
+        (SELECT count(*) FROM clients
+         WHERE COALESCE(init_total, 0) <> 0
+            OR COALESCE(init_total2, 0) <> 0)
+      + (SELECT count(*) FROM suppliers
+         WHERE COALESCE(init_total, 0) <> 0
+            OR COALESCE(init_total2, 0) <> 0)
+      + (SELECT count(*) FROM goods
+         WHERE COALESCE(init_stock, 0) <> 0
+            OR COALESCE(init_count, 0) <> 0
+            OR COALESCE(init_weight, 0) <> 0)
+      + (SELECT count(*) FROM payment_styles
+         WHERE COALESCE(init_balance, 0) <> 0)
+    INTO n;
+    IF n <> 0 THEN
+        RAISE EXCEPTION
+            '遗留期初归零校验失败：仍有 % 个客户/供应商/货品/结算类别存在非零期初值，整体回滚',
+            n;
+    END IF;
+
+    SELECT count(*)
+    INTO n
+    FROM goods
+    WHERE min_qty IS DISTINCT FROM 0
+       OR source_e IS DISTINCT FROM 0
+       OR work_e IS DISTINCT FROM 0
+       OR lacquer_e IS DISTINCT FROM 0
+       OR incidental_e IS DISTINCT FROM 0
+       OR plating_e IS DISTINCT FROM 0
+       OR casing_e IS DISTINCT FROM 0
+       OR manage_e IS DISTINCT FROM 0
+       OR polish_e IS DISTINCT FROM 0
+       OR electric_e IS DISTINCT FROM 0
+       OR machining_e IS DISTINCT FROM 0
+       OR lost_e IS DISTINCT FROM 0
+       OR rent_e IS DISTINCT FROM 0
+       OR make_e IS DISTINCT FROM 0
+       OR work_rate IS DISTINCT FROM 0
+       OR lost_rate IS DISTINCT FROM 0
+       OR make_rate IS DISTINCT FROM 0
+       OR rent_rate IS DISTINCT FROM 0
+       OR total IS DISTINCT FROM 0
+       OR c_total IS DISTINCT FROM 0
+       OR g_total IS DISTINCT FROM 0;
+    IF n <> 0 THEN
+        RAISE EXCEPTION
+            '货品安全库存/成本预算归零校验失败：仍有 % 个货品存在非零安全库存或成本金额/费率，整体回滚',
+            n;
+    END IF;
     FOR t IN
         SELECT table_name
         FROM reset_business_table_policy
@@ -616,7 +835,7 @@ END $$;
 
 COMMIT;
 
-\echo '完成：业务流程与库存已清空；主档、人事、权限、审计、附件及治理证据保留。'
+\echo '完成：业务流程、库存、账户金额、遗留期初往来/库存快照、货品安全库存及成本预算已归零；货品身份/BOM/max_qty/业务售价(price/a_price/price2)与其它主档、人事、权限、审计、附件及治理证据保留。'
 \echo '抽查：'
 SELECT 'employees' AS table_name, count(*) AS row_count FROM employees
 UNION ALL SELECT 'goods', count(*) FROM goods

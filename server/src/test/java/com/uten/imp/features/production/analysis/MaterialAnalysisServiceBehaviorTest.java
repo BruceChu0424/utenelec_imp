@@ -205,7 +205,7 @@ class MaterialAnalysisServiceBehaviorTest {
         AnalysisView view = new AnalysisView(
                 UUID.randomUUID(), "ACTIVE", 1L, "a".repeat(64), "b".repeat(64),
                 UUID.randomUUID(), OffsetDateTime.now(), List.of(), List.of(material),
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), false, null);
         NotifyRequest request = new NotifyRequest(
                 1L, "a".repeat(64), "notify-0001", null,
                 List.of(materialId), List.of(), null);
@@ -235,7 +235,7 @@ class MaterialAnalysisServiceBehaviorTest {
         AnalysisView view = new AnalysisView(
                 UUID.randomUUID(), "ACTIVE", 1L, "a".repeat(64), "b".repeat(64),
                 UUID.randomUUID(), OffsetDateTime.now(), List.of(), materials,
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), false, null);
         NotifyRequest request = new NotifyRequest(
                 1L, "a".repeat(64), "notify-limit-500", "BUY",
                 materialLineIds, actionGroupKeys, null);
@@ -269,7 +269,7 @@ class MaterialAnalysisServiceBehaviorTest {
         AnalysisView view = new AnalysisView(
                 UUID.randomUUID(), "ACTIVE", 1L, "a".repeat(64), "b".repeat(64),
                 UUID.randomUUID(), OffsetDateTime.now(), List.of(), materials,
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), false, null);
         NotifyRequest request = new NotifyRequest(
                 1L, "a".repeat(64), "notify-limit-501", "BUY",
                 materialLineIds, actionGroupKeys, null);
@@ -303,7 +303,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 UUID.randomUUID(), LocalDate.of(2026, 8, 9),
                 LocalDate.of(2026, 8, 20), UUID.randomUUID(),
                 "默认车间", UUID.randomUUID(), false,
-                List.of(item), List.of(), List.of());
+                List.of(item), List.of());
 
         assertThat((LocalDate) invokePrivate(
                 commands, "itemBillDate",
@@ -1376,7 +1376,7 @@ class MaterialAnalysisServiceBehaviorTest {
             UUID itemId, UUID goodsId, UUID unitId, int priority, String demand) {
         Object[] row = sourceRow(itemId, goodsId, unitId);
         row[17] = bd(demand);
-        row[37] = priority;
+        row[36] = priority;
         return MaterialAnalysisService.SourceLine.from(row);
     }
 
@@ -1439,7 +1439,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 LocalDate.of(2026, 8, 20), null,
                 goodsId, "FG-01", "Finished good", null, null, null,
                 unitId, "piece", BigDecimal.ONE, bd("100"), BigDecimal.ZERO,
-                BigDecimal.ZERO, "BOM_REQUIRED", true, bd("100"), BigDecimal.ZERO,
+                BigDecimal.ZERO, true, bd("100"), BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, null, false, false, false, false,
                 "REQ-BOM-001", "BOM signature test", 1, bd("10"), bd("10"),
@@ -1468,8 +1468,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ONE, BigDecimal.ONE,
                 BigDecimal.ONE, bd("100"), BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), null,
-                "BUY", confirmedRoute, routeConfirmed, null, "BOM_REQUIRED", false,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), bd("90"), null,
+                "BUY", confirmedRoute, routeConfirmed, null,
                 true, false, BigDecimal.ZERO, BigDecimal.ZERO, List.of(),
                 List.of(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -1491,8 +1491,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ONE, true, true, BigDecimal.ONE, BigDecimal.ONE,
                 BigDecimal.ONE, bd("10"), BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, shortage, null,
-                "BUY", "BUY", null, "BOM_REQUIRED", false,
-                false);
+                "BUY", "BUY", null,
+                false, false);
     }
 
     private static Query query(List<?> rows) {
@@ -1533,7 +1533,7 @@ class MaterialAnalysisServiceBehaviorTest {
         return new GeneratePlanRequest(
                 3L, "a".repeat(64), "b".repeat(64), "product-no-0001",
                 warehouseId, LocalDate.of(2026, 8, 14), null, null, null, null,
-                false, List.of(item), List.of(), List.of());
+                false, List.of(item), List.of());
     }
 
     private static String generateHash(UUID analysisId, GeneratePlanRequest request) {

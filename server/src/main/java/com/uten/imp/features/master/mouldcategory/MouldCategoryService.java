@@ -148,7 +148,7 @@ public class MouldCategoryService {
                     throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
                 }
                 if (repo.isDescendant(id, requestedParentId)) {
-                    throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
+                    throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下(会成环)");
                 }
                 c.setParent(requireCategory(requestedParentId));
             }

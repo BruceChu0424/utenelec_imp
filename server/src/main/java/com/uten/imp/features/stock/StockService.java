@@ -169,7 +169,7 @@ public class StockService {
                 if (movable.compareTo(req.qty()) < 0) {
                     throw new ApiException(
                             ErrorCode.CONFLICT,
-                            "可动用库存不足（已扣硬预留和安全库存）：当前 "
+                            "可动用库存不足(已扣硬预留和安全库存)：当前 "
                                     + movable.stripTrailingZeros().toPlainString()
                                     + "，本次出库 "
                                     + req.qty().stripTrailingZeros().toPlainString());

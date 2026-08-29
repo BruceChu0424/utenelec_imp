@@ -280,7 +280,7 @@ class SalesShipmentOwnerBoundaryTest {
                 new BigDecimal("999"),
                 BigDecimal.TEN, clientId, currencyId, billNo, ownerId,
                 (short) 1, false, false,
-                BigDecimal.ZERO, null, ownerId, orderId, null
+                BigDecimal.ZERO, null, ownerId, orderId, null, false
         };
     }
 
@@ -293,7 +293,7 @@ class SalesShipmentOwnerBoundaryTest {
                 currencyId, BigDecimal.ZERO, null, ownerId,
                 BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ONE,
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                "CLIENT", "MODEL", null, orderId, null
+                "CLIENT", "MODEL", null, orderId, null, false
         };
     }
 

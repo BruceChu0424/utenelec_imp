@@ -101,12 +101,12 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: InputDecoration(hintText: '让单数量（0 < 数量 ≤ $reserved）'),
+              decoration: InputDecoration(hintText: '让单数量(0 < 数量 ≤ $reserved)'),
             ),
             const SizedBox(height: UtenSpacing.s8),
             TextField(
               controller: reasonCtrl,
-              decoration: const InputDecoration(hintText: '让单原因（必填）'),
+              decoration: const InputDecoration(hintText: '让单原因(必填)'),
             ),
           ],
         ),

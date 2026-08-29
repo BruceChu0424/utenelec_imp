@@ -8,6 +8,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionPassRequest;
 import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -22,6 +23,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -37,7 +41,8 @@ import java.util.UUID;
  * "给 stock_balances 加 inspection_status 列"更稳的选型（详见 ADR）。
  *
  * <p>只有受控的 {@code PASS} 处置才 {@link StockService#recordMovement} {@code DIR_IN}
- * 进可用库存，并在整单质检结案后唤醒生产（WAITING→READY）。{@code FAIL} 只记质量事实，不入可用。
+ * 进可用库存，并在同一事务按该次合格切片推进正式生产供给；整单结案只负责结案事件与通知。
+ * {@code FAIL} 只记质量事实，不入可用。
  * 收货红冲前须所有明细已结案（RESOLVED），由 {@link #reverseResolvedStock} 反向已放行库存。
  */
 @Service
@@ -111,7 +116,114 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     /**
-     * 受控质检结论：{@code PASS} 放行进可用库存（DIR_IN）+ 整单结案后唤醒生产；
+     * 同一收货单的多行合格放行：先锁定库存维度和整张收货单全部 IQC 行，校验完整集合及
+     * 操作人看到的剩余量，再复用单行结论链。外层事务保证任一库存/分析/供给副作用失败时
+     * 整批回滚；每行独立幂等键保证响应丢失后的同体重放不会重复入库。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('procurement_inspection:view')"
+            + " and hasAuthority('procurement_inspection:handle')")
+    public void passBatch(
+            String receiptType,
+            UUID receiptId,
+            BatchInspectionPassRequest request) {
+        tx.bind();
+        if (request == null || request.items() == null || request.items().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量合格明细不能为空");
+        }
+        if (request.items().size() > 100) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多合格放行 100 条明细");
+        }
+        String reason = normalizeDispositionReason("PASS", request.reason());
+        HashSet<UUID> uniqueIds = new HashSet<>();
+        List<NormalizedBatchPassItem> commands = new ArrayList<>();
+        for (BatchInspectionPassRequest.Item item : request.items()) {
+            if (item == null || item.inspectionItemId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量合格明细 ID 不能为空");
+            }
+            if (!uniqueIds.add(item.inspectionItemId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量合格明细不能重复");
+            }
+            commands.add(new NormalizedBatchPassItem(
+                    item.inspectionItemId(),
+                    normalizeQty(item.expectedRemainingBaseQty()),
+                    normalizeIdempotencyKey(item.idempotencyKey())));
+        }
+        commands.sort(Comparator.comparing(command -> command.inspectionItemId().toString()));
+
+        // 与单行处置相同：库存维度锁必须先于业务行锁。
+        lockReceiptMutationDimensions(receiptType, receiptId);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
+                               received_base_qty, received_amount_local,
+                               passed_base_qty, failed_base_qty, status, receipt_type
+                        FROM procurement_inspection_items
+                        WHERE receipt_type = :rt AND receipt_id = :rid
+                        ORDER BY id
+                        FOR UPDATE
+                        """)
+                .setParameter("rt", receiptType)
+                .setParameter("rid", receiptId)
+                .getResultList();
+
+        int replayCount = 0;
+        for (NormalizedBatchPassItem command : commands) {
+            UUID eventId = dispositionEventId(command.inspectionItemId(), command.idempotencyKey());
+            if (isReplay(
+                    eventId,
+                    command.inspectionItemId(),
+                    "PASS",
+                    command.expectedRemainingBaseQty(),
+                    reason)) {
+                replayCount++;
+            }
+        }
+        if (replayCount != 0 && replayCount != commands.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "批量合格请求只部分匹配历史记录，请刷新后重试");
+        }
+
+        if (replayCount == 0) {
+            for (NormalizedBatchPassItem command : commands) {
+                Object[] row = rows.stream()
+                        .filter(candidate -> command.inspectionItemId().equals(candidate[0]))
+                        .findFirst()
+                        .orElse(null);
+                if (row == null) {
+                    throw new ApiException(ErrorCode.NOT_FOUND, "批量合格明细不存在或不属于当前收货单");
+                }
+                String currentStatus = (String) row[10];
+                if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "批量合格明细状态已变化，请刷新后重试");
+                }
+                BigDecimal remaining = dec(row[6]).subtract(dec(row[8])).subtract(dec(row[9]));
+                if (remaining.compareTo(command.expectedRemainingBaseQty()) != 0) {
+                    throw new ApiException(ErrorCode.CONFLICT, "批量合格明细待检数量已变化，请刷新后重试");
+                }
+            }
+        }
+
+        for (NormalizedBatchPassItem command : commands) {
+            dispose(
+                    receiptType,
+                    receiptId,
+                    command.inspectionItemId(),
+                    new InspectionDispositionRequest(
+                            "PASS",
+                            command.expectedRemainingBaseQty(),
+                            reason,
+                            command.idempotencyKey()));
+        }
+    }
+
+    private record NormalizedBatchPassItem(
+            UUID inspectionItemId,
+            BigDecimal expectedRemainingBaseQty,
+            String idempotencyKey) {
+    }
+
+    /**
+     * 受控质检结论：{@code PASS} 放行进可用库存（DIR_IN）并立即按合格切片推进生产；
      * {@code FAIL} 只记质量事实，不入可用。事件账幂等（同键同命令静默重放，同键异命令 409）。
      */
     @Transactional
@@ -164,8 +276,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             // publishing the whole-receipt wake marker. A same-command replay owns
             // the receipt-scoped row locks above, so it can safely repair that state.
             boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
-            if ("PASS".equals(action) && !wholeReceiptResolved) {
-                refreshAnalysisAfterPartialPass(
+            if ("PASS".equals(action)) {
+                advanceProductionAfterInspectionPass(
                         receiptType, receiptId, inspectionItemId, eventId);
             }
             wakeIfWholeReceiptResolved(
@@ -246,15 +358,15 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
 
         boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
-        if ("PASS".equals(action) && !wholeReceiptResolved) {
-            // The PASS movement is already available stock, so refresh analysis
-            // in this transaction. Formal receipt fulfillment (reservations,
-            // DRAW and execution readiness) remains whole-receipt-only below.
-            refreshAnalysisAfterPartialPass(
+        if ("PASS".equals(action)) {
+            // The PASS movement is already available stock. Advance the exact
+            // qualified slice in this transaction; transition services subtract
+            // existing effective allocations, so retries cannot double count.
+            advanceProductionAfterInspectionPass(
                     receiptType, receiptId, inspectionItemId, eventId);
         }
 
-        // 整单质检结案后唤醒生产一次（WAITING→READY）；已唤醒则幂等跳过。
+        // 整单结案事件/通知仍按收货单只发一次；生产供给已由每个 PASS 切片推进。
         wakeIfWholeReceiptResolved(
                 receiptType, receiptId, now, wholeReceiptResolved);
     }
@@ -459,13 +571,17 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         if (!wholeReceiptResolved || alreadyWoken(receiptType, receiptId)) {
             return;
         }
+        // A receipt that ends with FAIL may have no final PASS callback. Run
+        // one delta-idempotent reconciliation so demand/source projections are
+        // closed against the terminal qualified quantity before publishing the
+        // receipt-scoped marker.
         wakeProduction(receiptType, receiptId);
         appendReceiptEvent(
                 receiptType,
                 receiptId,
                 "PRODUCTION_WOKEN",
                 BigDecimal.ZERO,
-                "整单质检结案，唤醒生产供给",
+                "整单质检结案，生产供给已按合格切片推进",
                 currentUser.requireEmployeeId(),
                 now);
         // 通知仓库：品质检验结案，合格量已放行入库（outbox 同事务投递，送达幂等）。
@@ -477,7 +593,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 EVENT_IQC_RESOLVED + ':' + receiptId);
     }
 
-    private void refreshAnalysisAfterPartialPass(
+    private void advanceProductionAfterInspectionPass(
             String receiptType,
             UUID receiptId,
             UUID inspectionItemId,

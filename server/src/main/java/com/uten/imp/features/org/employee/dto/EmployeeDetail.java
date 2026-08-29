@@ -18,14 +18,15 @@ import com.uten.imp.features.org.employee.dto.NestedDtos.PhoneDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.VehicleDto;
 
 /**
- * 员工详情。基础任职字段对持档案查看权限者可见；PII 与薪酬字段由 service 按
+ * 员工详情。基础任职字段对持档案查看权限者可见；管理端 PII 与薪酬字段由 service 按
  * {@code employee:pii:view}/{@code employee:compensation:view} 分别脱敏或省略。
+ * 本人资料端点可放开本人的个人 PII，但银行与薪酬仍保持上述权限边界。
  */
 @Getter
 @Setter
 public class EmployeeDetail {
 
-    // 基本信息（人口属性、地址和出生日期仍受 employee:pii:view 保护）
+    // 基本信息（管理端人口属性、地址和出生日期受 employee:pii:view 保护；本人可见）
     private UUID id;
     private String code;
     private String fullName;
@@ -59,11 +60,11 @@ public class EmployeeDetail {
     private String email;
     private String paperArchiveNo;
 
-    // 敏感 PII（employee:pii:view 决定明文；否则脱敏或省略）
-    private String idNumber;        // 有权限时明文，否则 ****1234 或 null
-    private String phone;           // 有权限时明文，否则 138****1234
-    private String bankAccount;     // 有权限时明文，否则 null
-    private String bankBranch;      // 有权限时明文，否则 null
+    // 敏感 PII（本人可见自己的证件/手机；银行资料不因 self 身份放开）
+    private String idNumber;        // 本人或有 PII 权限时明文，否则 ****1234 或 null
+    private String phone;           // 本人或有 PII 权限时明文，否则 138****1234
+    private String bankAccount;     // 仅有 employee:pii:view 时明文，否则 null
+    private String bankBranch;      // 仅有 employee:pii:view 时明文，否则 null
 
     // 薪资（仅 employee:compensation:view 可见，否则为 null）
     private String baseSalary;
@@ -89,7 +90,7 @@ public class EmployeeDetail {
     private List<EmploymentHistoryDto> history;
     private List<CredentialDto> certificates;
     private List<EducationDto> educations;
-    // 车辆（employee:view 可见）与备用手机号（pii:view 明文，否则掩码）—— ADR-021
+    // 车辆（employee:view/本人可见）与备用手机号（本人或 pii:view 明文，否则掩码）—— ADR-021
     private List<VehicleDto> vehicles;
     private List<PhoneDto> phones;
 

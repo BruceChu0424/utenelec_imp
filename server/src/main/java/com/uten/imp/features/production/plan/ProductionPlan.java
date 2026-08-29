@@ -136,12 +136,6 @@ public class ProductionPlan extends SoftDeletableEntity {
     @Column(name = "material_analysis_item_id")
     private UUID materialAnalysisItemId;
 
-    @Column(name = "bom_override_reason")
-    private String bomOverrideReason;
-
-    @Column(name = "bom_override_by")
-    private UUID bomOverrideBy;
-
     /** MAKE 树距根深度（0=根，1=直层 MAKE 子…）；NULL=非 orchestrator 计划（#13）：驱动傻瓜式 UI 最深层可开工优先。 */
     @Column(name = "bom_depth")
     private Integer bomDepth;

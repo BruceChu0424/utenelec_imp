@@ -41,4 +41,8 @@ public class FinancePaymentDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    /** 草稿乐观并发版本；编辑请求必须原样回传 expectedVersion。 */
+    private long version;
+    /** 创建请求幂等键；同一制单人重试同一请求时返回原单。 */
+    private String createIdempotencyKey;
 }

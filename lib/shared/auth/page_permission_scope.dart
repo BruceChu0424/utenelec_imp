@@ -65,7 +65,10 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   if (path == '/basicinfo/unit') return _unitScope;
   if (path == '/basicinfo/currency') return _currencyScope;
   if (path == '/basicinfo/warehouse') return _warehouseMasterScope;
-  if (path == '/basicinfo/account') return _accountScope;
+  if (path == '/basicinfo/account' ||
+      _isDescendant(path, '/basicinfo/account')) {
+    return _accountScope;
+  }
   if (path == '/basicinfo/payment-style') return _paymentStyleScope;
 
   // 跨部门履约工作台与工程任务。
@@ -280,7 +283,10 @@ PagePermissionScope? _productionScopeFor(List<String> segments) {
     case 'material-analysis':
       return segments.length == 2 ? _materialAnalysisScope : null;
     case 'material-analyses':
-      return segments.length == 2 ? _materialAnalysisHistoryScope : null;
+      if (segments.length == 2) return _materialAnalysisHistoryScope;
+      return segments.length == 4 && segments[3] == 'summary'
+          ? _materialAnalysisScope
+          : null;
     case 'plans':
       return _isDocumentPath(segments) ? _productionPlanScope : null;
     case 'daily-reports':

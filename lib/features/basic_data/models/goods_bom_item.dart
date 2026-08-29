@@ -11,7 +11,7 @@ enum BomControlStage {
   ship(
     'SHIP',
     '发货参考',
-    '发货参考，不预留包材、不阻止实际发货；纸箱/包装若生产包装必须消耗，请选“完工/包装前（FINISH）”并搭配“按包装（PER_PACKAGE）”或“固定批耗（FIXED_BATCH）”',
+    '发货参考，不预留包材、不阻止实际发货；纸箱/包装若生产包装必须消耗，请选“完工/包装前(FINISH)”并搭配“按包装(PER_PACKAGE)”或“固定批耗(FIXED_BATCH)”',
   ),
   reference('REFERENCE', '仅参考', '只展示提醒，不预留物料，也不阻断生产或实际发货');
 

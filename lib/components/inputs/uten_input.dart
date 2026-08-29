@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'required_field_decoration.dart';
+import 'uten_field_message.dart';
 
 /// Uten 输入框
 class UtenInput extends StatefulWidget {
@@ -12,6 +13,8 @@ class UtenInput extends StatefulWidget {
     super.key,
     this.label,
     this.hint,
+    this.helperMessage,
+    this.errorMessage,
     this.controller,
     this.obscureText = false,
     this.isPassword = false,
@@ -36,6 +39,12 @@ class UtenInput extends StatefulWidget {
 
   /// 占位提示
   final String? hint;
+
+  /// 字段辅助说明；超出一行时可展开查看全文。
+  final String? helperMessage;
+
+  /// 外部字段错误；与 [validator] 生成的错误共用统一长提示外观。
+  final String? errorMessage;
 
   /// 文本控制器
   final TextEditingController? controller;
@@ -149,6 +158,7 @@ class _UtenInputState extends State<UtenInput> {
           obscureText: widget.isPassword ? _isObscured : widget.obscureText,
           keyboardType: widget.keyboardType,
           validator: widget.validator,
+          errorBuilder: utenTextFieldErrorBuilder,
           onChanged: widget.onChanged,
           onFieldSubmitted: widget.onFieldSubmitted,
           enabled: widget.enabled,
@@ -162,6 +172,12 @@ class _UtenInputState extends State<UtenInput> {
           decoration: applyRequiredEmpty(
             InputDecoration(
               hintText: widget.hint,
+              helper: widget.helperMessage == null
+                  ? null
+                  : UtenFieldMessage.helper(widget.helperMessage!),
+              error: widget.errorMessage == null
+                  ? null
+                  : UtenFieldMessage.error(widget.errorMessage!),
               prefixIcon: widget.prefixIcon != null
                   ? Icon(widget.prefixIcon, size: 20)
                   : null,

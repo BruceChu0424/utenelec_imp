@@ -699,7 +699,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           ? null
           : _goodsLabel(single),
       onClear: widget.multiSelect ? () => setState(_selected.clear) : null,
-      confirmLabel: widget.multiSelect ? '确定（${_selected.length}）' : '确定',
+      confirmLabel: widget.multiSelect ? '确定(${_selected.length})' : '确定',
       onConfirm: () => Navigator.of(
         context,
       ).pop(widget.multiSelect ? _selected.values.toList() : single),
@@ -708,7 +708,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
 
   String _goodsLabel(GoodsListItem g) =>
       '${g.name ?? '—'}'
-      '${g.code != null && g.code!.isNotEmpty ? '（${g.code}）' : ''}';
+      '${g.code != null && g.code!.isNotEmpty ? '(${g.code})' : ''}';
 
   Widget _buildRightPane(ThemeData theme) {
     return Column(
@@ -804,7 +804,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           selected: showPicked,
           title: Text(
             '${g.name ?? '—'}'
-            '${g.code != null && g.code!.isNotEmpty ? '（${g.code}）' : ''}',
+            '${g.code != null && g.code!.isNotEmpty ? '(${g.code})' : ''}',
           ),
           subtitle: sub.isEmpty
               ? null

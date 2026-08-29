@@ -1,4 +1,7 @@
 package com.uten.imp.features.production.dailyreport;
+
+import com.uten.imp.application.port.ProductionQualityInspectionPort;
+import com.uten.imp.application.port.ProductionFqcRecoveryPort;
 import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.web.ApiException;
@@ -9,6 +12,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
@@ -25,10 +29,6 @@ import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
 import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import com.uten.imp.features.production.plan.ProductionProductNoAllocator;
 import com.uten.imp.features.stock.StockDocument;
-import com.uten.imp.features.stock.StockDocumentItem;
-import com.uten.imp.features.stock.StockDocumentItemRepository;
-import com.uten.imp.features.stock.StockDocumentRepository;
-import com.uten.imp.features.stock.StockGoodsSnapshot;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -62,18 +62,18 @@ import java.util.UUID;
  *
  * <p>审核（status 0→1）同事务内：
  * <ol>
- *   <li>解析计划行（planItemId 直给，或 planNo+货品+颜色解析已审计划）并回写；
+ *   <li>按 planItemId + executionSegmentId UUID 精确锁定已开工来源；
  *       超报硬校验（累计 fqty ≤ 计划量）</li>
  *   <li>回写 plan_items.fqty + plan_order_item_links.produced_qty（指定订单行直击，
  *       未指定按 FIFO 分摊）；订单行状态 3/4→5 生产中</li>
- *   <li>有仓库时按来源计划自动生成成品入库单（草稿）+ plan_draw_links，
- *       仓库审核后即入链（补预留，见 StockDocService.applyFinishedInChain）</li>
+ *   <li>登记逐报工行 FQC 待检事实；只有 PASS 数量在同事务生成
+ *       FINISHED_IN 草稿并分配合格放行额度，仓库点收后才增加库存/iqty</li>
  *   <li>is_final 完结行：合格不足 → 缺额封顶（qty/allocated 砍到实际，砍量记 capped_qty）
  *       + 自动生成补产计划（links source=1）</li>
  * </ol>
  *
  * <p>红冲（1→-1）对称：回退 fqty/produced → 成品入库单（草稿删/已审拒）→
- * 恢复封顶量 → 补产计划（草稿删/已审拒）。
+ * 追加 FQC 取消事实 → 恢复封顶量 → 补产计划（草稿删/已审拒）。
  */
 @Service
 @RequiredArgsConstructor
@@ -91,9 +91,7 @@ public class ProductionDailyReportService {
     private final ProductionPlanRepository planRepo;
     private final ProductionPlanItemRepository planItemRepo;
     private final PlanOrderItemLinkRepository linkRepo;
-    private final StockDocumentRepository stockDocRepo;
     private final DailyReportExecutionSegmentGuard executionSegments;
-    private final StockDocumentItemRepository stockDocItemRepo;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final TxSessionVars tx;
@@ -102,6 +100,10 @@ public class ProductionDailyReportService {
     private final EntityManager em;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final ProductionDocumentAccessPolicy access;
+    private final ProductionQualityInspectionPort qualityInspection;
+    private final ProductionFqcRecoveryPort fqcRecovery;
+    private final ProductionLegacyFinishedInboundService
+            legacyFinishedInbound;
 
     @Transactional(readOnly = true)
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order) {
@@ -146,12 +148,33 @@ public class ProductionDailyReportService {
     @PreAuthorize("hasAuthority('production_daily_report:create')")
     public DailyReportDetail create(DailyReportSaveRequest req) {
         tx.bind();
+        if (req == null || req.getItems() == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "生产日报创建请求或明细不能为空");
+        }
+        UUID actorId = currentUser.requireId();
+        String idempotencyKey =
+                normalizeCreateIdempotencyKey(req.getIdempotencyKey());
+        String requestHash = createRequestHash(req);
+        lockCreateCommand(actorId, idempotencyKey);
+        CreateCommand replay = findCreateCommand(actorId, idempotencyKey);
+        if (replay != null) {
+            if (!requestHash.equals(replay.requestHash())) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报创建请求");
+            }
+            return detail(replay.reportId());
+        }
+
         ProductionDailyReport r = new ProductionDailyReport();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（对象级归属）
         r.setStatus(STATUS_DRAFT);
-        reportRepo.save(r);
+        reportRepo.saveAndFlush(r);
         saveItems(r, req.getItems());
+        itemRepo.flush();
+        recordCreateCommand(
+                actorId, idempotencyKey, requestHash, r.getId());
         return detail(r.getId());
     }
 
@@ -161,11 +184,16 @@ public class ProductionDailyReportService {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
+        requireExpectedVersion(req == null ? null : req.getExpectedVersion(),
+                r.getRowVersion());
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         applyHeader(req, r);
         itemRepo.deleteByReportId(id);
         itemRepo.flush();
         saveItems(r, req.getItems());
+        // An item-only edit must still dirty the header so JPA @Version advances.
+        r.setUpdatedAt(java.time.Instant.now());
+        reportRepo.saveAndFlush(r);
         return detail(id);
     }
 
@@ -178,7 +206,7 @@ public class ProductionDailyReportService {
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
-        reportRepo.save(r);
+        reportRepo.saveAndFlush(r);
     }
 
     /** 审核（status 0→1）：报工链联动（见类注释）。 */
@@ -195,6 +223,12 @@ public class ProductionDailyReportService {
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
         if (items.isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        if (items.stream().anyMatch(item ->
+                item.getPlanItemId() == null)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "每条报工必须关联精确生产计划行；新流程还必须选择已开工执行子任务");
+        }
         if (r.getWarehouseId() == null
                 && items.stream().anyMatch(item -> item.getExecutionSegmentId() != null)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
@@ -229,8 +263,8 @@ public class ProductionDailyReportService {
             BigDecimal qty = it.getQty();
             BigDecimal remain = bd(pi[2]).subtract(bd(pi[3])); // qty - fqty
             if (qty.compareTo(remain) > 0) {
-                throw new ApiException(ErrorCode.BUSINESS, "报工量超过计划剩余（剩 "
-                        + remain.stripTrailingZeros().toPlainString() + "）");
+                throw new ApiException(ErrorCode.BUSINESS, "报工量超过计划剩余(剩 "
+                        + remain.stripTrailingZeros().toPlainString() + ")");
             }
             em.createNativeQuery("UPDATE production_plan_items SET fqty = COALESCE(fqty,0) + :q WHERE id = :id")
                     .setParameter("q", qty).setParameter("id", planItemId).executeUpdate();
@@ -245,26 +279,45 @@ public class ProductionDailyReportService {
             }
         }
 
-        // 2) 有仓库 → 按来源计划自动生成成品入库单（草稿，仓库审核后入链补预留）
-        if (r.getWarehouseId() != null) {
-            for (var e : byPlan.entrySet()) {
-                createFinishedInDraft(r, e.getKey(), e.getValue());
-            }
-        }
-
-        // 3) 完结行：缺额封顶 + 自动补产
+        // 2) 完结行：缺额封顶 + 自动补产
         for (UUID planItemId : finalPlanItemIds) {
             capAndRemake(r, planItemId,
                     lockedLinks.getOrDefault(planItemId, List.of()));
         }
-        // 4) 受影响计划重算结案
+        // 3) 受影响计划重算结案
         for (UUID planId : byPlan.keySet()) {
             recomputePlanClosed(planId);
         }
 
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId());
-        reportRepo.save(r);
+        reportRepo.saveAndFlush(r);
+        for (ProductionDailyReportItem item : items) {
+            if (item.getFqcRecoveryAuthorizationId() != null) {
+                fqcRecovery.allocateApprovedRecoveryReportItem(
+                        item.getId(),
+                        item.getFqcRecoveryAuthorizationId(),
+                        item.getQty());
+            }
+        }
+        if (r.getWarehouseId() != null) {
+            for (var entry : byPlan.entrySet()) {
+                List<ProductionDailyReportItem> legacyItems =
+                        entry.getValue().stream()
+                                .filter(item ->
+                                        item.getExecutionSegmentId() == null)
+                                .toList();
+                if (!legacyItems.isEmpty()) {
+                    for (ProductionDailyReportItem legacyItem : legacyItems) {
+                        fqcRecovery.requireLegacyExemption(legacyItem.getId());
+                    }
+                    legacyFinishedInbound.createDraft(
+                            r, entry.getKey(), legacyItems);
+                }
+            }
+        }
+        // 报工审核只增加 fqty；FQC PASS 后才会生成 FINISHED_IN 待点收草稿。
+        qualityInspection.registerApprovedReport(r.getId());
         chainNotice.notifyProductionReported(r.getId());
         chainNotice.notifyRemakeCreated(r.getId()); // UUID 真源：完结缺额已自动补产→销售（无补产时静默）
         return detail(id);
@@ -276,6 +329,7 @@ public class ProductionDailyReportService {
     public DailyReportDetail reverse(UUID id) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
+        qualityInspection.prelockForReportReversal(r.getId());
         access.requireWritable(
                 r.getMakerId(), "无权红冲此生产日报",
                 "production_daily_report:reverse");
@@ -298,9 +352,19 @@ public class ProductionDailyReportService {
             if (planItemId == null) continue;
             Object[] pi = planItemRow(planItemId, false);
             requireMatchingPlanDimension(it, pi);
-            BigDecimal qty = it.getQty() == null ? BigDecimal.ZERO : it.getQty();
-            if (qty.signum() <= 0) {
-                throw new ApiException(ErrorCode.CONFLICT, "历史报工明细数量无效，禁止自动红冲");
+            BigDecimal declaredQty = it.getQty() == null
+                    ? BigDecimal.ZERO : it.getQty();
+            if (declaredQty.signum() <= 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "历史报工明细数量无效，禁止自动红冲");
+            }
+            BigDecimal qty = fqcRecovery.effectiveContribution(
+                    it.getId(), declaredQty);
+            if (qty.signum() < 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "FQC 有效贡献为负，禁止自动红冲");
             }
             BigDecimal finishedAfterReverse = bd(pi[3]).subtract(qty);
             BigDecimal alreadyInbound = bd(pi[11]);
@@ -309,7 +373,7 @@ public class ProductionDailyReportService {
                         "红冲后已报工合格量将小于已入库量，请先红冲相关成品入库单");
             }
             if (!affectedPlans.contains((UUID) pi[1])) affectedPlans.add((UUID) pi[1]);
-            int finishedUpdated = em.createNativeQuery("""
+            int finishedUpdated = qty.signum() == 0 ? 1 : em.createNativeQuery("""
                             UPDATE production_plan_items
                             SET fqty = COALESCE(fqty,0) - :q
                             WHERE id = :id AND COALESCE(fqty,0) >= :q
@@ -319,10 +383,12 @@ public class ProductionDailyReportService {
             }
             List<PlanOrderItemLink> planLinks =
                     lockedLinks.getOrDefault(planItemId, List.of());
-            distributeProduced(
-                    planItemId,
-                    it.getExecutionSegmentSalesAllocationId(),
-                    it.getSalesOrderItemId(), qty, -1, planLinks);
+            if (qty.signum() > 0) {
+                distributeProduced(
+                        planItemId,
+                        it.getExecutionSegmentSalesAllocationId(),
+                        it.getSalesOrderItemId(), qty, -1, planLinks);
+            }
             // 恢复封顶（若该行是完结行）
             if (Boolean.TRUE.equals(it.isFinal())) {
                 restoreCap(planItemId, planLinks);
@@ -373,7 +439,9 @@ public class ProductionDailyReportService {
             recomputePlanClosed(planId);
         }
         r.setStatus(STATUS_REVERSED);
-        reportRepo.save(r);
+        reportRepo.saveAndFlush(r);
+        fqcRecovery.reverseReportEffects(r.getId());
+        qualityInspection.cancelForReversedReport(r.getId());
         return detail(id);
     }
 
@@ -531,7 +599,7 @@ public class ProductionDailyReportService {
                                     + target.getProducedQty().stripTrailingZeros().toPlainString()
                                     + " 小于本次红冲量 "
                                     + qty.stripTrailingZeros().toPlainString()
-                                    + "（可能存在跨链 FIFO 分摊），须先核对再红冲");
+                                    + "(可能存在跨链 FIFO 分摊)，须先核对再红冲");
                 }
             }
         } else if (orderItemId != null) {
@@ -566,8 +634,8 @@ public class ProductionDailyReportService {
             String action = sign > 0 ? "报工" : "红冲";
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    action + "量超过生产计划与销售订单的可分摊量（剩 "
-                            + remaining.stripTrailingZeros().toPlainString() + " 无法分摊）");
+                    action + "量超过生产计划与销售订单的可分摊量(剩 "
+                            + remaining.stripTrailingZeros().toPlainString() + " 无法分摊)");
         }
     }
 
@@ -712,70 +780,6 @@ public class ProductionDailyReportService {
     }
 
     /** 自动生成成品入库单（草稿）+ plan_draw_links（仓库审核后经 applyFinishedInChain 补预留）。 */
-    private void createFinishedInDraft(ProductionDailyReport r, UUID planId,
-                                       List<ProductionDailyReportItem> reportItems) {
-        String planNo = (String) em.createNativeQuery(
-                "SELECT bill_no FROM production_plans WHERE id = :id")
-                .setParameter("id", planId).getSingleResult();
-        StockDocument d = new StockDocument();
-        d.setDocType("FINISHED_IN");
-        d.setBillNo(docNumberService.nextNumber(DocNumberPrefix.STOCK_FINISHED_IN));
-        d.setBillDate(BusinessTime.today());
-        d.setWarehouseId(r.getWarehouseId());
-        d.setPlanNo(planNo);
-        d.setSourceDailyReportId(r.getId()); // 运行时关联真源
-        d.setSourceDocNo(r.getBillNo()); // 创建时单号快照，仅供展示
-        d.setRemark("报工 " + r.getBillNo() + " 自动生成");
-        d.setWorkerId(r.getWorkerId() != null ? r.getWorkerId() : currentUser.requireEmployeeId());
-        d.setMakerId(currentUser.requireEmployeeId());
-        d.setStatus((short) 0);
-        stockDocRepo.save(d);
-        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
-                StockGoodsSnapshot.fromMaster(
-                        em,
-                        reportItems.stream()
-                                .map(ProductionDailyReportItem::getGoodsId)
-                                .toList(),
-                        StockGoodsSnapshot.MASTER_AT_SAVE);
-        int line = 0;
-        for (ProductionDailyReportItem ri : reportItems) {
-            line++;
-            StockDocumentItem it = new StockDocumentItem();
-            it.setDocId(d.getId());
-            it.setBillType("FINISHED_IN");
-            it.setBillNo(d.getBillNo());
-            it.setBillDate(d.getBillDate());
-            it.setLineNo(line);
-            it.setGoodsId(ri.getGoodsId());
-            StockGoodsSnapshot.require(
-                            goodsSnapshots, ri.getGoodsId(), "完工入库明细")
-                    .applyTo(it, null);
-            it.setColorId(ri.getColorId());
-            it.setUnitId(ri.getUnitId());
-            BigDecimal rate = ri.getUnitRate() == null ? BigDecimal.ONE : ri.getUnitRate();
-            if (rate.signum() <= 0) {
-                throw new ApiException(ErrorCode.CONFLICT, "报工单位换算率必须大于 0");
-            }
-            it.setUnitRate(rate);
-            it.setQty(ri.getQty());
-            it.setReportedQty(ri.getQty());
-            it.setBaseQty(ri.getQty().multiply(rate));
-            it.setUpstreamItemId(ri.getPlanItemId());
-            it.setExecutionSegmentId(ri.getExecutionSegmentId());
-            it.setExecutionSegmentSalesAllocationId(
-                    ri.getExecutionSegmentSalesAllocationId());
-            it.setSourceDailyReportItemId(ri.getId());
-            it.setSourceDocNo(r.getBillNo());
-            stockDocItemRepo.save(it);
-        }
-        em.createNativeQuery("""
-                INSERT INTO plan_draw_links (plan_id, draw_id, created_by)
-                VALUES (:planId, :drawId, :by)
-                """).setParameter("planId", planId).setParameter("drawId", d.getId())
-                .setParameter("by", currentUser.requireId()).executeUpdate();
-        chainNotice.notifyFinishedInboundPending(d.getId());
-    }
-
     /**
      * 完结缺额封顶 + 自动补产：
      * 合格（fqty）< 计划量 → 计划行 qty 砍到 fqty（砍量记 capped_qty）、
@@ -885,7 +889,7 @@ public class ProductionDailyReportService {
         rp.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PRODUCTION_PLAN));
         rp.setBillDate(BusinessTime.today());
         rp.setDeliveryDate(pi[8] == null ? null : NativeValueConverters.toLocalDate(pi[8]));
-        rp.setRemark("补产：原计划 " + planNo + "（报工 " + r.getBillNo() + " 缺额自动生成）");
+        rp.setRemark("补产：原计划 " + planNo + "(报工 " + r.getBillNo() + " 缺额自动生成)");
         rp.setSourceDailyReportId(r.getId()); // 运行时关联真源
         rp.setSourceDocNo(r.getBillNo()); // 创建时单号快照，仅供展示
         rp.setMakerId(currentUser.requireEmployeeId());
@@ -1094,6 +1098,176 @@ public class ProductionDailyReportService {
 
     // ====================== 私有辅助 ======================
 
+    private void lockCreateCommand(UUID actorId, String idempotencyKey) {
+        em.createNativeQuery("""
+                SELECT pg_advisory_xact_lock(
+                    hashtextextended(:lockKey, CAST(409 AS bigint)))
+                """)
+                .setParameter("lockKey",
+                        "PRODUCTION-DAILY-REPORT-CREATE:"
+                                + actorId + ":" + idempotencyKey)
+                .getSingleResult();
+    }
+
+    private CreateCommand findCreateCommand(
+            UUID actorId, String idempotencyKey) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT request_hash, report_id
+                        FROM production_daily_report_commands
+                        WHERE actor_user_id = :actorId
+                          AND idempotency_key = :idempotencyKey
+                        """)
+                        .setParameter("actorId", actorId)
+                        .setParameter("idempotencyKey", idempotencyKey));
+        if (rows.isEmpty()) return null;
+        return new CreateCommand(
+                Objects.toString(rows.getFirst()[0], ""),
+                (UUID) rows.getFirst()[1]);
+    }
+
+    private void recordCreateCommand(
+            UUID actorId,
+            String idempotencyKey,
+            String requestHash,
+            UUID reportId) {
+        em.createNativeQuery("""
+                INSERT INTO production_daily_report_commands(
+                    id, actor_user_id, idempotency_key, request_hash,
+                    report_id, created_by)
+                VALUES(
+                    gen_random_uuid(), :actorId, :idempotencyKey, :requestHash,
+                    :reportId, :actorId)
+                """)
+                .setParameter("actorId", actorId)
+                .setParameter("idempotencyKey", idempotencyKey)
+                .setParameter("requestHash", requestHash)
+                .setParameter("reportId", reportId)
+                .executeUpdate();
+    }
+
+    static String normalizeCreateIdempotencyKey(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "新建生产日报必须提供幂等键");
+        }
+        String normalized = raw.strip();
+        if (normalized.length() < 8 || normalized.length() > 128) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "生产日报幂等键长度必须为 8-128");
+        }
+        return normalized;
+    }
+
+    static void requireExpectedVersion(Long expectedVersion, long currentVersion) {
+        if (expectedVersion == null || expectedVersion < 0) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "编辑生产日报必须提供有效 expectedVersion");
+        }
+        if (expectedVersion.longValue() != currentVersion) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "生产日报已被其他用户修改，请刷新后重试");
+        }
+    }
+
+    /**
+     * Canonical create payload. Server-owned bill numbers, retry metadata and
+     * readable plan/order number snapshots are intentionally excluded.
+     */
+    static String createRequestHash(DailyReportSaveRequest request) {
+        if (request == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "生产日报创建请求不能为空");
+        }
+        List<String> parts = new ArrayList<>();
+        addCanonical(parts, "schema", "PRODUCTION-DAILY-REPORT-CREATE-V1");
+        addCanonical(parts, "header.billDate", request.getBillDate());
+        addCanonical(parts, "header.warehouseId", request.getWarehouseId());
+        addCanonical(parts, "header.departmentId", request.getDepartmentId());
+        addCanonical(parts, "header.workshopName", request.getWorkshopName());
+        addCanonical(parts, "header.workerId", request.getWorkerId());
+        addCanonical(parts, "header.supplierId", request.getSupplierId());
+        addCanonical(parts, "header.remark", request.getRemark());
+        addCanonical(parts, "header.sourceDocNo", request.getSourceDocNo());
+
+        List<DailyReportItemLine> lines = request.getItems() == null
+                ? List.of() : request.getItems();
+        addCanonical(parts, "lines.count", lines.size());
+        for (int index = 0; index < lines.size(); index++) {
+            DailyReportItemLine line = lines.get(index);
+            String path = "lines[" + index + "]";
+            if (line == null) {
+                addCanonical(parts, path, null);
+                continue;
+            }
+            int effectiveLineNo =
+                    line.getLineNo() == null ? index + 1 : line.getLineNo();
+            addCanonical(parts, path + ".lineNo", effectiveLineNo);
+            addCanonical(parts, path + ".goodsId", line.getGoodsId());
+            addCanonical(parts, path + ".colorId", line.getColorId());
+            addCanonical(parts, path + ".unitId", line.getUnitId());
+            addCanonical(parts, path + ".unitRate", line.getUnitRate());
+            addCanonical(parts, path + ".qty", line.getQty());
+            addCanonical(parts, path + ".price", line.getPrice());
+            addCanonical(parts, path + ".total", line.getTotal());
+            addCanonical(parts, path + ".stotal", line.getStotal());
+            addCanonical(parts, path + ".salesOrderItemId",
+                    line.getSalesOrderItemId());
+            addCanonical(parts, path + ".planItemId", line.getPlanItemId());
+            addCanonical(parts, path + ".executionSegmentId",
+                    line.getExecutionSegmentId());
+            addCanonical(parts, path + ".executionSegmentSalesAllocationId",
+                    line.getExecutionSegmentSalesAllocationId());
+            if (line.getFqcRecoveryAuthorizationId() != null) {
+                addCanonical(parts, path + ".fqcRecoveryAuthorizationId",
+                        line.getFqcRecoveryAuthorizationId());
+            }
+            addCanonical(parts, path + ".isFinal",
+                    Boolean.TRUE.equals(line.getIsFinal()));
+            addCanonical(parts, path + ".outboundNo", line.getOutboundNo());
+            addCanonical(parts, path + ".outboundQty", line.getOutboundQty());
+            addCanonical(parts, path + ".orderQty", line.getOrderQty());
+            addCanonical(parts, path + ".stepLegacyId",
+                    line.getStepLegacyId());
+            addCanonical(parts, path + ".orderDate", line.getOrderDate());
+            addCanonical(parts, path + ".boxes", line.getBoxes());
+            addCanonical(parts, path + ".perBoxQty", line.getPerBoxQty());
+            addCanonical(parts, path + ".weight", line.getWeight());
+            addCanonical(parts, path + ".clientName", line.getClientName());
+            addCanonical(parts, path + ".sourceDocNo", line.getSourceDocNo());
+            addCanonical(parts, path + ".remark", line.getRemark());
+        }
+        return CanonicalFingerprint.sha256(parts);
+    }
+
+    private static void addCanonical(
+            List<String> parts, String path, Object value) {
+        String canonical;
+        if (value == null) {
+            canonical = "NULL";
+        } else if (value instanceof BigDecimal decimal) {
+            canonical = "DECIMAL:"
+                    + decimal.stripTrailingZeros().toPlainString();
+        } else if (value instanceof String text) {
+            canonical = "STRING:" + text;
+        } else if (value instanceof UUID uuid) {
+            canonical = "UUID:" + uuid;
+        } else if (value instanceof LocalDate date) {
+            canonical = "DATE:" + date;
+        } else if (value instanceof Boolean bool) {
+            canonical = "BOOLEAN:" + bool;
+        } else if (value instanceof Number number) {
+            canonical = "NUMBER:" + number;
+        } else {
+            canonical = "VALUE:" + value;
+        }
+        parts.add(path + "=" + canonical);
+    }
+
     private void applyHeader(DailyReportSaveRequest req, ProductionDailyReport r) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
@@ -1137,6 +1311,8 @@ public class ProductionDailyReportService {
             it.setExecutionSegmentId(l.getExecutionSegmentId());
             it.setExecutionSegmentSalesAllocationId(
                     l.getExecutionSegmentSalesAllocationId());
+            it.setFqcRecoveryAuthorizationId(
+                    l.getFqcRecoveryAuthorizationId());
             it.setPlanNo(l.getPlanNo());
             it.setOutboundNo(l.getOutboundNo());
             it.setOutboundQty(l.getOutboundQty());
@@ -1247,7 +1423,8 @@ public class ProductionDailyReportService {
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getTotal(), it.getStotal(),
                 it.getSalesOrderItemId(), it.getSalesOrderNo(), it.getPlanItemId(),
                 it.getExecutionSegmentId(),
-                it.getExecutionSegmentSalesAllocationId(), it.getPlanNo(),
+                it.getExecutionSegmentSalesAllocationId(),
+                it.getFqcRecoveryAuthorizationId(), it.getPlanNo(),
                 it.getOutboundNo(), it.getOutboundQty(), it.getOrderQty(), it.getStepLegacyId(),
                 it.getOrderDate(), it.getBoxes(), it.getPerBoxQty(), it.getWeight(),
                 it.getClientName(), it.getSourceDocNo(), it.getRemark(), it.isFinal());
@@ -1258,7 +1435,7 @@ public class ProductionDailyReportService {
                 r.getWarehouseId(), r.getDepartmentId(), r.getWorkshopName(), r.getWorkerId(), r.getSupplierId(),
                 r.getMakerId(), r.getApproverId(), r.getMakerLegacyId(), r.getApproverLegacyId(), r.getRemark(),
                 r.getStatus(), r.isClosed(), r.isCanceled(), r.getSourceDocNo(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), r.getRowVersion());
     }
 
     private ProductionDailyReport requireReport(UUID id) {
@@ -1274,5 +1451,8 @@ public class ProductionDailyReportService {
             throw new ApiException(ErrorCode.NOT_FOUND, "生产日报单不存在");
         }
         return report;
+    }
+
+    private record CreateCommand(String requestHash, UUID reportId) {
     }
 }

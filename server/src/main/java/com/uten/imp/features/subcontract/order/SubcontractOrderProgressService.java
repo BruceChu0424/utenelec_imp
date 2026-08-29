@@ -2,6 +2,7 @@ package com.uten.imp.features.subcontract.order;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.order.dto.OrderProgressContracts.IssueDoc;
 import com.uten.imp.features.subcontract.order.dto.OrderProgressContracts.MaterialPlanLine;
@@ -12,6 +13,7 @@ import com.uten.imp.features.subcontract.order.dto.OrderProgressContracts.Suppli
 import com.uten.imp.features.subcontract.order.dto.OrderProgressContracts.WasteDoc;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +39,9 @@ public class SubcontractOrderProgressService {
     private final EntityManager em;
     private final SubcontractOrderRepository orderRepo;
     private final SubcontractDocumentAccessPolicy access;
+
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
 
     @Transactional(readOnly = true)
     public OrderProgress progress(UUID orderId) {
@@ -211,12 +216,39 @@ public class SubcontractOrderProgressService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         boolean materialRequired = planId != null || !issues.isEmpty();
-        return new OrderProgress(
+        OrderProgress result = new OrderProgress(
                 order.getId(), order.getBillNo(), order.getStatus(),
                 financeStatus, financeDecidedAt,
                 materialRequired, planStatus, planCloseReason,
                 materialLines, issues, receipts, returns, wastes, supplierLedger,
-                apPosted, wasteDeduct);
+                apPosted, wasteDeduct, false);
+        return subcontractPriceMasked() ? maskCommercialPrices(result) : result;
+    }
+
+    private boolean subcontractPriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+    }
+
+    /** Pure response redaction used after all quantity/progress calculations are complete. */
+    static OrderProgress maskCommercialPrices(OrderProgress progress) {
+        List<ReceiptDoc> safeReceipts = progress.receipts().stream()
+                .map(r -> new ReceiptDoc(r.id(), r.billNo(), r.status(), r.billDate(),
+                        r.warehouseName(), r.approverName(), r.totalQty(), null,
+                        r.iqcStatus(), r.updatedAt()))
+                .toList();
+        List<ReturnDoc> safeReturns = progress.returns().stream()
+                .map(r -> new ReturnDoc(r.id(), r.billNo(), r.status(), r.billDate(),
+                        r.totalQty(), null))
+                .toList();
+        List<WasteDoc> safeWastes = progress.wastes().stream()
+                .map(w -> new WasteDoc(w.id(), w.billNo(), w.status(), w.billDate(),
+                        w.totalQty(), null, w.deductPosted()))
+                .toList();
+        return new OrderProgress(progress.orderId(), progress.billNo(), progress.status(),
+                progress.financeCaseStatus(), progress.financeDecidedAt(),
+                progress.materialRequired(), progress.planStatus(), progress.planCloseReason(),
+                progress.materialLines(), progress.issues(), safeReceipts, safeReturns, safeWastes,
+                progress.supplierLedger(), null, null, true);
     }
 
     private static UUID orderIdParam(UUID id) {

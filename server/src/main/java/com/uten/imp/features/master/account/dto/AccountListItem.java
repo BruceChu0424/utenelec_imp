@@ -17,9 +17,22 @@ public class AccountListItem {
     private String bankAccountNo;
     private String accountType;
     private UUID currencyId;
+    private String currencyCode;
+    private String currencyName;
+    private BigDecimal exchangeRate;
+    private boolean baseCurrency;
     private BigDecimal initBalance;
     private BigDecimal receiptsTotal;
     private BigDecimal paymentsTotal;
+    private BigDecimal adjustmentsTotal;
     private BigDecimal balanceCurrent;
+    private BigDecimal balanceFloor;
+    private String initBalanceText;
+    private String receiptsTotalText;
+    private String paymentsTotalText;
+    private String adjustmentsTotalText;
+    private String balanceCurrentText;
+    private String balanceFloorText;
+    private String exchangeRateText;
     private String status;
 }

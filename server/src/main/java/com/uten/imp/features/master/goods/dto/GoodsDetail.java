@@ -81,7 +81,6 @@ public class GoodsDetail {
 
     // ===== 来源 =====
     private String sourceType;       // 来源（自制/采购/委外）
-    private String productionBomPolicy;
 
     // ===== 规格单位（UUID 是关系；legacy id 仅保留历史回显快照） =====
     private Integer thicknessUnitLegacyId;

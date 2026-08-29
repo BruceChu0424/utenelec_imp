@@ -297,7 +297,7 @@ public class FinanceCostService {
                     FROM goods_bom_items b WHERE b.is_deleted = false
                 ),
                 mat_map AS (
-                    -- 材质文本唯一匹配（无 BOM 的成品）。按材质值去重探测（~50 个值 × 货品名 ILIKE，约 1s）：
+                    -- 材质文本唯一匹配(无 BOM 的成品)。按材质值去重探测(~50 个值 × 货品名 ILIKE，约 1s)：
                     -- 该材质值全库唯一命中某货品名 → 归属该材料；多命中/零命中不摊，防错配。
                     SELECT fg.id AS finished_id, u.mat_id
                     FROM (SELECT DISTINCT goods_id FROM fin) ff

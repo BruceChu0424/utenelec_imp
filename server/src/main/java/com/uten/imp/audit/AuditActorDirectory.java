@@ -45,7 +45,7 @@ public class AuditActorDirectory {
             }
             return account == null || account.isBlank()
                     ? name
-                    : name + "（" + account + "）";
+                    : name + "(" + account + ")";
         }
     }
 

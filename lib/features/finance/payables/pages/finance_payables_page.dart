@@ -7,15 +7,21 @@ import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../components/layout/uten_list_two_pane.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/router/nav_helpers.dart';
 import '../../../../core/router/route_names.dart';
+import '../../../../core/responsive/breakpoint.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../core/utils/currency_display.dart';
 import '../../../../shared/auth/permissions.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
+import '../../../basic_data/repositories/reference_method_repository.dart';
+import '../../providers/finance_name_provider.dart';
+import '../../widgets/finance_table_facets.dart';
 import '../models/finance_payable.dart';
 import '../repositories/finance_payables_repository.dart';
 import '../widgets/finance_payables_kpi_strip.dart';
@@ -52,7 +58,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   int _page = 1;
   String _keyword = '';
   String? _businessType;
+  String? _supplierId;
   String? _status;
+  String? _settlementMethodId;
   DateTime? _dateFrom;
   DateTime? _dateTo;
   DateTime? _dueFrom;
@@ -61,6 +69,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   bool _sortAsc = true;
   bool _applyingOffset = false;
   Set<String> _selectedIds = <String>{};
+  final Map<String, FinancePayableItem> _selectedItemsById = {};
   _PayablesWorkspaceView _workspace = _PayablesWorkspaceView.payables;
 
   bool get _canCreatePayment =>
@@ -87,10 +96,10 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   }
 
   List<FinancePayableItem> get _selectedItems {
-    final selected = _selectedIds;
-    return (_result?.items ?? const <FinancePayableItem>[])
-        .where((item) => selected.contains(item.id))
-        .toList(growable: false);
+    return [
+      for (final id in _selectedIds)
+        if (_selectedItemsById[id] != null) _selectedItemsById[id]!,
+    ];
   }
 
   FinancePayableItem? get _selectedSingle =>
@@ -111,6 +120,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       }
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(financeNameServiceProvider).ensureLoaded();
       if (_workspace == _PayablesWorkspaceView.payables && _canViewPayables) {
         _load(1);
       }
@@ -139,7 +149,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
             page: page,
             filter: FinancePayablesFilter(
               businessType: _businessType,
+              supplierId: _supplierId,
               status: _status,
+              settlementMethodId: _settlementMethodId,
               keyword: _keyword,
               dateFrom: _fmt(_dateFrom),
               dateTo: _fmt(_dateTo),
@@ -153,6 +165,11 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       setState(() {
         _result = result;
         _loading = false;
+        for (final item in result.items) {
+          if (_selectedIds.contains(item.id)) {
+            _selectedItemsById[item.id] = item;
+          }
+        }
       });
     } on ApiException catch (error) {
       _setLoadError(generation, error.message);
@@ -174,8 +191,39 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     setState(() {
       change();
       _selectedIds = <String>{};
+      _selectedItemsById.clear();
     });
     _load(1);
+  }
+
+  void _setSelectedIds(Set<String> ids) {
+    final current = _result?.items ?? const <FinancePayableItem>[];
+    setState(() {
+      _selectedIds = ids;
+      _selectedItemsById.removeWhere((id, _) => !ids.contains(id));
+      for (final item in current) {
+        if (ids.contains(item.id)) _selectedItemsById[item.id] = item;
+      }
+    });
+  }
+
+  void _onColumnFilterChanged(String key, String? value) {
+    _changeFilter(() {
+      switch (key) {
+        case 'businessType':
+          _businessType = value;
+          break;
+        case 'supplierName':
+          _supplierId = value;
+          break;
+        case 'settlementMethod':
+          _settlementMethodId = value;
+          break;
+        case 'status':
+          _status = value;
+          break;
+      }
+    });
   }
 
   void _onSortChange(String? column, bool ascending) {
@@ -225,6 +273,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       setState(() {
         _applyingOffset = false;
         _selectedIds = <String>{};
+        _selectedItemsById.clear();
       });
       context.appSuccess(
         batchId == null || batchId.isEmpty ? '贷项已应用' : '贷项已应用，批次 $batchId',
@@ -295,7 +344,12 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       key: 'currencyCode',
       label: '币种',
       width: 80,
-      value: (item) => item.currencyCode,
+      value: (item) =>
+          financeCurrencyDisplayLabel(
+            name: item.currencyName,
+            code: item.currencyCode,
+          ) ??
+          '原币',
     ),
     MasterColumnDef(
       key: 'openItemKind',
@@ -305,49 +359,49 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     ),
     MasterColumnDef(
       key: 'grossOriginal',
-      label: '应付（原币）',
+      label: '应付(原币)',
       width: 120,
       type: 'money',
       value: (item) => item.grossOriginal,
     ),
     MasterColumnDef(
       key: 'grossLocal',
-      label: '应付（本币）',
+      label: '应付(本币)',
       width: 120,
       type: 'money',
       value: (item) => item.grossLocal,
     ),
     MasterColumnDef(
       key: 'paidOriginal',
-      label: '现金已付（原币）',
+      label: '现金已付(原币)',
       width: 120,
       type: 'money',
       value: (item) => item.paidOriginal,
     ),
     MasterColumnDef(
       key: 'paidLocal',
-      label: '现金已付（本币）',
+      label: '现金已付(本币)',
       width: 120,
       type: 'money',
       value: (item) => item.paidLocal,
     ),
     MasterColumnDef(
       key: 'offsetOriginal',
-      label: '抵销（原币）',
+      label: '抵销(原币)',
       width: 120,
       type: 'money',
       value: (item) => item.offsetOriginal,
     ),
     MasterColumnDef(
       key: 'offsetLocal',
-      label: '抵销（本币）',
+      label: '抵销(本币)',
       width: 120,
       type: 'money',
       value: (item) => item.offsetLocal,
     ),
     MasterColumnDef(
       key: 'outstandingOriginal',
-      label: '未付（原币）',
+      label: '未付(原币)',
       width: 120,
       type: 'money',
       sortable: true,
@@ -355,7 +409,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     ),
     MasterColumnDef(
       key: 'outstandingLocal',
-      label: '未付（本币）',
+      label: '未付(本币)',
       width: 120,
       type: 'money',
       value: (item) => item.outstandingLocal,
@@ -376,16 +430,140 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     ),
   ];
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final canCreatePayment = _canCreatePayment;
-    final canApplyOffset = _canApplyOffset;
+  String? get _selectionUnavailableReason {
+    if (_selectedIds.isEmpty) return null;
+    if (_selectedItems.length != _selectedIds.length) {
+      return '部分选中记录已变化，请刷新后重试';
+    }
+    final single = _selectedSingle;
+    if (single?.openItemKind == 'PREPAYMENT') {
+      return '供应商预付款需走专用预付款资产/总账链';
+    }
+    if (_selectedOnlyPositivePayables) return null;
+    if (single != null &&
+        (single.openItemKind == 'CREDIT' ||
+            single.openItemKind == 'CLAIM_CREDIT')) {
+      return null;
+    }
+    return '不能混选正应付、贷项和预付款';
+  }
+
+  Widget _payablesSelectionBar(
+    ThemeData theme,
+    List<FinancePayableItem> pageItems,
+  ) {
+    final reason = _selectionUnavailableReason;
+    return Container(
+      key: const Key('finance-payables-selection-bar'),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: UtenRadius.lgAll,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              '已选 ${_selectedIds.length} 项',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            onPressed: pageItems.isEmpty
+                ? null
+                : () => _setSelectedIds({
+                    ..._selectedIds,
+                    for (final item in pageItems) item.id,
+                  }),
+            child: const Text('全选本页'),
+          ),
+          UtenButton(
+            type: UtenButtonType.ghost,
+            size: UtenButtonSize.large,
+            onPressed: _selectedIds.isEmpty
+                ? null
+                : () => _setSelectedIds(<String>{}),
+            child: const Text('清空'),
+          ),
+          if (reason != null)
+            Text(
+              reason,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _floatingPayablesAction({
+    required bool canCreatePayment,
+    required bool canApplyOffset,
+  }) {
     final selected = _selectedSingle;
     final selectedCredit =
         selected != null &&
         (selected.openItemKind == 'CREDIT' ||
             selected.openItemKind == 'CLAIM_CREDIT');
+    final useCreditAction = canApplyOffset && selectedCredit;
+    final usePaymentAction = !useCreditAction && canCreatePayment;
+    final enabled = useCreditAction
+        ? !_applyingOffset
+        : usePaymentAction
+        ? _selectedOnlyPositivePayables
+        : false;
+    final label = useCreditAction
+        ? '应用贷项'
+        : usePaymentAction
+        ? (_selectedIds.isEmpty ? '生成付款单' : '生成付款单(${_selectedIds.length})')
+        : '应用贷项';
+    final disabledReason = _selectedIds.isEmpty
+        ? (usePaymentAction ? '请先选择正应付记录' : '请先选择一笔贷项')
+        : _selectionUnavailableReason ??
+              (usePaymentAction ? '所选记录不能生成付款单' : '请选择一笔贷项');
+    return UtenFloatingActionGroup(
+      children: [
+        Tooltip(
+          message: enabled ? label : disabledReason,
+          child: UtenButton(
+            key: useCreditAction
+                ? const ValueKey('finance-payables-apply-credit')
+                : const ValueKey('finance-payables-create-payment'),
+            size: UtenButtonSize.large,
+            icon: useCreditAction ? Icons.link_rounded : Icons.add_card_rounded,
+            isLoading: useCreditAction && _applyingOffset,
+            onPressed: enabled
+                ? (useCreditAction ? _applySelectedCredit : _createPayment)
+                : null,
+            onDisabledTap: enabled
+                ? null
+                : () => context.appWarning(disabledReason),
+            child: Text(label),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final names = ref.watch(financeNameServiceProvider);
+    final settlementMethods =
+        ref.watch(settlementMethodOptionsProvider).valueOrNull ?? const [];
+    final canCreatePayment = _canCreatePayment;
+    final canApplyOffset = _canApplyOffset;
+    final selected = _selectedSingle;
     final selectedPrepayment = selected?.openItemKind == 'PREPAYMENT';
     final availableWorkspaces = <_PayablesWorkspaceView>[
       if (_canViewPayables) _PayablesWorkspaceView.payables,
@@ -443,8 +621,11 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                           ),
                       ],
                       selected: {_workspace},
-                      onSelectionChanged: (selection) =>
-                          setState(() => _workspace = selection.single),
+                      onSelectionChanged: (selection) => setState(() {
+                        _workspace = selection.single;
+                        _selectedIds = <String>{};
+                        _selectedItemsById.clear();
+                      }),
                     ),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
@@ -474,36 +655,15 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                           ),
                         ),
                       ),
-                      if (canApplyOffset && selectedCredit) ...[
-                        UtenButton(
-                          key: const ValueKey('finance-payables-apply-credit'),
-                          type: UtenButtonType.tonal,
-                          icon: Icons.link_rounded,
-                          isLoading: _applyingOffset,
-                          onPressed: _applyingOffset
-                              ? null
-                              : _applySelectedCredit,
-                          child: const Text('应用贷项'),
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                      ],
-                      if (canCreatePayment)
-                        UtenButton(
-                          key: const ValueKey(
-                            'finance-payables-create-payment',
-                          ),
-                          icon: Icons.add_card_rounded,
-                          onPressed: _selectedOnlyPositivePayables
-                              ? _createPayment
-                              : null,
-                          child: Text(
-                            _selectedIds.isEmpty
-                                ? '生成付款单'
-                                : '生成付款单 (${_selectedIds.length})',
-                          ),
-                        ),
                     ],
                   ),
+                  if (canCreatePayment || canApplyOffset) ...[
+                    const SizedBox(height: UtenSpacing.s8),
+                    _payablesSelectionBar(
+                      theme,
+                      _result?.items ?? const <FinancePayableItem>[],
+                    ),
+                  ],
                   if (selectedPrepayment)
                     Padding(
                       padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -520,33 +680,56 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                     ),
                   const SizedBox(height: UtenSpacing.s8),
                   Expanded(
-                    child: UtenListTwoPane(
-                      siderWidth: 280,
-                      filterPane: _buildFilters(),
-                      tablePane: MasterDataTableView<FinancePayableItem>(
-                        primary: true,
-                        columns: _columns,
-                        items: _result?.items ?? const [],
-                        facets: const {},
-                        nullCounts: const {},
-                        filters: const {},
-                        onFilterChanged: (_, _) {},
-                        sortColumn: _sortKey,
-                        sortAscending: _sortAsc,
-                        onSortChange: _onSortChange,
-                        selectable: canCreatePayment || canApplyOffset,
-                        idOf: (item) => item.id,
-                        selectedIds: _selectedIds,
-                        onSelectedIdsChanged: (ids) =>
-                            setState(() => _selectedIds = ids),
-                        isLoading: _loading && _result == null,
-                        loadingMore: _loading && _result != null,
-                        error: _error,
-                        onRetry: () => _load(),
-                        emptyMessage: '暂无符合条件的应付记录',
-                        currentPage: _result?.page ?? 1,
-                        totalPages: _result?.totalPages ?? 1,
-                        onPageChange: (page) => _load(page),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        bottom:
+                            context.breakpoint.isCompact &&
+                                (canCreatePayment || canApplyOffset)
+                            ? 96
+                            : 0,
+                      ),
+                      child: UtenListTwoPane(
+                        siderWidth: 280,
+                        filterPane: _buildFilters(),
+                        tablePane: MasterDataTableView<FinancePayableItem>(
+                          primary: true,
+                          columns: _columns,
+                          items: _result?.items ?? const [],
+                          facets: {
+                            'businessType': financePayablesBusinessTypeFacets,
+                            'supplierName': financeDictionaryFacets(
+                              names.supplierEntries,
+                            ),
+                            'settlementMethod': financeDictionaryFacets({
+                              for (final method in settlementMethods)
+                                method.id: '${method.name}(${method.code})',
+                            }),
+                            'status': financePayablesStatusFacets,
+                          },
+                          nullCounts: const {},
+                          filters: {
+                            'businessType': _businessType,
+                            'supplierName': _supplierId,
+                            'settlementMethod': _settlementMethodId,
+                            'status': _status,
+                          },
+                          onFilterChanged: _onColumnFilterChanged,
+                          sortColumn: _sortKey,
+                          sortAscending: _sortAsc,
+                          onSortChange: _onSortChange,
+                          selectable: canCreatePayment || canApplyOffset,
+                          idOf: (item) => item.id,
+                          selectedIds: _selectedIds,
+                          onSelectedIdsChanged: _setSelectedIds,
+                          isLoading: _loading && _result == null,
+                          loadingMore: _loading && _result != null,
+                          error: _error,
+                          onRetry: () => _load(),
+                          emptyMessage: '暂无符合条件的应付记录',
+                          currentPage: _result?.page ?? 1,
+                          totalPages: _result?.totalPages ?? 1,
+                          onPageChange: (page) => _load(page),
+                        ),
                       ),
                     ),
                   ),
@@ -566,6 +749,17 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
           ),
         ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton:
+          _workspace == _PayablesWorkspaceView.payables &&
+              _canViewPayables &&
+              (canCreatePayment || canApplyOffset)
+          ? _floatingPayablesAction(
+              canCreatePayment: canCreatePayment,
+              canApplyOffset: canApplyOffset,
+            )
+          : null,
     );
   }
 

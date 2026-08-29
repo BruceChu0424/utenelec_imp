@@ -10,8 +10,10 @@
 // （后端 apply 全量覆盖，缺字段会被置 null），成本字段取表单值。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -69,6 +71,17 @@ const _inputKeys = {
   'makeRate',
 };
 
+final _costNumberPattern = RegExp(r'^\d{0,14}(?:\.\d{0,4})?$');
+final _costNumberFormatter = TextInputFormatter.withFunction((
+  oldValue,
+  newValue,
+) {
+  if (newValue.text.isEmpty || _costNumberPattern.hasMatch(newValue.text)) {
+    return newValue;
+  }
+  return oldValue;
+});
+
 class GoodsCostTab extends ConsumerStatefulWidget {
   const GoodsCostTab({
     super.key,
@@ -92,6 +105,7 @@ class GoodsCostTab extends ConsumerStatefulWidget {
 
 class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     with AutomaticKeepAliveClientMixin {
+  final _formKey = GlobalKey<FormState>();
   late final Map<String, TextEditingController> _controllers;
   bool _saving = false;
   String? _error;
@@ -201,7 +215,31 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
 
   String _fmt(double v) => v.toStringAsFixed(2);
 
+  String? _validateCostField(_CostField field, String? rawValue) {
+    final raw = rawValue?.trim() ?? '';
+    if (raw.isEmpty) return null;
+    final value = double.tryParse(raw);
+    if (value == null || !value.isFinite) {
+      return '请输入有效数字';
+    }
+    if (value < 0) {
+      return '${field.label}不能为负数';
+    }
+    if (field.percent && value > 100) {
+      return '${field.label}必须在 0% 到 100% 之间';
+    }
+    if (!_costNumberPattern.hasMatch(raw)) {
+      return '最多 14 位整数、4 位小数';
+    }
+    return null;
+  }
+
   Future<void> _save() async {
+    FocusScope.of(context).unfocus();
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      setState(() => _error = '请先修正标红的成本字段后再保存');
+      return;
+    }
     final cost = <String, double?>{};
     for (final f in _costFields) {
       final raw = _controllers[f.key]!.text.trim();
@@ -236,7 +274,6 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       'series': d.series,
       'stockPlace': d.stockPlace,
       'sourceType': d.sourceType,
-      'productionBomPolicy': d.productionBomPolicy,
       if (d.version != null) 'version': d.version,
       ...goodsUuidFirstReferenceBody(d),
       ...cost,
@@ -273,50 +310,56 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(UtenSpacing.s16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.canEdit
-                      ? '材料合计由组件自动汇总（自制件取其成本价），其余比率/加工费可编辑；灰色字段为自动计算'
-                      : '各项成本（只读）', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                if (twoColumn)
-                  for (var i = 0; i < _costFields.length; i += 2)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                      child: Row(
-                        children: [
-                          Expanded(child: _field(theme, _costFields[i])),
-                          const SizedBox(width: UtenSpacing.s12),
-                          Expanded(
-                            child: i + 1 < _costFields.length
-                                ? _field(theme, _costFields[i + 1])
-                                : const SizedBox.shrink(),
-                          ),
-                        ],
-                      ),
-                    )
-                else
-                  for (final f in _costFields)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                      child: _field(theme, f),
-                    ),
-                if (_error != null) ...[
-                  const SizedBox(height: UtenSpacing.s4),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    _error!,
+                    widget.canEdit
+                        ? '材料合计由组件自动汇总(自制件取其成本价)，其余比率/加工费可编辑；灰色字段为自动计算'
+                        : '各项成本(只读)', // TODO(l10n): 补 arb
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  if (twoColumn)
+                    for (var i = 0; i < _costFields.length; i += 2)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                        child: Row(
+                          children: [
+                            Expanded(child: _field(theme, _costFields[i])),
+                            const SizedBox(width: UtenSpacing.s12),
+                            Expanded(
+                              child: i + 1 < _costFields.length
+                                  ? _field(theme, _costFields[i + 1])
+                                  : const SizedBox.shrink(),
+                            ),
+                          ],
+                        ),
+                      )
+                  else
+                    for (final f in _costFields)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                        child: _field(theme, f),
+                      ),
+                  if (_error != null) ...[
+                    const SizedBox(height: UtenSpacing.s4),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _error!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -343,14 +386,23 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   Widget _field(ThemeData theme, _CostField f) {
-    return TextField(
+    return TextFormField(
+      key: ValueKey('goods-cost-${f.key}'),
       controller: _controllers[f.key],
       // 派生字段只读（自动算，不可改）；手填字段受 canEdit 控制。
       readOnly: f.derived,
       enabled: f.derived ? true : widget.canEdit,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: f.derived ? null : [_costNumberFormatter],
+      validator: (value) => _validateCostField(f, value),
+      errorBuilder: utenTextFieldErrorBuilder,
       decoration: InputDecoration(
         labelText: f.percent ? '${f.label}(%)' : f.label,
+        helper: f.derived
+            ? null
+            : UtenFieldMessage.helper(
+                f.percent ? '0% 到 100%，最多 4 位小数' : '非负金额，最多 4 位小数',
+              ),
         border: const OutlineInputBorder(),
         isDense: true,
         // 派生字段浅底色，提示"自动计算"。

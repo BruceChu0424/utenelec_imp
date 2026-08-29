@@ -12,6 +12,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -52,6 +53,7 @@ const _protectedRootCodes = <String>{
   '221',
   '301',
   '321',
+  'SYS-ACCOUNT-BALANCE-CLEARING',
 };
 
 bool _isProtectedSystemDetail(PaymentStyleDetail detail) =>
@@ -1037,7 +1039,7 @@ class _ChildrenSection extends StatelessWidget {
               UtenSpacing.s8,
             ),
             child: UtenSectionHeader(
-              title: '直接子类别（${children.length}）',
+              title: '直接子类别(${children.length})',
               icon: Icons.subdirectory_arrow_right_rounded,
             ),
           ),
@@ -1082,7 +1084,7 @@ class _MigrationSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const UtenSectionHeader(
-            title: '迁移溯源（只读）',
+            title: '迁移溯源(只读)',
             icon: Icons.history_rounded,
             subdued: true,
           ),
@@ -1581,7 +1583,7 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
     final parentPathLabel = unresolvedParent
         ? (widget.editing!.parentName?.isNotEmpty == true
               ? widget.editing!.parentName
-              : '当前上级（目录尚未同步）')
+              : '当前上级(目录尚未同步)')
         : _parent == null
         ? null
         : _pathTo(_parent!.id);
@@ -1597,6 +1599,7 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
             children: [
               if (_isEdit)
                 TextFormField(
+                  errorBuilder: utenTextFieldErrorBuilder,
                   enabled: false,
                   initialValue: widget.editing!.code,
                   decoration: const InputDecoration(labelText: '系统编号'),
@@ -1630,7 +1633,7 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
                 ),
                 decoration: const InputDecoration(
                   labelText: '同级排序 *',
-                  helperText: '数字越小越靠前，仅在同一父级内比较',
+                  helper: UtenFieldMessage.helper('数字越小越靠前，仅在同一父级内比较'),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s12),

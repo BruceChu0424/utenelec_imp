@@ -12,7 +12,7 @@ public enum ErrorCode {
     UNAUTHORIZED(401, "未登录或会话已过期"),
     FORBIDDEN(403, "无权限访问"),
     PASSWORD_CHANGE_REQUIRED(403, "首次登录必须修改密码后才能继续"),
-    REMOTE_ACCESS_DENIED(403, "该账号未授权外网（云端）访问"),
+    REMOTE_ACCESS_DENIED(403, "该账号未授权外网(云端)访问"),
     NOT_FOUND(404, "资源不存在"),
     CONFLICT(409, "数据冲突"),
     ARRIVAL_EXCEPTION_PENDING(409, "到货数量异常，等待财务审核组处理"),

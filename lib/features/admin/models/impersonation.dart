@@ -6,12 +6,14 @@ class ImpersonationTarget {
   const ImpersonationTarget({
     required this.employeeId,
     required this.name,
+    this.employeeCode,
     this.departmentName,
     this.positionName,
   });
 
   final String employeeId;
   final String name;
+  final String? employeeCode;
   final String? departmentName;
   final String? positionName;
 
@@ -19,6 +21,7 @@ class ImpersonationTarget {
       ImpersonationTarget(
         employeeId: json['employeeId'] as String,
         name: (json['name'] as String?) ?? '',
+        employeeCode: json['employeeCode'] as String?,
         departmentName: json['departmentName'] as String?,
         positionName: json['positionName'] as String?,
       );

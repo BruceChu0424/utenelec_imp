@@ -135,6 +135,92 @@ void main() {
       await expectLater(load, completes);
     },
   );
+
+  test(
+    'opening another finance document refreshes account currency authority',
+    () async {
+      final api = _FinanceNameApi()
+        ..accounts = [
+          {
+            'id': 'account-1',
+            'code': 'ZH000001',
+            'name': '测试账户',
+            'currencyId': 'currency-cny',
+            'currencyCode': 'CNY',
+            'currencyName': '人民币',
+            'baseCurrency': true,
+            'status': '使用',
+          },
+        ];
+      final service = FinanceNameService(
+        api,
+        _FakePaymentStyleRepository(const []),
+      );
+
+      await service.ensureLoaded(refreshAccounts: true);
+      expect(service.accountCurrency('account-1'), '人民币');
+      expect(service.accountCurrencyId('account-1'), 'currency-cny');
+      expect(service.accountIsBaseCurrency('account-1'), isTrue);
+      expect(service.accountStatus('account-1'), '使用');
+      expect(service.accountLoadError, isNull);
+
+      api.accounts = [
+        {
+          'id': 'account-1',
+          'code': 'ZH000001',
+          'name': '测试账户',
+          'currencyId': 'currency-usd',
+          'currencyCode': 'USD',
+          'currencyName': '美元',
+          'baseCurrency': false,
+          'status': '使用',
+        },
+      ];
+      await service.ensureLoaded(refreshAccounts: true);
+
+      expect(service.accountCurrency('account-1'), '美元');
+      expect(service.accountCurrencyId('account-1'), 'currency-usd');
+      expect(service.accountIsBaseCurrency('account-1'), isFalse);
+      service.dispose();
+    },
+  );
+
+  test(
+    'account authority load failure remains observable and fail closed',
+    () async {
+      final api = _FinanceNameApi()..failAccounts = true;
+      final service = FinanceNameService(
+        api,
+        _FakePaymentStyleRepository(const []),
+      );
+
+      await service.ensureLoaded();
+
+      expect(service.accountMetadataAvailable, isFalse);
+      expect(service.accountLoadError, isNotNull);
+      expect(service.accountCurrencyId('account-1'), isNull);
+      service.dispose();
+    },
+  );
+}
+
+class _FinanceNameApi extends ApiClient {
+  _FinanceNameApi() : super(Dio());
+
+  List<Map<String, dynamic>> accounts = const [];
+  bool failAccounts = false;
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == '/master/accounts/dict') {
+      if (failAccounts) throw StateError('offline');
+      return accounts;
+    }
+    return const [];
+  }
 }
 
 class _FakePaymentStyleRepository implements PaymentStyleRepository {

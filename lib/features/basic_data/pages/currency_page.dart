@@ -208,7 +208,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
         'exchangeRate': d.exchangeRate?.toString() ?? '',
         'status': d.status ?? '',
       },
-      readOnlyKeys: _canStatus ? null : const {'status'},
+      readOnlyKeys: _canStatus && !d.baseCurrency ? null : const {'status'},
       onSubmit: (body) => _doUpdate(d.id, body),
     );
   }
@@ -310,8 +310,10 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
           : (detail.code ?? '币种详情'),
       rows: _detailRows(detail),
       canEdit: _canEdit,
-      canDelete: _canDelete,
-      onToggleStatus: _canStatus ? () => _toggleDetailStatus(detail) : null,
+      canDelete: _canDelete && !detail.baseCurrency,
+      onToggleStatus: _canStatus && !detail.baseCurrency
+          ? () => _toggleDetailStatus(detail)
+          : null,
       statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () => _showEdit(detail),
       onDelete: () => _delete(detail),
@@ -324,6 +326,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
     MasterDetailRow('币种名称', c.name),
     MasterDetailRow('参考汇率', c.exchangeRate?.toStringAsFixed(4)),
     MasterDetailRow('状态', c.status),
+    MasterDetailRow('本位币权威', c.baseCurrency ? '是(UUID 受保护)' : '否'),
     MasterDetailRow('旧系统 ID', c.legacyId?.toString()),
   ];
 
@@ -430,7 +433,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
                         child: UtenSearchBar(
-                          hint: '搜索币种（名称/编号）',
+                          hint: '搜索币种(名称/编号)',
                           initialValue: _keyword,
                           onChanged: _onKeywordChanged,
                         ),

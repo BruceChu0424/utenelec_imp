@@ -74,7 +74,11 @@ abstract final class UtenCenterAlert {
     String? confirmLabel,
     String? cancelLabel,
     bool? barrierDismissible,
+    bool blockSystemBack = false,
+    Listenable? interruptSignal,
     IconData? icon,
+    double maxWidth = 400,
+    double maxHeight = 520,
     VoidCallback? onConfirm,
     VoidCallback? onCancel,
   }) {
@@ -86,6 +90,8 @@ abstract final class UtenCenterAlert {
       listen: false,
     ).read(performanceProvider);
     final dismissible = barrierDismissible ?? (level != UtenAlertLevel.urgent);
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
     return showGeneralDialog<bool>(
       context: context,
@@ -94,21 +100,30 @@ abstract final class UtenCenterAlert {
       barrierColor: Colors.black.withValues(
         alpha: level == UtenAlertLevel.urgent ? 0.55 : 0.4,
       ),
-      transitionDuration: Duration(
-        milliseconds: (280 * tier.durationFactor).round(),
-      ),
-      pageBuilder: (ctx, _, _) => _CenterAlertDialog(
-        title: title,
-        message: message,
-        content: content,
-        level: level,
-        confirmLabel: confirmLabel,
-        cancelLabel: cancelLabel,
-        icon: icon,
-        onConfirm: onConfirm,
-        onCancel: onCancel,
+      transitionDuration: disableAnimations
+          ? Duration.zero
+          : Duration(milliseconds: (280 * tier.durationFactor).round()),
+      pageBuilder: (ctx, _, _) => _InterruptibleAlertRoute(
+        interruptSignal: interruptSignal,
+        child: PopScope(
+          canPop: !blockSystemBack,
+          child: _CenterAlertDialog(
+            title: title,
+            message: message,
+            content: content,
+            level: level,
+            confirmLabel: confirmLabel,
+            cancelLabel: cancelLabel,
+            icon: icon,
+            maxWidth: maxWidth,
+            maxHeight: maxHeight,
+            onConfirm: onConfirm,
+            onCancel: onCancel,
+          ),
+        ),
       ),
       transitionBuilder: (ctx, anim, _, child) {
+        if (disableAnimations) return child;
         final curved = CurvedAnimation(
           parent: anim,
           curve: Curves.easeOutCubic,
@@ -166,6 +181,56 @@ abstract final class UtenCenterAlert {
   );
 }
 
+class _InterruptibleAlertRoute extends StatefulWidget {
+  const _InterruptibleAlertRoute({required this.child, this.interruptSignal});
+
+  final Widget child;
+  final Listenable? interruptSignal;
+
+  @override
+  State<_InterruptibleAlertRoute> createState() =>
+      _InterruptibleAlertRouteState();
+}
+
+class _InterruptibleAlertRouteState extends State<_InterruptibleAlertRoute> {
+  ModalRoute<dynamic>? _route;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.interruptSignal?.addListener(_interrupt);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InterruptibleAlertRoute oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.interruptSignal == widget.interruptSignal) return;
+    oldWidget.interruptSignal?.removeListener(_interrupt);
+    widget.interruptSignal?.addListener(_interrupt);
+  }
+
+  void _interrupt() {
+    final route = _route;
+    if (!mounted || route == null || !route.isActive) return;
+    Navigator.of(context).removeRoute(route);
+  }
+
+  @override
+  void dispose() {
+    widget.interruptSignal?.removeListener(_interrupt);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 class _CenterAlertDialog extends StatelessWidget {
   const _CenterAlertDialog({
     required this.title,
@@ -175,6 +240,8 @@ class _CenterAlertDialog extends StatelessWidget {
     this.confirmLabel,
     this.cancelLabel,
     this.icon,
+    this.maxWidth = 400,
+    this.maxHeight = 520,
     this.onConfirm,
     this.onCancel,
   });
@@ -186,6 +253,8 @@ class _CenterAlertDialog extends StatelessWidget {
   final String? confirmLabel;
   final String? cancelLabel;
   final IconData? icon;
+  final double maxWidth;
+  final double maxHeight;
   final VoidCallback? onConfirm;
   final VoidCallback? onCancel;
 
@@ -197,6 +266,10 @@ class _CenterAlertDialog extends StatelessWidget {
     final isUrgent = level == UtenAlertLevel.urgent;
 
     return Dialog(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: MediaQuery.sizeOf(context).width < 600 ? 16 : 40,
+        vertical: 24,
+      ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: isUrgent
@@ -205,7 +278,7 @@ class _CenterAlertDialog extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 520),
+        constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: Column(

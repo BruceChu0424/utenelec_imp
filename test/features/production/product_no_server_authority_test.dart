@@ -47,8 +47,9 @@ void main() {
 
       expect(editPage, contains('initialProductNo: row.productNo.text.trim()'));
       expect(analysisPage, contains('widget.seed.initialProductNoFor('));
-      expect(wizardPage, contains("labelText: '产品编号（可选）'"));
-      expect(wizardPage, contains("helperText: '留空由系统按计划单号生成'"));
+      expect(wizardPage, contains("labelText: '产品编号(可选)'"));
+      expect(wizardPage, contains('UtenFieldMessage.helper('));
+      expect(wizardPage, contains('留空由系统按计划单号生成'));
       expect(
         wizardPage,
         contains('productNo: productNoController.text.trim()'),

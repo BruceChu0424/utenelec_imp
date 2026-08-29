@@ -77,7 +77,7 @@ public class TaskClaimService {
                 .ifPresent(c -> {
                     boolean byManager = !c.getClaimedBy().equals(me) && canManage;
                     if (!c.getClaimedBy().equals(me) && !canManage) {
-                        throw new ApiException(ErrorCode.FORBIDDEN, "只能释放自己认领的事项（或由管理者释放）");
+                        throw new ApiException(ErrorCode.FORBIDDEN, "只能释放自己认领的事项(或由管理者释放)");
                     }
                     c.setReleasedAt(OffsetDateTime.now());
                     c.setReleasedBy(me);

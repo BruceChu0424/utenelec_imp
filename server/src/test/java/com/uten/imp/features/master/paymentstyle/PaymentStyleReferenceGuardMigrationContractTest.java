@@ -19,6 +19,8 @@ class PaymentStyleReferenceGuardMigrationContractTest {
 
     private static final Set<String> EXPECTED_UUID_REFERENCES = Set.of(
             "accounts.style_id",
+            "account_balance_adjustment_batches.clearing_style_id",
+            "account_balance_adjustment_items.account_style_id_snapshot",
             "deferred_expenses.accumulated_style_snapshot_id",
             "deferred_expenses.clearing_style_snapshot_id",
             "deferred_expenses.cost_style_snapshot_id",
@@ -42,6 +44,11 @@ class PaymentStyleReferenceGuardMigrationContractTest {
             "finance_deferral_schedule_versions.expense_style_id",
             "finance_expense_items.expense_style_id",
             "finance_other_income_items.income_style_id",
+            "finance_receipts.gl_account_style_id",
+            "finance_receipts.gl_bank_fee_style_id",
+            "finance_receipts.gl_counter_style_id",
+            "finance_receipts.gl_fee_payment_style_id",
+            "finance_receipts.gl_fx_style_id",
             "finance_receipts.other_fee_style_id",
             "fixed_assets.accumulated_style_snapshot_id",
             "fixed_assets.clearing_style_snapshot_id",
@@ -76,7 +83,7 @@ class PaymentStyleReferenceGuardMigrationContractTest {
                     + "'([a-z_][a-z0-9_]*)'",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern EXPLICIT_GUARD = Pattern.compile(
-            "CREATE\\s+TRIGGER\\s+[^\\s]+.*?ON\\s+([a-z_][a-z0-9_]*).*?"
+            "CREATE\\s+TRIGGER\\s+[^\\s]+[^;]*?ON\\s+([a-z_][a-z0-9_]*)[^;]*?"
                     + "fn_guard_payment_style_reference\\s*\\(\\s*'([a-z_][a-z0-9_]*)'",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern TRANSACTION_LOCAL_IMPORT_MODE = Pattern.compile(
@@ -98,6 +105,10 @@ class PaymentStyleReferenceGuardMigrationContractTest {
                 "src/main/resources/db/migration/V267__account_payment_style_uuid.sql"));
         String v278 = Files.readString(serverPath(
                 "src/main/resources/db/migration/V278__system_posting_style_uuid_roles.sql"));
+        String v400 = Files.readString(serverPath(
+                "src/main/resources/db/migration/V400__account_balance_reconciliation.sql"));
+        String v407 = Files.readString(serverPath(
+                "src/main/resources/db/migration/V407__finance_receipt_settlement_authority.sql"));
         Set<String> guardedReferences = new TreeSet<>();
         Matcher guards = V265_GUARD.matcher(v265);
         while (guards.find()) {
@@ -107,11 +118,28 @@ class PaymentStyleReferenceGuardMigrationContractTest {
         while (explicitGuards.find()) {
             guardedReferences.add(explicitGuards.group(1) + "." + explicitGuards.group(2));
         }
+        explicitGuards = EXPLICIT_GUARD.matcher(v400);
+        while (explicitGuards.find()) {
+            guardedReferences.add(explicitGuards.group(1) + "." + explicitGuards.group(2));
+        }
         assertTrue(v278.contains("CREATE TRIGGER trg_system_posting_style_role_guard")
                         && v278.contains("system posting role requires an active payment style UUID")
                         && v278.contains("system posting role payment style category mismatch"),
                 "V278 must validate its persisted system-posting style UUID relation");
         guardedReferences.add("system_posting_style_roles.style_id");
+        assertTrue(v407.contains("fn_guard_finance_receipt_v1_account_identity")
+                        && v407.contains("NEW.gl_account_style_id")
+                        && v407.contains("NEW.gl_counter_style_id")
+                        && v407.contains("NEW.gl_bank_fee_style_id")
+                        && v407.contains("NEW.gl_fx_style_id")
+                        && v407.contains("NEW.gl_fee_payment_style_id"),
+                "V407 must validate every frozen receipt GL style UUID against its role/account authority");
+        guardedReferences.addAll(Set.of(
+                "finance_receipts.gl_account_style_id",
+                "finance_receipts.gl_bank_fee_style_id",
+                "finance_receipts.gl_counter_style_id",
+                "finance_receipts.gl_fee_payment_style_id",
+                "finance_receipts.gl_fx_style_id"));
 
         Set<String> expectedGuards = new TreeSet<>(EXPECTED_UUID_REFERENCES);
         expectedGuards.add("accounts.style_legacy_id");

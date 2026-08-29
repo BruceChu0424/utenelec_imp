@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/customer_prepayment.dart';
 import '../models/finance_decimal.dart';
@@ -22,6 +24,15 @@ Future<CustomerPrepaymentOffsetResult?> showCustomerPrepaymentApplyPanel(
   drawerWidth: 920,
   builder: (_) => _CustomerPrepaymentApplyPanel(clientId: clientId),
 );
+
+bool customerPrepaymentSummaryUsesLocalCurrency(CustomerPrepaymentPage page) {
+  final currencyKeys = page.items
+      .map((item) => item.currencyId ?? item.currencyCode)
+      .whereType<String>()
+      .where((value) => value.trim().isNotEmpty)
+      .toSet();
+  return currencyKeys.length > 1 || page.total > page.items.length;
+}
 
 class _CustomerPrepaymentApplyPanel extends ConsumerStatefulWidget {
   const _CustomerPrepaymentApplyPanel({required this.clientId});
@@ -244,8 +255,8 @@ class _CustomerPrepaymentApplyPanelState
           maxLength: 2000,
           maxLines: 3,
           decoration: const InputDecoration(
-            labelText: '反转原因（必填）',
-            helperText: '反转会恢复预收和目标应收余额，并保留审计记录',
+            labelText: '反转原因(必填)',
+            helper: UtenFieldMessage.helper('反转会恢复预收和目标应收余额，并保留审计记录'),
           ),
         ),
         actions: [
@@ -330,10 +341,11 @@ class _CustomerPrepaymentApplyPanelState
         ),
       );
     }
+    final mixedCurrencies = customerPrepaymentSummaryUsesLocalCurrency(page);
     return ListView(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       children: [
-        _summary(theme, page.summary),
+        _summary(theme, page.summary, mixedCurrencies: mixedCurrencies),
         const SizedBox(height: UtenSpacing.s12),
         Text(
           '1. 选择预收来源',
@@ -380,7 +392,7 @@ class _CustomerPrepaymentApplyPanelState
               title: Text(target.appliedBillNo ?? target.ledgerId),
               subtitle: Text(
                 '${target.salesOrderNos.join('、')} · '
-                '${target.currencyCode ?? '原币'} ${financeExactMoneyDisplay(target.receiptAmountText)}',
+                '${financeExactMoneyDisplay(target.receiptAmountText)}',
               ),
             ),
         const SizedBox(height: UtenSpacing.s12),
@@ -390,8 +402,8 @@ class _CustomerPrepaymentApplyPanelState
           maxLines: 3,
           enabled: !_busy && _lastResult == null,
           decoration: const InputDecoration(
-            labelText: '应用原因（必填）',
-            helperText: '说明订单、客户通知或其它核销依据；服务端保留完整审计记录',
+            labelText: '应用原因(必填)',
+            helper: UtenFieldMessage.helper('说明订单、客户通知或其它核销依据；服务端保留完整审计记录'),
           ),
         ),
         if (_lastResult case final result?) ...[
@@ -402,7 +414,11 @@ class _CustomerPrepaymentApplyPanelState
     );
   }
 
-  Widget _summary(ThemeData theme, CustomerPrepaymentSummary summary) => Card(
+  Widget _summary(
+    ThemeData theme,
+    CustomerPrepaymentSummary summary, {
+    required bool mixedCurrencies,
+  }) => Card(
     color: theme.colorScheme.surfaceContainerLow,
     child: Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -410,9 +426,25 @@ class _CustomerPrepaymentApplyPanelState
         spacing: UtenSpacing.s16,
         runSpacing: UtenSpacing.s8,
         children: [
-          _summaryValue(theme, '累计预收', summary.receivedOriginal),
-          _summaryValue(theme, '累计已抵', summary.appliedOriginal),
-          _summaryValue(theme, '当前可用', summary.availableOriginal),
+          _summaryValue(
+            theme,
+            mixedCurrencies ? '累计预收(本币)' : '累计预收',
+            mixedCurrencies ? summary.receivedLocal : summary.receivedOriginal,
+          ),
+          _summaryValue(
+            theme,
+            mixedCurrencies ? '累计已抵(本币)' : '累计已抵',
+            mixedCurrencies
+                ? summary.appliedSourceBookLocal
+                : summary.appliedOriginal,
+          ),
+          _summaryValue(
+            theme,
+            mixedCurrencies ? '当前可用(本币)' : '当前可用',
+            mixedCurrencies
+                ? summary.availableLocal
+                : summary.availableOriginal,
+          ),
         ],
       ),
     ),
@@ -434,6 +466,12 @@ class _CustomerPrepaymentApplyPanelState
 
   Widget _sourceTile(ThemeData theme, CustomerPrepaymentItem item) {
     final selected = _source?.ledgerId == item.ledgerId;
+    final currency =
+        financeCurrencyDisplayLabel(
+          name: item.currencyName,
+          code: item.currencyCode,
+        ) ??
+        '原币';
     return Card(
       color: selected ? theme.colorScheme.primaryContainer : null,
       child: CheckboxListTile(
@@ -443,7 +481,7 @@ class _CustomerPrepaymentApplyPanelState
         onChanged: (_) => _selectSource(item),
         title: Text(item.billNo ?? item.ledgerId),
         subtitle: Text(
-          '${item.billDate ?? '—'} · ${item.currencyCode ?? item.currencyId ?? '原币'}\n'
+          '${item.billDate ?? '—'} · $currency\n'
           '到账 ${financeExactMoneyDisplay(item.receivedOriginal)} · '
           '已抵 ${financeExactMoneyDisplay(item.appliedOriginal)} · '
           '可用 ${financeExactMoneyDisplay(item.availableOriginal)}',

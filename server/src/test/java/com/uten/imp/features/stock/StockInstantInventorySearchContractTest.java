@@ -25,7 +25,8 @@ class StockInstantInventorySearchContractTest {
         when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
         UUID categoryId = UUID.randomUUID();
         when(query.getResultList()).thenReturn(List.of(categoryId));
-        StockQueryService service = new StockQueryService(null, null, em);
+        StockQueryService service = new StockQueryService(
+                null, null, em, mock(StockCostMasker.class));
 
         var result = service.instantInventoryMatchingCategoryIds(
                 "  G-001  ", Set.of(UUID.randomUUID()));
@@ -43,12 +44,33 @@ class StockInstantInventorySearchContractTest {
 
     @Test
     void locationQueryFailsClosedWithoutABoundedTreeScope() {
-        StockQueryService service = new StockQueryService(null, null, mock(EntityManager.class));
+        StockQueryService service = new StockQueryService(
+                null, null, mock(EntityManager.class), mock(StockCostMasker.class));
         assertThatThrownBy(() -> service.instantInventoryMatchingCategoryIds("G", Set.of()))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class);
         assertThatThrownBy(() -> service.instantInventoryMatchingCategoryIds(
                 "G", java.util.stream.IntStream.range(0, 33)
                         .mapToObj(ignored -> UUID.randomUUID()).collect(java.util.stream.Collectors.toSet())))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+    }
+
+    @Test
+    void shelfLabelRackFilterIsSeparatedFromOrderBy() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        StockQueryService service = new StockQueryService(
+                null, null, em, mock(StockCostMasker.class));
+
+        service.shelfLabelRows(" A31 ", null);
+
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertThat(sql.getValue())
+                .contains("= :rack\nORDER BY")
+                .doesNotContain(":rackORDER BY");
+        verify(query).setParameter("rack", "A31");
     }
 }

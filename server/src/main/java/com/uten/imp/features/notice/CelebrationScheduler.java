@@ -67,10 +67,10 @@ public class CelebrationScheduler {
                 published += scanAnniversary(month, day, year, publisherName);
             }
             if (published > 0) {
-                log.info("庆典扫描完成：今日发布 {} 条通知（types={}）", published, autoTypes);
+                log.info("庆典扫描完成：今日发布 {} 条通知(types={})", published, autoTypes);
             }
         } catch (Exception e) {
-            log.warn("庆典通知扫描失败（不影响业务）: {}", e.toString());
+            log.warn("庆典通知扫描失败(不影响业务): {}", e.toString());
         }
     }
 

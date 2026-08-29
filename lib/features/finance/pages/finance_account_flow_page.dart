@@ -403,7 +403,7 @@ class _FinanceAccountFlowPageState
             if (_view != _FlowView.statement) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(
-                '银行存取款单老库未启用（0 行），报表为空（结构已就位，启用后自动出数）。',
+                '银行存取款单老库未启用(0 行)，报表为空(结构已就位，启用后自动出数)。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -459,7 +459,7 @@ class _FinanceAccountFlowPageState
         if (_view == _FlowView.statement) ...[
           UtenPrintPreviewButton(
             title: _title,
-            subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+            subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
             loader: _printLoader,
             exportEndpoint: '/finance/reports/export',
             exportPermission: Perm.financeReportExport,
@@ -488,7 +488,7 @@ class _FinanceAccountFlowPageState
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
       isLoading: _loading,
-      emptyMessage: _view == _FlowView.statement ? '暂无流水数据' : '银行存取款未启用（空表）',
+      emptyMessage: _view == _FlowView.statement ? '暂无流水数据' : '银行存取款未启用(空表)',
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

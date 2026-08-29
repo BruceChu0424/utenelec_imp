@@ -108,7 +108,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     return purchaseStatusLabel(item.status);
   }
 
-  List<MasterColumnDef<PurchaseDocListItem>> _columns(MasterNameService names) {
+  List<MasterColumnDef<PurchaseDocListItem>> _columns(
+    MasterNameService names, {
+    required bool canViewCommercialAmounts,
+  }) {
     return <MasterColumnDef<PurchaseDocListItem>>[
       MasterColumnDef(
         key: 'billNo',
@@ -138,16 +141,14 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
           width: 160,
           value: (it) => names.warehouse(it.warehouseId),
         ),
-      if (widget.docType != PurchaseDocType.request)
+      if (widget.docType != PurchaseDocType.request && canViewCommercialAmounts)
         MasterColumnDef(
           key: 'total',
           label: '合计',
           width: 140,
           type: 'money',
           sortable: true,
-          // 价格脱敏（V302）：无收货单价格权限时服务端置 null + priceMasked，渲染 ***。
-          value: (it) =>
-              it.priceMasked ? '***' : it.totalLocal?.toStringAsFixed(2),
+          value: (it) => it.totalLocal?.toStringAsFixed(2),
         ),
       MasterColumnDef(
         key: 'status',
@@ -193,6 +194,12 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
               listenable: _list,
               builder: (context, _) {
                 final total = _list.total;
+                final canViewCommercialAmounts =
+                    ref
+                        .watch(currentPermissionsProvider)
+                        .contains(Perm.purchaseReceiptPriceView) &&
+                    !(_list.page?.items.any((item) => item.priceMasked) ??
+                        false);
                 // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：KPI 卡条随上滑
                 // 收起腾出空间，标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
                 return UtenCollapsingHeaderScrollView(
@@ -268,7 +275,11 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                           tablePane: MasterDataTableView<PurchaseDocListItem>(
                             // primary:true → 表体参与「KPI 卡折叠 → 表格内滚」联动。
                             primary: true,
-                            columns: _columns(names),
+                            columns: _columns(
+                              names,
+                              canViewCommercialAmounts:
+                                  canViewCommercialAmounts,
+                            ),
                             items: _list.page?.items ?? const [],
                             facets: const {},
                             nullCounts: const {},

@@ -4,12 +4,12 @@
 // - 左侧 = 货品分类树抽屉（与货品资料同款 UtenCategoryTreeView；compact 收进 endDrawer）；
 // - 右侧 = 库存表格（统一 MasterDataTableView）：
 //   所属类型 / 型号 / 客户型号 / 货品名称 / 规格 / 颜色 / 单位 / 备注
-//   / 库存重量 / 库存数量 / 成本金额 / 多排数量；
+//   / 库存重量 / 库存数量 / 多排数量；库存台账金额仅 goods:cost:view 持有者可见；
 // - 顶部 = 仓库下拉（全部=参与核算仓库聚合）+ 搜索（名称/编号/型号/客户型号）。
 //
 // 数据口径（后端 /api/stock/instant-inventory）：
 //   数量/重量 = stock_balances 按货品+颜色聚合（历史=StockGoods 最新年 FactQTY/FactWeight 迁移，
-//   增量=单据审核同事务联动，仓库单据含重量）；成本金额 = 货品成本 c_total × 数量；
+//   增量=单据审核同事务联动，仓库单据含重量）；库存台账金额 = stock_balances.amount_local 聚合；
 //   多排数量 = 生产计划明细可排余量（老库 View_ProductMore 同口径）。
 // 性能：后端一次聚合分页（LIMIT/OFFSET + 排序白名单），前端不拉全量，万级数据秒开。
 import 'package:flutter/material.dart';
@@ -68,6 +68,13 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   // 列排序态：null=后端默认（库存数量 DESC）。
   String? _sortKey;
   bool _sortAsc = false;
+
+  bool get _canViewCost =>
+      ref.read(currentPermissionsProvider).contains(Perm.goodsCostView);
+
+  /// 无成本权限时即使客户端残留旧排序状态，也不能借排序顺序推断成本高低。
+  String? get _effectiveSortKey =>
+      _sortKey == 'costAmount' && !_canViewCost ? null : _sortKey;
 
   // 左树统一搜索（货品名 → 定位分类）：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
   Set<String>? _visibleFilterIds;
@@ -135,8 +142,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             warehouseId: _warehouseId,
             includeDefective: ref.read(instantInventoryPrefsProvider),
             keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-            sort: _sortKey,
-            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+            sort: _effectiveSortKey,
+            order: _effectiveSortKey == null
+                ? null
+                : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _page = r);
@@ -345,8 +354,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     if (_warehouseId != null) 'warehouseId': _warehouseId,
     'includeDefective': ref.read(instantInventoryPrefsProvider),
     if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
-    if (_sortKey != null) 'sort': _sortKey,
-    if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+    if (_effectiveSortKey != null) 'sort': _effectiveSortKey,
+    if (_effectiveSortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
   };
 
   /// 数字格式化：最多 2 位小数，去掉无意义的尾随 0（1.50→1.5；0→0）。
@@ -368,10 +377,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           warehouseId: _warehouseId,
           includeDefective: ref.read(instantInventoryPrefsProvider),
           keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-          sort: _sortKey,
-          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+          sort: _effectiveSortKey,
+          order: _effectiveSortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
         );
-    final cols = _columns;
+    final cols = _columns(canViewCost: _canViewCost);
     return UtenPrintTable(
       headers: [for (final c in cols) c.label],
       rows: [
@@ -380,117 +389,119 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     );
   }
 
-  List<MasterColumnDef<InstantInventoryRow>> get _columns =>
-      <MasterColumnDef<InstantInventoryRow>>[
-        MasterColumnDef(
-          key: 'category',
-          label: '所属类型',
-          width: 120,
-          value: (r) => r.categoryName ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'goodsCode',
-          label: '物料编码',
-          width: 120,
-          value: (r) => r.goodsCode ?? '',
-        ),
-        MasterColumnDef(
-          key: 'series',
-          label: '物料系列',
-          width: 90,
-          value: (r) => r.series ?? '',
-        ),
-        MasterColumnDef(
-          key: 'stockPlace',
-          label: '库位号',
-          width: 90,
-          value: (r) => r.stockPlace ?? '',
-        ),
-        MasterColumnDef(
-          key: 'model',
-          label: '型号',
-          width: 110,
-          value: (r) => r.model ?? '',
-        ),
-        MasterColumnDef(
-          key: 'cNumber',
-          label: '客户型号',
-          width: 120,
-          value: (r) => r.cNumber ?? '',
-        ),
-        MasterColumnDef(
-          key: 'name',
-          label: '货品名称',
-          width: 220,
-          sortable: true,
-          value: (r) => r.name ?? '',
-        ),
-        MasterColumnDef(
-          key: 'spec',
-          label: '规格',
-          width: 120,
-          value: (r) => r.spec ?? '',
-        ),
-        MasterColumnDef(
-          key: 'color',
-          label: '颜色',
-          width: 90,
-          value: (r) => r.colorName ?? '',
-        ),
-        MasterColumnDef(
-          key: 'unit',
-          label: '单位',
-          width: 70,
-          value: (r) => r.unitName ?? '',
-        ),
-        MasterColumnDef(
-          key: 'remark',
-          label: '备注',
-          width: 90,
-          value: (r) => r.remark ?? '',
-        ),
-        MasterColumnDef(
-          key: 'weight',
-          label: '库存重量',
-          width: 110,
-          type: 'number',
-          sortable: true,
-          value: (r) => _num(r.weight),
-        ),
-        MasterColumnDef(
-          key: 'qty',
-          label: '库存数量',
-          width: 110,
-          type: 'number',
-          sortable: true,
-          value: (r) => _num(r.qty),
-        ),
-        MasterColumnDef(
-          key: 'pendingQty',
-          label: '待检量',
-          width: 100,
-          type: 'number',
-          sortable: true,
-          // 待检量>0 = 采购/委外已收货但 IQC 未放行（货在待检隔离区，不在库存内）。
-          value: (r) => _num(r.pendingQty),
-        ),
-        MasterColumnDef(
-          key: 'costAmount',
-          label: '成本金额',
-          width: 120,
-          type: 'number',
-          sortable: true,
-          value: (r) => r.costAmount?.toStringAsFixed(2) ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'moreQty',
-          label: '多排数量',
-          width: 100,
-          type: 'number',
-          sortable: true,
-          value: (r) => _num(r.moreQty),
-        ),
-      ];
+  List<MasterColumnDef<InstantInventoryRow>> _columns({
+    required bool canViewCost,
+  }) => <MasterColumnDef<InstantInventoryRow>>[
+    MasterColumnDef(
+      key: 'category',
+      label: '所属类型',
+      width: 120,
+      value: (r) => r.categoryName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      label: '物料编码',
+      width: 120,
+      value: (r) => r.goodsCode ?? '',
+    ),
+    MasterColumnDef(
+      key: 'series',
+      label: '物料系列',
+      width: 90,
+      value: (r) => r.series ?? '',
+    ),
+    MasterColumnDef(
+      key: 'stockPlace',
+      label: '库位号',
+      width: 90,
+      value: (r) => r.stockPlace ?? '',
+    ),
+    MasterColumnDef(
+      key: 'model',
+      label: '型号',
+      width: 110,
+      value: (r) => r.model ?? '',
+    ),
+    MasterColumnDef(
+      key: 'cNumber',
+      label: '客户型号',
+      width: 120,
+      value: (r) => r.cNumber ?? '',
+    ),
+    MasterColumnDef(
+      key: 'name',
+      label: '货品名称',
+      width: 220,
+      sortable: true,
+      value: (r) => r.name ?? '',
+    ),
+    MasterColumnDef(
+      key: 'spec',
+      label: '规格',
+      width: 120,
+      value: (r) => r.spec ?? '',
+    ),
+    MasterColumnDef(
+      key: 'color',
+      label: '颜色',
+      width: 90,
+      value: (r) => r.colorName ?? '',
+    ),
+    MasterColumnDef(
+      key: 'unit',
+      label: '单位',
+      width: 70,
+      value: (r) => r.unitName ?? '',
+    ),
+    MasterColumnDef(
+      key: 'remark',
+      label: '备注',
+      width: 90,
+      value: (r) => r.remark ?? '',
+    ),
+    MasterColumnDef(
+      key: 'weight',
+      label: '库存重量',
+      width: 110,
+      type: 'number',
+      sortable: true,
+      value: (r) => _num(r.weight),
+    ),
+    MasterColumnDef(
+      key: 'qty',
+      label: '库存数量',
+      width: 110,
+      type: 'number',
+      sortable: true,
+      value: (r) => _num(r.qty),
+    ),
+    MasterColumnDef(
+      key: 'pendingQty',
+      label: '待检量',
+      width: 100,
+      type: 'number',
+      sortable: true,
+      // 待检量>0 = 采购/委外已收货但 IQC 未放行（货在待检隔离区，不在库存内）。
+      value: (r) => _num(r.pendingQty),
+    ),
+    if (canViewCost)
+      MasterColumnDef(
+        key: 'costAmount',
+        label: '库存台账金额',
+        width: 140,
+        type: 'number',
+        sortable: true,
+        value: (r) => r.costAmount?.toStringAsFixed(2) ?? '—',
+      ),
+    MasterColumnDef(
+      key: 'moreQty',
+      label: '多排数量',
+      width: 100,
+      type: 'number',
+      sortable: true,
+      value: (r) => _num(r.moreQty),
+    ),
+  ];
 
   // ---- 左侧：分类树（含「全部」顶行） ------------------------------------------
 
@@ -585,6 +596,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   Widget _buildTablePane() {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    final canViewCost = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.goodsCostView);
+    final columns = _columns(canViewCost: canViewCost);
     final includeDefective = ref.watch(instantInventoryPrefsProvider);
     final total = _page?.total ?? 0;
     return Column(
@@ -630,7 +645,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                   // key 含 _kwSeed：左树搜索写入关键词时重建搜索框同步显示；
                   // 本框手动输入只改 _keyword、不动 _kwSeed，不会打断输入焦点。
                   key: ValueKey('inventory-search-$_kwSeed'),
-                  hint: '搜索（名称/编号/型号/客户型号）', // TODO(l10n): 补 arb
+                  hint: '搜索(名称/编号/型号/客户型号)', // TODO(l10n): 补 arb
                   initialValue: _keyword,
                   onInputChanged: (_) => _loadRequests.begin(),
                   onChanged: (kw) {
@@ -660,12 +675,19 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (canViewCost)
+                IconButton(
+                  key: const ValueKey('instant-inventory-cost-basis'),
+                  tooltip: '库存台账金额口径',
+                  onPressed: () => _showCostBasis(context),
+                  icon: const Icon(Icons.info_outline_rounded),
+                ),
             ],
           ),
         ),
         Expanded(
           child: MasterDataTableView<InstantInventoryRow>(
-            columns: _columns,
+            columns: columns,
             items: _page?.items ?? const [],
             toolbarActions: [
               // 导出仍受独立权限、限流、行数上限和审计约束；文件密码可选。
@@ -696,7 +718,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (_, _) {},
-            sortColumn: _sortKey,
+            sortColumn: canViewCost || _sortKey != 'costAmount'
+                ? _sortKey
+                : null,
             sortAscending: _sortAsc,
             onSortChange: _onSortChange,
             // 行点击 → 出入库流水页（带该货品过滤，push 保活本页筛选；流水页可清除过滤看全部）
@@ -716,6 +740,25 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _showCostBasis(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('库存台账金额口径'),
+        content: const Text(
+          '金额来自当前筛选仓库的库存余额台账 amount_local 聚合，'
+          '会随审核、红冲和调账事实变化；它不是“货品标准成本 × 当前数量”的估算值。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
     );
   }
 

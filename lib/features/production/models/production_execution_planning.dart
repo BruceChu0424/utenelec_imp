@@ -37,7 +37,7 @@ String formatProductionPlanningGroupedMaterialUsage(
 ) {
   final value = formatProductionPlanningUsage(perProductQty);
   return requirementMode == 'EXACT_SNAPSHOT'
-      ? '按包/批（分段合计均耗） $value'
+      ? '按包/批(分段合计均耗) $value'
       : '单台用量 $value';
 }
 
@@ -80,8 +80,6 @@ class ProductionPlanningPreview {
     this.targetWarehouseMaterials = const [],
     this.executionSegments = const [],
     this.noBomPlanItemIds = const [],
-    this.noBomGoodsIds = const [],
-    this.forwardedGoodsIds = const [],
   });
 
   final String planId;
@@ -93,12 +91,6 @@ class ProductionPlanningPreview {
   final bool executionSegmentationReady;
   final List<ProductionExecutionSegmentPreview> executionSegments;
   final List<String> noBomPlanItemIds;
-
-  /// 成品缺 BOM 的货品 id（供前端判成品的转发态；noBomPlanItemIds 是计划行 id）。
-  final List<String> noBomGoodsIds;
-
-  /// 已转发工程研发部、仍在等待维护的货品 id（成品 + 自制组件）；不进 fingerprint。
-  final List<String> forwardedGoodsIds;
 
   factory ProductionPlanningPreview.fromJson(Map<String, dynamic> json) {
     return ProductionPlanningPreview(
@@ -121,11 +113,6 @@ class ProductionPlanningPreview {
       ),
       noBomPlanItemIds: _decodeList(
         json['noBomPlanItemIds'],
-        (e) => e as String,
-      ),
-      noBomGoodsIds: _decodeList(json['noBomGoodsIds'], (e) => e as String),
-      forwardedGoodsIds: _decodeList(
-        json['forwardedGoodsIds'],
         (e) => e as String,
       ),
     );
@@ -893,6 +880,17 @@ class ProductionExecutionSegmentView {
     this.materialDemandCount = 0,
     this.fullyIssuedDemandCount = 0,
     this.materialIssued = false,
+    this.fqcPendingQty = 0,
+    this.fqcPassedQty = 0,
+    this.fqcFailedQty = 0,
+    this.finishedInboundPendingQty = 0,
+    this.inboundQty = 0,
+    this.finishedInboundRejectedQty = 0,
+    this.ordinaryRemainingQty = 0,
+    this.fqcRecoveryAvailableQty = 0,
+    this.fqcReworkAvailableQty = 0,
+    this.fqcReplacementAvailableQty = 0,
+    this.fqcReplacementReadyQty = 0,
     this.segmentNo,
     this.productCode,
     this.productName,
@@ -938,6 +936,17 @@ class ProductionExecutionSegmentView {
   final int materialDemandCount;
   final int fullyIssuedDemandCount;
   final bool materialIssued;
+  final double fqcPendingQty;
+  final double fqcPassedQty;
+  final double fqcFailedQty;
+  final double finishedInboundPendingQty;
+  final double inboundQty;
+  final double finishedInboundRejectedQty;
+  final double ordinaryRemainingQty;
+  final double fqcRecoveryAvailableQty;
+  final double fqcReworkAvailableQty;
+  final double fqcReplacementAvailableQty;
+  final double fqcReplacementReadyQty;
   final int lockVersion;
 
   factory ProductionExecutionSegmentView.fromJson(Map<String, dynamic> json) {
@@ -973,6 +982,26 @@ class ProductionExecutionSegmentView {
       fullyIssuedDemandCount:
           (json['fullyIssuedDemandCount'] as num?)?.toInt() ?? 0,
       materialIssued: json['materialIssued'] == true,
+      fqcPendingQty: _optionalDouble(json['fqcPendingQty']) ?? 0,
+      fqcPassedQty: _optionalDouble(json['fqcPassedQty']) ?? 0,
+      fqcFailedQty: _optionalDouble(json['fqcFailedQty']) ?? 0,
+      finishedInboundPendingQty:
+          _optionalDouble(json['finishedInboundPendingQty']) ?? 0,
+      inboundQty: _optionalDouble(json['inboundQty']) ?? 0,
+      finishedInboundRejectedQty:
+          _optionalDouble(json['finishedInboundRejectedQty']) ?? 0,
+      ordinaryRemainingQty:
+          _optionalDouble(json['ordinaryRemainingQty']) ??
+          _optionalDouble(json['remainingQty']) ??
+          0,
+      fqcRecoveryAvailableQty:
+          _optionalDouble(json['fqcRecoveryAvailableQty']) ?? 0,
+      fqcReworkAvailableQty:
+          _optionalDouble(json['fqcReworkAvailableQty']) ?? 0,
+      fqcReplacementAvailableQty:
+          _optionalDouble(json['fqcReplacementAvailableQty']) ?? 0,
+      fqcReplacementReadyQty:
+          _optionalDouble(json['fqcReplacementReadyQty']) ?? 0,
       lockVersion: (json['lockVersion'] as num).toInt(),
     );
   }

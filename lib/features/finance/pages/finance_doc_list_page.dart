@@ -27,6 +27,7 @@ import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
+import '../widgets/finance_table_facets.dart';
 
 class FinanceDocListPage extends ConsumerStatefulWidget {
   const FinanceDocListPage({super.key, required this.docType});
@@ -44,6 +45,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   /// 「返回即刷新」onPageResume 用，见 build。
   String? _myLocation;
   int? _statusFilter; // null=全部
+  String? _partyIdFilter;
+  String? _accountIdFilter;
 
   @override
   void initState() {
@@ -73,6 +76,13 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
         page: _list.pageNum,
         filter: FinanceDocFilter(
           keyword: _list.normalizedKeyword,
+          partyId: _cfg.hasParty ? _partyIdFilter : null,
+          accountId: _cfg.type == FinanceDocType.bankTransfer
+              ? null
+              : _accountIdFilter,
+          outAccountId: _cfg.type == FinanceDocType.bankTransfer
+              ? _accountIdFilter
+              : null,
           status: _statusFilter,
         ),
         sort: _list.sortKey,
@@ -84,6 +94,19 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
 
   void _onStatus(int? s) {
     setState(() => _statusFilter = s);
+    _reload(1);
+  }
+
+  void _onColumnFilterChanged(String key, String? value) {
+    setState(() {
+      if (key == 'status') {
+        _statusFilter = value == null ? null : int.tryParse(value);
+      } else if (key == 'accountId') {
+        _accountIdFilter = value;
+      } else if (key == 'clientId' || key == 'supplierId') {
+        _partyIdFilter = value;
+      }
+    });
     _reload(1);
   }
 
@@ -259,10 +282,29 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                       primary: true,
                       columns: _columns(names),
                       items: _list.page?.items ?? const [],
-                      facets: const {},
+                      facets: {
+                        if (_cfg.hasParty)
+                          _cfg.isClient
+                              ? 'clientId'
+                              : 'supplierId': financeDictionaryFacets(
+                            _cfg.isClient
+                                ? names.clientEntries
+                                : names.supplierEntries,
+                          ),
+                        'accountId': financeDictionaryFacets(
+                          names.accountEntries,
+                        ),
+                        'status': financeDocumentStatusFacets,
+                      },
                       nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
+                      filters: {
+                        if (_cfg.hasParty)
+                          _cfg.isClient ? 'clientId' : 'supplierId':
+                              _partyIdFilter,
+                        'accountId': _accountIdFilter,
+                        'status': _statusFilter?.toString(),
+                      },
+                      onFilterChanged: _onColumnFilterChanged,
                       sortColumn: _list.sortKey,
                       sortAscending: _list.sortAsc,
                       onSortChange: _onSortChange,

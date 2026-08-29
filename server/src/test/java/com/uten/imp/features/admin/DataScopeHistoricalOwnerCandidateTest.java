@@ -24,7 +24,7 @@ class DataScopeHistoricalOwnerCandidateTest {
         Query query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.getResultList()).thenReturn(
-                List.<Object[]>of(new Object[]{owner, "离职业务员", "resigned", 7L}));
+                List.<Object[]>of(new Object[]{owner, "离职业务员", "E009", "resigned", 7L}));
         DataScopeAdminService service = new DataScopeAdminService(
                 em, mock(TxSessionVars.class), mock(AdminUserSupport.class),
                 mock(SecurityContextCurrentUser.class), mock(DataScopeCasGuard.class));
@@ -34,6 +34,7 @@ class DataScopeHistoricalOwnerCandidateTest {
         assertThat(rows).containsExactly(Map.of(
                 "employeeId", owner,
                 "name", "离职业务员",
+                "code", "E009",
                 "status", "resigned",
                 "historicalOnly", true,
                 "count", 7L));

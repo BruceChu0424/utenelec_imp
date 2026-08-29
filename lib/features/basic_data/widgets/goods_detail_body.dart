@@ -237,14 +237,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         options: kGoodsSourceTypeOptions,
         group: '基础',
       ),
-      const MasterFieldDef(
-        key: 'productionBomPolicy',
-        label: '生产 BOM 策略',
-        required: true,
-        type: MasterFieldType.select,
-        options: kGoodsProductionBomPolicyOptions,
-        group: '基础',
-      ),
       const MasterFieldDef(key: 'model', label: '型号', group: '规格'),
       const MasterFieldDef(key: 'spec', label: '规格', group: '规格'),
       const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
@@ -352,7 +344,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       'shortName': d.shortName ?? '',
       'status': d.status ?? '使用',
       'sourceType': d.sourceType ?? '',
-      'productionBomPolicy': d.productionBomPolicy ?? '',
       'model': d.model ?? '',
       'spec': d.spec ?? '',
       'material': d.material ?? '',
@@ -759,8 +750,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
   }
 
   /// 查看态详情分组：沿用编辑态的基础 / 规格 / 商务分组，外加查看态专属的「库存」段。
-  /// 这里只展示员工日常识别货品所需的信息；生产 BOM 策略仍是服务端权威事实并保留在编辑态，
-  /// 但不在普通只读详情中重复展示。
+  /// 这里只展示员工日常识别货品所需的信息。
   List<_DetailSection> _detailSections() {
     final d = _detail;
     if (d == null) return const [];

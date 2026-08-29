@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
@@ -87,7 +88,11 @@ Widget _app({
 }) => ProviderScope(
   overrides: [
     subcontractWriteAllDocumentScope(),
-    currentPermissionsProvider.overrideWithValue(const <String>{}),
+    // Settlement terms are part of the commercial detail surface and are
+    // intentionally protected by the existing price-view permission.
+    currentPermissionsProvider.overrideWithValue(
+      const <String>{Perm.subcontractReceiptPriceView},
+    ),
     subcontractRepositoryProvider(
       SubcontractDocType.order,
     ).overrideWithValue(repository),
@@ -152,7 +157,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('结算方式'), findsOneWidget);
-    expect(find.text('月结（NET30）'), findsOneWidget);
+    expect(find.text('月结(NET30)'), findsOneWidget);
   });
 
   testWidgets('375px 编辑加载已有结算方式且提交 settlementMethodId', (tester) async {
@@ -179,17 +184,62 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('结算方式（必选）'), findsOneWidget);
-    expect(find.text('月结（NET30）'), findsOneWidget);
+    expect(find.text('结算方式 *', findRichText: true), findsOneWidget);
+    expect(find.text('月结(NET30)'), findsOneWidget);
     expect(find.text('— 不选 —'), findsNothing);
 
-    await tester.tap(find.text('保存'));
+    await tester.tap(find.text('保存订货单草稿'));
     await tester.pump();
 
     expect(repository.updatedBody?['settlementMethodId'], _settlementId);
   });
 
-  testWidgets('结算方式空字典明确阻断且可重新加载', (tester) async {
+  testWidgets('结算方式有候选但未选择时立即红框并阻断保存', (tester) async {
+    _usePhoneViewport(tester);
+    final api = _api((_) => <Object?>[]);
+    final detailJson = _orderDetailJson()..remove('settlementMethodId');
+    final repository = _RecordingOrderRepository(
+      SubcontractDocDetail.fromJson(detailJson),
+      api,
+    );
+
+    await tester.pumpWidget(
+      _app(
+        api: api,
+        repository: repository,
+        settlementOverride: settlementMethodOptionsProvider.overrideWith(
+          (ref) async => const [_settlementMethod],
+        ),
+        home: const SubcontractDocEditPage(
+          docType: SubcontractDocType.order,
+          id: 'order-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 必填且为空：UtenDropdownField 立即红框（与采购结账方式同款 requiredEmpty 行为）。
+    final fieldFinder = find.ancestor(
+      of: find.text('结算方式 *', findRichText: true),
+      matching: find.byType(UtenDropdownField),
+    );
+    expect(fieldFinder, findsOneWidget);
+    final decorator = tester.widget<InputDecorator>(
+      find.descendant(of: fieldFinder, matching: find.byType(InputDecorator)),
+    );
+    final border = decorator.decoration.enabledBorder! as OutlineInputBorder;
+    expect(
+      border.borderSide.color,
+      Theme.of(tester.element(fieldFinder)).colorScheme.error,
+    );
+
+    await tester.tap(find.text('保存订货单草稿'));
+    await tester.pump();
+
+    expect(repository.updatedBody, isNull);
+  });
+
+  testWidgets('结算方式空字典阻断保存并标红提示', (tester) async {
     _usePhoneViewport(tester);
     final api = _api((_) => <Object?>[]);
     final repository = _RecordingOrderRepository(
@@ -213,11 +263,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('没有可用结算方式，不能保存委外订单'), findsOneWidget);
-    expect(find.text('重新加载结算方式'), findsOneWidget);
+
+    await tester.tap(find.text('保存订货单草稿'));
+    await tester.pump();
+
+    expect(repository.updatedBody, isNull);
+    expect(find.text('当前结算方式已停用，请重新选择'), findsOneWidget);
   });
 
-  testWidgets('结算方式加载失败展示重试且不渲染可选空值', (tester) async {
+  testWidgets('结算方式字典加载失败不崩且阻断保存', (tester) async {
     _usePhoneViewport(tester);
     final api = _api((_) => <Object?>[]);
     final repository = _RecordingOrderRepository(
@@ -241,8 +295,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('字典加载失败，不能保存委外订单'), findsOneWidget);
-    expect(find.text('重试'), findsOneWidget);
     expect(find.text('— 不选 —'), findsNothing);
+
+    await tester.tap(find.text('保存订货单草稿'));
+    await tester.pump();
+
+    expect(repository.updatedBody, isNull);
   });
 }

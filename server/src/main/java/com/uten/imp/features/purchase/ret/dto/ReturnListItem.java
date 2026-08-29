@@ -17,4 +17,6 @@ public class ReturnListItem {
     private BigDecimal totalLocal;
     private Short status;
     private Integer legacyId;
+    /** 当前用户无采购商业金额权限时为 true，合计金额同时置 null。 */
+    private boolean priceMasked;
 }

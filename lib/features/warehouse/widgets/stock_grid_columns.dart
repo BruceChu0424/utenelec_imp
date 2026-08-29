@@ -89,6 +89,8 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       label: '货品',
       width: 200,
       required: true,
+      textOf: (r) => r.goods?.name ?? '',
+      listenableOf: (r) => r.goodsNotifier,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,
@@ -121,10 +123,13 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         ),
       ),
     ),
+    // 编码/系列/库位/颜色/单位：行 model 普通字段（选货品后整行重建回填），
+    // 无变更通知器可挂——只给 textOf（行集变化时整体量宽），不接实时加宽。
     EditableGridColumn<StockGridRow>(
       key: 'code',
       label: '物料编码',
       width: 110,
+      textOf: (r) => r.goodsCode ?? '',
       cellBuilder: (context, row) => Text(
         row.goodsCode ?? '—',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -134,6 +139,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       key: 'series',
       label: '系列',
       width: 80,
+      textOf: (r) => r.goodsSeries ?? '',
       cellBuilder: (context, row) => Text(
         row.goodsSeries ?? '—',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -143,6 +149,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       key: 'stockPlace',
       label: '库位号',
       width: 80,
+      textOf: (r) => r.goodsStockPlace ?? '',
       cellBuilder: (context, row) => Text(
         row.goodsStockPlace ?? '—',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -152,6 +159,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       key: 'color',
       label: '颜色',
       width: 80,
+      textOf: (r) => r.colorName ?? '',
       cellBuilder: (context, row) => Text(
         row.colorName ?? '—',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -161,6 +169,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       key: 'unit',
       label: '单位',
       width: 64,
+      textOf: (r) => r.unitName ?? '',
       cellBuilder: (context, row) => Text(
         row.unitName ?? '—',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),

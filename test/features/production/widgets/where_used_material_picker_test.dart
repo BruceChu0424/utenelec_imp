@@ -175,7 +175,7 @@ void main() {
     await tester.tap(find.byKey(const Key('where-used-material-clear')));
     await tester.pumpAndSettle();
     expect(find.text('输入编号/名称开始搜索'), findsOneWidget);
-    expect(find.text('历史螺丝（MAT-001）'), findsNothing);
+    expect(find.text('历史螺丝(MAT-001)'), findsNothing);
     expect(api.queries, hasLength(1));
 
     await tester.enterText(search, 'NONE');
@@ -250,7 +250,7 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    expect(find.text('最新结果（MAT-001）'), findsOneWidget);
+    expect(find.text('最新结果(MAT-001)'), findsOneWidget);
 
     pending['MAT-0']!.complete(
       _page(
@@ -259,8 +259,8 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    expect(find.text('最新结果（MAT-001）'), findsOneWidget);
-    expect(find.text('旧响应（MAT-000）'), findsNothing);
+    expect(find.text('最新结果(MAT-001)'), findsOneWidget);
+    expect(find.text('旧响应(MAT-000)'), findsNothing);
   });
 
   testWidgets('allows selecting a matching good without known relations', (
@@ -349,13 +349,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
     await tester.tap(find.byKey(const Key('where-used-material-retry')));
     await tester.pumpAndSettle();
-    expect(find.text('第 1 页物料（MAT-1）'), findsOneWidget);
+    expect(find.text('第 1 页物料(MAT-1)'), findsOneWidget);
     expect(find.text('1 / 2'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('where-used-material-next')));
     await tester.pumpAndSettle();
     expect(api.queries.last, containsPair('page', 2));
-    expect(find.text('第 2 页物料（MAT-2）'), findsOneWidget);
+    expect(find.text('第 2 页物料(MAT-2)'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

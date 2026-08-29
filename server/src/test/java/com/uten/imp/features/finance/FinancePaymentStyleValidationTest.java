@@ -7,6 +7,7 @@ import com.uten.imp.features.finance.expense.FinanceExpense;
 import com.uten.imp.features.finance.expense.FinanceExpenseItemRepository;
 import com.uten.imp.features.finance.expense.FinanceExpenseRepository;
 import com.uten.imp.features.finance.expense.FinanceExpenseService;
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemInput;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseSaveRequest;
 import com.uten.imp.features.finance.gl.GlPostingService;
@@ -57,7 +58,7 @@ class FinancePaymentStyleValidationTest {
         FinanceExpenseService service = new FinanceExpenseService(
                 expenseRepo, mock(FinanceExpenseItemRepository.class), mock(TxSessionVars.class), actor(),
                 mock(EmployeeNameResolver.class), em, numbers("FY26080001"), mock(GlPostingService.class),
-                mock(FinanceDocumentAccessPolicy.class));
+                mock(FinanceDocumentAccessPolicy.class), mock(AccountFlowLedgerService.class));
 
         assertThatThrownBy(() -> service.approve(expense.getId()))
                 .isInstanceOf(IllegalStateException.class)
@@ -79,7 +80,7 @@ class FinancePaymentStyleValidationTest {
         FinanceExpenseService service = new FinanceExpenseService(
                 mock(FinanceExpenseRepository.class), itemRepo, mock(TxSessionVars.class), currentUser,
                 mock(EmployeeNameResolver.class), em, numbers, mock(GlPostingService.class),
-                mock(FinanceDocumentAccessPolicy.class));
+                mock(FinanceDocumentAccessPolicy.class), mock(AccountFlowLedgerService.class));
         UUID styleId = UUID.randomUUID();
 
         assertThatThrownBy(() -> service.create(expenseRequest(styleId)))
@@ -108,7 +109,7 @@ class FinancePaymentStyleValidationTest {
         FinanceOtherIncomeService service = new FinanceOtherIncomeService(
                 mock(FinanceOtherIncomeRepository.class), itemRepo, mock(TxSessionVars.class), currentUser,
                 mock(EmployeeNameResolver.class), em, numbers, mock(FinanceDocumentAccessPolicy.class),
-                mock(GlPostingService.class));
+                mock(GlPostingService.class), mock(AccountFlowLedgerService.class));
         UUID styleId = UUID.randomUUID();
 
         assertThatThrownBy(() -> service.create(incomeRequest(styleId)))

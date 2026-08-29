@@ -2,6 +2,7 @@
 
 > 位置：`lib/features/basic_data/widgets/uten_goods_picker.dart`（跨模块共享，同 `MasterDataTableView` 一样放在 basic_data 域）
 > 入口：`showUtenGoodsPicker(...)`（单选）/ `showUtenGoodsPickerMulti(...)`（多选）
+> 最后核对：2026-08-27
 > 决策背景：[ADR-015 统一货品选择器与 legacy→UUID 桥接](../99-决策记录-ADR/ADR-015-统一货品选择器与legacy到UUID桥接.md)
 > 统一搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md)
 
@@ -27,7 +28,7 @@
 |---|---|---|
 | 入口 | `Future<GoodsListItem?> showUtenGoodsPicker(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable, bool requireConfirm = true})` | 弹出选择器；默认二次操作（点行高亮 → 底部「取消/确定」确认），`requireConfirm=false` 恢复点行即返回的历史行为；取消/关闭返回 `null` |
 | 多选入口 | `Future<List<GoodsListItem>> showUtenGoodsPickerMulti(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.component})` | 多选款：点货品行勾选/取消（显 ✓），底部「确定(N)」返回所选列表；取消返回空列表。BOM 组装「一个层级添加多个组件」批量录入用 |
-| 返回 | `GoodsListItem` | 完整模型：除 `id/code/name/spec/model/price/series/material` 外，还含 `discount/status/legacyId/cNumber/requireRemark/sourceType/productionBomPolicy/categoryId/autoCreated/stockQty/stockPlace` 及颜色、单位 UUID/名称；legacy ID 只作历史溯源，权威字段见 `goods_node.dart` |
+| 返回 | `GoodsListItem` | 完整模型：除 `id/code/name/spec/model/price/series/material` 外，还含 `discount/status/legacyId/cNumber/requireRemark/sourceType/categoryId/autoCreated/stockQty/stockPlace` 及颜色、单位 UUID/名称；legacy ID 只作历史溯源，权威字段见 `goods_node.dart` |
 
 > 内部 `_GoodsPickerSheet` 为实现细节，调用方不直接使用。
 
@@ -35,7 +36,7 @@
 
 默认 `sellable`（成品/可售卖类，排除原材料/辅料/未分类）——历史行为，未显式传参的调用点零回归。
 
-> **2026-08-16 二次操作契约统一**：`requireConfirm` 默认值从 `false` 改为 `true`，单选与多选一致——点货品行仅高亮勾选（✓），底部为共享 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)（多选带「清空」与「确定（n）」），点「确定」才返回；点「取消」/右上角关闭/遮罩 = 放弃。所有未显式传 `requireConfirm` 的调用点（销售/采购/委外/仓库/生产等单据编辑页）随之统一。
+> **2026-08-16 二次操作契约统一**：`requireConfirm` 默认值从 `false` 改为 `true`，单选与多选一致——点货品行仅高亮勾选(✓)，底部为共享 [UtenPickerConfirmBar](UtenPickerConfirmBar.md)(多选带「清空」与「确定(n)」)，点「确定」才返回；点「取消」/右上角关闭/遮罩 = 放弃。所有未显式传 `requireConfirm` 的调用点(销售/采购/委外/仓库/生产等单据编辑页)随之统一。
 
 | scope | 显示 | 适用调用点 |
 |---|---|---|

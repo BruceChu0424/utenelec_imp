@@ -84,6 +84,15 @@ class FinanceProcurementApprovalTask {
     _ => null,
   };
 
+  FinanceProcurementDecisionItem? get decisionItem {
+    final currentVersion = version;
+    if (!canOpen || currentVersion == null || currentVersion < 1) return null;
+    return FinanceProcurementDecisionItem(
+      caseId: caseId,
+      expectedVersion: currentVersion,
+    );
+  }
+
   factory FinanceProcurementApprovalTask.fromJson(Map<String, dynamic> json) {
     final order = _map(json['order']) ?? _map(json['document']);
     final submitter = _map(json['submitter']) ?? _map(json['submittedBy']);
@@ -165,6 +174,21 @@ class FinanceProcurementApprovalTask {
       allowedActions: _stringSet(json['allowedActions']),
     );
   }
+}
+
+class FinanceProcurementDecisionItem {
+  const FinanceProcurementDecisionItem({
+    required this.caseId,
+    required this.expectedVersion,
+  });
+
+  final String caseId;
+  final int expectedVersion;
+
+  Map<String, dynamic> toJson() => {
+    'caseId': caseId,
+    'expectedVersion': expectedVersion,
+  };
 }
 
 class FinanceProcurementApprovalPage {

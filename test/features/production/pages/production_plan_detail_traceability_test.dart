@@ -15,7 +15,8 @@ void main() {
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      final api = _traceApi();
+      var planReads = 0;
+      final api = _traceApi(onPlanRead: () => planReads++);
 
       final router = GoRouter(
         initialLocation: '/',
@@ -96,8 +97,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('已打开领料单 draw-1'), findsOneWidget);
 
+      final readsBeforeDrawReturn = planReads;
       router.pop();
       await tester.pumpAndSettle();
+      expect(planReads, greaterThan(readsBeforeDrawReturn));
       await tester.tap(find.text('RK-2026-010'));
       await tester.pumpAndSettle();
       expect(find.text('已打开成品入库 inbound-1'), findsOneWidget);
@@ -141,11 +144,14 @@ void main() {
   });
 }
 
-ApiClient _traceApi({bool includeLinks = true}) {
+ApiClient _traceApi({bool includeLinks = true, VoidCallback? onPlanRead}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) {
+        if (request.path == '/production/plans/plan-1') {
+          onPlanRead?.call();
+        }
         final Object data = switch (request.path) {
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',

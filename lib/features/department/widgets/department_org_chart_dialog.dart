@@ -317,7 +317,7 @@ class _DepartmentOrgChartDialogState
             _memberRow(
               theme,
               name: node.managerName!,
-              position: _managerIsDirect(node) ? null : '非本部门直属（挂职）',
+              position: _managerIsDirect(node) ? null : '非本部门直属(挂职)',
               badgeLabel: '负责人',
               icon: Icons.star_rounded,
               highlight: true,
@@ -513,7 +513,7 @@ class _DepartmentOrgChartDialogState
       leaderRank: e.leaderRank,
     );
     return '${e.fullName} · ${e.positionName ?? ''}'
-        '${label == null ? '' : '（$label）'}';
+        '${label == null ? '' : '($label)'}';
   }
 
   List<pw.Widget> _pdfDept(pw.Font font, DepartmentNode node, int depth) {
@@ -554,8 +554,8 @@ class _DepartmentOrgChartDialogState
         pw.Padding(
           padding: pw.EdgeInsets.only(left: depth * 18.0 + 14, bottom: 2),
           child: pw.Text(
-            '★ ${node.managerName}（负责人'
-            '${_managerIsDirect(node) ? '' : '，非本部门直属（挂职）'}）',
+            '★ ${node.managerName}(负责人'
+            '${_managerIsDirect(node) ? '' : '，非本部门直属(挂职)'})',
             style: pw.TextStyle(
               font: font,
               fontSize: 9,

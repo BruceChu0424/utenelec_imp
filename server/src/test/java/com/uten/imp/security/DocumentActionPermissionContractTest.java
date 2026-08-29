@@ -249,6 +249,10 @@ class DocumentActionPermissionContractTest {
                 "approve", authority("finance_order_approval:approve"));
         assertGate(type("com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService"),
                 "reject", authority("finance_order_approval:reject"));
+        assertGate(type("com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService"),
+                "approveBatch", authority("finance_order_approval:approve"));
+        assertGate(type("com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService"),
+                "rejectBatch", authority("finance_order_approval:reject"));
     }
 
     @Test

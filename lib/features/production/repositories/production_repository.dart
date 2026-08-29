@@ -22,6 +22,7 @@
 //
 // ⚠ 端点路径目前写死在仓库内（带 // ENDPOINT 注释），便于 grep；
 //   共享接线时把它们搬到 lib/core/network/api_endpoints.dart（同 purchase 段）。
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -125,22 +126,41 @@ class ProductionPlanRepository {
   /// 计划单向导预填（V192）：读取正式排产确认学习出的货品车间偏好。
   /// 返回 goodsId → (departmentId, departmentName)；无有效偏好的货品不在结果中。
   Future<Map<String, ({String departmentId, String? departmentName})>>
-  defaultWorkshops(Set<String> goodsIds) async {
+  defaultWorkshops(Set<String> goodsIds, {CancelToken? cancelToken}) async {
     if (goodsIds.isEmpty) return const {};
     // 200 个 UUID 加逗号 URL 编码后接近常见代理的 8KB request-line 上限；
-    // 客户端用 100 分块留出路径、查询名与代理差异余量，服务端仍保留 200 硬上限。
+    // 客户端仍用 100 分块，但并行执行且共用一个取消令牌。该可选预填查询
+    // 每块只尝试一次、10 秒截止，不继承普通 GET 的两次自动重试。
     const requestLimit = 100;
+    const receiveTimeout = Duration(seconds: 10);
     final orderedIds = goodsIds.toList(growable: false)..sort();
     final result = <String, ({String departmentId, String? departmentName})>{};
+    final effectiveCancelToken = cancelToken ?? CancelToken();
+    final requests = <Future<List<Map<String, dynamic>>>>[];
     for (var start = 0; start < orderedIds.length; start += requestLimit) {
       final proposedEnd = start + requestLimit;
       final end = proposedEnd < orderedIds.length
           ? proposedEnd
           : orderedIds.length;
-      final list = await api.getList(
-        '$_materialAnalysesBase/default-workshops', // ENDPOINT
-        query: {'ids': orderedIds.sublist(start, end).join(',')},
+      requests.add(
+        api.getListOnce(
+          '$_materialAnalysesBase/default-workshops', // ENDPOINT
+          query: {'ids': orderedIds.sublist(start, end).join(',')},
+          receiveTimeout: receiveTimeout,
+          cancelToken: effectiveCancelToken,
+        ),
       );
+    }
+    List<List<Map<String, dynamic>>> batches;
+    try {
+      batches = await Future.wait(requests, eagerError: true);
+    } catch (_) {
+      if (!effectiveCancelToken.isCancelled) {
+        effectiveCancelToken.cancel('default workshop lookup failed');
+      }
+      rethrow;
+    }
+    for (final list in batches) {
       for (final entry in list) {
         final goodsId = entry['goodsId'] as String?;
         final departmentId = entry['departmentId'] as String?;
@@ -684,7 +704,6 @@ class ProductionPlanRepository {
     required String warehouseId,
     required List<MaterialAnalysisPlanItemInput> items,
     List<MaterialRouteDecision> routes = const [],
-    List<MaterialBomOverride> bomOverrides = const [],
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/plan-preview',
@@ -695,10 +714,6 @@ class ProductionPlanRepository {
         'items': [for (final item in items) item.toQuantityJson()],
         if (routes.isNotEmpty)
           'routes': [for (final route in routes) route.toJson()],
-        if (bomOverrides.isNotEmpty)
-          'bomOverrides': [
-            for (final override in bomOverrides) override.toJson(),
-          ],
       },
     ); // ENDPOINT
     return ProductionMaterialPlanPreview.fromJson(json);
@@ -718,7 +733,6 @@ class ProductionPlanRepository {
     String? workerId,
     bool approveNow = false,
     List<MaterialRouteDecision> routes = const [],
-    List<MaterialBomOverride> bomOverrides = const [],
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${preview.analysisId}/generate-plan',
@@ -737,10 +751,6 @@ class ProductionPlanRepository {
         'items': [for (final item in items) item.toJson()],
         if (routes.isNotEmpty)
           'routes': [for (final route in routes) route.toJson()],
-        if (bomOverrides.isNotEmpty)
-          'bomOverrides': [
-            for (final override in bomOverrides) override.toJson(),
-          ],
       },
     ); // ENDPOINT
     return ProductionMaterialGenerateResult.fromJson(json);
@@ -813,53 +823,6 @@ class ProductionPlanRepository {
     return list.map(ScheduleOrderLine.fromJson).toList();
   }
 
-  /// 待排产 BOM 缺失 → 转发工程研发部（建研发任务 + 通知）。返回任务 id。
-  Future<String> forwardToRd(String orderItemId, {String? note}) async {
-    final json = await api.post(
-      '/production/schedule/forward-rd',
-      body: {
-        'orderItemId': orderItemId,
-        if (note != null && note.isNotEmpty) 'note': note,
-      },
-    ); // ENDPOINT
-    return json['taskId'] as String;
-  }
-
-  /// 一键批量转发 BOM 缺失（成品 + 自制组件）给工程研发部。
-  /// 每货品按 goods 去重（研发每件只收一条）；当前计划员登记为每个货品的等待者。
-  /// 返回 {created, reused, items:[{goodsId, taskId, isNew}]}。
-  Future<Map<String, dynamic>> forwardToRdBatch(
-    List<({String goodsId, String? orderItemId})> items, {
-    String? note,
-    String? sourcePlanId,
-    String? sourcePlanNo,
-  }) async {
-    if (items.isEmpty) {
-      return const {
-        'created': 0,
-        'reused': 0,
-        'items': <Map<String, dynamic>>[],
-      };
-    }
-    return Map<String, dynamic>.from(
-      await api.post(
-        '/production/schedule/forward-rd-batch',
-        body: {
-          'items': [
-            for (final it in items)
-              {
-                'goodsId': it.goodsId,
-                if (it.orderItemId != null) 'orderItemId': it.orderItemId,
-              },
-          ],
-          if (note != null && note.isNotEmpty) 'note': note,
-          'sourcePlanId': ?sourcePlanId,
-          'sourcePlanNo': ?sourcePlanNo,
-        },
-      ),
-    ); // ENDPOINT
-  }
-
   /// D2 建议完工日期（历史日均完工×BOM 层级缓冲）。
   Future<Map<String, dynamic>> suggestFinish(Map<String, dynamic> body) async {
     final json = await api.post(
@@ -900,10 +863,7 @@ class SchedulePendingRow {
     this.approvedPlannedQty,
     this.deliverDate,
     this.chainStatus,
-    this.bomReady = true,
     this.urgent = false,
-    this.rdForwarded = false,
-    this.myForward = false,
   });
   final String orderItemId;
   final String orderId;
@@ -934,14 +894,7 @@ class SchedulePendingRow {
   final double? approvedPlannedQty;
   final String? deliverDate;
   final int? chainStatus;
-  final bool bomReady;
   final bool urgent;
-
-  /// 该货品已有人转发研发维护 BOM 且仍在等待（goods 级）。
-  final bool rdForwarded;
-
-  /// 当前登录计划员已登记为该货品的等待者（在 rd_task_forwarders 中）。
-  final bool myForward;
 
   factory SchedulePendingRow.fromJson(
     Map<String, dynamic> j,
@@ -973,10 +926,7 @@ class SchedulePendingRow {
     approvedPlannedQty: (j['approvedPlannedQty'] as num?)?.toDouble(),
     deliverDate: j['deliverDate'] as String?,
     chainStatus: (j['chainStatus'] as num?)?.toInt(),
-    bomReady: j['bomReady'] != false,
     urgent: j['urgent'] == true,
-    rdForwarded: j['rdForwarded'] == true,
-    myForward: j['myForward'] == true,
   );
 }
 
@@ -1570,21 +1520,25 @@ class ProductionDailyReportRepository {
     return PagedResult.fromJson(json, ReportablePlanLine.fromJson);
   }
 
-  Future<ProductionDailyReportDetail> create(Map<String, dynamic> body) async {
+  Future<ProductionDailyReportDetail> create(
+    Map<String, dynamic> body, {
+    required String idempotencyKey,
+  }) async {
     final json = await api.post(
       '/production/daily-reports',
-      body: body,
+      body: {...body, 'idempotencyKey': idempotencyKey},
     ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
   }
 
   Future<ProductionDailyReportDetail> update(
     String id,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    required int expectedVersion,
+  }) async {
     final json = await api.put(
       '/production/daily-reports/$id',
-      body: body,
+      body: {...body, 'expectedVersion': expectedVersion},
     ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
   }

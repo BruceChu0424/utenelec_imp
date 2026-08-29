@@ -62,7 +62,7 @@ public class PrimaryHealthIndicator {
             up = true;
         } catch (Exception e) {
             if (up) {
-                log.warn("主库不可达，云端进入只读降级（写请求将 503）: {}", e.getClass().getSimpleName());
+                log.warn("主库不可达，云端进入只读降级(写请求将 503): {}", e.getClass().getSimpleName());
             }
             up = false;
         } finally {

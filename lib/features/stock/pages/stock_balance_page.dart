@@ -112,6 +112,14 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
         sortable: true,
         value: (b) => (b.qty ?? 0).toStringAsFixed(2),
       ),
+      MasterColumnDef(
+        key: 'weight',
+        label: '库存重量', // TODO(l10n): 补 arb
+        width: 120,
+        type: 'number',
+        sortable: true,
+        value: (b) => b.weight?.toStringAsFixed(2) ?? '—',
+      ),
     ];
   }
 

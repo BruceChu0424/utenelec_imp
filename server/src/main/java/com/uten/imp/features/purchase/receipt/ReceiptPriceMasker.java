@@ -1,7 +1,6 @@
 package com.uten.imp.features.purchase.receipt;
 
-import com.uten.imp.security.AuthUser;
-import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.CommercialPriceVisibility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -17,25 +16,18 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ReceiptPriceMasker {
 
-    public static final String PURCHASE_PERM = "purchase_receipt:price:view";
-    public static final String SUBCONTRACT_PERM = "subcontract_receipt:price:view";
+    public static final String PURCHASE_PERM = CommercialPriceVisibility.PURCHASE_PERMISSION;
+    public static final String SUBCONTRACT_PERM = CommercialPriceVisibility.SUBCONTRACT_PERMISSION;
 
-    private final SecurityContextCurrentUser currentUser;
+    private final CommercialPriceVisibility visibility;
 
     /** 当前用户是否可看采购收货单价格。 */
     public boolean canViewPurchase() {
-        return canView(PURCHASE_PERM);
+        return visibility.canViewPurchase();
     }
 
     /** 当前用户是否可看委外进仓单价格。 */
     public boolean canViewSubcontract() {
-        return canView(SUBCONTRACT_PERM);
-    }
-
-    private boolean canView(String perm) {
-        return currentUser.get()
-                .map(AuthUser::getPermissions)
-                .map(p -> p.contains(perm))
-                .orElse(false);
+        return visibility.canViewSubcontract();
     }
 }

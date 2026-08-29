@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -553,6 +554,7 @@ class _EmployeeOnboardingPageState
   }) {
     if (!required) {
       return TextFormField(
+        errorBuilder: utenTextFieldErrorBuilder,
         controller: c,
         decoration: InputDecoration(
           labelText: label,
@@ -574,6 +576,7 @@ class _EmployeeOnboardingPageState
         final theme = Theme.of(context);
         final empty = c.text.trim().isEmpty;
         return TextFormField(
+          errorBuilder: utenTextFieldErrorBuilder,
           controller: c,
           decoration: applyRequiredEmpty(
             InputDecoration(

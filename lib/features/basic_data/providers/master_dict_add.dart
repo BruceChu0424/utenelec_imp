@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -102,7 +103,7 @@ Future<String?> showNameAddSheet({
                               labelText: '名称',
                               border: const OutlineInputBorder(),
                               isDense: true,
-                              errorText: error,
+                              error: utenFieldError(error),
                             ),
                             onSubmitted: (_) => doSave(),
                           ),

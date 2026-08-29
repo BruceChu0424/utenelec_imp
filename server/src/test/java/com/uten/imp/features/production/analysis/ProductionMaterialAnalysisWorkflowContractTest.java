@@ -144,7 +144,7 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(service).contains("material.allocatedAvailableQty()");
         assertThat(service).contains("depth == 1");
         assertThat(commands).contains(".filter(MaterialView::actionable)");
-        assertThat(commands).contains("map(MaterialView::shortageQty)");
+        assertThat(commands).contains("map(MaterialView::demandSupplyGapQty)");
         assertThat(commands).contains("analysisService.refreshLocked(analysisId)");
     }
 
@@ -204,19 +204,22 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         String contracts = source("features/production/analysis/MaterialAnalysisContracts.java");
         String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
 
-        // 协议：可选的逐组指定数量（缺省 = 缺口−在途 全量）。
+        // 协议：需求 exact 数量与固定公共安全补库确认量分开提交。
         assertThat(contracts).contains("record SupplyQuantityInput(");
         assertThat(contracts).contains("List<@Valid SupplyQuantityInput> quantities");
-        // 服务端按操作组解析并以实时余量复核：0 < qty <= 缺口−在途。
-        assertThat(commands).contains("quantityOverrides(view, request, groups)");
-        assertThat(commands).contains("quantityOverrides.get(group.groupKey())");
+        assertThat(contracts).contains("BigDecimal safetyReplenishmentQty");
+        // 服务端按操作组解析并以实时未绑定需求复核；安全量必须 echo 最新快照。
+        assertThat(commands).contains("quantityInputs(view, request, groups)");
+        assertThat(commands).contains("quantityInputs.get(group.groupKey())");
         assertThat(commands).contains("requested.compareTo(delta) > 0");
-        assertThat(commands).contains("缺口扣除在途任务后的余量");
-        // 落库与分摊都用复核后的数量，不再默认 delta。
+        assertThat(commands).contains("真实未绑定需求扣除在途后的余量");
+        assertThat(commands).contains("公共安全库存补库已变化");
+        // demand allocation 只用复核后的 exact 数量；安全量写独立采购明细。
         assertThat(commands).contains(
-                "allocateAction(actionId, analysisId, group.materials(), qty)");
+                "allocateAction(actionId, analysisId, group.materials(), plan.demandQty())");
         // 幂等哈希必须覆盖数量，防止同键不同量误重放。
         assertThat(commands).contains("\"QTY|\"");
+        assertThat(commands).contains("\"|SAFETY|\"");
     }
 
     @Test

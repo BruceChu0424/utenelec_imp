@@ -134,7 +134,7 @@ class _ClientShipAddressSheetState
   Future<void> _add() async {
     final addr = _newAddr.text.trim();
     if (addr.length < 2) {
-      context.appWarning('请填写收货地址（至少 2 个字符）');
+      context.appWarning('请填写收货地址(至少 2 个字符)');
       return;
     }
     setState(() => _busy = true);
@@ -307,7 +307,7 @@ class _ClientShipAddressSheetState
                   controller: _newPhone,
                   maxLength: 64,
                   decoration: const InputDecoration(
-                    labelText: '联系电话（随地址一起记住，可空）',
+                    labelText: '联系电话(随地址一起记住，可空)',
                   ),
                 ),
                 const SizedBox(height: UtenSpacing.s8),

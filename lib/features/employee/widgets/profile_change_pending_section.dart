@@ -100,7 +100,7 @@ class ProfileChangePendingSection extends ConsumerWidget {
                   type: UtenButtonType.ghost,
                   size: UtenButtonSize.small,
                   onPressed: () => context.push(RouteName.hrProfileChanges),
-                  child: Text('${l10n.profilePendingSectionViewAll}（$more）'),
+                  child: Text('${l10n.profilePendingSectionViewAll}($more)'),
                 ),
               ),
             ],

@@ -39,6 +39,7 @@ public final class ProcurementPayablesContracts {
             Integer creditDays,
             UUID currencyId,
             String currencyCode,
+            String currencyName,
             String bookingRate,
             String grossOriginal,
             String grossLocal,

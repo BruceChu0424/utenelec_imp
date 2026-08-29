@@ -21,4 +21,6 @@ public class WasteListItem {
     private Short status;
     private boolean closed;
     private Integer legacyId;
+    /** 当前用户无委外商业金额权限时为 true，总金额置 null；数量和重量仍可见。 */
+    private boolean priceMasked;
 }

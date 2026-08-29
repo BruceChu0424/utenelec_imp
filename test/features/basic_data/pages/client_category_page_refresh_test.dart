@@ -22,14 +22,14 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('分类编辑保存后右栏详情与内容列表自动重拉（无需手动刷新）', (tester) async {
+  testWidgets('分类编辑保存后右栏详情与内容列表自动重拉(无需手动刷新)', (tester) async {
     final categories = _FakeClientCategoryRepository();
     final clients = _FakeClientRepository();
     await _pumpPage(tester, categories, clients);
 
     // 选中「成品类」→ 右栏加载详情（第 1 次 detail）+ 客户列表（第 1 次 list）。
     // 树节点渲染为「名称（编码）」。
-    await tester.tap(find.text('成品类（C-FIN）'));
+    await tester.tap(find.text('成品类(C-FIN)'));
     await tester.pumpAndSettle();
     expect(categories.detailCalls('finished'), 1);
     expect(clients.listCalls, greaterThan(0));

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -204,7 +205,9 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
               decoration: InputDecoration(
                 labelText: '搜索物料',
                 hintText: '编号 / 名称 / 型号 / 规格等',
-                helperText: '搜索全部匹配货品，并标注当前直接 BOM、生产及委外证据',
+                helper: const UtenFieldMessage.helper(
+                  '搜索全部匹配货品，并标注当前直接 BOM、生产及委外证据',
+                ),
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _keyword.isEmpty
                     ? null
@@ -681,8 +684,8 @@ class _WhereUsedMaterial {
       );
 
   String get displayName {
-    final effectiveName = name.isEmpty ? '（无名称）' : name;
-    return code.isEmpty ? effectiveName : '$effectiveName（$code）';
+    final effectiveName = name.isEmpty ? '(无名称)' : name;
+    return code.isEmpty ? effectiveName : '$effectiveName($code)';
   }
 
   GoodsListItem toGoodsListItem() => GoodsListItem(

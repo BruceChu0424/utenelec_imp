@@ -42,6 +42,13 @@ class ReportablePlanLine {
     this.planBeginDate,
     this.planEndDate,
     this.deliveryDate,
+    this.fqcRecoveryAuthorizationId,
+    this.fqcRecoveryDispositionCode,
+    this.fqcRecoveryAvailableQty = 0,
+    this.fqcSourceInspectionId,
+    this.fqcSourceReportItemId,
+    this.fqcSourceReportNo,
+    this.fqcRecoveryRequiresMaterial = false,
   });
 
   final String planItemId;
@@ -76,42 +83,75 @@ class ReportablePlanLine {
   final String? planBeginDate;
   final String? planEndDate;
   final String? deliveryDate;
+  final String? fqcRecoveryAuthorizationId;
+  final String? fqcRecoveryDispositionCode;
+  final double fqcRecoveryAvailableQty;
+  final String? fqcSourceInspectionId;
+  final String? fqcSourceReportItemId;
+  final String? fqcSourceReportNo;
+  final bool fqcRecoveryRequiresMaterial;
 
-  factory ReportablePlanLine.fromJson(Map<String, dynamic> json) =>
-      ReportablePlanLine(
-        planItemId: json['planItemId'] as String,
-        executionSegmentId: json['executionSegmentId'] as String?,
-        executionSegmentSalesAllocationId:
-            json['executionSegmentSalesAllocationId'] as String?,
-        executionSegmentCode: json['executionSegmentCode'] as String?,
-        executionSegmentStatus: json['executionSegmentStatus'] as String?,
-        executionSegmentVersion: (json['executionSegmentVersion'] as num?)
-            ?.toInt(),
-        orderItemId: json['orderItemId'] as String?,
-        planNo: json['planNo'] as String,
-        productNo: json['productNo'] as String?,
-        goodsId: json['goodsId'] as String,
-        goodsCode: json['goodsCode'] as String?,
-        goodsName: json['goodsName'] as String?,
-        goodsSpec: json['goodsSpec'] as String?,
-        colorId: json['colorId'] as String?,
-        colorName: json['colorName'] as String?,
-        unitId: json['unitId'] as String?,
-        unitName: json['unitName'] as String?,
-        unitRate: _asDouble(json['unitRate']),
-        plannedQty: _asDouble(json['plannedQty']),
-        producedQty: _asDouble(json['producedQty']),
-        remainingPlanQty: _asDouble(json['remainingPlanQty']),
-        allocatedQty: _asDouble(json['allocatedQty']),
-        linkedProducedQty: _asDouble(json['linkedProducedQty']),
-        maxReportQty: _asDouble(json['maxReportQty']) ?? 0,
-        orderNo: json['orderNo'] as String?,
-        orderQty: _asDouble(json['orderQty']),
-        clientName: json['clientName'] as String?,
-        departmentId: json['departmentId'] as String?,
-        workshopName: json['workshopName'] as String?,
-        planBeginDate: json['planBeginDate'] as String?,
-        planEndDate: json['planEndDate'] as String?,
-        deliveryDate: json['deliveryDate'] as String?,
-      );
+  bool get isFqcRecovery => fqcRecoveryAuthorizationId?.isNotEmpty == true;
+
+  bool get canReport => maxReportQty > 0.000001 && !fqcRecoveryRequiresMaterial;
+
+  String? get fqcRecoveryLabel {
+    if (!isFqcRecovery) return null;
+    return switch (fqcRecoveryDispositionCode) {
+      'REWORK' => '返工再检',
+      'SCRAP' => '报废补产',
+      'REJECT' => '拒收补产',
+      _ => 'FQC恢复',
+    };
+  }
+
+  String? get blockedReason {
+    if (!fqcRecoveryRequiresMaterial) return null;
+    return '${fqcRecoveryLabel ?? '补产'}尚未完成新增物料齐套和仓库发料，当前不能报工';
+  }
+
+  factory ReportablePlanLine.fromJson(
+    Map<String, dynamic> json,
+  ) => ReportablePlanLine(
+    planItemId: json['planItemId'] as String,
+    executionSegmentId: json['executionSegmentId'] as String?,
+    executionSegmentSalesAllocationId:
+        json['executionSegmentSalesAllocationId'] as String?,
+    executionSegmentCode: json['executionSegmentCode'] as String?,
+    executionSegmentStatus: json['executionSegmentStatus'] as String?,
+    executionSegmentVersion: (json['executionSegmentVersion'] as num?)?.toInt(),
+    orderItemId: json['orderItemId'] as String?,
+    planNo: json['planNo'] as String,
+    productNo: json['productNo'] as String?,
+    goodsId: json['goodsId'] as String,
+    goodsCode: json['goodsCode'] as String?,
+    goodsName: json['goodsName'] as String?,
+    goodsSpec: json['goodsSpec'] as String?,
+    colorId: json['colorId'] as String?,
+    colorName: json['colorName'] as String?,
+    unitId: json['unitId'] as String?,
+    unitName: json['unitName'] as String?,
+    unitRate: _asDouble(json['unitRate']),
+    plannedQty: _asDouble(json['plannedQty']),
+    producedQty: _asDouble(json['producedQty']),
+    remainingPlanQty: _asDouble(json['remainingPlanQty']),
+    allocatedQty: _asDouble(json['allocatedQty']),
+    linkedProducedQty: _asDouble(json['linkedProducedQty']),
+    maxReportQty: _asDouble(json['maxReportQty']) ?? 0,
+    orderNo: json['orderNo'] as String?,
+    orderQty: _asDouble(json['orderQty']),
+    clientName: json['clientName'] as String?,
+    departmentId: json['departmentId'] as String?,
+    workshopName: json['workshopName'] as String?,
+    planBeginDate: json['planBeginDate'] as String?,
+    planEndDate: json['planEndDate'] as String?,
+    deliveryDate: json['deliveryDate'] as String?,
+    fqcRecoveryAuthorizationId: json['fqcRecoveryAuthorizationId'] as String?,
+    fqcRecoveryDispositionCode: json['fqcRecoveryDispositionCode'] as String?,
+    fqcRecoveryAvailableQty: _asDouble(json['fqcRecoveryAvailableQty']) ?? 0,
+    fqcSourceInspectionId: json['fqcSourceInspectionId'] as String?,
+    fqcSourceReportItemId: json['fqcSourceReportItemId'] as String?,
+    fqcSourceReportNo: json['fqcSourceReportNo'] as String?,
+    fqcRecoveryRequiresMaterial: json['fqcRecoveryRequiresMaterial'] == true,
+  );
 }

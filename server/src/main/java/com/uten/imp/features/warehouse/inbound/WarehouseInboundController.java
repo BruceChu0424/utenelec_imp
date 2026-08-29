@@ -7,6 +7,8 @@ import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.GoodsProfileHintRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationTask;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -32,6 +34,7 @@ public class WarehouseInboundController {
     private final ProcurementArrivalControlService service;
     private final PurchaseReceiptService purchaseReceiptService;
     private final SubcontractReceiptService subcontractReceiptService;
+    private final WarehouseArrivalRegistrationService arrivalRegistration;
 
     @GetMapping("/expectations")
     public PageResponse<InboundExpectationTask> expectations(
@@ -65,6 +68,29 @@ public class WarehouseInboundController {
     @GetMapping("/arrival-exceptions/count")
     public Map<String, Long> arrivalExceptionCount() {
         return Map.of("count", service.countWarehouseExceptions());
+    }
+
+    /**
+     * 到货登记一步完成（登记 + 送检审核）：币种/汇率/结算方式由服务端按来源订货单权威回填，
+     * 仓库只登记数量与库位；正常路径保存即转品质部待检（IQC），实到超量时按
+     * EXCESS_QUARANTINED 返回（草稿已建、未入库未立应付，等待财务定案）。
+     * 建单/审核权限由各收货单 Service 自身 @PreAuthorize 收口。
+     */
+    @PostMapping("/arrivals")
+    public WarehouseArrivalRegisterResult registerArrival(
+            @Valid @RequestBody WarehouseArrivalRegisterRequest request) {
+        return arrivalRegistration.register(request);
+    }
+
+    /**
+     * 完成中断的到货登记（断点恢复）：草稿收货单一键「继续送检」——服务端先按来源
+     * 订货单权威修复表头币族（老草稿），再走同一审核链路；仓库不进采购/委外单据页。
+     * 审核权限由各收货单 Service.approve 的 @PreAuthorize 收口。
+     */
+    @PostMapping("/arrivals/{receiptId}/complete")
+    public WarehouseArrivalRegisterResult completeArrival(
+            @PathVariable UUID receiptId) {
+        return arrivalRegistration.complete(receiptId);
     }
 
     /**

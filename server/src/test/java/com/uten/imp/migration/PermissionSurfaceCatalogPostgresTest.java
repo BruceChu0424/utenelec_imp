@@ -180,7 +180,6 @@ class PermissionSurfaceCatalogPostgresTest {
                 "production_plan:delete",
                 "production_plan:edit",
                 "production_plan:flags",
-                "production_plan:forward_rd",
                 "production_plan:reverse",
                 "production_plan:view",
                 "production_plan:view:all",

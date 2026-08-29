@@ -153,18 +153,18 @@ class _ProductionPlanListPageState
     if (ids.isEmpty || _batching) return;
     final message = danger
         ? '将删除选中的 ${ids.length} 个生产计划单草稿；非草稿将被跳过，删除不可撤销。'
-        : '将审核选中的 ${ids.length} 个生产计划单（草稿→已审）；非草稿将被跳过。';
+        : '将审核选中的 ${ids.length} 个生产计划单(草稿→已审)；非草稿将被跳过。';
     final confirmed = reviewerResponsibility
         ? await showUtenReviewerConfirmDialog(
             context,
-            title: '批量$verb（${ids.length} 个）',
+            title: '批量$verb(${ids.length} 个)',
             message: message,
             confirmLabel: '确认批量$verb',
             actionLabel: '批量审核',
           )
         : await UtenDialog.show(
             context,
-            title: '批量$verb（${ids.length} 个）',
+            title: '批量$verb(${ids.length} 个)',
             content: Text(message),
             confirmLabel: '确认批量$verb',
             danger: danger,
@@ -192,22 +192,25 @@ class _ProductionPlanListPageState
     }
   }
 
-  /// 批量操作按钮（交由 MasterDataTableView 工具条统一渲染）：按权限显隐批量审核/删除。
-  /// 选中集非空时可点；未选中时由组件层整条灰化 + AbsorbPointer 拦截，故此处无需判空
-  ///（_runBatch 内另有空集守卫）。_batchApprove/_batchDelete 直接读 _selectedIds。
-  List<Widget> _planBatchActions(BuildContext context, Set<String> _) {
+  /// 批量业务动作由 MasterDataTableView 统一悬浮在右下角；选择摘要仍在表头上方。
+  List<Widget> _planBatchActions(
+    BuildContext context,
+    Set<String> selectedIds,
+  ) {
     return [
       if (_canBatchApprove)
         UtenButton(
           type: UtenButtonType.tonal,
+          size: UtenButtonSize.large,
           onPressed: _batching ? null : _batchApprove,
-          child: const Text('批量审核'),
+          child: Text('批量审核(${selectedIds.length})'),
         ),
       if (_canBatchDelete)
         UtenButton(
           type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
           onPressed: _batching ? null : _batchDelete,
-          child: const Text('批量删除'),
+          child: Text('批量删除(${selectedIds.length})'),
         ),
     ];
   }

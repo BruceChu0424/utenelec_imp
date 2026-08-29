@@ -1219,8 +1219,8 @@ public class ProductionExecutionReadinessService
                                                         * COALESCE(
                                                             receipt_item.unit_rate,
                                                             1)
-                                                    WHEN inspection.status =
-                                                        'RESOLVED'
+                                                    WHEN inspection.status IN (
+                                                        'PARTIAL', 'RESOLVED')
                                                     THEN inspection
                                                         .passed_base_qty
                                                     ELSE 0
@@ -1290,8 +1290,8 @@ public class ProductionExecutionReadinessService
                                                         * COALESCE(
                                                             receipt_item.unit_rate,
                                                             1)
-                                                    WHEN inspection.status =
-                                                        'RESOLVED'
+                                                    WHEN inspection.status IN (
+                                                        'PARTIAL', 'RESOLVED')
                                                     THEN inspection
                                                         .passed_base_qty
                                                     ELSE 0

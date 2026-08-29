@@ -233,7 +233,7 @@ class HrTaskTile extends ConsumerWidget {
         // 认领 / 释放 / 接管
         if (item.claimedByName == null)
           IconButton(
-            tooltip: '认领（标记为我在处理）',
+            tooltip: '认领(标记为我在处理)',
             icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
             onPressed: () => _run(context, ref, () async {
               await ref
@@ -244,7 +244,7 @@ class HrTaskTile extends ConsumerWidget {
           )
         else if (item.claimedByMe)
           IconButton(
-            tooltip: '释放（不再由我处理）',
+            tooltip: '释放(不再由我处理)',
             icon: const Icon(Icons.person_remove_outlined, size: 20),
             onPressed: () => _run(context, ref, () async {
               await ref
@@ -255,7 +255,7 @@ class HrTaskTile extends ConsumerWidget {
           )
         else if (canTakeover)
           IconButton(
-            tooltip: '接管（转由我处理）',
+            tooltip: '接管(转由我处理)',
             icon: const Icon(Icons.swap_horizontal_circle_outlined, size: 20),
             onPressed: () => _run(context, ref, () async {
               await ref
@@ -383,7 +383,7 @@ Future<void> showHrConfirmDialog(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              '选择实际转正日期（默认为今天）。试用期员工将转为在职；'
+              '选择实际转正日期(默认为今天)。试用期员工将转为在职；'
               '已是正式员工的将补登转正日期。',
             ),
             const SizedBox(height: UtenSpacing.s12),

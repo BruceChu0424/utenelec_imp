@@ -39,6 +39,8 @@ class _SubcontractLossClaimDetailPanelState
   bool get _canReverse =>
       _permissions.contains(Perm.subcontractLossClaimReverse);
   bool get _canReverseFulfillment => _canFulfill && _canReverse;
+  bool get _canViewFinancialAmounts =>
+      _permissions.contains(Perm.financeViewAll);
 
   @override
   void initState() {
@@ -124,6 +126,7 @@ class _SubcontractLossClaimDetailPanelState
     final draft = await showSubcontractLossFulfillmentPanel(
       context: context,
       resolution: resolution,
+      canViewFinancialAmounts: _canViewFinancialAmounts,
     );
     if (draft == null || !mounted) return;
     setState(() => _writing = true);
@@ -190,7 +193,7 @@ class _SubcontractLossClaimDetailPanelState
     final reason = await showSubcontractLossReasonDialog(
       context: context,
       title: '反转补偿履约',
-      label: '履约反转原因（必填）',
+      label: '履约反转原因(必填)',
     );
     if (reason == null || !mounted) return;
     setState(() => _writing = true);
@@ -223,7 +226,7 @@ class _SubcontractLossClaimDetailPanelState
     final reason = await showSubcontractLossReasonDialog(
       context: context,
       title: '反转超耗责任决定',
-      label: '反转原因（必填）',
+      label: '反转原因(必填)',
     );
     if (reason == null || !mounted) return;
     setState(() => _writing = true);
@@ -337,8 +340,10 @@ class _SubcontractLossClaimDetailPanelState
       ('实际损耗', summary.actualLossQty),
       ('允许损耗', summary.allowedLossQty),
       ('超耗数量', summary.excessLossQty),
-      ('账面损失（本币）', summary.lossBookValueLocal),
-      ('索赔额（本币）', summary.claimAmountLocal),
+      if (_canViewFinancialAmounts) ...[
+        ('账面损失(本币)', summary.lossBookValueLocal),
+        ('索赔额(本币)', summary.claimAmountLocal),
+      ],
       ('版本', summary.version.toString()),
     ];
     return Card(
@@ -380,14 +385,16 @@ class _SubcontractLossClaimDetailPanelState
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
-          columns: const [
-            DataColumn(label: Text('材料')),
-            DataColumn(label: Text('实际损耗'), numeric: true),
-            DataColumn(label: Text('允许损耗'), numeric: true),
-            DataColumn(label: Text('超耗'), numeric: true),
-            DataColumn(label: Text('单位账面价值'), numeric: true),
-            DataColumn(label: Text('账面损失'), numeric: true),
-            DataColumn(label: Text('估值状态')),
+          columns: [
+            const DataColumn(label: Text('材料')),
+            const DataColumn(label: Text('实际损耗'), numeric: true),
+            const DataColumn(label: Text('允许损耗'), numeric: true),
+            const DataColumn(label: Text('超耗'), numeric: true),
+            if (_canViewFinancialAmounts) ...[
+              const DataColumn(label: Text('单位账面价值'), numeric: true),
+              const DataColumn(label: Text('账面损失'), numeric: true),
+            ],
+            const DataColumn(label: Text('估值状态')),
           ],
           rows: [
             for (final line in lines)
@@ -399,8 +406,10 @@ class _SubcontractLossClaimDetailPanelState
                   DataCell(Text(line.actualLossQty ?? '—')),
                   DataCell(Text(line.allowedLossQty ?? '—')),
                   DataCell(Text(line.excessLossQty ?? '—')),
-                  DataCell(Text(line.unitBookValueLocal ?? '—')),
-                  DataCell(Text(line.lossBookValueLocal ?? '—')),
+                  if (_canViewFinancialAmounts) ...[
+                    DataCell(Text(line.unitBookValueLocal ?? '—')),
+                    DataCell(Text(line.lossBookValueLocal ?? '—')),
+                  ],
                   DataCell(Text(line.valuationStatus ?? '—')),
                 ],
               ),
@@ -438,7 +447,8 @@ class _SubcontractLossClaimDetailPanelState
             ),
             const SizedBox(height: UtenSpacing.s4),
             Text(
-              '数量 ${resolution.quantity ?? '—'} · 金额 ¥${resolution.amountLocal ?? '0'}'
+              '数量 ${resolution.quantity ?? '—'}'
+              '${_canViewFinancialAmounts ? ' · 金额 ¥${resolution.amountLocal ?? '0'}' : ''}'
               '${resolution.dueDate == null ? '' : ' · 到期 ${resolution.dueDate}'}',
             ),
             if (resolution.note?.isNotEmpty == true) Text(resolution.note!),

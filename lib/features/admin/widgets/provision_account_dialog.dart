@@ -9,13 +9,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/feedback/uten_dialog.dart';
-import '../../../components/feedback/uten_toast.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../employee/repositories/employee_repository.dart';
-import '../../employee/widgets/employee_credential_dialog.dart';
+import '../../../shared/formatters/employee_display.dart';
+import '../../employee/widgets/employee_account_provision_flow.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 
@@ -96,38 +95,19 @@ class _ProvisionAccountDialogState
 
   Future<void> _provision(AccountProvisionCandidate candidate) async {
     if (_provisioning) return;
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '开通账号确认',
-      content: Text(
-        '确定为「${candidate.name}（${candidate.code}）」开通登录账号吗？\n'
-        '登录账号 = 该员工手机号，初始密码 = 证件号后 6 位；'
-        '员工首次登录后须设置新密码。',
-      ),
-      confirmLabel: '开通账号',
-    );
-    if (confirmed != true || !mounted) return;
     setState(() => _provisioning = true);
     try {
-      final result = await ref
-          .read(employeeRepositoryProvider)
-          .provisionAccount(candidate.employeeId);
-      if (!mounted) return;
-      // 先关选择器，再用外层页面上下文展示一次性凭据（不可返回兜藏），最后通知外层刷新。
-      Navigator.pop(context);
-      final parent = widget.parentContext;
-      if (!parent.mounted) return;
-      await showEmployeeCredentialDialog(parent, result);
-      widget.onProvisioned();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      UtenToast.error(
-        context,
-        e.message.isNotEmpty ? e.message : '开通账号失败，请稍后重试',
+      final result = await showProvisionSelectedEmployeeAccountFlow(
+        widget.parentContext,
+        ref: ref,
+        employeeId: candidate.employeeId,
+        employeeName: candidate.name,
+        employeeCode: candidate.code,
+        hasAccount: false,
       );
-    } catch (_) {
-      if (!mounted) return;
-      UtenToast.error(context, '开通账号失败，请稍后重试');
+      if (!mounted || result == null) return;
+      Navigator.pop(context);
+      widget.onProvisioned();
     } finally {
       if (mounted) setState(() => _provisioning = false);
     }
@@ -189,6 +169,7 @@ class _ProvisionAccountDialogState
   }
 
   Widget _listBody(ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -251,19 +232,37 @@ class _ProvisionAccountDialogState
                 style: const TextStyle(fontSize: 13),
               ),
             ),
-            title: Text(c.name, style: theme.textTheme.bodyMedium),
-            subtitle: Text(
-              '${c.code}${c.departmentName == null ? '' : ' · ${c.departmentName}'}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            title: Text(
+              formatEmployeeDisplayName(c.name, c.code),
+              style: theme.textTheme.bodyMedium,
             ),
+            subtitle: c.departmentName?.trim().isNotEmpty == true
+                ? Text(
+                    c.departmentName!.trim(),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  )
+                : null,
             trailing: c.provisionable
-                ? Icon(
-                    Icons.chevron_right_rounded,
-                    color: theme.colorScheme.onSurfaceVariant,
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        l10n.accountStatusNotProvisioned,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: UtenSpacing.s4),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ],
                   )
                 : Tooltip(
                     message: '请先在员工档案中补全${c.missingHint}',

@@ -74,6 +74,42 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             """;
     private static final int EXPECTATION_KEYWORD_PARAMS = 4;
 
+    /**
+     * 任务关联的已审核收货单仍有待检/部分待检明细（IQC 未放行完）的 EXISTS
+     * （采购+委外两段，按订货明细挂回任务）。预计到货列表/计数据此把
+     * 「已收满但品质未放行」的 CLOSED 任务继续留在仓库视野——收货审核即入
+     * IQC 隔离，合格放行才进可用库存；品质放行完任务才真正从任务中心消失。
+     */
+    private static final String PENDING_INSPECTION_EXISTS = """
+            EXISTS (
+                SELECT 1 FROM inbound_expectation_items pending_item
+                JOIN purchase_receipt_items pending_purchase_ri
+                  ON pending_purchase_ri.order_item_id = pending_item.order_item_id
+                JOIN purchase_receipts pending_purchase_r
+                  ON pending_purchase_r.id = pending_purchase_ri.receipt_id
+                 AND pending_purchase_r.status = 1
+                 AND pending_purchase_r.is_deleted = FALSE
+                JOIN procurement_inspection_items pending_purchase_ins
+                  ON pending_purchase_ins.receipt_item_id = pending_purchase_ri.id
+                 AND pending_purchase_ins.receipt_type = 'PURCHASE'
+                 AND pending_purchase_ins.status IN ('PENDING','PARTIAL')
+                WHERE pending_item.expectation_id = expectation.id
+            ) OR EXISTS (
+                SELECT 1 FROM inbound_expectation_items pending_item
+                JOIN subcontract_receipt_items pending_sub_ri
+                  ON pending_sub_ri.order_item_id = pending_item.order_item_id
+                JOIN subcontract_receipts pending_sub_r
+                  ON pending_sub_r.id = pending_sub_ri.receipt_id
+                 AND pending_sub_r.status = 1
+                 AND pending_sub_r.is_deleted = FALSE
+                JOIN procurement_inspection_items pending_sub_ins
+                  ON pending_sub_ins.receipt_item_id = pending_sub_ri.id
+                 AND pending_sub_ins.receipt_type = 'SUBCONTRACT'
+                 AND pending_sub_ins.status IN ('PENDING','PARTIAL')
+                WHERE pending_item.expectation_id = expectation.id
+            )
+            """;
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final BusinessEventPublisher events;
@@ -730,7 +766,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         if (!RECEIPT_ADJUSTED.equals(exception.status())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "该到货异常当前状态不支持一键入库（需财务已定案且有待入库量）");
+                    "该到货异常当前状态不支持一键入库(需财务已定案且有待入库量)");
         }
         if (exception.receiptId() == null) {
             throw new ApiException(
@@ -808,7 +844,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN suppliers supplier ON supplier.id = expectation.supplier_id
                 LEFT JOIN warehouses warehouse ON warehouse.id = expectation.warehouse_id
                 LEFT JOIN employees owner ON owner.id = expectation.owner_employee_id
-                WHERE expectation.status = 'OPEN'
+                WHERE (expectation.status = 'OPEN'
+                       OR (expectation.status = 'CLOSED' AND (
+                """ + PENDING_INSPECTION_EXISTS + """
+                       )))
                 """ + typeFilter + keywordFilter + """
                 GROUP BY expectation.id, supplier.name, warehouse.name, owner.full_name
                 ORDER BY expectation.expected_date NULLS LAST, expectation.created_at, expectation.id
@@ -832,6 +871,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         Map<UUID, UUID> suggestedWarehouses = suggestedWarehouses(
                 headers.stream().map(ExpectationHeader::id).toList());
         Map<UUID, String> suggestedNames = warehouseNames(suggestedWarehouses.values());
+        // 已登记待审核的草稿收货单（恢复入口）：任务中心据此提供「继续送检」。
+        Map<UUID, List<UUID>> draftReceipts = draftReceiptIds(headers);
+        // 流水线步骤聚合：待品质放行的收货单数 / 未结到货异常数（超量待财务）。
+        Map<UUID, Integer> pendingInspections = pendingInspectionReceiptCounts(headers);
+        Map<UUID, Integer> openExceptions = openArrivalExceptionCounts(headers);
         List<InboundExpectationTask> items = headers.stream()
                 .map(header -> {
                     UUID suggestedId = suggestedWarehouses.get(header.id());
@@ -839,7 +883,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     // 无建议仓（如委外自建订货无分析来源）时必须短路。
                     String suggestedName =
                             suggestedId == null ? null : suggestedNames.get(suggestedId);
-                    return expectationTask(header, suggestedId, suggestedName);
+                    return expectationTask(
+                            header, suggestedId, suggestedName,
+                            draftReceipts.getOrDefault(header.id(), List.of()),
+                            pendingInspections.getOrDefault(header.id(), 0),
+                            openExceptions.getOrDefault(header.id(), 0));
                 })
                 .toList();
         return page(items, safePage, safeSize, total);
@@ -908,13 +956,116 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return countExpectations("", "");
     }
 
-    /** 预计到货任务计数：类型 + 关键字（单号/供应商/货品编码或名称）双条件，均空 = 全部 OPEN。 */
+    /**
+     * 每个预计到货任务当前挂着的草稿收货单（status=0 未删，按订货明细关联），整页一次
+     * 批量查询（与 inflight 在途量同口径）。任务中心「已登记待审核」态据此给出
+     * 「继续送检」恢复入口——登记人中途退出后一键完成停止的步骤，不再进采购模块。
+     */
+    private Map<UUID, List<UUID>> draftReceiptIds(List<ExpectationHeader> headers) {
+        Map<UUID, List<UUID>> result = new HashMap<>();
+        for (String orderType : List.of(PURCHASE, SUBCONTRACT)) {
+            List<UUID> expectationIds = headers.stream()
+                    .filter(header -> orderType.equals(header.orderType()))
+                    .map(ExpectationHeader::id)
+                    .toList();
+            if (expectationIds.isEmpty()) continue;
+            String receiptTable = PURCHASE.equals(orderType)
+                    ? "purchase_receipts" : "subcontract_receipts";
+            String receiptItemTable = PURCHASE.equals(orderType)
+                    ? "purchase_receipt_items" : "subcontract_receipt_items";
+            String placeholders = String.join(
+                    ", ", java.util.Collections.nCopies(expectationIds.size(), "?"));
+            jdbc.query("""
+                    SELECT DISTINCT item.expectation_id, receipt.id, receipt.created_at
+                    FROM inbound_expectation_items item
+                    JOIN %s receipt_item ON receipt_item.order_item_id = item.order_item_id
+                    JOIN %s receipt ON receipt.id = receipt_item.receipt_id
+                    WHERE item.expectation_id IN (%s)
+                      AND receipt.status = 0 AND receipt.is_deleted = FALSE
+                    ORDER BY receipt.created_at, receipt.id
+                    """.formatted(receiptItemTable, receiptTable, placeholders), rs -> {
+                result.computeIfAbsent(
+                                rs.getObject("expectation_id", UUID.class),
+                                ignored -> new ArrayList<>())
+                        .add(rs.getObject("id", UUID.class));
+            }, expectationIds.toArray());
+        }
+        return result;
+    }
+
+    /**
+     * 每个任务的「待品质放行」收货单张数：已审核收货单中仍有 PENDING/PARTIAL 待检明细
+     * 的（IQC 未放行完，货在待检隔离、未进可用库存）。任务卡据此显示「待品质检验」步骤。
+     */
+    private Map<UUID, Integer> pendingInspectionReceiptCounts(List<ExpectationHeader> headers) {
+        Map<UUID, Integer> result = new HashMap<>();
+        for (String orderType : List.of(PURCHASE, SUBCONTRACT)) {
+            List<UUID> expectationIds = headers.stream()
+                    .filter(header -> orderType.equals(header.orderType()))
+                    .map(ExpectationHeader::id)
+                    .toList();
+            if (expectationIds.isEmpty()) continue;
+            String receiptTable = PURCHASE.equals(orderType)
+                    ? "purchase_receipts" : "subcontract_receipts";
+            String receiptItemTable = PURCHASE.equals(orderType)
+                    ? "purchase_receipt_items" : "subcontract_receipt_items";
+            String placeholders = String.join(
+                    ", ", java.util.Collections.nCopies(expectationIds.size(), "?"));
+            jdbc.query("""
+                    SELECT item.expectation_id, COUNT(DISTINCT receipt.id)
+                    FROM inbound_expectation_items item
+                    JOIN %s receipt_item ON receipt_item.order_item_id = item.order_item_id
+                    JOIN %s receipt ON receipt.id = receipt_item.receipt_id
+                      AND receipt.status = 1 AND receipt.is_deleted = FALSE
+                    JOIN procurement_inspection_items inspection
+                      ON inspection.receipt_item_id = receipt_item.id
+                     AND inspection.receipt_type = ?
+                     AND inspection.status IN ('PENDING','PARTIAL')
+                    WHERE item.expectation_id IN (%s)
+                    GROUP BY item.expectation_id
+                    """.formatted(receiptItemTable, receiptTable, placeholders), rs -> {
+                result.put(
+                        rs.getObject("expectation_id", UUID.class),
+                        rs.getInt(2));
+            }, prepend(orderType, expectationIds));
+        }
+        return result;
+    }
+
+    /** 每个任务的未结到货异常数（超量被隔离，待财务定案）：任务卡据此显示「超量待财务」。 */
+    private Map<UUID, Integer> openArrivalExceptionCounts(List<ExpectationHeader> headers) {
+        if (headers.isEmpty()) return Map.of();
+        List<UUID> expectationIds = headers.stream()
+                .map(ExpectationHeader::id)
+                .toList();
+        String placeholders = String.join(
+                ", ", java.util.Collections.nCopies(expectationIds.size(), "?"));
+        Map<UUID, Integer> result = new HashMap<>();
+        jdbc.query("""
+                SELECT item.expectation_id, COUNT(DISTINCT exception.id)
+                FROM inbound_expectation_items item
+                JOIN procurement_arrival_exceptions exception
+                  ON exception.order_item_id = item.order_item_id
+                WHERE item.expectation_id IN (%s)
+                  AND exception.status NOT IN ('CLOSED', 'CANCELED')
+                GROUP BY item.expectation_id
+                """.formatted(placeholders), rs -> {
+            result.put(
+                    rs.getObject("expectation_id", UUID.class),
+                    rs.getInt(2));
+        }, expectationIds.toArray());
+        return result;
+    }
+
+    /** 预计到货任务计数：类型 + 关键字（单号/供应商/货品编码或名称）双条件；口径与列表一致
+     * （OPEN + 「已收满但品质未放行」的 CLOSED——见 PENDING_INSPECTION_EXISTS）。 */
     private long countExpectations(String orderType, String keyword) {
         String normalizedType = normalizeOrderType(orderType);
         StringBuilder sql = new StringBuilder("""
                 SELECT COUNT(*) FROM inbound_expectations expectation
-                WHERE expectation.status = 'OPEN'
-                """);
+                WHERE (expectation.status = 'OPEN'
+                       OR (expectation.status = 'CLOSED' AND (%s)))
+                """.formatted(PENDING_INSPECTION_EXISTS));
         List<Object> args = new ArrayList<>();
         if (!normalizedType.isEmpty()) {
             sql.append(" AND expectation.order_type = ?");
@@ -931,16 +1082,17 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return count == null ? 0 : count;
     }
 
-    /** 预计到货按订货类型计数（顶部类型筛选卡口径：全部 OPEN 任务，不受当前筛选影响）。 */
+    /** 预计到货按订货类型计数（顶部类型筛选卡口径：与列表同口径，不受当前筛选影响）。 */
     @Transactional(readOnly = true)
     public Map<String, Long> countExpectationsByType() {
         Map<String, Long> counts = new LinkedHashMap<>();
         jdbc.query("""
                 SELECT order_type, COUNT(*)
-                FROM inbound_expectations
-                WHERE status = 'OPEN'
+                FROM inbound_expectations expectation
+                WHERE (expectation.status = 'OPEN'
+                       OR (expectation.status = 'CLOSED' AND (%s)))
                 GROUP BY order_type
-                """, rs -> {
+                """.formatted(PENDING_INSPECTION_EXISTS), (rs) -> {
             counts.put(rs.getString(1), rs.getLong(2));
         });
         return counts;
@@ -1062,7 +1214,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     private InboundExpectationTask expectationTask(
-            ExpectationHeader header, UUID suggestedWarehouseId, String suggestedWarehouseName) {
+            ExpectationHeader header, UUID suggestedWarehouseId, String suggestedWarehouseName,
+            List<UUID> draftReceiptIds,
+            int pendingInspectionReceipts, int openArrivalExceptions) {
         // 已登记待审核在途量：草稿（status=0 未删）收货单按订货明细汇总。
         // 审核(1)后该量转入 accepted_qty，红冲(-1)/作废(删)后不再计入——任务卡片据此
         // 展示「已登记待审核」并扣减可再登记量，防止审核前同一批到货被重复登记。
@@ -1147,7 +1301,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 items,
                 List.of("PURCHASE".equals(header.orderType())
                         ? "CREATE_PURCHASE_RECEIPT"
-                        : "CREATE_SUBCONTRACT_RECEIPT"));
+                        : "CREATE_SUBCONTRACT_RECEIPT"),
+                draftReceiptIds,
+                pendingInspectionReceipts,
+                openArrivalExceptions);
     }
 
     private List<ArrivalExceptionTask> queryExceptions(

@@ -232,7 +232,7 @@ class SalesOrderPlanProgressQueryTest {
         return new Object[]{
                 analysisId, analysisItemId, salesItemId, "ACTIVE", analyzedAt,
                 new BigDecimal(requested), new BigDecimal(submitted),
-                new BigDecimal(approved), deliveryDate, priority, "BOM_REQUIRED",
+                new BigDecimal(approved), deliveryDate, priority,
                 new BigDecimal(readyNow), new BigDecimal(readyByDate), expectedReadyDate
         };
     }

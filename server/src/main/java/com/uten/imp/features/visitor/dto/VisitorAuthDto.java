@@ -14,7 +14,7 @@ public final class VisitorAuthDto {
             @NotBlank(message = "手机号不能为空")
             @Size(max = 32, message = "手机号过长")
             @Pattern(
-                    regexp = "^[+＋0-9０-９()（）\\-－\\s]+$",
+                    regexp = "^[+＋0-9０-９()()\\-－\\s]+$",
                     message = "手机号格式不正确")
             String phone) {}
 
@@ -22,7 +22,7 @@ public final class VisitorAuthDto {
             @NotBlank(message = "手机号不能为空")
             @Size(max = 32, message = "手机号过长")
             @Pattern(
-                    regexp = "^[+＋0-9０-９()（）\\-－\\s]+$",
+                    regexp = "^[+＋0-9０-９()()\\-－\\s]+$",
                     message = "手机号格式不正确")
             String phone,
             @NotBlank(message = "验证码不能为空")

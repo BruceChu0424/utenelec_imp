@@ -5,6 +5,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
@@ -23,6 +24,7 @@ import org.mockito.InOrder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -39,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -54,6 +57,10 @@ class FinanceReceiptSettlementTest {
     private static final UUID MAKER_ID = UUID.fromString("40000000-0000-0000-0000-000000000004");
     private static final UUID APPROVER_ID = UUID.fromString("50000000-0000-0000-0000-000000000005");
     private static final UUID EXPENSE_STYLE_ID = UUID.fromString("60000000-0000-0000-0000-000000000006");
+    private static final UUID AGENT_ID = UUID.fromString("70000000-0000-0000-0000-000000000007");
+    private static final UUID FEE_ACCOUNT_ID = UUID.fromString("80000000-0000-0000-0000-000000000008");
+    private static final UUID ACCOUNT_STYLE_ID = UUID.fromString("90000000-0000-0000-0000-000000000009");
+    private static final UUID FEE_ACCOUNT_STYLE_ID = UUID.fromString("a0000000-0000-0000-0000-00000000000a");
 
     private FinanceReceiptRepository receiptRepo;
     private FinanceReceiptLineRepository lineRepo;
@@ -65,8 +72,9 @@ class FinanceReceiptSettlementTest {
     private Query accountLock;
     private Query accountUpdate;
     private Query reconciliationInsert;
-    private Query reconciliationDelete;
     private Query hierarchyLock;
+    private Query idempotencyLock;
+    private Query createReplay;
     private final ArrayDeque<Long> postingCounts = new ArrayDeque<>();
     private final Map<UUID, FinanceReceipt> receipts = new HashMap<>();
     private final Map<UUID, List<FinanceReceiptLine>> linesByReceipt = new HashMap<>();
@@ -91,6 +99,7 @@ class FinanceReceiptSettlementTest {
 
         when(receiptRepo.save(any(FinanceReceipt.class))).thenAnswer(invocation -> {
             FinanceReceipt receipt = invocation.getArgument(0);
+            if(receipt.getVersion()==null)receipt.setVersion(0L);
             receipts.put(receipt.getId(), receipt);
             return receipt;
         });
@@ -135,18 +144,29 @@ class FinanceReceiptSettlementTest {
         accountLock = query();
         accountUpdate = query();
         reconciliationInsert = query();
-        reconciliationDelete = query();
         Query clientLookup = query();
+        Query supplierLookup = query();
         Query expenseStyleCount = query();
         hierarchyLock = query();
+        idempotencyLock = query();
+        createReplay = query();
+        Query flowIntegrity = query();
+        Query projectionIntegrity = query();
+        Query postingRole = query();
         when(postingCount.getSingleResult()).thenAnswer(ignored ->
                 postingCounts.isEmpty() ? 0L : postingCounts.removeFirst());
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
-                new Object[] {CURRENCY_ID, "USD", "美元"}));
+                new Object[] {ACCOUNT_ID, CURRENCY_ID, false, "USD", "美元",ACCOUNT_STYLE_ID}));
         when(accountUpdate.executeUpdate()).thenReturn(1);
         when(reconciliationInsert.executeUpdate()).thenReturn(1);
-        when(reconciliationDelete.executeUpdate()).thenReturn(1);
+        when(createReplay.getResultList()).thenReturn(List.of());
+        when(flowIntegrity.getSingleResult()).thenReturn(1L);
+        when(projectionIntegrity.getResultList()).thenReturn(
+                List.<Object[]>of(new Object[]{1L,1L}));
+        when(postingRole.getSingleResult()).thenReturn(EXPENSE_STYLE_ID);
+        when(idempotencyLock.getSingleResult()).thenReturn(1L);
         when(clientLookup.getSingleResult()).thenReturn("测试客户");
+        when(supplierLookup.getResultList()).thenReturn(List.of("测试外贸公司"));
         when(expenseStyleCount.getSingleResult()).thenReturn(1L);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
@@ -154,10 +174,26 @@ class FinanceReceiptSettlementTest {
             if (sql.contains("PAYMENT_STYLE_HIERARCHY")) {
                 return hierarchyLock;
             }
+            if (sql.contains("FIN_RECEIPT_CREATE|")
+                    || sql.contains("pg_advisory_xact_lock(hashtextextended")) {
+                return idempotencyLock;
+            }
+            if (sql.contains("SELECT id FROM finance_receipts")
+                    && sql.contains("create_idempotency_key")) {
+                return createReplay;
+            }
+            if (sql.contains("v_receipt_flow_integrity")
+                    && sql.contains("v_receipt_gl_integrity")) {
+                return projectionIntegrity;
+            }
+            if (sql.contains("FROM v_receipt_flow_integrity")) {
+                return flowIntegrity;
+            }
             if (sql.contains("FROM finance_reconciliations") && sql.contains("COUNT(*)")) {
                 return postingCount;
             }
-            if (sql.contains("FROM accounts account") && sql.contains("FOR UPDATE OF account")) {
+            if (sql.contains("SELECT account.id,account.currency_id")
+                    && sql.contains("FROM accounts account")) {
                 return accountLock;
             }
             if (sql.contains("UPDATE accounts")) {
@@ -166,14 +202,17 @@ class FinanceReceiptSettlementTest {
             if (sql.contains("INSERT INTO finance_reconciliations")) {
                 return reconciliationInsert;
             }
-            if (sql.contains("DELETE FROM finance_reconciliations")) {
-                return reconciliationDelete;
-            }
             if (sql.contains("SELECT name FROM clients")) {
                 return clientLookup;
             }
+            if (sql.contains("SELECT name FROM suppliers")) {
+                return supplierLookup;
+            }
             if (sql.contains("FROM payment_styles") && sql.contains("COUNT(*)")) {
                 return expenseStyleCount;
+            }
+            if (sql.contains("system_posting_style_id(:roleKey)")) {
+                return postingRole;
             }
             throw new AssertionError("unexpected SQL: " + sql);
         });
@@ -187,11 +226,12 @@ class FinanceReceiptSettlementTest {
         service = new FinanceReceiptService(
                 receiptRepo, lineRepo, ledgerRepo, arApService, tx,
                 currentUser, names, em, numbers, access, glPosting,
-                mock(com.uten.imp.features.finance.receivables.FinanceReceiptSourceAllocationService.class));
+                mock(com.uten.imp.features.finance.receivables.FinanceReceiptSourceAllocationService.class),
+                mock(AccountFlowLedgerService.class));
     }
 
     @Test
-    void draftIgnoresClientDerivedLocalAmountAndExchangeDifference() {
+    void draftSeparatesGrossSettlementNetAccountAndDeductedFee() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
 
         FinanceReceiptDetail detail = service.create(request(
@@ -201,12 +241,219 @@ class FinanceReceiptSettlementTest {
         FinanceReceiptLine saved = onlyLine(detail.getId());
         assertMoney(saved.getAmountOriginal(), "30.0000");
         assertMoney(saved.getAmountLocal(), "216.0000");
-        assertMoney(saved.getWriteOffLocal(), "14.4000");
-        assertMoney(saved.getAppliedAmountLocal(), "224.0000");
-        assertMoney(saved.getExchangeDiff(), "6.4000");
+        assertMoney(saved.getWriteOffLocal(), "0.0000");
+        assertMoney(saved.getAppliedAmountLocal(), "210.0000");
+        assertMoney(saved.getExchangeDiff(), "6.0000");
         assertMoney(saved.getExchangeRate(), "7.200000");
         assertMoney(detail.getAmountOriginal(), "30.0000");
         assertMoney(detail.getAmountLocal(), "216.0000");
+        assertMoney(detail.getBankFeeAccountAmount(), "2.0000");
+        assertMoney(detail.getBankFee(), "14.4000");
+        assertMoney(detail.getAccountAmount(), "28.0000");
+        assertMoney(detail.getAccountAmountLocal(), "201.6000");
+    }
+
+    @Test
+    void tradeAgentUsdSettlementPostsGrossArAndNetCnyAccount() {
+        ArApLedger ledger=receivable("100000.0000","7.000000");
+        UUID cnyCurrency=UUID.randomUUID();
+        when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
+        FinanceReceiptSaveRequest request=request(
+                ledger,"1000.0000","7.200000","0.0000","0.0000",
+                "0.0000","0.0000");
+        request.setAccountCurrencyId(cnyCurrency);
+        request.setSettlementChannel("TRADE_AGENT_CONVERSION");
+        request.setSettlementAgentSupplierId(AGENT_ID);
+        request.setExchangeRateSource("TRADE_AGENT_STATEMENT");
+        request.setAgentStatementNo("AGENT-SETTLE-20260808");
+        request.setOtherFeeAccountAmount(new BigDecimal("72.0000"));
+        request.setOtherFeeStyleId(EXPENSE_STYLE_ID);
+        request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
+        request.setFeeBearer("COMPANY");
+
+        FinanceReceiptDetail draft=service.create(request);
+        assertMoney(draft.getAmountOriginal(),"1000.0000");
+        assertMoney(draft.getSettlementGrossLocal(),"7200.0000");
+        assertMoney(draft.getOtherFee(),"72.0000");
+        assertMoney(draft.getAccountAmount(),"7128.0000");
+        assertMoney(draft.getAccountAmountLocal(),"7128.0000");
+        assertThat(draft.getSettlementAgentNameSnapshot()).isEqualTo("测试外贸公司");
+
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.addAll(List.of(0L,0L));
+        service.approve(draft.getId());
+
+        assertMoney(ledger.getAmountReceivedOriginal(),"1000.0000");
+        assertMoney(ledger.getAmountReceivedLocal(),"7200.0000");
+        assertMoney(ledger.getAmountWriteOffOriginal(),"0.0000");
+        assertMoney(ledger.getAmountBalanceOriginal(),"99000.0000");
+        assertMoney(ledger.getAmountSettled(),"7000.0000");
+        assertMoney(ledger.getAmountBalance(),"693000.0000");
+        FinanceReceiptLine line=onlyLine(draft.getId());
+        assertMoney(line.getExchangeDiff(),"200.0000");
+        verify(accountUpdate).setParameter("amount",new BigDecimal("7128.0000"));
+        verify(reconciliationInsert).setParameter("amount",new BigDecimal("7128.0000"));
+    }
+
+    @Test
+    void v1RejectsMissingBankReferenceBeforeAccountMutation() {
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        FinanceReceiptSaveRequest request=request(
+                ledger,"10.0000","7.200000","0.0000","0.0000",
+                "0.0000","0.0000");
+        request.setBankReference("   ");
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("真实银行入账流水号");
+        verify(accountUpdate,never()).executeUpdate();
+        verify(reconciliationInsert,never()).executeUpdate();
+    }
+
+    @Test
+    void tradeAgentRejectsMissingAgentStatementNumber() {
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        UUID cnyCurrency=UUID.randomUUID();
+        when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
+        FinanceReceiptSaveRequest request=request(
+                ledger,"10.0000","7.200000","0.0000","0.0000",
+                "0.0000","0.0000");
+        request.setAccountCurrencyId(cnyCurrency);
+        request.setSettlementChannel("TRADE_AGENT_CONVERSION");
+        request.setSettlementAgentSupplierId(AGENT_ID);
+        request.setExchangeRateSource("TRADE_AGENT_STATEMENT");
+        request.setAgentStatementNo(" ");
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("代理结算单号");
+        verify(accountUpdate,never()).executeUpdate();
+        verify(reconciliationInsert,never()).executeUpdate();
+    }
+
+    @Test
+    void separatelyPaidFeePostsGrossReceiptAndRealFeePaymentAccount() {
+        ArApLedger ledger=receivable("100000.0000","7.000000");
+        UUID cnyCurrency=UUID.randomUUID();
+        when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",ACCOUNT_STYLE_ID},
+                new Object[]{FEE_ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",FEE_ACCOUNT_STYLE_ID}));
+        FinanceReceiptSaveRequest request=request(
+                ledger,"1000.0000","7.200000","0.0000","0.0000",
+                "0.0000","0.0000");
+        request.setAccountCurrencyId(cnyCurrency);
+        request.setBankFeeAccountAmount(new BigDecimal("50.0000"));
+        request.setFeeSettlementMode("PAID_SEPARATELY");
+        request.setFeeBearer("COMPANY");
+        request.setFeePaymentAccountId(FEE_ACCOUNT_ID);
+
+        FinanceReceiptDetail draft=service.create(request);
+        assertMoney(draft.getSettlementGrossLocal(),"7200.0000");
+        assertMoney(draft.getAccountAmount(),"7200.0000");
+        assertMoney(draft.getAccountAmountLocal(),"7200.0000");
+        assertMoney(draft.getBankFee(),"50.0000");
+        assertThat(draft.getFeePaymentAccountId()).isEqualTo(FEE_ACCOUNT_ID);
+        assertThat(draft.getFeeAccountCurrencyId()).isEqualTo(cnyCurrency);
+
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.addAll(List.of(0L,0L));
+        service.approve(draft.getId());
+
+        verify(accountUpdate).setParameter("amount",new BigDecimal("7200.0000"));
+        verify(accountUpdate).setParameter("amount",new BigDecimal("50.0000"));
+        verify(reconciliationInsert).setParameter("amount",new BigDecimal("7200.0000"));
+        verify(reconciliationInsert).setParameter("amount",new BigDecimal("50.0000"));
+    }
+
+    @Test
+    void customerOrAgentBorneDeductionCannotBeMisbookedAsCompanyExpense() {
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        FinanceReceiptSaveRequest request=request(
+                ledger,"10.0000","7.200000","0.0000","0.0000",
+                "0.0000","0.0000");
+        request.setBankFeeAccountAmount(new BigDecimal("1.0000"));
+        request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
+        request.setFeeBearer("CUSTOMER");
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("形成新的应收/索赔")
+                .hasMessageContaining("不能直接记为本公司费用");
+    }
+
+    @Test
+    void createIdempotencyHashDistinguishesFeeBearer() {
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        FinanceReceiptSaveRequest request=request(
+                ledger,"10.0000","7.200000","0.0000","7.2000",
+                "0.0000","0.0000");
+        FinanceReceiptDetail first=service.create(request);
+        when(createReplay.getResultList()).thenReturn(List.of(first.getId()));
+        request.setFeeBearer("CUSTOMER");
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("收款创建幂等键已用于不同内容");
+    }
+
+    @Test
+    void createIdempotencyHashUsesEffectiveLegacyFeeFallback() {
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        FinanceReceiptSaveRequest request=request(
+                ledger,"10.0000","7.200000","0.0000","0.0000",
+                "0.0000","0.0000");
+        request.setBankFeeAccountAmount(null);
+        request.setBankFee(new BigDecimal("1.0000"));
+        request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
+        request.setFeeBearer("COMPANY");
+        FinanceReceiptDetail first=service.create(request);
+        when(createReplay.getResultList()).thenReturn(List.of(first.getId()));
+        request.setBankFee(new BigDecimal("2.0000"));
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("收款创建幂等键已用于不同内容");
+    }
+
+    @Test
+    void createIdempotencyHashCanonicalizesEnumsAndTrimmedEvidence() {
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        FinanceReceiptSaveRequest request=request(
+                ledger,"10.0000","7.200000","0.0000","0.0000",
+                "0.0000","0.0000");
+        request.setSettlementChannel(" direct_account ");
+        request.setExchangeRateSource(" bank_statement ");
+        request.setFeeSettlementMode(" none ");
+        request.setFeeBearer(" none ");
+        request.setBankReference(" BANK-TEST ");
+        FinanceReceiptDetail first=service.create(request);
+        when(createReplay.getResultList()).thenReturn(List.of(first.getId()));
+        request.setSettlementChannel("DIRECT_ACCOUNT");
+        request.setExchangeRateSource("BANK_STATEMENT");
+        request.setFeeSettlementMode("NONE");
+        request.setFeeBearer("NONE");
+        request.setBankReference("BANK-TEST");
+
+        assertThat(service.create(request).getId()).isEqualTo(first.getId());
+    }
+
+    @Test
+    void approvalLocksGlPeriodBeforeAnyAccountRow() {
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        FinanceReceiptDetail draft=service.create(request(
+                ledger,"10.0000","7.200000","0.0000","0.0000",
+                "0.0000","0.0000"));
+        clearInvocations(glPosting,accountLock);
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.addAll(List.of(0L,0L));
+
+        service.approve(draft.getId());
+
+        InOrder order=inOrder(glPosting,accountLock);
+        order.verify(glPosting).lockAutoProjectionPeriod(draft.getBillDate());
+        order.verify(accountLock).getResultList();
     }
 
     @Test
@@ -240,6 +487,7 @@ class FinanceReceiptSettlementTest {
                 "9999.0000", "9999.0000");
 
         FinanceReceiptDetail updated = service.create(request);
+        request.setExpectedVersion(updated.getVersion());
         service.update(updated.getId(), request);
         FinanceReceiptDetail deleted = service.create(request);
         service.delete(deleted.getId());
@@ -255,18 +503,20 @@ class FinanceReceiptSettlementTest {
         FinanceReceiptSaveRequest request = request(
                 ledger, "30.0000", "7.200000", "2.0000", "0.0000",
                 "9999.0000", "9999.0000");
-        request.setOtherFee(new BigDecimal("14.4000"));
+        request.setOtherFeeAccountAmount(new BigDecimal("2.0000"));
+        request.setFeeSettlementMode("DEDUCTED_FROM_PROCEEDS");
+        request.setFeeBearer("COMPANY");
         request.setOtherFeeStyleId(EXPENSE_STYLE_ID);
 
         FinanceReceiptDetail draft = service.create(request);
 
         InOrder createOrder = inOrder(hierarchyLock, receiptRepo);
         createOrder.verify(hierarchyLock).getSingleResult();
-        createOrder.verify(receiptRepo, times(2)).save(any(FinanceReceipt.class));
+        createOrder.verify(receiptRepo, times(3)).save(any(FinanceReceipt.class));
 
         nativeSql.clear();
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
-        postingCounts.add(0L);
+        postingCounts.addAll(List.of(0L, 0L));
         service.approve(draft.getId());
 
         int lockIndex = indexOfSql("PAYMENT_STYLE_HIERARCHY");
@@ -276,117 +526,186 @@ class FinanceReceiptSettlementTest {
     }
 
     @Test
-    void partialReceiptsAndFeeWriteOffAccumulateThenReverseFromPersistedSnapshots() {
+    void partialReceiptsKeepGrossArAndReverseOnlyTheActualNetAccountPosting() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
         FinanceReceiptDetail first = service.create(request(
                 ledger, "30.0000", "7.200000", "2.0000", "14.4000",
                 "9999.0000", "9999.0000"));
-        FinanceReceiptDetail second = service.create(request(
-                ledger, "68.0000", "6.900000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000"));
+        FinanceReceiptSaveRequest secondRequest = request(
+                ledger, "70.0000", "6.900000", "0.0000", "0.0000",
+                "9999.0000", "9999.0000");
+        secondRequest.setBillDate(LocalDate.of(2026, 8, 9));
+        FinanceReceiptDetail second = service.create(secondRequest);
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
-        postingCounts.addAll(List.of(0L, 0L, 1L));
+        postingCounts.addAll(List.of(0L, 0L, 0L, 0L, 1L, 0L));
 
         service.approve(first.getId());
 
         assertMoney(ledger.getAmountReceivedOriginal(), "30.0000");
         assertMoney(ledger.getAmountReceivedLocal(), "216.0000");
-        assertMoney(ledger.getAmountWriteOffOriginal(), "2.0000");
-        assertMoney(ledger.getAmountWriteOffLocal(), "14.4000");
-        assertMoney(ledger.getAmountBalanceOriginal(), "68.0000");
-        assertMoney(ledger.getAmountSettled(), "224.0000");
-        assertMoney(ledger.getAmountBalance(), "476.0000");
+        assertMoney(ledger.getAmountWriteOffOriginal(), "0.0000");
+        assertMoney(ledger.getAmountWriteOffLocal(), "0.0000");
+        assertMoney(ledger.getAmountBalanceOriginal(), "70.0000");
+        assertMoney(ledger.getAmountSettled(), "210.0000");
+        assertMoney(ledger.getAmountBalance(), "490.0000");
         assertThat(ledger.isSettled()).isFalse();
 
         service.approve(second.getId());
 
-        assertMoney(ledger.getAmountReceivedOriginal(), "98.0000");
-        assertMoney(ledger.getAmountReceivedLocal(), "685.2000");
-        assertMoney(ledger.getAmountWriteOffOriginal(), "2.0000");
-        assertMoney(ledger.getAmountWriteOffLocal(), "14.4000");
+        assertMoney(ledger.getAmountReceivedOriginal(), "100.0000");
+        assertMoney(ledger.getAmountReceivedLocal(), "699.0000");
+        assertMoney(ledger.getAmountWriteOffOriginal(), "0.0000");
+        assertMoney(ledger.getAmountWriteOffLocal(), "0.0000");
         assertMoney(ledger.getAmountBalanceOriginal(), "0.0000");
         assertMoney(ledger.getAmountSettled(), "700.0000");
         assertMoney(ledger.getAmountBalance(), "0.0000");
         assertThat(ledger.isSettled()).isTrue();
-        assertThat(ledger.getSettledDate()).isEqualTo(LocalDate.of(2026, 8, 8));
+        assertThat(ledger.getSettledDate()).isEqualTo(LocalDate.of(2026, 8, 9));
 
+        FinanceReceiptLine firstLine = onlyLine(first.getId());
         FinanceReceiptLine secondLine = onlyLine(second.getId());
-        assertMoney(secondLine.getAmountLocal(), "469.2000");
-        assertMoney(secondLine.getAppliedAmountLocal(), "476.0000");
-        assertMoney(secondLine.getExchangeDiff(), "-6.8000");
-        assertMoney(secondLine.getBalanceBeforeOriginal(), "68.0000");
+        assertMoney(firstLine.getExchangeRate(), "7.200000");
+        assertMoney(firstLine.getAmountLocal(), "216.0000");
+        assertMoney(firstLine.getWriteOffLocal(), "0.0000");
+        assertMoney(firstLine.getBalanceBeforeOriginal(), "100.0000");
+        assertMoney(firstLine.getBalanceAfterOriginal(), "70.0000");
+        assertMoney(secondLine.getExchangeRate(), "6.900000");
+        assertMoney(secondLine.getAmountLocal(), "483.0000");
+        assertMoney(secondLine.getAppliedAmountLocal(), "490.0000");
+        assertMoney(secondLine.getExchangeDiff(), "-7.0000");
+        assertMoney(secondLine.getBalanceBeforeOriginal(), "70.0000");
         assertMoney(secondLine.getBalanceAfterOriginal(), "0.0000");
 
         service.reverse(second.getId());
 
         assertMoney(ledger.getAmountReceivedOriginal(), "30.0000");
         assertMoney(ledger.getAmountReceivedLocal(), "216.0000");
-        assertMoney(ledger.getAmountWriteOffOriginal(), "2.0000");
-        assertMoney(ledger.getAmountWriteOffLocal(), "14.4000");
-        assertMoney(ledger.getAmountBalanceOriginal(), "68.0000");
-        assertMoney(ledger.getAmountSettled(), "224.0000");
-        assertMoney(ledger.getAmountBalance(), "476.0000");
+        assertMoney(ledger.getAmountWriteOffOriginal(), "0.0000");
+        assertMoney(ledger.getAmountWriteOffLocal(), "0.0000");
+        assertMoney(ledger.getAmountBalanceOriginal(), "70.0000");
+        assertMoney(ledger.getAmountSettled(), "210.0000");
+        assertMoney(ledger.getAmountBalance(), "490.0000");
         assertThat(ledger.isSettled()).isFalse();
         assertThat(ledger.getSettledDate()).isNull();
         assertThat(receipts.get(second.getId()).getStatus()).isEqualTo((short) -1);
-        verify(glPosting, times(2)).lockAutoProjectionPeriod(first.getBillDate());
-        verify(glPosting).removeAutoProjection(
-                "RECEIPT", second.getId(), second.getBillNo(), second.getBillDate());
+        verify(glPosting).lockAutoProjectionPeriod(first.getBillDate());
+        verify(glPosting).lockAutoProjectionPeriod(second.getBillDate());
+        verify(glPosting).reverseReceiptDoc(
+                org.mockito.ArgumentMatchers.eq(second.getId()), any(OffsetDateTime.class));
 
         verify(ledgerRepo, times(3)).findAllByIdInForUpdate(any());
         verify(em, times(3)).refresh(any(FinanceReceipt.class),
                 org.mockito.ArgumentMatchers.eq(LockModeType.PESSIMISTIC_WRITE));
 
         // USD account: balance and account statement both use the original-currency amount.
-        verify(accountUpdate).setParameter("amount", new BigDecimal("30.0000"));
-        verify(accountUpdate).setParameter("amount", new BigDecimal("68.0000"));
-        verify(accountUpdate).setParameter("amount", new BigDecimal("-68.0000"));
-        verify(reconciliationInsert).setParameter("inAmt", new BigDecimal("30.0000"));
-        verify(reconciliationInsert).setParameter("inAmt", new BigDecimal("68.0000"));
-        assertThat(nativeSql.stream().filter(sql -> sql.contains("FROM accounts account")).findFirst())
+        verify(accountUpdate).setParameter("amount", new BigDecimal("28.0000"));
+        verify(accountUpdate).setParameter("amount", new BigDecimal("70.0000"));
+        verify(accountUpdate).setParameter("amount", new BigDecimal("-70.0000"));
+        verify(reconciliationInsert).setParameter("amount", new BigDecimal("28.0000"));
+        verify(reconciliationInsert).setParameter("amount", new BigDecimal("70.0000"));
+        assertThat(nativeSql.stream().filter(sql -> sql.contains("FROM accounts account")
+                        && sql.contains("FOR UPDATE OF account")).findFirst())
                 .hasValueSatisfying(sql -> assertThat(sql)
                         .contains("FOR UPDATE OF account")
-                        .contains("COALESCE(account.is_deleted,false)=false")
+                        .contains("COALESCE(account.is_deleted,FALSE)=FALSE")
                         .contains("currency.status='使用'"));
     }
 
     @Test
     void cnyAccountUsesTheSameLocalAmountForBalanceAndReconciliation() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
-        FinanceReceiptDetail draft = service.create(request(
-                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
-                "9999.0000", "9999.0000"));
+        UUID cnyCurrency=UUID.randomUUID();
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
-                new Object[] {UUID.randomUUID(), "CNY", "人民币"}));
+                new Object[] {ACCOUNT_ID,cnyCurrency,true,"CNY","人民币",ACCOUNT_STYLE_ID}));
+        FinanceReceiptSaveRequest request=request(
+                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
+                "9999.0000", "9999.0000");
+        request.setAccountCurrencyId(cnyCurrency);
+        FinanceReceiptDetail draft = service.create(request);
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
-        postingCounts.add(0L);
+        postingCounts.addAll(List.of(0L,0L));
 
         service.approve(draft.getId());
 
         verify(accountUpdate).setParameter("amount", new BigDecimal("216.0000"));
-        verify(reconciliationInsert).setParameter("inAmt", new BigDecimal("216.0000"));
+        verify(reconciliationInsert).setParameter("amount", new BigDecimal("216.0000"));
     }
 
     @Test
-    void approvalRejectsCashPlusWriteOffAboveOriginalCurrencyBalance() {
+    void baseCurrencyUuidAuthorityWinsOverEditableCurrencyLabels() {
+        ArApLedger ledger = receivable("100.0000", "7.000000");
+        UUID baseCurrency=UUID.randomUUID();
+        when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[] {ACCOUNT_ID,baseCurrency,true,"USD","美金",ACCOUNT_STYLE_ID}));
+        FinanceReceiptSaveRequest request=request(
+                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
+                "9999.0000", "9999.0000");
+        request.setAccountCurrencyId(baseCurrency);
+        FinanceReceiptDetail draft = service.create(request);
+        when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
+        postingCounts.addAll(List.of(0L,0L));
+
+        service.approve(draft.getId());
+
+        verify(accountUpdate).setParameter("amount", new BigDecimal("216.0000"));
+    }
+
+    @Test
+    void foreignCurrencyUuidCannotMasqueradeAsRmbByEditableLabels() {
         ArApLedger ledger = receivable("100.0000", "7.000000");
         FinanceReceiptDetail draft = service.create(request(
-                ledger, "99.0000", "7.000000", "2.0000", "14.0000",
-                "1.0000", "1.0000"));
+                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
+                "9999.0000", "9999.0000"));
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
-        postingCounts.add(0L);
+        postingCounts.addAll(List.of(0L,0L));
 
-        assertThatThrownBy(() -> service.approve(draft.getId()))
+        service.approve(draft.getId());
+
+        verify(accountUpdate).setParameter("amount", new BigDecimal("30.0000"));
+    }
+
+    @Test
+    void settlementLineCannotChangeTheReceivableOriginalCurrency() {
+        ArApLedger ledger = receivable("100.0000", "7.000000");
+        FinanceReceiptSaveRequest request = request(
+                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
+                "9999.0000", "9999.0000");
+        request.getItems().getFirst().setCurrencyId(UUID.randomUUID());
+
+        assertThatThrownBy(() -> service.create(request))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("超过应收未收金额");
+                .hasMessageContaining("核销原币必须与应收币种一致")
+                .hasMessageContaining("人民币账户");
+    }
 
-        assertMoney(ledger.getAmountReceivedOriginal(), "0.0000");
-        assertMoney(ledger.getAmountReceivedLocal(), "0.0000");
-        assertMoney(ledger.getAmountWriteOffOriginal(), "0.0000");
-        assertMoney(ledger.getAmountWriteOffLocal(), "0.0000");
-        assertMoney(ledger.getAmountBalanceOriginal(), "100.0000");
-        assertMoney(ledger.getAmountSettled(), "0.0000");
-        assertMoney(ledger.getAmountBalance(), "700.0000");
+    @Test
+    void usdReceivableCannotPostDirectlyIntoAThirdCurrencyAccount() {
+        ArApLedger ledger = receivable("100.0000", "7.000000");
+        UUID hkdCurrency=UUID.randomUUID();
+        when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[] {ACCOUNT_ID,hkdCurrency,false,"HKD","港币",ACCOUNT_STYLE_ID}));
+        FinanceReceiptSaveRequest request=request(
+                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
+                "9999.0000", "9999.0000");
+        request.setAccountCurrencyId(hkdCurrency);
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("第三币种暂不支持");
+    }
+
+    @Test
+    void v1RejectsMixingCommercialWriteOffIntoSettlementFees() {
+        ArApLedger ledger = receivable("100.0000", "7.000000");
+        FinanceReceiptSaveRequest request=request(
+                ledger, "99.0000", "7.000000", "2.0000", "14.0000",
+                "1.0000", "1.0000");
+        request.getItems().getFirst().setWriteOffAmount(new BigDecimal("2.0000"));
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("不能把手续费")
+                .hasMessageContaining("专用调整流程");
         verify(accountUpdate, never()).executeUpdate();
         verify(reconciliationInsert, never()).executeUpdate();
     }
@@ -399,16 +718,16 @@ class FinanceReceiptSettlementTest {
 
         assertThatThrownBy(() -> service.create(directRequest(null, "1.000000")))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("客户和币别");
+                .hasMessageContaining("结算原币");
         assertThatThrownBy(() -> service.create(directRequest(CURRENCY_ID, null)))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("汇率必须大于 0");
+                .hasMessageContaining("实际结算汇率必须完整");
         assertThatThrownBy(() -> service.create(directRequest(CURRENCY_ID, "0.000000")))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("汇率必须大于 0");
+                .hasMessageContaining("实际结算汇率必须完整");
         assertThatThrownBy(() -> service.create(missingOriginal))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("原币金额必须大于 0");
+                .hasMessageContaining("原币毛额");
 
         verify(arApService, never()).postArAp(any());
         verify(accountUpdate, never()).executeUpdate();
@@ -469,7 +788,7 @@ class FinanceReceiptSettlementTest {
         line.setAmountOriginal(new BigDecimal(cashOriginal));
         line.setAmountLocal(new BigDecimal(clientLocal));
         line.setExchangeDiff(new BigDecimal(clientExchangeDiff));
-        line.setWriteOffAmount(new BigDecimal(writeOffOriginal));
+        line.setWriteOffAmount(BigDecimal.ZERO);
 
         FinanceReceiptSaveRequest request = new FinanceReceiptSaveRequest();
         request.setReceiptKind("AR_SETTLEMENT");
@@ -480,8 +799,24 @@ class FinanceReceiptSettlementTest {
         request.setExchangeRate(new BigDecimal(receiptRate));
         request.setAmountOriginal(new BigDecimal(cashOriginal));
         request.setAmountLocal(new BigDecimal(clientLocal));
-        request.setBankFee(new BigDecimal(bankFeeLocal));
-        request.setOtherFee(BigDecimal.ZERO);
+        BigDecimal feeLocal = new BigDecimal(bankFeeLocal);
+        BigDecimal feeAccount = feeLocal.signum() == 0
+                ? BigDecimal.ZERO
+                : feeLocal.divide(new BigDecimal(receiptRate), 4, java.math.RoundingMode.HALF_UP);
+        request.setBankFeeAccountAmount(feeAccount);
+        request.setOtherFeeAccountAmount(BigDecimal.ZERO);
+        request.setFeeSettlementMode(
+                feeAccount.signum() == 0 ? "NONE" : "DEDUCTED_FROM_PROCEEDS");
+        request.setFeeBearer(feeAccount.signum() == 0 ? "NONE" : "COMPANY");
+        request.setSettlementChannel("DIRECT_ACCOUNT");
+        request.setExchangeRateSource("BANK_STATEMENT");
+        request.setExchangeRateEffectiveAt(java.time.OffsetDateTime.parse(
+                "2026-08-08T09:00:00+08:00"));
+        request.setBankBookedAt(java.time.OffsetDateTime.parse(
+                "2026-08-08T10:00:00+08:00"));
+        request.setBankReference("BANK-TEST");
+        request.setAccountCurrencyId(CURRENCY_ID);
+        request.setCreateIdempotencyKey(UUID.randomUUID().toString());
         request.setItems(List.of(line));
         return request;
     }
@@ -495,6 +830,19 @@ class FinanceReceiptSettlementTest {
         request.setCurrencyId(currencyId);
         request.setExchangeRate(exchangeRate == null ? null : new BigDecimal(exchangeRate));
         request.setAmountOriginal(new BigDecimal("10.0000"));
+        request.setBankFeeAccountAmount(BigDecimal.ZERO);
+        request.setOtherFeeAccountAmount(BigDecimal.ZERO);
+        request.setFeeSettlementMode("NONE");
+        request.setFeeBearer("NONE");
+        request.setSettlementChannel("DIRECT_ACCOUNT");
+        request.setExchangeRateSource("BANK_STATEMENT");
+        request.setExchangeRateEffectiveAt(java.time.OffsetDateTime.parse(
+                "2026-08-08T09:00:00+08:00"));
+        request.setBankBookedAt(java.time.OffsetDateTime.parse(
+                "2026-08-08T10:00:00+08:00"));
+        request.setBankReference("BANK-PREPAY-TEST");
+        request.setAccountCurrencyId(CURRENCY_ID);
+        request.setCreateIdempotencyKey(UUID.randomUUID().toString());
         request.setItems(List.of());
         return request;
     }

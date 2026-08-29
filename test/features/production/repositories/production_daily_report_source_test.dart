@@ -1,10 +1,20 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/production/models/production_daily_report.dart';
 import 'package:uten_imp/features/production/models/reportable_plan_line.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 
 void main() {
+  test('daily report item preserves FQC recovery authorization UUID', () {
+    final item = ProductionDailyReportItem.fromJson(const {
+      'id': 'report-item-1',
+      'fqcRecoveryAuthorizationId': 'recovery-1',
+    });
+
+    expect(item.fqcRecoveryAuthorizationId, 'recovery-1');
+  });
+
   test('reportable plan line preserves authoritative allocation fields', () {
     final line = ReportablePlanLine.fromJson({
       'planItemId': 'plan-item-1',
@@ -32,6 +42,13 @@ void main() {
       'departmentId': 'department-1',
       'workshopName': '装配一车间',
       'deliveryDate': '2026-08-01',
+      'fqcRecoveryAuthorizationId': 'recovery-1',
+      'fqcRecoveryDispositionCode': 'REWORK',
+      'fqcRecoveryAvailableQty': 10,
+      'fqcSourceInspectionId': 'inspection-1',
+      'fqcSourceReportItemId': 'report-item-1',
+      'fqcSourceReportNo': 'RB-001',
+      'fqcRecoveryRequiresMaterial': false,
     });
 
     expect(line.planItemId, 'plan-item-1');
@@ -44,7 +61,31 @@ void main() {
     expect(line.maxReportQty, 10);
     expect(line.orderNo, 'SO-001');
     expect(line.workshopName, '装配一车间');
+    expect(line.isFqcRecovery, isTrue);
+    expect(line.fqcRecoveryLabel, '返工再检');
+    expect(line.canReport, isTrue);
   });
+
+  test(
+    'SCRAP recovery remains visible but blocked for material preparation',
+    () {
+      final line = ReportablePlanLine.fromJson({
+        'planItemId': 'plan-item-1',
+        'executionSegmentId': 'segment-1',
+        'planNo': 'SJ-001',
+        'goodsId': 'goods-1',
+        'maxReportQty': 0,
+        'fqcRecoveryAuthorizationId': 'recovery-2',
+        'fqcRecoveryDispositionCode': 'SCRAP',
+        'fqcRecoveryAvailableQty': 2,
+        'fqcRecoveryRequiresMaterial': true,
+      });
+
+      expect(line.fqcRecoveryLabel, '报废补产');
+      expect(line.canReport, isFalse);
+      expect(line.blockedReason, contains('尚未完成新增物料齐套和仓库发料'));
+    },
+  );
 
   test(
     'repository uses reportable read-side filters and parses page',
@@ -86,6 +127,40 @@ void main() {
         'executionSegmentId': 'segment-1',
       });
       expect(page.items.single.maxReportQty, 8);
+    },
+  );
+
+  test(
+    'daily report writes carry idempotency and optimistic version',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProductionDailyReportRepository(
+        _api((request) {
+          requests.add(request);
+          return {
+            'id': 'report-1',
+            'rowVersion': request.method == 'POST' ? 0 : 4,
+            'items': const <Map<String, dynamic>>[],
+          };
+        }),
+      );
+
+      final created = await repository.create(const {
+        'billDate': '2026-08-28',
+        'items': <Map<String, dynamic>>[],
+      }, idempotencyKey: 'daily-report-create-command-0001');
+      final updated = await repository.update('report-1', const {
+        'billDate': '2026-08-28',
+        'items': <Map<String, dynamic>>[],
+      }, expectedVersion: 3);
+
+      expect(
+        requests[0].data,
+        containsPair('idempotencyKey', 'daily-report-create-command-0001'),
+      );
+      expect(requests[1].data, containsPair('expectedVersion', 3));
+      expect(created.rowVersion, 0);
+      expect(updated.rowVersion, 4);
     },
   );
 }

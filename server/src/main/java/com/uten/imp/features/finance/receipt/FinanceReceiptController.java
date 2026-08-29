@@ -32,8 +32,8 @@ import java.util.UUID;
  *   <li>GET    /api/finance/receipts/{id}                 → 详情（主 + 明细）</li>
  *   <li>POST   /api/finance/receipts                      → 新建（草稿）finance_receipt:create</li>
  *   <li>PUT    /api/finance/receipts/{id}                 → 编辑（仅草稿）</li>
- *   <li>DELETE /api/finance/receipts/{id}                 → 删除（草稿/红冲可删）</li>
- *   <li>POST   /api/finance/receipts/{id}/approve         → 审核（核销 AR / 直接收款 / 账户累加 / 写流水）</li>
+ *   <li>DELETE /api/finance/receipts/{id}                 → 删除（仅草稿）</li>
+ *   <li>POST   /api/finance/receipts/{id}/approve         → 审核（AR/预收、真实账户、追加流水与收款 GL 同事务）</li>
  *   <li>POST   /api/finance/receipts/{id}/reverse         → 红冲（反向冲销）</li>
  * </ul>
  */

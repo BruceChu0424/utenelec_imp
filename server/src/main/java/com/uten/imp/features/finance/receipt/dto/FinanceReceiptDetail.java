@@ -45,4 +45,30 @@ public class FinanceReceiptDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    private long version;
+    private short settlementAuthorityVersion;
+    private String createIdempotencyKey;
+    private String settlementChannel;
+    private UUID settlementAgentSupplierId;
+    private String settlementAgentNameSnapshot;
+    private String settlementRateQuoteDirection;
+    private String exchangeRateSource;
+    private OffsetDateTime exchangeRateEffectiveAt;
+    private OffsetDateTime bankBookedAt;
+    private String bankReference;
+    private String agentStatementNo;
+    private UUID accountCurrencyId;
+    private BigDecimal accountExchangeRate;
+    private String accountExchangeRateSource;
+    private BigDecimal accountAmount;
+    private BigDecimal accountAmountLocal;
+    /** Explicit alias for amountLocal under V1; retained separately for unambiguous clients. */
+    private BigDecimal settlementGrossLocal;
+    private BigDecimal bankFeeAccountAmount;
+    private BigDecimal otherFeeAccountAmount;
+    private String feeSettlementMode;
+    private String feeBearer;
+    private UUID feePaymentAccountId;
+    private UUID feeAccountCurrencyId;
+    private BigDecimal feeAccountExchangeRate;
 }

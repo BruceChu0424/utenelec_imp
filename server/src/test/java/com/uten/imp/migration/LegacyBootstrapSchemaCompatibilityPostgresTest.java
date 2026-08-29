@@ -79,7 +79,18 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
         assertFalse(scripts.isEmpty(), "bootstrap-all must resolve at least one SQL script");
 
         for (String filename : scripts) {
-            executeScript(filename);
+            if ("migrate_currency.sql".equals(filename)) {
+                executeScript(filename, Map.of("currency_stage", """
+                        INSERT INTO currency_stage(
+                            legacy_id,code,name,exchange_rate,status)
+                        VALUES
+                            (1,'001','人民币',1,'使用'),
+                            (3,'002','美金',0,'使用'),
+                            (4,'003','港币',0,'使用');
+                        """));
+            } else {
+                executeScript(filename);
+            }
         }
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {

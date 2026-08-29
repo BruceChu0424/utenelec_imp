@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/subcontract_order_progress.dart';
 import '../repositories/subcontract_repository.dart';
 import '../models/subcontract_doc.dart';
@@ -115,6 +116,11 @@ class _SubcontractOrderProgressSectionState
   }
 
   Widget _buildContent(ThemeData theme, SubcontractOrderProgress p) {
+    final canViewPrice =
+        ref
+            .watch(currentPermissionsProvider)
+            .contains(Perm.subcontractReceiptPriceView) &&
+        !p.priceMasked;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -125,7 +131,7 @@ class _SubcontractOrderProgressSectionState
           const SizedBox(height: UtenSpacing.s12),
           _docSection(
             theme,
-            title: '成品回厂（进仓单）',
+            title: '成品回厂(进仓单)',
             docs: p.receipts,
             segment: 'receipts',
             trailing: (d) => _iqcText(d.iqcStatus),
@@ -147,7 +153,7 @@ class _SubcontractOrderProgressSectionState
             title: '损耗单',
             docs: p.wastes,
             segment: 'wastes',
-            trailing: (d) => (d.deductAmount ?? 0) > 0
+            trailing: (d) => canViewPrice && (d.deductAmount ?? 0) > 0
                 ? '建议索赔 ${_fmt(d.deductAmount!)}'
                 : null,
           ),
@@ -156,8 +162,10 @@ class _SubcontractOrderProgressSectionState
           const SizedBox(height: UtenSpacing.s12),
           _ledgerSection(theme, p),
         ],
-        const SizedBox(height: UtenSpacing.s12),
-        _apSummary(theme, p),
+        if (canViewPrice) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          _apSummary(theme, p),
+        ],
       ],
     );
   }
@@ -269,7 +277,7 @@ class _SubcontractOrderProgressSectionState
         theme,
         title: '材料出仓',
         child: Text(
-          '该订货无需发料（委外商自备料或未配置 BOM）',
+          '该订货无需发料(委外商自备料或未配置 BOM)',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -278,7 +286,7 @@ class _SubcontractOrderProgressSectionState
     }
     return _sectionBox(
       theme,
-      title: '材料出仓（仓库执行）',
+      title: '材料出仓(仓库执行)',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -299,7 +307,7 @@ class _SubcontractOrderProgressSectionState
               },
               defaultVerticalAlignment: TableCellVerticalAlignment.middle,
               children: [
-                _tableHead(theme, const ['材料（父件）', '计划量', '已出仓', '待出仓']),
+                _tableHead(theme, const ['材料(父件)', '计划量', '已出仓', '待出仓']),
                 for (final l in p.materialLines)
                   TableRow(
                     children: [
@@ -419,7 +427,7 @@ class _SubcontractOrderProgressSectionState
   Widget _ledgerSection(ThemeData theme, SubcontractOrderProgress p) {
     return _sectionBox(
       theme,
-      title: '委外商处材料台账（守恒）',
+      title: '委外商处材料台账(守恒)',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -455,9 +463,9 @@ class _SubcontractOrderProgressSectionState
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
               child: Text(
-                '结存处理方式：委外商退回余料（仓库开材料退货单）或按损耗核销'
-                '（损耗单可填建议索赔金额；该金额仅供后续财务责任决定参考，'
-                '不会自动扣款或冲应付）。',
+                '结存处理方式：委外商退回余料(仓库开材料退货单)或按损耗核销'
+                '(损耗单可填建议索赔金额；该金额仅供后续财务责任决定参考，'
+                '不会自动扣款或冲应付)。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -475,9 +483,9 @@ class _SubcontractOrderProgressSectionState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _kv(theme, '已立加工费应付（本币）', p.apPostedTotal.toStringAsFixed(2)),
+          _kv(theme, '已立加工费应付(本币)', p.apPostedTotal.toStringAsFixed(2)),
           if (p.wasteDeductTotal > 0)
-            _kv(theme, '损耗建议索赔（不计入应付）', p.wasteDeductTotal.toStringAsFixed(2)),
+            _kv(theme, '损耗建议索赔(不计入应付)', p.wasteDeductTotal.toStringAsFixed(2)),
         ],
       ),
     );

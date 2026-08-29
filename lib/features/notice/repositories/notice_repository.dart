@@ -42,6 +42,9 @@ abstract interface class NoticeRepository {
 
   Future<Notice> markRead(String id);
 
+  /// 当前用户已显式关闭/处理过强提醒弹窗；不改变通知已读状态。
+  Future<void> acknowledgePopup(String id);
+
   Future<void> completeTodo(String id);
 
   /// 全部标记已读
@@ -178,6 +181,11 @@ class DioNoticeRepository implements NoticeRepository {
     final notice = await getById(id);
     if (notice == null) throw Exception('通知不存在');
     return notice;
+  }
+
+  @override
+  Future<void> acknowledgePopup(String id) async {
+    await _api.post(ApiEndpoints.noticePopupAck(id));
   }
 
   @override
@@ -394,6 +402,7 @@ class DioNoticeRepository implements NoticeRepository {
       audienceCount: (json['audienceCount'] as num?)?.toInt(),
       kind: NoticeKind.fromName(json['kind'] as String?),
       actionRoute: json['actionRoute'] as String?,
+      sourceEvent: json['sourceEvent'] as String?,
       dueAt: json['dueAt'] == null
           ? null
           : ChinaDateTime.tryParse(json['dueAt'] as String?),

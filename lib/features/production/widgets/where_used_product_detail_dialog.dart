@@ -668,7 +668,7 @@ String _materialLabel(GoodsListItem material) {
   final name = _display(material.name);
   final code = _display(material.code);
   if (name == '—' || code == '—') return name == '—' ? code : name;
-  return '$name（$code）';
+  return '$name($code)';
 }
 
 String _rawText(Object? value) => value?.toString().trim() ?? '';

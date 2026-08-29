@@ -84,6 +84,7 @@ class CustomerPrepaymentItem {
     this.clientId,
     this.currencyId,
     this.currencyCode,
+    this.currencyName,
     this.exchangeRate,
     this.receivedOriginal,
     this.receivedLocal,
@@ -102,6 +103,7 @@ class CustomerPrepaymentItem {
   final String? clientId;
   final String? currencyId;
   final String? currencyCode;
+  final String? currencyName;
   final String? exchangeRate;
   final String? receivedOriginal;
   final String? receivedLocal;
@@ -125,6 +127,7 @@ class CustomerPrepaymentItem {
         clientId: _text(json['clientId']),
         currencyId: _text(json['currencyId']),
         currencyCode: _text(json['currencyCode']),
+        currencyName: _text(json['currencyName']),
         exchangeRate: financeExactDecimal(json['exchangeRate'] ?? json['rate']),
         receivedOriginal: financeExactDecimal(
           json['receivedOriginal'] ?? json['amountOriginal'],

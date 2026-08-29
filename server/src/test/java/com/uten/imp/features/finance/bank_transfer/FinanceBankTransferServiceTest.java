@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.bank_transfer;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,7 +41,7 @@ class FinanceBankTransferServiceTest {
     private Query outgoingUpdate;
     private Query incomingUpdate;
     private Query reconciliationInsert;
-    private Query reconciliationDelete;
+    private AccountFlowLedgerService accountFlowLedger;
     private FinanceBankTransferService service;
 
     @BeforeEach
@@ -52,6 +54,7 @@ class FinanceBankTransferServiceTest {
         DocNumberService numbers = mock(DocNumberService.class);
         FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
         glPosting = mock(GlPostingService.class);
+        accountFlowLedger = mock(AccountFlowLedgerService.class);
         em = mock(EntityManager.class);
 
         accountLock = query();
@@ -59,11 +62,9 @@ class FinanceBankTransferServiceTest {
         outgoingUpdate = query();
         incomingUpdate = query();
         reconciliationInsert = query();
-        reconciliationDelete = query();
         when(outgoingUpdate.executeUpdate()).thenReturn(1);
         when(incomingUpdate.executeUpdate()).thenReturn(1);
         when(reconciliationInsert.executeUpdate()).thenReturn(1);
-        when(reconciliationDelete.executeUpdate()).thenReturn(2);
 
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
@@ -82,24 +83,21 @@ class FinanceBankTransferServiceTest {
             if (sql.contains("INSERT INTO finance_reconciliations")) {
                 return reconciliationInsert;
             }
-            if (sql.contains("DELETE FROM finance_reconciliations")) {
-                return reconciliationDelete;
-            }
             throw new AssertionError("unexpected SQL: " + sql);
         });
 
         service = new FinanceBankTransferService(
-                transferRepo, lineRepo, tx, currentUser, names, numbers, em, access, glPosting);
+                transferRepo, lineRepo, tx, currentUser, names, numbers, em, access, glPosting,
+                accountFlowLedger);
     }
 
     @Test
-    void approvePostsBothAccountsAndPersistsConvertedAmount() {
+    void approvePostsBothBaseCurrencyAccountsAndPersistsLocalFlowSnapshots() {
         UUID outAccount = UUID.randomUUID();
         UUID inAccount = UUID.randomUUID();
-        UUID outCurrency = UUID.randomUUID();
-        UUID inCurrency = UUID.randomUUID();
+        UUID currency = UUID.randomUUID();
         FinanceBankTransfer transfer =
-                transfer((short) 0, outAccount, outCurrency, "2.000000");
+                transfer((short) 0, outAccount, currency, "1.000000");
         FinanceBankTransferLine line = line(
                 transfer.getId(), inAccount, "100.0000", null);
         UUID approver = UUID.randomUUID();
@@ -109,23 +107,58 @@ class FinanceBankTransferServiceTest {
         when(lineRepo.findByTransferIdOrderByLineNoAsc(transfer.getId()))
                 .thenReturn(List.of(line));
         when(accountLock.getResultList()).thenReturn(List.of(
-                new Object[] {outAccount, outCurrency, new BigDecimal("2.000000")},
-                new Object[] {inAccount, inCurrency, new BigDecimal("4.000000")}));
+                new Object[] {outAccount, currency, true, "使用", false},
+                new Object[] {inAccount, currency, true, "使用", false}));
         when(postingCount.getSingleResult()).thenReturn(0L);
         when(currentUser.requireEmployeeId()).thenReturn(approver);
 
         service.approve(transfer.getId());
 
-        assertEquals(0, new BigDecimal("50.0000").compareTo(line.getAmountOriginal()));
+        assertEquals(0, new BigDecimal("100.0000").compareTo(line.getAmountOriginal()));
         assertEquals(0, new BigDecimal("100.0000").compareTo(transfer.getAmountLocal()));
-        assertEquals(0, new BigDecimal("50.0000").compareTo(transfer.getAmountOriginal()));
+        assertEquals(0, new BigDecimal("100.0000").compareTo(transfer.getAmountOriginal()));
         assertEquals((short) 1, transfer.getStatus());
         assertSame(approver, transfer.getApproverId());
         verify(lineRepo).save(line);
         verify(outgoingUpdate).setParameter("amount", new BigDecimal("100.0000"));
-        verify(incomingUpdate).setParameter("amount", new BigDecimal("50.0000"));
+        verify(incomingUpdate).setParameter("amount", new BigDecimal("100.0000"));
+        verify(reconciliationInsert, org.mockito.Mockito.times(2))
+                .setParameter("amountLocal", new BigDecimal("100.0000"));
         verify(reconciliationInsert, org.mockito.Mockito.times(2)).executeUpdate();
         verify(glPosting).lockAutoProjectionPeriod(transfer.getBillDate());
+    }
+
+    @Test
+    void approveRejectsForeignToBaseTransferBeforeChangingEitherAccount() {
+        UUID outAccount = UUID.randomUUID();
+        UUID inAccount = UUID.randomUUID();
+        UUID usd = UUID.randomUUID();
+        UUID cny = UUID.randomUUID();
+        FinanceBankTransfer transfer =
+                transfer((short) 0, outAccount, usd, "7.000000");
+        FinanceBankTransferLine line = line(
+                transfer.getId(), inAccount, "100.0000", null);
+
+        when(transferRepo.findById(transfer.getId()))
+                .thenReturn(Optional.of(transfer));
+        when(lineRepo.findByTransferIdOrderByLineNoAsc(transfer.getId()))
+                .thenReturn(List.of(line));
+        when(accountLock.getResultList()).thenReturn(List.of(
+                new Object[] {outAccount, usd, false, "使用", false},
+                new Object[] {inAccount, cny, true, "使用", false}));
+        when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+
+        com.uten.imp.common.web.ApiException error = assertThrows(
+                com.uten.imp.common.web.ApiException.class,
+                () -> service.approve(transfer.getId()));
+
+        org.assertj.core.api.Assertions.assertThat(error.getMessage())
+                .contains("仅允许转出和全部转入均为同一启用本位币账户")
+                .contains("双边币种、汇率和本位币金额快照");
+        assertEquals((short) 0, transfer.getStatus());
+        verify(outgoingUpdate, never()).executeUpdate();
+        verify(incomingUpdate, never()).executeUpdate();
+        verify(reconciliationInsert, never()).executeUpdate();
     }
 
     @Test
@@ -146,8 +179,8 @@ class FinanceBankTransferServiceTest {
         when(lineRepo.findByTransferIdOrderByLineNoAsc(transfer.getId()))
                 .thenReturn(List.of(line));
         when(accountLock.getResultList()).thenReturn(List.of(
-                new Object[] {outAccount, outCurrency, null},
-                new Object[] {inAccount, inCurrency, null}));
+                new Object[] {outAccount, outCurrency, false, null, false},
+                new Object[] {inAccount, inCurrency, false, null, false}));
         when(postingCount.getSingleResult()).thenReturn(2L);
 
         service.reverse(transfer.getId());
@@ -156,7 +189,11 @@ class FinanceBankTransferServiceTest {
         verify(lineRepo, never()).save(line);
         verify(outgoingUpdate).setParameter("amount", new BigDecimal("-100.0000"));
         verify(incomingUpdate).setParameter("amount", new BigDecimal("-50.0000"));
-        verify(reconciliationDelete).executeUpdate();
+        verify(accountFlowLedger).reverse(
+                org.mockito.ArgumentMatchers.eq("BANK_TRANSFER"),
+                org.mockito.ArgumentMatchers.eq(transfer.getId()),
+                any(OffsetDateTime.class),
+                org.mockito.ArgumentMatchers.eq("银行存取款红冲"));
         verify(glPosting).removeAutoProjection(
                 "BANK_TRANSFER", transfer.getId(), transfer.getBillNo(), transfer.getBillDate());
     }
@@ -174,8 +211,8 @@ class FinanceBankTransferServiceTest {
         when(transferRepo.findById(transfer.getId())).thenReturn(Optional.of(transfer));
         when(lineRepo.findByTransferIdOrderByLineNoAsc(transfer.getId())).thenReturn(List.of(line));
         when(accountLock.getResultList()).thenReturn(List.of(
-                new Object[] {outAccount, currency, new BigDecimal("1.000000")},
-                new Object[] {inAccount, currency, new BigDecimal("1.000000")}));
+                new Object[] {outAccount, currency, true, "使用", false},
+                new Object[] {inAccount, currency, true, "使用", false}));
         when(postingCount.getSingleResult()).thenReturn(0L);
         when(currentUser.requireEmployeeId()).thenReturn(maker); // 审核人=制单人
 

@@ -71,13 +71,38 @@ public class EmployeeQueryService {
                 result.totalPages());
     }
 
-    // ===== 详情（按权限点脱敏，ADR-011 后不再按角色） =====
-    /** 员工详情：字段级按权限点脱敏——身份证/银行/手机明文需 PII 权限，无 employee:pii:view 时人口属性/地址/生日清空，备用手机号按主号规则掩码。证书/学历非第三方 PII，随基础档案全可见。 */
+    // ===== 详情（按权限点与查看对象脱敏，ADR-011 后不再按角色） =====
+    /**
+     * 管理端员工详情：字段级按权限点脱敏。保持既有契约不变——身份证、银行、手机明文需
+     * employee:pii:view；无权限时人口属性/地址/生日清空，备用手机号按主号规则掩码。
+     */
     @Transactional(readOnly = true)
     public EmployeeDetail detail(UUID id) {
+        Set<String> permissions = currentPermissions();
+        return assembleDetail(id, DetailView.forEmployeeRecord(permissions, policy));
+    }
+
+    /**
+     * 员工自助详情：对象范围固定为当前 AuthUser 绑定的 employees.id，不接受调用方传入员工 ID。
+     * 本人可见个人 PII；银行与薪酬仍分别遵守 employee:pii:view / employee:compensation:view。
+     */
+    @Transactional(readOnly = true)
+    public EmployeeDetail myDetail() {
+        AuthUser user = currentUser.get()
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        if (user.isVisitor()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "仅员工可查看本人资料");
+        }
+        UUID employeeId = user.getEmployeeId();
+        if (employeeId == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "当前账号未绑定员工档案");
+        }
+        return assembleDetail(employeeId, DetailView.forSelf(user.getPermissions(), policy));
+    }
+
+    private EmployeeDetail assembleDetail(UUID id, DetailView view) {
         tx.bind();
         Employee e = requireEmployee(id);
-        Set<String> perms = currentUser.get().map(AuthUser::getPermissions).orElse(Set.of());
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id).orElse(null);
         EmployeeCompensation c = compensationRepo.findByEmployeeId(id).orElse(null);
 
@@ -152,12 +177,12 @@ public class EmployeeQueryService {
                 .map(u -> u.isDeleted() ? "disabled" : u.getStatus())
                 .orElse(null));
 
-        fillSensitive(d, s, c, perms);
+        fillSensitive(d, s, c, view);
 
-        // 紧急联系人（phone 按权限点脱敏）
+        // 紧急联系人电话：管理端按 PII 权限，本人端可见明文。
         List<NestedDtos.EmergencyContactDto> ec = emergencyRepo.findByEmployeeIdOrderBySortOrderAsc(id).stream()
                 .map(x -> new NestedDtos.EmergencyContactDto(x.getId(), x.getName(),
-                        decryptMasked(x.getPhoneEnc(), perms), x.getRelationship()))
+                        decryptPhone(x.getPhoneEnc(), view.personalPii()), x.getRelationship()))
                 .toList();
         d.setEmergencyContacts(ec);
 
@@ -178,15 +203,14 @@ public class EmployeeQueryService {
 
         // 车辆（employee:view 可见，支撑「按车牌找人」）与备用手机号（掩码规则同主手机号）—— ADR-021
         d.setVehicles(vehiclePhoneService.listVehicles(id));
-        boolean canSeePii = policy.canSeeIdCardAndBank(perms);
         d.setPhones(vehiclePhoneService.listPhones(id).stream()
                 .map(p -> new NestedDtos.PhoneDto(p.id(), p.label(),
-                        canSeePii ? p.phonePlain() : maskPhone(p.phonePlain())))
+                        view.personalPii() ? p.phonePlain() : maskPhone(p.phonePlain())))
                 .toList());
 
-        // 隐私保护（M5/PIPL）：无 employee:pii:view 时不返回民族（人口属性）。
-        // 地址/出生日期/婚姻/政治面貌已在 fillSensitive 按 pii:view 门控（无权限不填充）。
-        if (!policy.canSeeIdCardAndBank(perms)) {
+        // 隐私保护（M5/PIPL）：非本人且无 employee:pii:view 时不返回民族（人口属性）。
+        // 地址/出生日期/婚姻/政治面貌已在 fillSensitive 按 personalPii 门控。
+        if (!view.personalPii()) {
             d.setEthnicity(null);
         }
 
@@ -210,19 +234,17 @@ public class EmployeeQueryService {
                 h.getEventDate(), h.getRemark());
     }
 
-    private void fillSensitive(EmployeeDetail d, EmployeeSensitive s, EmployeeCompensation c, Set<String> perms) {
+    private void fillSensitive(EmployeeDetail d, EmployeeSensitive s, EmployeeCompensation c, DetailView view) {
         if (s != null) {
             String idPlain = tx.decrypt(s.getIdCardEnc());
             String phonePlain = tx.decrypt(s.getPhoneEnc());
             // 办公电话/邮箱：联系方式，对 employee:view 全可见（与原 entity 行为一致），仅存储改加密。
             if (s.getOfficePhoneEnc() != null) d.setOfficePhone(tx.decrypt(s.getOfficePhoneEnc()));
             if (s.getEmailEnc() != null) d.setEmail(tx.decrypt(s.getEmailEnc()));
-            if (policy.canSeeIdCardAndBank(perms)) {
+            if (view.personalPii()) {
                 d.setIdNumber(idPlain);
                 d.setPhone(phonePlain);
-                if (s.getBankAccountEnc() != null) d.setBankAccount(tx.decrypt(s.getBankAccountEnc()));
-                if (s.getBankBranchEnc() != null) d.setBankBranch(tx.decrypt(s.getBankBranchEnc()));
-                // V282 扩展 PII（地址/出生日期/婚姻/政治面貌）：仅 employee:pii:view 可见
+                // V282 扩展 PII：管理端按 employee:pii:view，本人端可见本人的字段。
                 if (s.getHujiAddressEnc() != null) d.setHujiAddress(tx.decrypt(s.getHujiAddressEnc()));
                 if (s.getResidenceAddressEnc() != null) d.setResidenceAddress(tx.decrypt(s.getResidenceAddressEnc()));
                 if (s.getBirthDateEnc() != null) d.setBirthDate(parseDate(tx.decrypt(s.getBirthDateEnc())));
@@ -232,9 +254,14 @@ public class EmployeeQueryService {
                 d.setIdNumber(IdCardUtil.mask(idPlain));
                 d.setPhone(maskPhone(phonePlain));
             }
+            // 银行资料不属于本人基础资料放宽范围，仍只按 employee:pii:view 返回。
+            if (view.bankDetails()) {
+                if (s.getBankAccountEnc() != null) d.setBankAccount(tx.decrypt(s.getBankAccountEnc()));
+                if (s.getBankBranchEnc() != null) d.setBankBranch(tx.decrypt(s.getBankBranchEnc()));
+            }
         }
         if (c != null) {
-            if (policy.canSeeSalary(perms)) {
+            if (view.compensation()) {
                 d.setBaseSalary(tx.decrypt(c.getBaseSalaryEnc()));
                 d.setPerfSalary(tx.decrypt(c.getPerfSalaryEnc()));
                 d.setSocialInsuranceBase(tx.decrypt(c.getSocialInsuranceBaseEnc()));
@@ -246,10 +273,30 @@ public class EmployeeQueryService {
         }
     }
 
-    private String decryptMasked(String cipher, Set<String> perms) {
+    private String decryptPhone(String cipher, boolean plainText) {
         if (cipher == null) return null;
         String plain = tx.decrypt(cipher);
-        return policy.canSeeIdCardAndBank(perms) ? plain : maskPhone(plain);
+        return plainText ? plain : maskPhone(plain);
+    }
+
+    private Set<String> currentPermissions() {
+        return currentUser.get().map(AuthUser::getPermissions).orElse(Set.of());
+    }
+
+    /** 明确区分个人 PII、银行资料与薪酬资料，防止“本人可见”意外扩大到财务字段。 */
+    private record DetailView(boolean personalPii, boolean bankDetails, boolean compensation) {
+
+        private static DetailView forEmployeeRecord(Set<String> permissions, DataAccessPolicy policy) {
+            boolean pii = policy.canSeeIdCardAndBank(permissions);
+            return new DetailView(pii, pii, policy.canSeeSalary(permissions));
+        }
+
+        private static DetailView forSelf(Set<String> permissions, DataAccessPolicy policy) {
+            return new DetailView(
+                    true,
+                    policy.canSeeIdCardAndBank(permissions),
+                    policy.canSeeSalary(permissions));
+        }
     }
 
     /** 解析加密存储的 ISO 出生日期（yyyy-MM-dd）为 LocalDate；非法或空返回 null。 */

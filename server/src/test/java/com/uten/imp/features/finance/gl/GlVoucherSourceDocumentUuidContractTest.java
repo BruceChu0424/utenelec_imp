@@ -36,13 +36,16 @@ class GlVoucherSourceDocumentUuidContractTest {
     }
 
     @Test
-    void everyLegacyRegeneratorProjectionUsesVoucherHeaderSourceUuid() throws IOException {
+    void everyGlProjectionUsesVoucherHeaderSourceUuid() throws IOException {
         String service = source(
                 "src/main/java/com/uten/imp/features/finance/gl/GlPostingService.java");
         String normalized = canonical(service);
+        String compact = service.replaceAll("\\s+", "");
 
-        assertThat(count(service, "INSERT INTO gl_vouchers")).isEqualTo(14);
-        assertThat(count(service, "source_type, source_doc_id, remark")).isEqualTo(14);
+        assertThat(count(service, "INSERT INTO gl_vouchers")).isEqualTo(17);
+        assertThat(count(compact, "source_type,source_doc_id,remark")).isEqualTo(16);
+        assertThat(compact).contains(
+                "source_type,source_doc_id,source_ref,idempotency_key,reversal_of_voucher_id,remark");
         assertThat(normalized)
                 .contains("'AUTO', 'AR_POST', l.source_doc_id")
                 .contains("'AUTO', 'AP_POST', l.source_doc_id")
@@ -58,10 +61,18 @@ class GlVoucherSourceDocumentUuidContractTest {
                 .contains("'AUTO','SUPPLIER_CLAIM_RECEIVABLE',claim.id")
                 .contains("'AUTO','SUPPLIER_CLAIM_CASH',receipt.id")
                 .contains("'AUTO','CUSTOMER_PREPAYMENT_OFFSET',batch.id")
+                .contains("'AUTO','BALANCE_ADJUSTMENT',batch.id")
+                .contains("'AUTO','RECEIPT', :receiptId")
+                .contains("'AUTO','RECEIPT_REV'")
+                .contains("reversal_of_voucher_id")
                 .contains("voucher.source_doc_id=:sourceDocId")
                 .contains("voucher.source_doc_id=:expenseId")
                 .contains("WHERE e.id = v.source_doc_id")
                 .contains("AND ledger.source_doc_id IS NULL");
+        assertThat(count(
+                normalized,
+                "voucher.source_type='BALANCE_ADJUSTMENT' AND voucher.source_doc_id=batch.id"))
+                .isEqualTo(2);
 
         assertThat(normalized)
                 .doesNotContain("JOIN gl_vouchers v ON v.voucher_no")

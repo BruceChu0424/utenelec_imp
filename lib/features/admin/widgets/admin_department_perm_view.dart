@@ -37,6 +37,7 @@ class _AdminDepartmentPermViewState
   static const _individualOnlyPermissions = <String>{
     Perm.auditLogView,
     Perm.auditLogExport,
+    Perm.accountBalanceAdjust,
   };
 
   DeptSelection? _dept;
@@ -182,7 +183,8 @@ class _AdminDepartmentPermViewState
                       child: Text(
                         '勾选的权限会授予该部门及其下级部门员工。'
                         '可搜索、按状态筛选，或从分组右侧菜单整组配置。'
-                        '审计查看与导出涉及调查证据，只能在个人授权中点名配置，不支持部门授权。',
+                        '审计查看、审计导出和账户余额调整属于高风险权限，'
+                        '只能在个人授权中点名配置，不支持部门授权。',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           height: 1.5,

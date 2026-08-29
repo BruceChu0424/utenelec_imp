@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -389,7 +390,9 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                       InputDecorator(
                         decoration: _deco(l10n.employeeFieldDepartment)
                             .copyWith(
-                              helperText: '调整部门请使用员工详情中的「调岗」功能',
+                              helper: const UtenFieldMessage.helper(
+                                '调整部门请使用员工详情中的「调岗」功能',
+                              ),
                               prefixIcon: const Icon(
                                 Icons.account_tree_outlined,
                               ),
@@ -418,9 +421,11 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                       DropdownButtonFormField<String>(
                         key: const ValueKey('employee-edit-status-readonly'),
                         initialValue: _status,
-                        decoration: _deco(
-                          l10n.employeeFieldStatus,
-                        ).copyWith(helperText: '状态变更请使用员工详情中的转正、离职或复职专用按钮'),
+                        decoration: _deco(l10n.employeeFieldStatus).copyWith(
+                          helper: const UtenFieldMessage.helper(
+                            '状态变更请使用员工详情中的转正、离职或复职专用按钮',
+                          ),
+                        ),
                         // 离职/复职走专用流程（账号冻结/启用+任职记录），编辑页不可直改：
                         // 在职员工选项剔除 resigned；已离职员工锁定为 resigned。
                         items: _statusCodes
@@ -510,6 +515,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
   }) {
     if (!required) {
       return TextFormField(
+        errorBuilder: utenTextFieldErrorBuilder,
         controller: c,
         decoration: InputDecoration(
           labelText: label,
@@ -526,6 +532,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
         final theme = Theme.of(context);
         final empty = c.text.trim().isEmpty;
         return TextFormField(
+          errorBuilder: utenTextFieldErrorBuilder,
           controller: c,
           decoration: applyRequiredEmpty(
             InputDecoration(

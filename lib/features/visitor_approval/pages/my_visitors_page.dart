@@ -22,7 +22,6 @@ import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
-import '../providers/visitor_notice_bridge.dart';
 import '../providers/visitor_pending_count_provider.dart';
 
 class MyVisitorsPage extends ConsumerStatefulWidget {
@@ -53,13 +52,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
       // 确认后回到 pending（HR 待办）或 rejected，两个徽章都要刷新
       ref.read(visitorHostPendingCountProvider.notifier).refresh();
       ref.read(visitorPendingCountProvider.notifier).refresh();
-      // 被访人确认/拒绝 → 工作通知（流程流转 / 审批驳回）
-      await notifyVisitorHostConfirm(
-        context,
-        ref,
-        app: app,
-        confirmed: confirmed,
-      );
+      context.appSuccess(confirmed ? '已确认接待，申请已转回 HR 审批' : '已拒绝接待');
     } on ApiException catch (e) {
       if (context.mounted) {
         context.appApiError(e, fallback: l10n.commonError);

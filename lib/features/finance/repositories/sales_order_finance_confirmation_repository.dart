@@ -12,6 +12,7 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
     int page = 1,
     int size = 20,
     bool? rejected,
+    String? keyword,
   });
 
   Future<int> pendingCount();
@@ -22,7 +23,10 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
   /// 财务确认（remark 可空）。成功无返回体；失败抛 ApiException。
   Future<void> confirm(String orderId, {String? remark});
 
-  /// 财务驳回（reason 必填；不改订单状态/预留，通知归属销售修正）。
+  /// 原子批量确认：任一订单校验失败时服务端整批回滚；单次最多 100 笔。
+  Future<void> confirmBatch(Iterable<String> orderIds, {String? remark});
+
+  /// 财务驳回（reason 必填；决策先保留状态/预留，销售须受控修订回草稿并重新审核）。
   Future<void> reject(String orderId, {required String reason});
 }
 
@@ -37,13 +41,17 @@ class DioSalesOrderFinanceConfirmationRepository
     int page = 1,
     int size = 20,
     bool? rejected,
+    String? keyword,
   }) async {
+    final normalizedKeyword = keyword?.trim();
     final json = await api.get(
       ApiEndpoints.salesOrderFinanceConfirmationPending,
       query: <String, dynamic>{
         'page': page,
         'size': size,
         'rejected': ?rejected,
+        if (normalizedKeyword != null && normalizedKeyword.isNotEmpty)
+          'keyword': normalizedKeyword,
       },
     );
     return SalesOrderFinancePendingPage.fromJson(json);
@@ -71,6 +79,24 @@ class DioSalesOrderFinanceConfirmationRepository
     await api.post(
       ApiEndpoints.salesOrderFinanceConfirm(orderId),
       body: <String, dynamic>{
+        if (remark != null && remark.trim().isNotEmpty) 'remark': remark.trim(),
+      },
+    );
+  }
+
+  @override
+  Future<void> confirmBatch(Iterable<String> orderIds, {String? remark}) async {
+    final normalizedIds =
+        orderIds
+            .map((id) => id.trim())
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList(growable: false)
+          ..sort();
+    await api.post(
+      ApiEndpoints.salesOrderFinanceConfirmationBatch,
+      body: <String, dynamic>{
+        'orderIds': normalizedIds,
         if (remark != null && remark.trim().isNotEmpty) 'remark': remark.trim(),
       },
     );

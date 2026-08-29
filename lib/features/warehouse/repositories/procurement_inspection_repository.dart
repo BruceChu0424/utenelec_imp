@@ -102,6 +102,24 @@ class ProcurementInspectionItem {
       );
 }
 
+class ProcurementInspectionBatchPassItem {
+  const ProcurementInspectionBatchPassItem({
+    required this.inspectionItemId,
+    required this.expectedRemainingBaseQty,
+    required this.idempotencyKey,
+  });
+
+  final String inspectionItemId;
+  final double expectedRemainingBaseQty;
+  final String idempotencyKey;
+
+  Map<String, dynamic> toJson() => {
+    'inspectionItemId': inspectionItemId,
+    'expectedRemainingBaseQty': expectedRemainingBaseQty,
+    'idempotencyKey': idempotencyKey,
+  };
+}
+
 abstract interface class ProcurementInspectionRepository {
   Future<List<PendingInspectionReceipt>> pendingReceipts();
 
@@ -124,6 +142,14 @@ abstract interface class ProcurementInspectionRepository {
     double? baseQty,
     String? reason,
     required String idempotencyKey,
+  });
+
+  /// 同一收货单内多条明细全量合格放行；服务端单事务执行，任一行变化则整批回滚。
+  Future<void> passBatch({
+    required String receiptType,
+    required String receiptId,
+    required List<ProcurementInspectionBatchPassItem> items,
+    String? reason,
   });
 }
 
@@ -183,6 +209,22 @@ class DioProcurementInspectionRepository
         'baseQty': baseQty,
         if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),
         'idempotencyKey': idempotencyKey,
+      },
+    );
+  }
+
+  @override
+  Future<void> passBatch({
+    required String receiptType,
+    required String receiptId,
+    required List<ProcurementInspectionBatchPassItem> items,
+    String? reason,
+  }) async {
+    await api.post(
+      ApiEndpoints.procurementInspectionPassBatch(receiptType, receiptId),
+      body: {
+        'items': items.map((item) => item.toJson()).toList(growable: false),
+        if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),
       },
     );
   }

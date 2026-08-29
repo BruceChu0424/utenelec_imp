@@ -42,5 +42,12 @@ public record ReportablePlanLine(
         String workshopName,
         LocalDate planBeginDate,
         LocalDate planEndDate,
-        LocalDate deliveryDate) {
+        LocalDate deliveryDate,
+        UUID fqcRecoveryAuthorizationId,
+        String fqcRecoveryDispositionCode,
+        BigDecimal fqcRecoveryAvailableQty,
+        UUID fqcSourceInspectionId,
+        UUID fqcSourceReportItemId,
+        String fqcSourceReportNo,
+        boolean fqcRecoveryRequiresMaterial) {
 }

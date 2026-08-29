@@ -48,4 +48,6 @@ public class OrderDetail {
     /** 来源委外申请（全部明细同源时给出，供详情页跳转；跨申请为 null，看明细行谱系）。 */
     private UUID sourceApplicationId;
     private String sourceApplicationNo;
+    /** 当前用户无委外商业金额权限时为 true，币种/结算/单价/金额字段同时置 null。 */
+    private boolean priceMasked;
 }

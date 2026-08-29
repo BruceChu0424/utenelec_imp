@@ -27,6 +27,7 @@ public final class SupplierSettlementContracts {
             String supplierName,
             UUID currencyId,
             String currencyCode,
+            String currencyName,
             String periodStart,
             String periodEnd,
             String dueDate,

@@ -10,6 +10,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver.EmployeeReference;
 import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeDetail;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeItemDto;
@@ -38,6 +39,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -69,6 +71,7 @@ public class FinanceOtherIncomeService {
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
     private final GlPostingService glPosting;
+    private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceOtherIncomeListItem> list(FinanceOtherIncomeQueryFilter f, int page, int size, String sort, String order) {
@@ -178,16 +181,18 @@ public class FinanceOtherIncomeService {
         }
         UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         if (o.getMakerId() != null && o.getMakerId().equals(approver)) {
-            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
+            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同(职责分离)");
         }
         glPosting.lockAutoProjectionPeriod(o.getBillDate());
         o.setApproverId(approver);
         o.setApproverLegacyId(null);
         o.setApproverName(nameResolver.nameOf(approver));
         BigDecimal amountLocal = nz(o.getAmountLocal());
-        if (amountLocal.signum() != 0) {
-            adjustAccount(o.getAccountId(), amountLocal);
+        if (amountLocal.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "其它收入本位币总额必须大于 0");
         }
+        adjustAccount(
+                o.getAccountId(), o.getCurrencyId(), o.getExchangeRate(), amountLocal, true);
         insertReconciliation(o, amountLocal);
         o.setStatus(STATUS_APPROVED);
         incomeRepo.save(o);
@@ -208,9 +213,11 @@ public class FinanceOtherIncomeService {
         glPosting.removeAutoProjection(RECON_SOURCE, o.getId(), o.getBillNo(), o.getBillDate());
         BigDecimal amountLocal = nz(o.getAmountLocal());
         if (amountLocal.signum() != 0) {
-            adjustAccount(o.getAccountId(), amountLocal.negate());
+            adjustAccount(
+                    o.getAccountId(), o.getCurrencyId(), o.getExchangeRate(),
+                    amountLocal.negate(), false);
         }
-        deleteReconciliation(o.getId());
+        reverseReconciliation(o.getId());
         o.setStatus(STATUS_REVERSED);
         incomeRepo.save(o);
         return detail(id);
@@ -219,7 +226,21 @@ public class FinanceOtherIncomeService {
     // ===================== 账户/流水 =====================
 
     /** 收款账户累加（money-in）：balance_current += delta, receipts_total += delta（delta 已带符号）。 */
-    private void adjustAccount(UUID accountId, BigDecimal delta) {
+    private void adjustAccount(
+            UUID accountId,
+            UUID documentCurrencyId,
+            BigDecimal exchangeRate,
+            BigDecimal delta,
+            boolean validateDocumentAuthority) {
+        UUID accountCurrencyId = lockActiveBaseCurrencyAccount(accountId);
+        if (validateDocumentAuthority
+                && (!Objects.equals(documentCurrencyId, accountCurrencyId)
+                || exchangeRate == null
+                || exchangeRate.compareTo(BigDecimal.ONE) != 0)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "其它收入仅支持本位币：单头币种必须等于真实收款账户币种，汇率必须为 1");
+        }
         int rows = em.createNativeQuery("""
                 UPDATE accounts
                 SET balance_current = COALESCE(balance_current, 0) + :amt,
@@ -237,12 +258,38 @@ public class FinanceOtherIncomeService {
         }
     }
 
+    private UUID lockActiveBaseCurrencyAccount(UUID accountId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> accounts = em.createNativeQuery("""
+                        SELECT account.id, account.currency_id
+                        FROM accounts account
+                        JOIN currencies currency ON currency.id=account.currency_id
+                        WHERE account.id=:id
+                          AND account.status='使用'
+                          AND COALESCE(account.is_deleted,FALSE)=FALSE
+                          AND currency.status='使用'
+                          AND COALESCE(currency.is_deleted,FALSE)=FALSE
+                          AND currency.is_base_currency
+                        FOR UPDATE OF account
+                        """)
+                .setParameter("id", accountId)
+                .getResultList();
+        if (accounts.size() != 1) {
+            throw new ApiException(
+                    ErrorCode.BUSINESS,
+                    "其它收入账户必须是启用的本位币账户，不能按名称或参考汇率猜测币种");
+        }
+        return (UUID) accounts.getFirst()[1];
+    }
+
     private void insertReconciliation(FinanceOtherIncome o, BigDecimal amountLocal) {
         em.createNativeQuery("""
                 INSERT INTO finance_reconciliations
                   (bill_no, source_doc_type, source_doc_id, account_id, in_amount, out_amount,
-                   bill_date, settled_date, source_remark, legacy_bstyle, created_at, updated_at, is_deleted)
-                VALUES (:billNo, :src, :sid, :acc, :inAmt, 0, :bd, :sd, :sr, 22, now(), now(), false)
+                   amount_local, bill_date, settled_date, source_remark, legacy_bstyle,
+                   created_at, updated_at, is_deleted)
+                VALUES (:billNo, :src, :sid, :acc, :inAmt, 0, :inAmt,
+                        :bd, :sd, :sr, 22, now(), now(), false)
                 """)
                 .setParameter("billNo", o.getBillNo())
                 .setParameter("src", RECON_SOURCE)
@@ -255,12 +302,9 @@ public class FinanceOtherIncomeService {
                 .executeUpdate();
     }
 
-    private void deleteReconciliation(UUID incomeId) {
-        em.createNativeQuery(
-                "DELETE FROM finance_reconciliations WHERE source_doc_id = :sid AND source_doc_type = :src")
-                .setParameter("sid", incomeId)
-                .setParameter("src", RECON_SOURCE)
-                .executeUpdate();
+    private void reverseReconciliation(UUID incomeId) {
+        accountFlowLedger.reverse(
+                RECON_SOURCE, incomeId, OffsetDateTime.now(), "其它收入红冲");
     }
 
     // ===================== CRUD 辅助 =====================
@@ -317,7 +361,7 @@ public class FinanceOtherIncomeService {
         for (FinanceOtherIncomeItemInput l : inputs) {
             // 总账贷方按行 income_style_id 过账，落库前强校验非空（空则借贷不平衡）
             if (l.getIncomeStyleId() == null) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "收入明细必须指定收入类别（income_style_id）");
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "收入明细必须指定收入类别(income_style_id)");
             }
             requirePostableStyle(l.getIncomeStyleId());
             FinanceOtherIncomeItem it = new FinanceOtherIncomeItem();

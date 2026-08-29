@@ -18,7 +18,7 @@
 - 节点状态色：DONE=深绿勾（`UtenColors.deepGreen`）、CURRENT=tertiary 转轮、
   REJECTED=error 叉、PENDING=outline 空心圈；连接线按已完成程度着色。
 - 责任人徽章：`operatorLabel + operatorName`，历史缺人显示「—」；`operatorName` 约定为
-  「姓名（工号）」（服务端 `EmployeeNameResolver.nameWithCodeOf` 解析，防重名）；派生聚合阶段
+  「姓名(工号)」（服务端 `EmployeeNameResolver.nameWithCodeOf` 解析，防重名）；派生聚合阶段
   （如生产进度）无责任人，不显示徽章。
 - `onOpenDoc` 非空且事件带 `docType/docId/docNo` 时，单号渲染为可点链接；
   权限判断与路由映射由调用方负责（组件不含业务路由）。

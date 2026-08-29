@@ -235,6 +235,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('请修正标红的本次数量后再引入'), findsOneWidget);
-    expect(find.text('选择明细（供应商一）'), findsOneWidget);
+    expect(find.text('选择明细(供应商一)'), findsOneWidget);
   });
 }

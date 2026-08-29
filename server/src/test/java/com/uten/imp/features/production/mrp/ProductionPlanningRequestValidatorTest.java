@@ -100,7 +100,7 @@ class ProductionPlanningRequestValidatorTest {
 
     @Test
     void rejectsLeafProductWithoutDirectMakePolicyOrExplicitOverride() {
-        // 无 BOM 不再按“叶子件”自动放行；preview 只把未获 DIRECT_MAKE/例外的行列入此集合。
+        // 无 BOM 行只有挂上物料分析事实才会被授权为 DIRECT_MAKE 零料段；遗留行保持拦截。
         GeneratePlanningPackageRequest request = request("a".repeat(64));
         ProductionExecutionPlanningService.Snapshot snapshot = snapshot(
                 request.getPreviewFingerprint(), List.of(),
@@ -110,7 +110,7 @@ class ProductionPlanningRequestValidatorTest {
         assertThatThrownBy(() -> validator.validateCurrent(
                 UUID.randomUUID(), request))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("DIRECT_MAKE");
+                .hasMessageContaining("缺少物料分析事实");
         verify(planning, never()).applyRequested(any(), any());
     }
 

@@ -71,8 +71,13 @@ class DepartmentPermissionAdminServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"audit_log:view", "audit_log:export"})
-    void auditPermissionsCannotBeGrantedToAnEntireDepartment(String permissionCode) {
+    @ValueSource(strings = {
+            "audit_log:view",
+            "audit_log:export",
+            "account:balance:adjust"
+    })
+    void individualOnlyPermissionsCannotBeGrantedToAnEntireDepartment(
+            String permissionCode) {
         UUID departmentId = UUID.randomUUID();
         when(departmentRepo.findById(departmentId))
                 .thenReturn(Optional.of(new Department()));
@@ -84,7 +89,7 @@ class DepartmentPermissionAdminServiceTest {
                         List.of("employee:view", permissionCode)));
 
         assertEquals(ErrorCode.BUSINESS, exception.getCode());
-        assertEquals("审计权限仅允许个人授权", exception.getMessage());
+        assertEquals("该高风险权限仅允许个人授权", exception.getMessage());
         verify(permissionRepo, never()).findByCodeIn(anyCollection());
         verify(departmentPermissionRepo, never())
                 .deleteByIdDepartmentId(departmentId);

@@ -97,8 +97,10 @@ public final class MaterialAnalysisContracts {
     public record SupplyQuantityInput(
             @Size(max = 64) String actionGroupKey,
             UUID materialLineId,
-            @NotNull @DecimalMin(value = "0", inclusive = false)
-            @Digits(integer = 14, fraction = 4) BigDecimal qty) {
+            @NotNull @DecimalMin(value = "0")
+            @Digits(integer = 14, fraction = 4) BigDecimal qty,
+            @DecimalMin(value = "0") @Digits(integer = 14, fraction = 4)
+            BigDecimal safetyReplenishmentQty) {
     }
 
     public record PlanPreviewRequest(
@@ -108,9 +110,7 @@ public final class MaterialAnalysisContracts {
             @NotEmpty @Size(max = RequestLimits.DOCUMENT_LINES)
             List<@Valid PlanQuantity> items,
             @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid RouteDecision> routes,
-            @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid BomOverride> bomOverrides) {
+            List<@Valid RouteDecision> routes) {
     }
 
     public record PlanQuantity(
@@ -156,14 +156,7 @@ public final class MaterialAnalysisContracts {
             @NotEmpty @Size(max = RequestLimits.DOCUMENT_LINES)
             List<@Valid PlanQuantity> items,
             @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid RouteDecision> routes,
-            @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid BomOverride> bomOverrides) {
-    }
-
-    public record BomOverride(
-            @NotNull UUID analysisLineId,
-            @NotBlank @Size(max = 1000) String reason) {
+            List<@Valid RouteDecision> routes) {
     }
 
     public record CancelRequest(
@@ -284,7 +277,9 @@ public final class MaterialAnalysisContracts {
             List<MaterialView> flatMaterials,
             List<WarehouseView> warehouses,
             List<SupplyActionView> supplyActions,
-            List<String> allowedActions) {
+            List<String> allowedActions,
+            boolean fqcReplenishmentOnly,
+            UUID fqcRecoveryAuthorizationId) {
     }
 
     public record ProductView(
@@ -318,9 +313,6 @@ public final class MaterialAnalysisContracts {
             BigDecimal readyFinishQty,
             BigDecimal readyShipQty,
             BigDecimal readinessRatio,
-            String productionBomPolicy,
-            boolean missingBom,
-            boolean bomOverrideRequired,
             UUID parentAnalysisLineId,
             String parentGoodsName,
             String planExecutionStatus,
@@ -387,13 +379,12 @@ public final class MaterialAnalysisContracts {
             BigDecimal safetyStockQty,
             BigDecimal inboundQty,
             BigDecimal shortageQty,
+            BigDecimal demandSupplyGapQty,
             LocalDate expectedReadyDate,
             String sourceSuggestion,
             String sourceConfirmed,
             boolean routeConfirmed,
             String routeReason,
-            String productionBomPolicy,
-            boolean hasActiveBom,
             boolean actionable,
             boolean lowerLevelPending,
             BigDecimal borrowedInQty,
@@ -416,7 +407,10 @@ public final class MaterialAnalysisContracts {
             BigDecimal onHandQty,
             BigDecimal reservedQty,
             BigDecimal availableQty,
-            BigDecimal ownPeggedQty) {
+            BigDecimal ownPeggedQty,
+            BigDecimal publicAvailableQty,
+            BigDecimal openSafetySupplyQty,
+            BigDecimal safetyReplenishmentGapQty) {
     }
 
     public record WarehouseView(
@@ -471,6 +465,11 @@ public final class MaterialAnalysisContracts {
             UUID colorId,
             UUID unitId,
             BigDecimal requestedQty,
+            BigDecimal safetyReplenishmentQty,
+            BigDecimal totalRequestedQty,
+            BigDecimal safetyStockSnapshotQty,
+            BigDecimal publicAvailableSnapshotQty,
+            BigDecimal openSafetySupplySnapshotQty,
             LocalDate needDate,
             String documentType,
             UUID documentId,
@@ -570,11 +569,10 @@ public final class MaterialAnalysisContracts {
             BigDecimal orderedQty,
             BigDecimal approvedPlannedQty,
             BigDecimal submittedPlanQty,
-            BigDecimal remainingQty,
-            LocalDate deliveryDate,
-            String productionBomPolicy,
-            UUID analysisId,
-            String analysisStatus,
-            Long analysisVersion) {
+        BigDecimal remainingQty,
+        LocalDate deliveryDate,
+        UUID analysisId,
+        String analysisStatus,
+        Long analysisVersion) {
     }
 }

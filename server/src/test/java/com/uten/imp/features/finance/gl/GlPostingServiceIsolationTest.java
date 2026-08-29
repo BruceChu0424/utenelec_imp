@@ -18,14 +18,15 @@ class GlPostingServiceIsolationTest {
     void regeneratedSourceTypesNeverIncludeAssetSubledgerVouchers() {
         assertThat(GlPostingService.REGENERATED_SOURCE_TYPES)
                 .containsExactlyInAnyOrder(
-                        "AR_POST", "AP_POST", "RECEIPT", "PAYMENT", "EXPENSE", "INCOME", "COST_CARRY",
-                        "BANK_TRANSFER", "SUPPLIER_CLAIM_LEDGER",
+                        "AR_POST", "AP_POST", "PAYMENT", "EXPENSE", "INCOME", "COST_CARRY",
+                        "BANK_TRANSFER", "BALANCE_ADJUSTMENT", "SUPPLIER_CLAIM_LEDGER",
                         "SUPPLIER_CLAIM_OFFSET",
                         "SUPPLIER_CLAIM_RECEIVABLE",
                         "SUPPLIER_CLAIM_CASH",
                         "CUSTOMER_PREPAYMENT_OFFSET",
                         SubcontractWasteLossGlProjection.SOURCE_TYPE)
-                .doesNotContain("FA_CAP", "DA_RECOGNITION", "FA_DEP", "DA_AMT", "FA_DISPOSAL");
+                .doesNotContain("RECEIPT", "RECEIPT_REV",
+                        "FA_CAP", "DA_RECOGNITION", "FA_DEP", "DA_AMT", "FA_DISPOSAL");
     }
 
     @Test
@@ -49,6 +50,16 @@ class GlPostingServiceIsolationTest {
         assertThat(deleteSql).contains("source_type IN (:sourceTypes)");
         verify(query, org.mockito.Mockito.atLeastOnce())
                 .setParameter("sourceTypes", GlPostingService.REGENERATED_SOURCE_TYPES);
+        String allSql = String.join("\n", sql.getAllValues());
+        assertThat(allSql)
+                .contains("FROM account_balance_adjustment_batches batch")
+                .contains("account_balance_adjustment_items item")
+                .contains("item.account_style_id_snapshot")
+                .contains("item.delta_local")
+                .contains("clearing.category='EQUITY'")
+                .contains("account_style.category<>'ACCOUNT'")
+                .contains("clearing.id=batch.clearing_style_id")
+                .contains("'AUTO','BALANCE_ADJUSTMENT'");
         verify(tx).bind();
     }
 }

@@ -14,6 +14,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/auth/permissions.dart';
 import '../../notice/providers/notice_providers.dart';
+import '../models/sales_doc.dart';
+import '../repositories/sales_repository.dart';
 
 /// 完工类事件来源（与后端 ChainNoticeService 常量一致）。
 const salesCompletionEvents = <String>[
@@ -38,6 +40,45 @@ final salesCompletionCountProvider = FutureProvider.autoDispose<int>((
       .unreadCountBySource(salesCompletionEvents);
 });
 
+/// 销售需要关注的总数：未解决的财务驳回订单 + 未读完工通知。
+///
+/// 驳回数取订单进度聚合的 `REJECTED` 桶，天然沿用订单负责人/数据范围；完工数沿用
+/// 通知接收人快照。工作台「销售管理」与销售 Hub「订单进度查询」必须共用本口径。
+final salesAttentionCountProvider = FutureProvider.autoDispose<int>((
+  ref,
+) async {
+  if (!ref.watch(currentPermissionsProvider).contains(Perm.salesOrderView) &&
+      !ref.watch(isSuperAdminProvider)) {
+    return 0;
+  }
+  final timer = Timer(_pollInterval, ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  var completionUnread = 0;
+  var rejectedOrders = 0;
+  await Future.wait<void>([
+    () async {
+      try {
+        completionUnread = await ref
+            .watch(noticeRepositoryProvider)
+            .unreadCountBySource(salesCompletionEvents);
+      } catch (_) {
+        // 进度通知暂时不可用时仍保留未解决驳回角标。
+      }
+    }(),
+    () async {
+      try {
+        final counts = await ref
+            .watch(salesRepositoryProvider(SalesDocType.order))
+            .progressStageCounts();
+        rejectedOrders = counts['REJECTED'] ?? 0;
+      } catch (_) {
+        // 订单聚合暂时不可用时仍保留完工消息角标。
+      }
+    }(),
+  ]);
+  return completionUnread + rejectedOrders;
+});
+
 /// 打开订单进度页时调用：把这批完工通知标记已读，徽章归零并联动全局未读角标。
 Future<void> markSalesCompletionSeen(WidgetRef ref) async {
   try {
@@ -48,5 +89,6 @@ Future<void> markSalesCompletionSeen(WidgetRef ref) async {
     // 标记失败不影响浏览；下次轮询仍会显示。
   }
   ref.invalidate(salesCompletionCountProvider);
+  ref.invalidate(salesAttentionCountProvider);
   ref.read(unreadNoticeCountProvider.notifier).refresh();
 }

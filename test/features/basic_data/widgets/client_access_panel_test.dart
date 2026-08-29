@@ -45,7 +45,7 @@ void main() {
     expect(find.textContaining('内销、外贸客户使用同一套规则'), findsOneWidget);
     expect(find.textContaining('历史制单、审批和审计记录不会被改写'), findsOneWidget);
     expect(find.text('负责人甲'), findsOneWidget);
-    expect(find.text('协同人乙'), findsOneWidget);
+    expect(find.text('协同人乙(E002)'), findsOneWidget);
   });
 
   testWidgets('load failure stays recoverable with an inline retry', (
@@ -120,7 +120,7 @@ void main() {
     await tester.tap(find.text('打开'));
     await tester.pumpAndSettle();
     final chip = tester.widget<InputChip>(
-      find.widgetWithText(InputChip, '协同人乙'),
+      find.widgetWithText(InputChip, '协同人乙(E002)'),
     );
     chip.onDeleted!();
     await tester.pump();

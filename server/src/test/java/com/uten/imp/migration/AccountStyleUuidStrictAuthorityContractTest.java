@@ -71,8 +71,12 @@ class AccountStyleUuidStrictAuthorityContractTest {
                 "src/main/java/com/uten/imp/features/master/paymentstyle/PaymentStyleService.java"));
         String styleRepository = compact(read(
                 "src/main/java/com/uten/imp/features/master/paymentstyle/PaymentStyleRepository.java"));
-        String accountPage = compact(read(
+        String accountEntry = compact(read(
                 "../lib/features/basic_data/pages/account_page.dart"));
+        String accountWorkspace = compact(read(
+                "../lib/features/basic_data/pages/account_workspace_page.dart"));
+        String accountDetail = compact(read(
+                "../lib/features/basic_data/pages/account_detail_page.dart"));
         String styleModel = compact(read(
                 "../lib/features/basic_data/models/payment_style_node.dart"));
 
@@ -88,12 +92,20 @@ class AccountStyleUuidStrictAuthorityContractTest {
         assertThat(styleRepository)
                 .contains("account.style_id in (select id from style_subtree)")
                 .doesNotContain("account.style_legacy_id");
-        assertThat(accountPage)
+        assertThat(accountEntry)
+                .isEqualTo("export 'account_workspace_page.dart';");
+        assertThat(accountWorkspace)
                 .contains("key: 'styleid'")
                 .contains("required: true")
                 .contains("activeaccountstyleleaves(roots)")
                 .contains("class accountstyleloadnotice")
-                .contains("'styleid': styleavailable ? d.styleid! : ''");
+                .doesNotContain("stylelegacyid");
+        assertThat(accountDetail)
+                .contains("key: 'styleid'")
+                .contains("required: true")
+                .contains("activeaccountstyleleaves(roots)")
+                .contains("'styleid': styleavailable ? detail.styleid! : ''")
+                .doesNotContain("stylelegacyid");
 
         String saveInput = styleModel.substring(
                 styleModel.indexOf("class paymentstylesaveinput"));

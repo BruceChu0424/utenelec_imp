@@ -19,6 +19,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/currency_display.dart';
 import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -29,16 +30,20 @@ class AppliedArAp {
   const AppliedArAp({
     required this.ledgerId,
     required this.appliedBillNo,
-    required this.receiptAmount,
     required this.receiptAmountText,
     this.sourceDocType,
     this.sourceDocNo,
     this.currencyId,
     this.currencyCode,
+    this.currencyName,
     this.receivableOriginal,
+    this.receivableOriginalText,
     this.receivedOriginal,
+    this.receivedOriginalText,
     this.writtenOffOriginal,
+    this.writtenOffOriginalText,
     this.balanceOriginal,
+    this.balanceOriginalText,
     this.prepaymentAppliedOriginal,
     this.salesOrderIds = const [],
     this.authoritativeSalesOrderId,
@@ -46,16 +51,20 @@ class AppliedArAp {
   });
   final String ledgerId;
   final String? appliedBillNo;
-  final double receiptAmount;
   final String receiptAmountText;
   final String? sourceDocType;
   final String? sourceDocNo;
   final String? currencyId;
   final String? currencyCode;
+  final String? currencyName;
   final double? receivableOriginal;
+  final String? receivableOriginalText;
   final double? receivedOriginal;
+  final String? receivedOriginalText;
   final double? writtenOffOriginal;
+  final String? writtenOffOriginalText;
   final double? balanceOriginal;
+  final String? balanceOriginalText;
   final String? prepaymentAppliedOriginal;
   final List<String> salesOrderIds;
   final String? authoritativeSalesOrderId;
@@ -325,8 +334,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       currencyId ??= it.currencyId;
       final amountText = _amtCtrls[it.id]?.text.trim() ?? '';
       final amountUnits = financeExactDecimalUnits(amountText);
-      final amt = double.tryParse(amountText);
-      if (amountUnits == null || amountUnits <= BigInt.zero || amt == null) {
+      if (amountUnits == null || amountUnits <= BigInt.zero) {
         _showSelectionMessage(
           '${it.billNo ?? '该$_ledgerNoun'}：请填写大于 0 的本次$_actionNoun金额',
         );
@@ -343,16 +351,20 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         AppliedArAp(
           ledgerId: it.id,
           appliedBillNo: it.billNo,
-          receiptAmount: amt,
-          receiptAmountText: amountText,
+          receiptAmountText: financeExactDecimalFromUnits(amountUnits),
           sourceDocType: it.sourceDocType,
           sourceDocNo: it.sourceDocNo,
           currencyId: it.currencyId,
-          currencyCode: it.currencyCode ?? it.currencyName,
+          currencyCode: it.currencyCode,
+          currencyName: it.currencyName,
           receivableOriginal: it.amountOriginal,
+          receivableOriginalText: it.amountOriginalText,
           receivedOriginal: it.amountReceivedOriginal,
+          receivedOriginalText: it.amountReceivedOriginalText,
           writtenOffOriginal: it.amountWriteOffOriginal,
+          writtenOffOriginalText: it.amountWriteOffOriginalText,
           balanceOriginal: it.amountBalanceOriginal,
+          balanceOriginalText: it.amountBalanceOriginalText,
           prepaymentAppliedOriginal: it.prepaymentAppliedOriginal,
           salesOrderIds: it.salesOrderIds,
           authoritativeSalesOrderId: it.authoritativeSalesOrderId,
@@ -722,8 +734,13 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       key: 'currency',
       label: '币别',
       width: 80,
-      cellBuilder: (context, row) =>
-          Text(row.item.currencyCode ?? row.item.currencyName ?? '—'),
+      cellBuilder: (context, row) => Text(
+        financeCurrencyDisplayLabel(
+              name: row.item.currencyName,
+              code: row.item.currencyCode,
+            ) ??
+            '—',
+      ),
     ),
     EditableGridColumn<_LedgerRow>(
       key: 'amount',
@@ -797,12 +814,15 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
   String _currencyLabel(String currencyId) {
     for (final item in _knownItems.values) {
       if (item.currencyId == currencyId) {
-        final label = item.currencyCode ?? item.currencyName;
-        if (label != null && label.isNotEmpty) return label;
+        final label = financeCurrencyDisplayLabel(
+          name: item.currencyName,
+          code: item.currencyCode,
+        );
+        if (label != null) return label;
       }
     }
     final resolved = ref.read(financeNameServiceProvider).currency(currencyId);
-    return resolved == '—' ? currencyId : resolved;
+    return financeCurrencyDisplayLabel(name: resolved) ?? '原币';
   }
 
   String _safeDate(String? value) {

@@ -52,6 +52,8 @@ public class PaymentStyleService {
 
     /** 总账服务按 EXPENSE + name 定位的平衡科目；包括迁移前已存在、未标 auto_created 的节点。 */
     private static final Set<String> PROTECTED_EXPENSE_NAMES = Set.of("手续费", "汇兑损益");
+    private static final UUID ACCOUNT_BALANCE_CLEARING_STYLE_ID =
+            UUID.fromString("40000000-0000-4000-8100-000000000001");
 
     /** category 白名单（与 CHECK 约束一致）。 */
     public static final Set<String> CATEGORIES = Set.of(
@@ -208,7 +210,7 @@ public class PaymentStyleService {
         }
 
         if (requestedName != null
-                && hasProtectedSystemName(s)
+                && isProtectedSystemStyle(s)
                 && !Objects.equals(s.getName(), requestedName)) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "该节点是系统科目，名称被财务流程使用，不能改名");
@@ -227,7 +229,7 @@ public class PaymentStyleService {
             requestedParent = requireStyle(requestedParentId);
             requireSameCategory(s.getCategory(), requestedParent);
             if (repo.isDescendant(id, requestedParentId)) {
-                throw new ApiException(ErrorCode.CONFLICT, "不能将类别挂到其子分类下（会成环）");
+                throw new ApiException(ErrorCode.CONFLICT, "不能将类别挂到其子分类下(会成环)");
             }
             requireParentCanBecomeDirectory(requestedParent);
         }
@@ -370,7 +372,8 @@ public class PaymentStyleService {
 
     private boolean isProtectedSystemStyle(PaymentStyle style) {
         return PROTECTED_SYSTEM_PATHS.contains(style.getPath())
-                || hasProtectedSystemName(style);
+                || hasProtectedSystemName(style)
+                || ACCOUNT_BALANCE_CLEARING_STYLE_ID.equals(style.getId());
     }
 
     private boolean hasProtectedSystemName(PaymentStyle style) {

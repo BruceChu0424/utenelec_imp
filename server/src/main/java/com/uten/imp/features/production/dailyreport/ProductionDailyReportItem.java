@@ -83,6 +83,10 @@ public class ProductionDailyReportItem extends BaseEntity {
     @Column(name = "execution_segment_sales_allocation_id")
     private UUID executionSegmentSalesAllocationId;
 
+    /** Exact append-only FQC remediation lot consumed by this replacement attempt. */
+    @Column(name = "fqc_recovery_authorization_id")
+    private UUID fqcRecoveryAuthorizationId;
+
     /** 报工完结标记：该计划行不再继续报工；合格不足触发缺额封顶 + 自动补产。 */
     @Column(name = "is_final", nullable = false)
     private boolean isFinal = false;

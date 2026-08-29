@@ -5,6 +5,7 @@ import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.stock.StockCostMasker;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -57,14 +58,15 @@ public class StockReportService {
             DOC_TRANSFER, DOC_OTHER_IN, DOC_DRAW, DOC_WDRAW, DOC_FINISHED_IN, DOC_FINISHED_OUT, DOC_CHECK);
 
     /** B_Worker 当前/legacy 员工名 + 「（子类）」标记。 */
-    private static final String WK = "em_wk.full_name || COALESCE('（' || em_wk.legacy_category || '）','')";
+    private static final String WK = "em_wk.full_name || COALESCE('(' || em_wk.legacy_category || ')','')";
     /** 新系统当前员工名优先；历史单据回退 Sys_Operator 姓名快照。 */
-    private static final String MK = "COALESCE(em_mk.full_name || COALESCE('（' || em_mk.legacy_category || '）',''), o.maker_name_snapshot)";
-    private static final String AP = "COALESCE(em_ap.full_name || COALESCE('（' || em_ap.legacy_category || '）',''), o.approver_name_snapshot)";
+    private static final String MK = "COALESCE(em_mk.full_name || COALESCE('(' || em_mk.legacy_category || ')',''), o.maker_name_snapshot)";
+    private static final String AP = "COALESCE(em_ap.full_name || COALESCE('(' || em_ap.legacy_category || ')',''), o.approver_name_snapshot)";
 
     private final EntityManager em;
     private final SystemSettingsService settings;
     private final com.uten.imp.features.stock.StockQueryService stockQueryService;
+    private final StockCostMasker costMasker;
 
     // ======================== 明细 / 汇总 派发 ========================
 
@@ -134,7 +136,12 @@ public class StockReportService {
                     c("stockPlace", "库位号", "text", 90, "g.stock_place"),
                     c("model", "型号", "text", 100, "g.model"),
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
-                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"));
+                    c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
+                    c("spec", "规格", "text", 140, "g.spec"),
+                    c("colorName", "颜色", "text", 80, "col.name"),
+                    c("unitName", "单位", "text", 70, "un.name"),
+                    c("weight", "重量", "number", null, "i.weight"),
+                    c("qty", "数量", "number", null, "i.qty"));
             case DOC_DRAW -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
@@ -152,6 +159,7 @@ public class StockReportService {
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("colorName", "颜色", "text", 80, "col.name"),
+                    c("unitName", "单位", "text", 70, "un.name"),
                     c("weight", "重量", "number", null, "i.weight"),
                     c("drawQty", "领料数量", "number", null, "i.qty"),
                     c("issuedQty", "已出库", "number", null, "i.issued_qty"),
@@ -169,6 +177,9 @@ public class StockReportService {
                     c("clientModel", "客户型号", "text", 110, "g.c_number"),
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
+                    c("colorName", "颜色", "text", 80, "col.name"),
+                    c("unitName", "单位", "text", 70, "un.name"),
+                    c("weight", "重量", "number", null, "i.weight"),
                     c("returnQty", "清退数量", "number", null, "i.qty"));
             case DOC_FINISHED_IN -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
@@ -185,8 +196,10 @@ public class StockReportService {
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
+                    c("unitName", "单位", "text", 70, "un.name"),
                     c("material", "材质", "text", 90, "g.material"),
-                    c("netWeight", "净重", "number", null, "i.weight"));
+                    c("netWeight", "净重", "number", null, "i.weight"),
+                    c("qty", "数量", "number", null, "i.qty"));
             case DOC_FINISHED_OUT -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
@@ -200,6 +213,8 @@ public class StockReportService {
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
+                    c("unitName", "单位", "text", 70, "un.name"),
+                    c("weight", "重量", "number", null, "i.weight"),
                     c("qty", "数量", "number", null, "i.qty"));
             case DOC_CHECK -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
@@ -214,6 +229,7 @@ public class StockReportService {
                     c("goodsName", "货品名称", "text", 180, "i.goods_name_snapshot"),
                     c("spec", "规格", "text", 140, "g.spec"),
                     c("colorName", "颜色", "text", 80, "col.name"),
+                    c("unitName", "单位", "text", 70, "un.name"),
                     c("bookQty", "帐面数量", "number", null, "COALESCE(i.count_qty,0) - COALESCE(i.surplus_qty,0)"),
                     c("bookWeight", "帐面重量", "number", null, "NULL"),
                     c("actualQty", "实际数量", "number", null, "i.count_qty"),
@@ -376,9 +392,12 @@ public class StockReportService {
         return paginateAll(loader);
     }
 
-    /** 即时库存导出列（与页面 12 列一致）。 */
+    /** 即时库存导出列（与页面完整业务列一致；成本列按 goods:cost:view 动态裁剪）。 */
     private static final List<ReportColumn> INSTANT_EXPORT_COLUMNS = List.of(
             ReportColumn.text("category", "所属类型", 120),
+            ReportColumn.text("goodsCode", "物料编码", 120),
+            ReportColumn.text("series", "物料系列", 90),
+            ReportColumn.text("stockPlace", "库位号", 90),
             ReportColumn.text("model", "型号", 110),
             ReportColumn.text("cNumber", "客户型号", 120),
             ReportColumn.text("name", "货品名称", 220),
@@ -388,7 +407,8 @@ public class StockReportService {
             ReportColumn.text("remark", "备注", 90),
             ReportColumn.number("weight", "库存重量"),
             ReportColumn.number("qty", "库存数量"),
-            ReportColumn.money("costAmount", "成本金额"),
+            ReportColumn.number("pendingQty", "待检量"),
+            ReportColumn.money("costAmount", "库存台账金额"),
             ReportColumn.number("moreQty", "多排数量"));
 
     /**
@@ -401,6 +421,12 @@ public class StockReportService {
         UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
         boolean includeDefective = !"false".equalsIgnoreCase(p == null ? null : p.get("includeDefective"));
         String kw = p == null ? null : p.get("keyword");
+        boolean canViewCost = costMasker.canView();
+        List<ReportColumn> columns = canViewCost
+                ? INSTANT_EXPORT_COLUMNS
+                : INSTANT_EXPORT_COLUMNS.stream()
+                        .filter(column -> !"costAmount".equals(column.key()))
+                        .toList();
         BiFunction<Integer, Integer, ReportTableResponse> loader = (pg, sz) -> {
             var r = stockQueryService.instantInventory(categoryId, warehouseId, includeDefective,
                     kw, pg, sz, sort, order);
@@ -408,6 +434,9 @@ public class StockReportService {
             for (var it : r.getItems()) {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("category", it.getCategoryName());
+                m.put("goodsCode", it.getGoodsCode());
+                m.put("series", it.getSeries());
+                m.put("stockPlace", it.getStockPlace());
                 m.put("model", it.getModel());
                 m.put("cNumber", it.getCNumber());
                 m.put("name", it.getName());
@@ -417,11 +446,14 @@ public class StockReportService {
                 m.put("remark", it.getRemark());
                 m.put("weight", it.getWeight());
                 m.put("qty", it.getQty());
-                m.put("costAmount", it.getCostAmount());
+                m.put("pendingQty", it.getPendingQty());
+                if (canViewCost) {
+                    m.put("costAmount", it.getCostAmount());
+                }
                 m.put("moreQty", it.getMoreQty());
                 rows.add(m);
             }
-            return new ReportTableResponse(INSTANT_EXPORT_COLUMNS, rows, Map.of(),
+            return new ReportTableResponse(columns, rows, Map.of(),
                     r.getPage(), r.getSize(), r.getTotal(), r.getTotalPages());
         };
         return paginateAll(loader);

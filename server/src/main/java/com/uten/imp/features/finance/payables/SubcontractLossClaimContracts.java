@@ -56,7 +56,8 @@ public final class SubcontractLossClaimContracts {
             String lossBookValueLocal,
             String claimAmountLocal,
             long version,
-            String createdAt) {}
+            String createdAt,
+            boolean priceMasked) {}
 
     public record CaseLine(
             UUID id,

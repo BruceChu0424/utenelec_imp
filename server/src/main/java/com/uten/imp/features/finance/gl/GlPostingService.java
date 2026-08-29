@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.gl;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
 
 import com.uten.imp.common.web.ApiException;
@@ -16,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -31,8 +33,9 @@ import java.util.UUID;
  * 费用 借费用科目(行)/贷账户(单头合计=行合计)；其它收入 借账户/贷收入科目(行)；
  * 销售成本结转 借041/贷123（出货行 Σqty×goods.c_total，单号+“-CB”）。</p>
  *
- * <p>幂等：generate(period) 只重建本服务明确拥有的八类 AUTO 凭证；资产子账、工资等其它模块
- * 的自动凭证不属于本服务，禁止在这里删除。generateAll 逐期间重放。</p>
+ * <p>幂等：generate(period) 只重建明确属于旧投影作业的 AUTO 凭证；资产子账、工资和
+ * V1 收款凭证不属于该可删除集合。V1 收款在审核事务内生成不可变凭证，红冲追加
+ * RECEIPT_REV。generateAll 逐期间重放。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -40,8 +43,9 @@ public class GlPostingService {
 
     /** Source types exclusively owned and rebuilt by this legacy regeneration job. */
     static final List<String> REGENERATED_SOURCE_TYPES = List.of(
-            "AR_POST", "AP_POST", "RECEIPT", "PAYMENT",
+            "AR_POST", "AP_POST", "PAYMENT",
             "EXPENSE", "INCOME", "COST_CARRY", "BANK_TRANSFER",
+            "BALANCE_ADJUSTMENT",
             "SUPPLIER_CLAIM_LEDGER", "SUPPLIER_CLAIM_OFFSET",
             "SUPPLIER_CLAIM_RECEIVABLE", "SUPPLIER_CLAIM_CASH",
             "CUSTOMER_PREPAYMENT_OFFSET",
@@ -64,7 +68,8 @@ public class GlPostingService {
         assertNoConfirmedExpenseVouchers(period);
         assertRequiredSystemPostingRoles(period);
         assertArPostingConfiguration(period);
-        assertReceiptPostingConfiguration(period);
+        assertReceiptProjectionIntegrity(period);
+        assertLegacyV0ReceiptProjectionIntegrity(period);
         assertCustomerPrepaymentPostingConfiguration(period);
         assertPaymentAmountsAuthoritative(period);
         assertPaymentPostingConfiguration(period);
@@ -73,6 +78,7 @@ public class GlPostingService {
         assertSupplierClaimProjectionOwnership(period);
         assertCustomerPrepaymentProjectionOwnership(period);
         SubcontractWasteLossGlProjection.assertProjectionOwnership(em, period);
+        assertBalanceAdjustmentSnapshotStyles(period);
         assertSourceDocumentIdentities(period);
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
                 .setParameter("p", period)
@@ -86,13 +92,13 @@ public class GlPostingService {
         postSupplierClaimOffsets(period);
         postSupplierClaimReceivables(period);
         postSupplierClaimCashReceipts(period);
-        postReceipts(period);
         postCustomerPrepaymentOffsets(period);
         postPayments(period);
         postExpenses(period);
         postIncomes(period);
         postCostCarry(period);
         postBankTransfers(period);
+        postBalanceAdjustments(period);
         assertPeriodBalanced(period);
 
         return ((Number) em.createNativeQuery(
@@ -384,11 +390,22 @@ public class GlPostingService {
         List<String> periods = em.createNativeQuery("""
                 SELECT DISTINCT to_char(d, 'YYYY-MM') FROM (
                     SELECT bill_date AS d FROM ar_ap_ledger WHERE is_deleted=false
-                    UNION SELECT bill_date FROM finance_receipts WHERE COALESCE(is_deleted,false)=false
+                    UNION SELECT bill_date FROM finance_receipts
+                      WHERE settlement_authority_version=0 AND status=1
+                        AND COALESCE(is_deleted,false)=false
+                    UNION SELECT bill_date FROM finance_receipts
+                      WHERE settlement_authority_version=1 AND status IN(1,-1)
+                        AND COALESCE(is_deleted,false)=false
+                    UNION SELECT (reversed_at AT TIME ZONE 'Asia/Shanghai')::date
+                      FROM finance_receipts
+                      WHERE settlement_authority_version=1 AND status=-1
+                        AND reversed_at IS NOT NULL
+                        AND COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_payments WHERE COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_expenses WHERE COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_other_incomes WHERE COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_bank_transfers WHERE COALESCE(is_deleted,false)=false
+                    UNION SELECT effective_date FROM account_balance_adjustment_batches
                     UNION SELECT effective_date FROM customer_open_item_offset_batches WHERE status='APPLIED'
                 ) t ORDER BY 1
                 """).getResultList();
@@ -407,11 +424,6 @@ public class GlPostingService {
                                 WHERE ledger.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN')
                                   AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
                                   AND to_char(ledger.bill_date,'YYYY-MM')=:p
-                                UNION ALL
-                                SELECT 1 FROM finance_receipts receipt
-                                WHERE receipt.receipt_kind='AR_SETTLEMENT'
-                                  AND receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
-                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p
                                 UNION ALL
                                 SELECT 1 FROM customer_open_item_offset_batches batch
                                 WHERE batch.status='APPLIED'
@@ -463,27 +475,10 @@ public class GlPostingService {
                                         AND COALESCE(item.qty,0)<>0
                                         AND COALESCE(goods.c_total,0)<>0))
                             UNION SELECT 'CUSTOMER_ADVANCE' WHERE EXISTS (
-                                SELECT 1 FROM finance_receipts receipt
-                                WHERE receipt.receipt_kind='CUSTOMER_PREPAYMENT'
-                                  AND receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
-                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p
-                                UNION ALL
                                 SELECT 1 FROM customer_open_item_offset_batches batch
                                 WHERE batch.status='APPLIED'
                                   AND to_char(batch.effective_date,'YYYY-MM')=:p)
-                            UNION SELECT 'BANK_FEE_EXPENSE' WHERE EXISTS (
-                                SELECT 1 FROM finance_receipts receipt
-                                WHERE receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
-                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p
-                                  AND COALESCE(receipt.bank_fee,0)<>0)
                             UNION SELECT 'FX_GAIN_LOSS' WHERE EXISTS (
-                                SELECT 1 FROM finance_receipt_lines line
-                                JOIN finance_receipts receipt ON receipt.id=line.receipt_id
-                                WHERE receipt.status=1 AND COALESCE(receipt.is_deleted,false)=false
-                                  AND COALESCE(line.is_deleted,false)=false
-                                  AND to_char(receipt.bill_date,'YYYY-MM')=:p
-                                GROUP BY receipt.id HAVING COALESCE(SUM(line.exchange_diff),0)<>0
-                                UNION ALL
                                 SELECT 1 FROM finance_payment_lines line
                                 JOIN finance_payments payment ON payment.id=line.payment_id
                                 WHERE payment.status=1 AND payment.amount_authority_version=1
@@ -1006,7 +1001,12 @@ public class GlPostingService {
         return "SCO-"+batchId.toString().replace("-","");
     }
 
-    /** 收款：借 收款账户科目 / 贷 113 应收账款。 */
+    /**
+     * Historical V0 projection reference only. Intentionally not called by
+     * generatePeriod: V1 RECEIPT/RECEIPT_REV vouchers are immutable and the
+     * period job must never regain delete/rebuild ownership.
+     */
+    @SuppressWarnings("unused")
     private void postReceipts(String period) {
         String vouchers = """
                 INSERT INTO gl_vouchers
@@ -1019,7 +1019,10 @@ public class GlPostingService {
         String entries = """
                 INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
                                         source_doc_type, source_doc_id, source_bill_no, summary)
-                SELECT v.id, 1, acct.style_id, 1, t.amount_local, t.bill_date, v.period,
+                SELECT v.id, 1, acct.style_id, 1,
+                       CASE WHEN t.settlement_authority_version=1
+                            THEN t.account_amount_local ELSE t.amount_local END,
+                       t.bill_date, v.period,
                        'RECEIPT', t.id, t.bill_no, COALESCE(t.remark,'销售收款')
                 FROM finance_receipts t
                 JOIN gl_vouchers v
@@ -1095,6 +1098,28 @@ public class GlPostingService {
                 ) fx
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false
                   AND to_char(t.bill_date,'YYYY-MM')=:p AND x.diff<>0
+                UNION ALL
+                SELECT v.id, 6, fee_account.style_id, -1,
+                       t.bank_fee+t.other_fee, t.bill_date, v.period,
+                       'RECEIPT', t.id, t.bill_no, '收款费用另行支付'
+                FROM finance_receipts t
+                JOIN gl_vouchers v
+                  ON v.source_doc_id=t.id AND v.source_type='RECEIPT'
+                 AND v.source='AUTO' AND v.status=1
+                 AND COALESCE(v.is_deleted,false)=false
+                JOIN LATERAL (
+                  SELECT style.id AS style_id
+                  FROM payment_styles style
+                  WHERE style.id=account_style_id(t.fee_payment_account_id)
+                    AND style.status='使用'
+                    AND COALESCE(style.is_deleted,false)=false
+                  LIMIT 1
+                ) fee_account ON TRUE
+                WHERE t.status=1 AND t.settlement_authority_version=1
+                  AND t.fee_settlement_mode='PAID_SEPARATELY'
+                  AND COALESCE(t.is_deleted,false)=false
+                  AND to_char(t.bill_date,'YYYY-MM')=:p
+                  AND COALESCE(t.bank_fee,0)+COALESCE(t.other_fee,0)>0
                 """;
         run(vouchers, period);
         run(entries, period);
@@ -1168,13 +1193,7 @@ public class GlPostingService {
     private void assertCustomerPrepaymentPostingConfiguration(String period) {
         long invalid = ((Number) em.createNativeQuery("""
                 SELECT
-                  (SELECT COUNT(*) FROM finance_receipts receipt
-                   WHERE receipt.receipt_kind='CUSTOMER_PREPAYMENT'
-                     AND receipt.status=1 AND COALESCE(receipt.is_deleted,FALSE)=FALSE
-                     AND to_char(receipt.bill_date,'YYYY-MM')=:p
-                     AND (receipt.amount_local<=0
-                          OR system_posting_style_id('CUSTOMER_ADVANCE') IS NULL))
-                + (SELECT COUNT(*) FROM customer_open_item_offset_batches batch
+                  (SELECT COUNT(*) FROM customer_open_item_offset_batches batch
                    WHERE batch.status='APPLIED' AND to_char(batch.effective_date,'YYYY-MM')=:p
                      AND (system_posting_style_id('CUSTOMER_ADVANCE') IS NULL
                           OR system_posting_style_id('AR_CONTROL') IS NULL
@@ -1233,6 +1252,7 @@ public class GlPostingService {
      * inserting a partial voucher, so a disabled account/AR/fee/FX style
      * cannot silently drop a required debit or credit line.
      */
+    @SuppressWarnings("unused")
     private void assertReceiptPostingConfiguration(String period) {
         long invalid = ((Number) em.createNativeQuery("""
                         SELECT COUNT(*)
@@ -1251,6 +1271,21 @@ public class GlPostingService {
                                   AND system_posting_style_id('AR_CONTROL') IS NULL)
                               OR (receipt.receipt_kind='CUSTOMER_PREPAYMENT'
                                   AND system_posting_style_id('CUSTOMER_ADVANCE') IS NULL)
+                              OR (receipt.settlement_authority_version=1
+                                  AND (receipt.account_amount_local IS NULL
+                                       OR receipt.account_amount_local<=0
+                                       OR receipt.account_currency_id IS NULL
+                                       OR receipt.account_exchange_rate IS NULL
+                                       OR receipt.account_exchange_rate<=0))
+                              OR (receipt.settlement_authority_version=1
+                                  AND receipt.fee_settlement_mode='PAID_SEPARATELY'
+                                  AND NOT EXISTS (
+                                      SELECT 1 FROM payment_styles fee_account_style
+                                      WHERE fee_account_style.id=
+                                            account_style_id(receipt.fee_payment_account_id)
+                                        AND fee_account_style.status='使用'
+                                        AND COALESCE(fee_account_style.is_deleted,FALSE)=FALSE
+                                  ))
                               OR (COALESCE(receipt.bank_fee,0)<>0
                                   AND system_posting_style_id('BANK_FEE_EXPENSE') IS NULL)
                               OR
@@ -1621,6 +1656,441 @@ public class GlPostingService {
         run(credit, period);
     }
 
+    /**
+     * Account balance reconciliation: each frozen functional-currency GL delta
+     * posts to the account style; the native account balance remains independent
+     * of this projection. The batch net posts to the reviewed EQUITY
+     * clearing role. Opposite account deltas may balance without a clearing row.
+     * This projects only the correction delta and never invents a historical
+     * opening voucher for {@code accounts.init_balance}.
+     */
+    private void postBalanceAdjustments(String period) {
+        String vouchers = """
+                INSERT INTO gl_vouchers(
+                    voucher_no,period,voucher_date,source,source_type,source_doc_id,remark)
+                SELECT batch.batch_no,to_char(batch.effective_date,'YYYY-MM'),
+                       batch.effective_date,'AUTO','BALANCE_ADJUSTMENT',batch.id,
+                       '账户余额校准'
+                FROM account_balance_adjustment_batches batch
+                WHERE to_char(batch.effective_date,'YYYY-MM')=:p
+                  AND EXISTS(
+                      SELECT 1 FROM account_balance_adjustment_items item
+                      WHERE item.batch_id=batch.id AND item.delta_local<>0)
+                """;
+        String accountEntries = """
+                INSERT INTO gl_entries(
+                    voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                    source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT voucher.id,item.line_no,item.account_style_id_snapshot,
+                       CASE WHEN item.delta_local>0 THEN 1 ELSE -1 END,
+                       ABS(item.delta_local),batch.effective_date,voucher.period,
+                       'BALANCE_ADJUSTMENT',batch.id,batch.batch_no,
+                       '账户余额校准：'||item.account_code_snapshot||' '||item.account_name_snapshot
+                FROM account_balance_adjustment_batches batch
+                JOIN account_balance_adjustment_items item ON item.batch_id=batch.id
+                JOIN gl_vouchers voucher
+                  ON voucher.source='AUTO'
+                 AND voucher.source_type='BALANCE_ADJUSTMENT'
+                 AND voucher.source_doc_id=batch.id
+                 AND voucher.status=1
+                 AND COALESCE(voucher.is_deleted,FALSE)=FALSE
+                WHERE to_char(batch.effective_date,'YYYY-MM')=:p
+                  AND item.delta_local<>0
+                """;
+        String clearingEntries = """
+                INSERT INTO gl_entries(
+                    voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                    source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT voucher.id,1000000,batch.clearing_style_id,
+                       CASE WHEN totals.net_local>0 THEN -1 ELSE 1 END,
+                       ABS(totals.net_local),batch.effective_date,voucher.period,
+                       'BALANCE_ADJUSTMENT',batch.id,batch.batch_no,'账户余额调整清算'
+                FROM account_balance_adjustment_batches batch
+                JOIN gl_vouchers voucher
+                  ON voucher.source='AUTO'
+                 AND voucher.source_type='BALANCE_ADJUSTMENT'
+                 AND voucher.source_doc_id=batch.id
+                 AND voucher.status=1
+                 AND COALESCE(voucher.is_deleted,FALSE)=FALSE
+                JOIN LATERAL(
+                    SELECT COALESCE(SUM(item.delta_local),0) AS net_local
+                    FROM account_balance_adjustment_items item
+                    WHERE item.batch_id=batch.id
+                ) totals ON TRUE
+                WHERE to_char(batch.effective_date,'YYYY-MM')=:p
+                  AND totals.net_local<>0
+                """;
+        run(vouchers, period);
+        run(accountEntries, period);
+        run(clearingEntries, period);
+    }
+
+    /** Historical regeneration uses frozen style UUIDs, never the current role mapping. */
+    private void assertBalanceAdjustmentSnapshotStyles(String period) {
+        long invalid = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM account_balance_adjustment_batches batch
+                        WHERE to_char(batch.effective_date,'YYYY-MM')=:p
+                          AND EXISTS(
+                              SELECT 1 FROM account_balance_adjustment_items item
+                              WHERE item.batch_id=batch.id AND item.delta_local<>0)
+                          AND (
+                              NOT EXISTS(
+                                  SELECT 1 FROM payment_styles clearing
+                                  WHERE clearing.id=batch.clearing_style_id
+                                    AND clearing.category='EQUITY'
+                                    AND COALESCE(clearing.is_deleted,FALSE)=FALSE
+                                    AND NOT EXISTS(
+                                        SELECT 1 FROM payment_styles child
+                                        WHERE child.parent_id=clearing.id
+                                          AND COALESCE(child.is_deleted,FALSE)=FALSE))
+                              OR EXISTS(
+                                  SELECT 1
+                                  FROM account_balance_adjustment_items item
+                                  LEFT JOIN payment_styles account_style
+                                    ON account_style.id=item.account_style_id_snapshot
+                                  WHERE item.batch_id=batch.id
+                                    AND item.delta_local<>0
+                                    AND (
+                                        account_style.id IS NULL
+                                        OR account_style.category<>'ACCOUNT'
+                                        OR COALESCE(account_style.is_deleted,FALSE)))
+                          )
+                        """)
+                .setParameter("p", period)
+                .getSingleResult()).longValue();
+        if (invalid > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "账户余额校准存在 " + invalid
+                            + " 个无效历史科目快照，禁止删除并重生成总账凭证");
+        }
+    }
+
+    /**
+     * Receipt approval hook: create the exact AUTO voucher inside the business
+     * transaction. Any missing style or imbalance aborts AR, account and flow
+     * changes together.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID postReceiptDoc(UUID receiptId) {
+        tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
+        @SuppressWarnings("unchecked")
+        List<Object[]> documents=em.createNativeQuery("""
+                SELECT bill_no,bill_date,account_id,remark
+                FROM finance_receipts
+                WHERE id=:id AND status=1 AND COALESCE(is_deleted,FALSE)=FALSE
+                """).setParameter("id",receiptId).getResultList();
+        if(documents.size()!=1){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "已审核销售收款不存在或状态不完整，禁止总账过账");
+        }
+        Object[] document=documents.getFirst();
+        String billNo=Objects.toString(document[0],null);
+        LocalDate billDate=NativeValueConverters.toLocalDate(document[1]);
+        String period=YearMonth.from(billDate).toString();
+        requireCurrentReceiptPostingPeriod(period);
+        lockAutoProjectionPeriod(period);
+        assertReceiptDocumentPostingConfiguration(receiptId);
+        long existing=((Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM gl_vouchers
+                WHERE source='AUTO' AND source_type IN ('RECEIPT','RECEIPT_REV')
+                  AND source_doc_id=:receiptId AND status=1
+                  AND COALESCE(is_deleted,FALSE)=FALSE
+                """).setParameter("receiptId",receiptId).getSingleResult()).longValue();
+        if(existing!=0){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "销售收款已存在总账凭证或反向凭证，禁止覆盖重建");
+        }
+        UUID voucherId=UUID.randomUUID();
+        em.createNativeQuery("""
+                INSERT INTO gl_vouchers(
+                    id,voucher_no,period,voucher_date,source,source_type,
+                    source_doc_id,remark,status)
+                VALUES(:id,:billNo,:period,:billDate,'AUTO','RECEIPT',
+                       :receiptId,'销售收款(审核实时过账)',0)
+                """)
+                .setParameter("id",voucherId)
+                .setParameter("billNo",billNo)
+                .setParameter("period",period)
+                .setParameter("billDate",billDate)
+                .setParameter("receiptId",receiptId)
+                .executeUpdate();
+        em.createNativeQuery("""
+                INSERT INTO gl_entries(
+                    voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                    source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT :voucher,1,receipt.gl_account_style_id,1,
+                       CASE WHEN receipt.settlement_authority_version=1
+                            THEN receipt.account_amount_local ELSE receipt.amount_local END,
+                       receipt.bill_date,:period,'RECEIPT',receipt.id,receipt.bill_no,
+                       COALESCE(receipt.remark,'销售收款')
+                FROM finance_receipts receipt WHERE receipt.id=:receiptId
+                UNION ALL
+                SELECT :voucher,2,receipt.gl_counter_style_id,
+                       -1,
+                       CASE WHEN EXISTS(
+                              SELECT 1 FROM finance_receipt_lines line
+                              WHERE line.receipt_id=receipt.id
+                                AND COALESCE(line.is_deleted,FALSE)=FALSE)
+                            THEN (SELECT COALESCE(SUM(line.applied_amount_local),0)
+                                  FROM finance_receipt_lines line
+                                  WHERE line.receipt_id=receipt.id
+                                    AND COALESCE(line.is_deleted,FALSE)=FALSE)
+                            ELSE receipt.amount_local END,
+                       receipt.bill_date,:period,'RECEIPT',receipt.id,receipt.bill_no,
+                       COALESCE(receipt.remark,'销售收款')
+                FROM finance_receipts receipt WHERE receipt.id=:receiptId
+                UNION ALL
+                SELECT :voucher,3,receipt.gl_bank_fee_style_id,1,
+                       receipt.bank_fee,receipt.bill_date,:period,
+                       'RECEIPT',receipt.id,receipt.bill_no,'收款手续费'
+                FROM finance_receipts receipt
+                WHERE receipt.id=:receiptId AND COALESCE(receipt.bank_fee,0)<>0
+                UNION ALL
+                SELECT :voucher,4,receipt.other_fee_style_id,1,
+                       receipt.other_fee,receipt.bill_date,:period,
+                       'RECEIPT',receipt.id,receipt.bill_no,'外贸代理费或其它结算费用'
+                FROM finance_receipts receipt
+                WHERE receipt.id=:receiptId AND COALESCE(receipt.other_fee,0)<>0
+                UNION ALL
+                SELECT :voucher,5,receipt.gl_fx_style_id,
+                       CASE WHEN difference.amount>0 THEN -1 ELSE 1 END,
+                       ABS(difference.amount),receipt.bill_date,:period,
+                       'RECEIPT',receipt.id,receipt.bill_no,'收款汇兑损益'
+                FROM finance_receipts receipt
+                JOIN LATERAL(
+                  SELECT COALESCE(SUM(line.exchange_diff),0) amount
+                  FROM finance_receipt_lines line
+                  WHERE line.receipt_id=receipt.id
+                    AND COALESCE(line.is_deleted,FALSE)=FALSE
+                ) difference ON TRUE
+                WHERE receipt.id=:receiptId AND difference.amount<>0
+                UNION ALL
+                SELECT :voucher,6,receipt.gl_fee_payment_style_id,-1,
+                       receipt.bank_fee+receipt.other_fee,
+                       receipt.bill_date,:period,'RECEIPT',receipt.id,receipt.bill_no,
+                       '收款费用另行支付'
+                FROM finance_receipts receipt
+                WHERE receipt.id=:receiptId
+                  AND receipt.settlement_authority_version=1
+                  AND receipt.fee_settlement_mode='PAID_SEPARATELY'
+                  AND COALESCE(receipt.bank_fee,0)+COALESCE(receipt.other_fee,0)>0
+                """)
+                .setParameter("voucher",voucherId)
+                .setParameter("period",period)
+                .setParameter("receiptId",receiptId)
+                .executeUpdate();
+        Object[] balance=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT COUNT(*),COALESCE(SUM(direction*amount),0)
+                FROM gl_entries
+                WHERE voucher_id=:voucher AND COALESCE(is_deleted,FALSE)=FALSE
+                """).setParameter("voucher",voucherId)).getFirst();
+        if(((Number)balance[0]).longValue()<2
+                || NativeValueConverters.toBigDecimal(balance[1]).signum()!=0){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "销售收款实时总账凭证借贷不平，禁止审核");
+        }
+        int finalized=em.createNativeQuery("""
+                UPDATE gl_vouchers SET status=1,updated_at=now()
+                WHERE id=:voucher AND status=0
+                """).setParameter("voucher",voucherId).executeUpdate();
+        if(finalized!=1){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "销售收款总账凭证终态确认失败，禁止审核");
+        }
+        return voucherId;
+    }
+
+    /**
+     * Append one linked reversal voucher for a receipt. The original voucher and
+     * entries stay immutable; the reversal uses the current China business date
+     * and period so a prior-period fact is never rewritten.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID reverseReceiptDoc(UUID receiptId, java.time.OffsetDateTime reversedAt) {
+        tx.bind();
+        if(receiptId==null || reversedAt==null){
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "收款总账红冲缺少来源 UUID 或红冲时间");
+        }
+        LocalDate reversalDate=reversedAt.atZoneSameInstant(BusinessTime.ZONE).toLocalDate();
+        String reversalPeriod=YearMonth.from(reversalDate).toString();
+        requireCurrentReceiptPostingPeriod(reversalPeriod);
+        lockAutoProjectionPeriod(reversalPeriod);
+        @SuppressWarnings("unchecked")
+        List<Object[]> originals=em.createNativeQuery("""
+                SELECT voucher.id,receipt.bill_no
+                FROM finance_receipts receipt
+                JOIN gl_vouchers voucher
+                  ON voucher.source='AUTO' AND voucher.source_type='RECEIPT'
+                 AND voucher.source_doc_id=receipt.id AND voucher.status=1
+                 AND COALESCE(voucher.is_deleted,FALSE)=FALSE
+                WHERE receipt.id=:receiptId AND receipt.status=1
+                  AND COALESCE(receipt.is_deleted,FALSE)=FALSE
+                  AND voucher.reversed_by_voucher_id IS NULL
+                FOR UPDATE OF voucher
+                """).setParameter("receiptId",receiptId).getResultList();
+        if(originals.size()!=1){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款原始总账凭证缺失、重复或已红冲，禁止继续");
+        }
+        UUID originalId=(UUID)originals.getFirst()[0];
+        String billNo=Objects.toString(originals.getFirst()[1],null);
+        UUID reversalId=UUID.randomUUID();
+        em.createNativeQuery("""
+                INSERT INTO gl_vouchers(
+                    id,voucher_no,period,voucher_date,source,source_type,
+                    source_doc_id,source_ref,idempotency_key,
+                    reversal_of_voucher_id,remark,status)
+                VALUES(:id,:billNo,:period,:voucherDate,'AUTO','RECEIPT_REV',
+                       :receiptId,:sourceRef,:idempotencyKey,:originalId,
+                       '销售收款红冲反向凭证',0)
+                """)
+                .setParameter("id",reversalId)
+                .setParameter("billNo",billNo+"-REV")
+                .setParameter("period",reversalPeriod)
+                .setParameter("voucherDate",reversalDate)
+                .setParameter("receiptId",receiptId)
+                .setParameter("sourceRef",receiptId.toString())
+                .setParameter("idempotencyKey","RECEIPT_REV:"+receiptId)
+                .setParameter("originalId",originalId)
+                .executeUpdate();
+        int copied=em.createNativeQuery("""
+                INSERT INTO gl_entries(
+                    voucher_id,line_no,style_id,direction,amount,entry_date,period,
+                    source_doc_type,source_doc_id,source_bill_no,summary)
+                SELECT :reversalId,entry.line_no,entry.style_id,-entry.direction,
+                       entry.amount,:reversalDate,:reversalPeriod,
+                       'RECEIPT_REV',:receiptId,entry.source_bill_no,
+                       '红冲：'||COALESCE(entry.summary,'销售收款')
+                FROM gl_entries entry
+                WHERE entry.voucher_id=:originalId
+                  AND COALESCE(entry.is_deleted,FALSE)=FALSE
+                ORDER BY entry.line_no,entry.id
+                """)
+                .setParameter("reversalId",reversalId)
+                .setParameter("reversalDate",reversalDate)
+                .setParameter("reversalPeriod",reversalPeriod)
+                .setParameter("receiptId",receiptId)
+                .setParameter("originalId",originalId)
+                .executeUpdate();
+        Object[] proof=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT
+                  (SELECT COUNT(*) FROM gl_entries WHERE voucher_id=:originalId
+                    AND COALESCE(is_deleted,FALSE)=FALSE),
+                  (SELECT COUNT(*) FROM gl_entries WHERE voucher_id=:reversalId
+                    AND COALESCE(is_deleted,FALSE)=FALSE),
+                  (SELECT COALESCE(SUM(direction*amount),0) FROM gl_entries
+                    WHERE voucher_id=:reversalId AND COALESCE(is_deleted,FALSE)=FALSE)
+                """)
+                .setParameter("originalId",originalId)
+                .setParameter("reversalId",reversalId)).getFirst();
+        long originalCount=((Number)proof[0]).longValue();
+        long reversalCount=((Number)proof[1]).longValue();
+        if(originalCount<2 || copied!=originalCount || reversalCount!=originalCount
+                || NativeValueConverters.toBigDecimal(proof[2]).signum()!=0){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款总账反向凭证不完整或借贷不平，禁止红冲");
+        }
+        int reversalFinalized=em.createNativeQuery("""
+                UPDATE gl_vouchers SET status=1,updated_at=now()
+                WHERE id=:reversalId AND status=0
+                """)
+                .setParameter("reversalId",reversalId)
+                .executeUpdate();
+        if(reversalFinalized!=1){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款总账反向凭证终态确认失败，禁止红冲");
+        }
+        int linked=em.createNativeQuery("""
+                UPDATE gl_vouchers
+                SET reversed_by_voucher_id=:reversalId,updated_at=now()
+                WHERE id=:originalId AND reversed_by_voucher_id IS NULL
+                """)
+                .setParameter("reversalId",reversalId)
+                .setParameter("originalId",originalId)
+                .executeUpdate();
+        if(linked!=1){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款原始凭证反向链接写入失败，禁止红冲");
+        }
+        return reversalId;
+    }
+
+    private void requireCurrentReceiptPostingPeriod(String period){
+        String current=YearMonth.from(BusinessTime.today()).toString();
+        if(!current.equals(period)){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "当前尚无通用会计期间主档，只允许在当前期间 "+current
+                            +" 生成收款凭证或反向凭证；请求期间 "+period);
+        }
+    }
+
+    private void assertReceiptProjectionIntegrity(String period){
+        long invalid=((Number)em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM v_receipt_gl_integrity integrity
+                WHERE (integrity.receipt_period=:period
+                       OR integrity.original_period=:period
+                       OR integrity.reversal_period=:period)
+                  AND NOT integrity.is_consistent
+                """).setParameter("period",period).getSingleResult()).longValue();
+        if(invalid!=0){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "本期间存在 "+invalid+" 张 V1 收款的不可变总账投影不完整；"
+                            +"请进入异常队列核对，禁止批量重建猜测修复");
+        }
+    }
+
+    private void assertLegacyV0ReceiptProjectionIntegrity(String period){
+        long invalid=((Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM v_receipt_v0_gl_reconciliation
+                WHERE to_char(bill_date,'YYYY-MM')=:period
+                  AND reconciliation_state<>'OK'
+                """).setParameter("period",period).getSingleResult()).longValue();
+        if(invalid!=0){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "本期间存在 "+invalid+" 张历史 V0 已审收款的总账凭证缺失、歧义或不平；"
+                            +"请按银行/原凭证证据进入异常队列复核，禁止按当前科目自动补账");
+        }
+    }
+
+    private void assertReceiptDocumentPostingConfiguration(UUID receiptId){
+        long invalid=((Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM finance_receipts receipt
+                WHERE receipt.id=:receiptId
+                  AND (
+                    NOT EXISTS(SELECT 1 FROM payment_styles style
+                               WHERE style.id=receipt.gl_account_style_id
+                                 AND style.category='ACCOUNT' AND style.status='使用'
+                                 AND COALESCE(style.is_deleted,FALSE)=FALSE)
+                    OR receipt.gl_counter_style_id IS NULL
+                    OR (COALESCE(receipt.bank_fee,0)<>0
+                        AND receipt.gl_bank_fee_style_id IS NULL)
+                    OR (COALESCE(receipt.other_fee,0)<>0
+                        AND NOT EXISTS(
+                          SELECT 1 FROM payment_styles style
+                          WHERE style.id=receipt.other_fee_style_id
+                            AND style.category='EXPENSE' AND style.status='使用'
+                            AND COALESCE(style.is_deleted,FALSE)=FALSE))
+                    OR (EXISTS(
+                          SELECT 1 FROM finance_receipt_lines line
+                          WHERE line.receipt_id=receipt.id
+                          GROUP BY line.receipt_id
+                          HAVING SUM(line.exchange_diff)<>0)
+                        AND receipt.gl_fx_style_id IS NULL)
+                    OR (receipt.settlement_authority_version=1
+                        AND receipt.fee_settlement_mode='PAID_SEPARATELY'
+                        AND receipt.gl_fee_payment_style_id IS NULL)
+                  )
+                """).setParameter("receiptId",receiptId).getSingleResult()).longValue();
+        if(invalid!=0){
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "销售收款账户、应收/预收、手续费、其它费用或汇兑损益科目不完整，禁止审核");
+        }
+    }
+
     // ======================== C6 单张开票钩子（报销审核实时过账） ========================
 
     /** 费用单审核钩子：该单幂等过账（先删同单号 AUTO EXPENSE 凭证再重建），返回 voucher_id。 */
@@ -1643,7 +2113,7 @@ public class GlPostingService {
         em.createNativeQuery("""
                 INSERT INTO gl_vouchers
                     (id, voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
-                VALUES (:id, :no, :p, :d, 'AUTO', 'EXPENSE', :doc, '一般费用（审核实时过账）')
+                VALUES (:id, :no, :p, :d, 'AUTO', 'EXPENSE', :doc, '一般费用(审核实时过账)')
                 """)
                 .setParameter("id", voucherId).setParameter("no", billNo)
                 .setParameter("p", period).setParameter("d", billDate)

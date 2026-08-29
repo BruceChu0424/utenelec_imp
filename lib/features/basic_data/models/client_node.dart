@@ -213,21 +213,21 @@ class ClientDetail {
   String get accessReasonLabel {
     switch (accessReason) {
       case ClientAccessReason.unassigned:
-        return accessManageable ? '待分配（可设置负责人）' : '待分配（只读）';
+        return accessManageable ? '待分配(可设置负责人)' : '待分配(只读)';
       case ClientAccessReason.manageable:
-        return '可管理（具体操作仍按功能权限）';
+        return '可管理(具体操作仍按功能权限)';
       case ClientAccessReason.shared:
-        return '单客户共享（只读）';
+        return '单客户共享(只读)';
       case ClientAccessReason.ownerScopeReadOnly:
-        return '负责人数据范围（只读）';
+        return '负责人数据范围(只读)';
       default:
         if (ownerEmployeeId == null && accessManageable) {
-          return '待分配（可设置负责人）';
+          return '待分配(可设置负责人)';
         }
         if (writable) {
-          return '对象范围可维护（具体操作仍按功能权限）';
+          return '对象范围可维护(具体操作仍按功能权限)';
         }
-        return '只读（访问来源未标明）';
+        return '只读(访问来源未标明)';
     }
   }
 

@@ -143,7 +143,10 @@ public class SalesOrder extends SoftDeletableEntity {
     @Column(name = "finance_confirm_remark")
     private String financeConfirmRemark;
 
-    /** 财务驳回（V300）：不改订单状态/库存预留，只记事实+通知归属销售；确认时自动清除。 */
+    /**
+     * 当前财务驳回状态。驳回决策先保留已审状态/预留；销售受控修订后回草稿，
+     * 重新销售审核时清当前布尔态。原因/人员/时间保留最近一次历史。
+     */
     @Column(name = "finance_rejected", nullable = false)
     private boolean financeRejected = false;
 

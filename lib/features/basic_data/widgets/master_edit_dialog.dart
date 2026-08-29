@@ -16,6 +16,7 @@ import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -46,13 +47,6 @@ const List<MasterSelectOption> kGoodsSourceTypeOptions = [
   MasterSelectOption(value: '自制', label: '自制'),
   MasterSelectOption(value: '采购', label: '采购'),
   MasterSelectOption(value: '委外', label: '委外'),
-];
-
-/// 生产 BOM 策略是业务事实，不由“来源”字段隐式推断。
-const List<MasterSelectOption> kGoodsProductionBomPolicyOptions = [
-  MasterSelectOption(value: 'BOM_REQUIRED', label: '必须维护 BOM（组装件）'),
-  MasterSelectOption(value: 'DIRECT_MAKE', label: '直接生产（无 BOM）'),
-  MasterSelectOption(value: 'NOT_PRODUCED', label: '不生产（采购/委外）'),
 ];
 
 /// 自定义字段上下文：[MasterEditForm] ↔ 自定义 widget（[MasterFieldDef.customBuilder]）的值通道。
@@ -298,7 +292,6 @@ class MasterEditFormState extends State<MasterEditForm> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final twoColumn = !context.breakpoint.isCompact;
 
     // 按 group 声明顺序分段（null → 「其他」）。
@@ -323,12 +316,7 @@ class MasterEditFormState extends State<MasterEditForm> {
           ],
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s4),
-            Text(
-              _error!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
-              ),
-            ),
+            UtenFieldMessage.error(_error!),
           ],
         ],
       ),
@@ -418,12 +406,7 @@ class MasterEditFormState extends State<MasterEditForm> {
             ),
             if (fieldError != null) ...[
               const SizedBox(height: UtenSpacing.s4),
-              Text(
-                fieldError,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
+              UtenFieldMessage.error(fieldError),
             ],
           ],
         );

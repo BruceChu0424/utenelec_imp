@@ -54,6 +54,12 @@ class _SubcontractDocDetailPageState
   SubcontractDocDetail? _detail;
   bool _loading = false;
   bool _busy = false;
+
+  bool get _canViewCommercialAmounts =>
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.subcontractReceiptPriceView) &&
+      !(_detail?.priceMasked ?? false);
   String? _error;
 
   @override
@@ -258,6 +264,9 @@ class _SubcontractDocDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    final canViewOrderProgress = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.subcontractOrderView);
     final scopeCapability = widget.docType == SubcontractDocType.application
         ? null
         : ref.watch(
@@ -315,8 +324,17 @@ class _SubcontractDocDetailPageState
                       const SizedBox(height: UtenSpacing.s12),
                       _financeApprovalBanner(theme),
                       const SizedBox(height: UtenSpacing.s12),
-                      // V304 全链路进度：出仓/回厂/IQC/损耗/应付一屏跟踪（仅订货单）。
-                      SubcontractOrderProgressSection(orderId: _detail!.id),
+                      // V304 全链路进度包含商业/履约扩展端点；仅持财务审批任务 view
+                      // 的点名审核员可看主订货详情，但不额外放宽完整委外进度权限。
+                      if (canViewOrderProgress)
+                        SubcontractOrderProgressSection(orderId: _detail!.id)
+                      else
+                        Text(
+                          '当前为财务审批任务视角；完整委外履约进度需委外订货查看权限。',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                     ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme),
@@ -344,6 +362,7 @@ class _SubcontractDocDetailPageState
 
   Widget _headerCard(ThemeData theme) {
     final d = _detail!;
+    final canViewCommercialAmounts = _canViewCommercialAmounts;
     final names = ref.watch(mn.masterNameServiceProvider);
     final settlementMethodsState = ref.watch(settlementMethodOptionsProvider);
     final settlementMethods = settlementMethodsState.valueOrNull;
@@ -354,12 +373,12 @@ class _SubcontractDocDetailPageState
         ? '—'
         : matchingSettlementMethods?.isNotEmpty == true
         ? '${matchingSettlementMethods!.first.name}'
-              '（${matchingSettlementMethods.first.code}）'
+              '(${matchingSettlementMethods.first.code})'
         : settlementMethodsState.isLoading
         ? '结算方式字典加载中…'
         : settlementMethodsState.hasError
-        ? '结算方式字典加载失败（${d.settlementMethodId}）'
-        : '已停用或不可用（${d.settlementMethodId}）';
+        ? '结算方式字典加载失败(${d.settlementMethodId})'
+        : '已停用或不可用(${d.settlementMethodId})';
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
@@ -368,10 +387,12 @@ class _SubcontractDocDetailPageState
       if (_cfg.hasSupplier) _KV('委外商', names.supplier(d.supplierId)),
       // 订货单不涉及仓库：委外成品入库仓库到进仓登记时才产生。
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
-      if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
-      if (_cfg.hasSettlement) _KV('结算方式', settlementMethodLabel),
-      if (d.exchangeRate != null) _KV('汇率', d.exchangeRate?.toString()),
-      if (_cfg.hasTaxRate && d.taxRate != null)
+      if (canViewCommercialAmounts && _cfg.hasCurrency)
+        _KV('币种', names.currency(d.currencyId)),
+      if (canViewCommercialAmounts && _cfg.hasSettlement)
+        _KV('结算方式', settlementMethodLabel),
+      // 委外不展示汇率（固定 1 随单保存，进仓/退货与订单快照一致性由服务端校验）。
+      if (canViewCommercialAmounts && _cfg.hasTaxRate && d.taxRate != null)
         _KV('税率', d.taxRate?.toString()),
       // 人员字段展示 id（员工名解析未接入；与采购详情页同款已知限制，待统一 EmployeeNameService）。
       if (_cfg.hasPurchaser) _KV('采购员', d.purchaserId ?? '—'),
@@ -382,11 +403,12 @@ class _SubcontractDocDetailPageState
       if (_cfg.hasBStyle) _KV('bStyle', d.bStyle?.toString()),
       if (_cfg.hasTotalWeight && d.totalWeight != null)
         _KV('总重', d.totalWeight?.toStringAsFixed(2)),
-      if (_cfg.hasDeductAmount && (d.deductAmount ?? 0) > 0)
-        _KV('建议索赔金额(本币)', '${d.deductAmount?.toStringAsFixed(2)}（仅建议，不自动冲应付）'),
-      if (_cfg.hasAmount)
-        // 价格脱敏（V302）：无进仓单价格权限时服务端置 null + priceMasked，渲染 ***。
-        _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
+      if (canViewCommercialAmounts &&
+          _cfg.hasDeductAmount &&
+          (d.deductAmount ?? 0) > 0)
+        _KV('建议索赔金额(本币)', '${d.deductAmount?.toStringAsFixed(2)}(仅建议，不自动冲应付)'),
+      if (canViewCommercialAmounts && _cfg.hasAmount)
+        _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
         '状态',
@@ -476,8 +498,7 @@ class _SubcontractDocDetailPageState
   Widget _itemsCard(ThemeData theme) {
     final d = _detail!;
     final items = d.items;
-    // 价格脱敏（V302）：进仓单无价格权限时单价/金额列一律渲染 ***（服务端已置 null）。
-    final masked = d.priceMasked;
+    final canViewCommercialAmounts = _canViewCommercialAmounts;
     final names = ref.watch(mn.masterNameServiceProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -497,7 +518,7 @@ class _SubcontractDocDetailPageState
               label: '货品',
               width: 240,
               value: (it) =>
-                  '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
+                  '${names.goods(it.goodsId)}(${names.color(it.colorId)} · ${names.unit(it.unitId)})',
             ),
             // 实物出入库单据（进仓/发料/退货/材料退）：库位号（主档带出，上架/拣货指引）。
             if (_cfg.itemHasStockPlace)
@@ -522,13 +543,13 @@ class _SubcontractDocDetailPageState
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
             ),
-            if (_cfg.itemHasPrice) ...[
+            if (_cfg.itemHasPrice && canViewCommercialAmounts) ...[
               MasterColumnDef(
                 key: 'price',
                 label: '单价',
                 width: 90,
                 type: 'money',
-                value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
+                value: (it) => it.price?.toStringAsFixed(2),
               ),
               MasterColumnDef(
                 key: 'amount',
@@ -536,9 +557,7 @@ class _SubcontractDocDetailPageState
                 width: 100,
                 type: 'money',
                 // 优先服务端权威金额（含舍入口径）；仅历史缺失时本地乘算兜底。
-                value: (it) => masked
-                    ? '***'
-                    : (it.amountOriginal ?? it.amountLocal) != null
+                value: (it) => (it.amountOriginal ?? it.amountLocal) != null
                     ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(2)
                     : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
               ),
@@ -621,7 +640,7 @@ class _SubcontractDocDetailPageState
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          emptyMessage: '（无明细）',
+          emptyMessage: '(无明细)',
         ),
       ],
     );

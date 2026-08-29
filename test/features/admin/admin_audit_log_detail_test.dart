@@ -180,7 +180,7 @@ void main() {
       expect(find.text('QA-1'), findsWidgets);
       expect(find.text(_DeviceStore.installationId), findsWidgets);
       await tester.scrollUntilVisible(
-        find.text('请求尝试链（2 次）'),
+        find.text('请求尝试链(2 次)'),
         240,
         scrollable: find
             .descendant(
@@ -191,7 +191,7 @@ void main() {
         maxScrolls: 20,
       );
       await tester.pumpAndSettle();
-      expect(find.text('请求尝试链（2 次）'), findsOneWidget);
+      expect(find.text('请求尝试链(2 次)'), findsOneWidget);
     },
   );
 

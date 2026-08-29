@@ -295,7 +295,7 @@ class _ReplyComposerState extends ConsumerState<_ReplyComposer> {
               label: '同步更新状态',
               value: _newStatus?.name,
               searchable: false,
-              hintText: '保持当前状态（${widget.suggestion.status.label}）',
+              hintText: '保持当前状态(${widget.suggestion.status.label})',
               items: [
                 for (final status in _nextStatuses)
                   UtenDropdownItem(value: status.name, label: status.label),
@@ -308,7 +308,7 @@ class _ReplyComposerState extends ConsumerState<_ReplyComposer> {
             )
           else
             Text(
-              '当前为终态（${widget.suggestion.status.label}），可继续补充回复，但不能回退或切换处理状态。',
+              '当前为终态(${widget.suggestion.status.label})，可继续补充回复，但不能回退或切换处理状态。',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),

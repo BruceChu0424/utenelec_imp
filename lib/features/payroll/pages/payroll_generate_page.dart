@@ -493,7 +493,7 @@ class _SlipPreviewRow extends StatelessWidget {
     return ListTile(
       dense: true,
       title: Text(
-        '${slip.employeeName}（${slip.employeeCode}）',
+        '${slip.employeeName}(${slip.employeeCode})',
         style: theme.textTheme.bodyMedium,
       ),
       trailing: Text(

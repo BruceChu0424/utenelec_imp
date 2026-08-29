@@ -21,4 +21,6 @@ public class ReturnListItem {
     private boolean closed;
     private boolean apPosted;
     private Integer legacyId;
+    /** 当前用户无委外商业金额权限时为 true，合计金额同时置 null。 */
+    private boolean priceMasked;
 }

@@ -150,7 +150,7 @@ class SalesReservationSafetyStockPostgresTest {
                 int updated = executeYieldUpdate(connection, itemId, BigDecimal.valueOf(4));
                 assertEquals(1, updated, "reserved(10)>=4，应更新 1 行");
                 assertItem(connection, itemId, 6.0, (short) 1,
-                        "让单 4：reserved 10→6（< outstanding 20），chain 7→1 部分预留");
+                        "让单 4：reserved 10→6(< outstanding 20)，chain 7→1 部分预留");
 
                 // ---- 让单剩余 :q=6 ----
                 // 此时 OLD reserved=6, chain=1(>0 进 CASE)：reserved→6-6=0；chain CASE：
@@ -204,7 +204,7 @@ class SalesReservationSafetyStockPostgresTest {
                                         double expected, String message) throws Exception {
         BigDecimal got = globalAvailableBase(c, goodsId, colorId);
         assertEquals(0, got.compareTo(BigDecimal.valueOf(expected)),
-                message + "（实际=" + got.stripTrailingZeros().toPlainString() + "）");
+                message + "(实际=" + got.stripTrailingZeros().toPlainString() + ")");
     }
 
     /**

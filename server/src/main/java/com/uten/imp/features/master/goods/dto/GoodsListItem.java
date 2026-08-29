@@ -39,7 +39,6 @@ public class GoodsListItem {
     private String colorName;     // UUID 优先解析；历史 UUID 缺失时只读回落 legacy 快照
     private String unitName;      // UUID 优先解析；历史 UUID 缺失时只读回落 legacy 快照
     private String sourceType;    // 来源（自制/采购/委外）
-    private String productionBomPolicy;
     private UUID categoryId;      // 所属分类 UUID（goods.category_id；搜货品定位分类用）
     private boolean autoCreated;  // 迁移兜底占位货品标记（auto_created 列）
     private BigDecimal stockQty;  // 即时库存合计（聚合 stock_balances，仅参与核算仓库；列表展示用）

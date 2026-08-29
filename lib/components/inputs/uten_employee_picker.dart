@@ -1,34 +1,45 @@
 // UtenEmployeePicker - 抽屉式人员选择器（通用组件）
 //
 // 触发形态与 UtenDepartmentPicker 对齐：只读输入框样式 field
-//（显示选中人姓名 + 部门），点击拉开抽屉：
+//（显示选中人姓名(工号)），点击拉开抽屉：
 // - compact：约 85% 屏高的底部抽屉；
 // - medium/expanded：右侧滑入的 420dp end drawer。
 // 响应式展示壳统一复用 showUtenAdaptivePanel。
 //
 // 抽屉内：标题行 + 关闭、UtenSearchBar（内置 300ms 防抖）调 loader、
-// 可滚动结果列表（姓名 + 部门副标题），点选即关。
+// 可滚动结果列表（姓名(工号) + 部门副标题），点选后确认。
 // 数据由调用方通过 loader 提供，本组件不关心 token / 接口来源。
 import 'package:flutter/material.dart';
 
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../shared/formatters/employee_display.dart';
 import '../layout/uten_adaptive_panel.dart';
 import '../layout/uten_picker_confirm_bar.dart';
 import 'required_field_decoration.dart';
+import 'uten_field_message.dart';
 import 'uten_search_bar.dart';
 
-/// 人员候选项：id / 姓名 / 部门名。
+/// 人员候选项：id / 姓名 / 工号 / 部门名。
 class UtenEmployeePickerItem {
   const UtenEmployeePickerItem({
     required this.id,
     required this.name,
+    this.employeeCode,
     this.departmentName,
   });
 
   final String id;
   final String name;
+  final String? employeeCode;
   final String? departmentName;
+
+  /// 选择器统一主展示：姓名(工号)，括号固定使用 ASCII 半角字符。
+  ///
+  /// 少数隐私受限或历史接口没有返回工号时回退为姓名，避免展示空括号。
+  String get displayName {
+    return formatEmployeeDisplayName(name, employeeCode);
+  }
 }
 
 /// 候选加载器：keyword 为 null/空表示不过滤。
@@ -69,7 +80,7 @@ class UtenEmployeePicker extends StatefulWidget {
   /// 表单校验（返回错误文案或 null）。
   final String? Function(UtenEmployeePickerItem? value)? validator;
 
-  /// 已选部门名（抽屉副标题展示，便于确认"在哪个部门里找人"）。
+  /// 当前选择范围的部门名（抽屉标题下方提示，不参与人员主展示）。
   final String? departmentName;
 
   final String sheetTitle;
@@ -90,18 +101,64 @@ class UtenEmployeePicker extends StatefulWidget {
 class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   final _fieldKey = GlobalKey<FormFieldState<UtenEmployeePickerItem?>>();
   UtenEmployeePickerItem? _selected;
+  int _hydrateSerial = 0;
 
   @override
   void initState() {
     super.initState();
     _selected = widget.initial;
+    _hydrateSelectedIfNeeded();
   }
 
   @override
   void didUpdateWidget(UtenEmployeePicker oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initial != oldWidget.initial) {
-      _selected = widget.initial;
+      final next = widget.initial;
+      final current = _selected;
+      _selected =
+          next != null &&
+              current?.id == next.id &&
+              next.employeeCode?.trim().isNotEmpty != true &&
+              current?.employeeCode?.trim().isNotEmpty == true
+          ? UtenEmployeePickerItem(
+              id: next.id,
+              name: next.name,
+              employeeCode: current!.employeeCode,
+              departmentName: next.departmentName,
+            )
+          : next;
+      _hydrateSelectedIfNeeded();
+    }
+  }
+
+  /// 历史详情有时只带员工 id/姓名。复用当前 loader 按姓名补查一次工号，
+  /// 让既有选中值也能升级为“姓名(工号)”；补查失败不阻塞表单。
+  Future<void> _hydrateSelectedIfNeeded() async {
+    final target = _selected;
+    if (target == null || target.employeeCode?.trim().isNotEmpty == true) {
+      return;
+    }
+    final request = ++_hydrateSerial;
+    try {
+      final keyword = target.name.trim();
+      final items = await widget.loader(keyword.isEmpty ? null : keyword);
+      if (!mounted || request != _hydrateSerial || _selected?.id != target.id) {
+        return;
+      }
+      UtenEmployeePickerItem? hydrated;
+      for (final item in items) {
+        if (item.id == target.id &&
+            item.employeeCode?.trim().isNotEmpty == true) {
+          hydrated = item;
+          break;
+        }
+      }
+      if (hydrated == null) return;
+      setState(() => _selected = hydrated);
+      _fieldKey.currentState?.didChange(hydrated);
+    } catch (_) {
+      // 工号补查仅增强展示；权限受限、网络失败或历史人员缺失时保留原姓名。
     }
   }
 
@@ -136,11 +193,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final sel = _selected;
-    final String? display = sel == null
-        ? null
-        : (sel.departmentName == null
-              ? sel.name
-              : '${sel.name}(${sel.departmentName})');
+    final String? display = sel?.displayName;
     final requiredEmpty = widget.enabled && widget.required && sel == null;
 
     return FormField<UtenEmployeePickerItem?>(
@@ -169,7 +222,9 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
                         ),
                   hintText: widget.hint,
                   enabled: widget.enabled,
-                  errorText: field.errorText,
+                  error: field.errorText == null
+                      ? null
+                      : UtenFieldMessage.error(field.errorText!),
                   prefixIcon: const Icon(Icons.person_search_rounded),
                   suffixIcon: sel != null && widget.allowClear
                       ? IconButton(
@@ -369,7 +424,7 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
                               Icons.person_outline_rounded,
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
-                      title: Text(e.name),
+                      title: Text(e.displayName),
                       subtitle: e.departmentName == null
                           ? null
                           : Text(e.departmentName!),
@@ -387,11 +442,7 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
         ),
         UtenPickerConfirmBar(
           selectedCount: _picked == null ? 0 : 1,
-          selectedLabel: _picked == null
-              ? null
-              : (_picked!.departmentName == null
-                    ? _picked!.name
-                    : '${_picked!.name}(${_picked!.departmentName})'),
+          selectedLabel: _picked?.displayName,
           onConfirm: () => Navigator.of(context).pop(_picked),
         ),
       ],

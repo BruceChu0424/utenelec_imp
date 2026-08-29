@@ -19,6 +19,10 @@ import java.util.UUID;
 public class FinancePaymentSaveRequest {
 
     private String billNo;
+    private Long expectedVersion;
+
+    @Size(min = 8, max = 128)
+    private String createIdempotencyKey;
 
     @NotNull
     private LocalDate billDate;

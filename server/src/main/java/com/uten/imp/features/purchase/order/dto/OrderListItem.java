@@ -20,4 +20,6 @@ public class OrderListItem {
     private boolean closed;
     private Integer legacyId;
     private FinanceApproval financeApproval;
+    /** 当前用户无采购商业金额权限时为 true，合计金额同时由服务端置 null。 */
+    private boolean priceMasked;
 }

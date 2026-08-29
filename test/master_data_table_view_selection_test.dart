@@ -10,6 +10,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 class _Row {
@@ -221,6 +222,74 @@ void main() {
 
       // 无异常即通过（test framework 会把 CME 当异常上报→测试失败）。
       expect(find.byType(SelectionArea), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'batch actions float at bottom-right and remain available in fullscreen',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      var selected = <String>{};
+      var runs = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => MasterDataTableView<_Row>(
+                columns: [
+                  MasterColumnDef<_Row>(
+                    key: 'id',
+                    label: 'ID',
+                    width: 240,
+                    value: (row) => row.id,
+                  ),
+                ],
+                items: const [_Row('a1'), _Row('a2')],
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+                selectable: true,
+                idOf: (row) => row.id,
+                selectedIds: selected,
+                onSelectedIdsChanged: (next) => setState(() => selected = next),
+                batchActionsBuilder: (_, ids) => [
+                  UtenButton(
+                    key: const Key('floating-batch-action'),
+                    size: UtenButtonSize.large,
+                    onPressed: () => runs++,
+                    child: Text('处理(${ids.length})'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('已选 0 项'), findsOneWidget);
+      final action = find.byKey(const Key('floating-batch-action'));
+      expect(action, findsOneWidget);
+      final actionCenter = tester.getCenter(action);
+      expect(actionCenter.dx, greaterThan(650));
+      expect(actionCenter.dy, greaterThan(430));
+
+      await tester.tap(find.text('a1'));
+      await tester.pump();
+      expect(find.text('已选 1 项'), findsOneWidget);
+      await tester.tap(action);
+      expect(runs, 1);
+
+      await tester.tap(find.text('全屏'));
+      await tester.pumpAndSettle();
+      expect(action, findsOneWidget);
+      await tester.tap(action);
+      expect(runs, 2);
     },
   );
 }

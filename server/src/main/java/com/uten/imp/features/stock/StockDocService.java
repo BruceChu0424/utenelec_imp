@@ -117,11 +117,18 @@ public class StockDocService {
     private final StockDocAccessPolicy access;
     private final ProductionStockTaskAccessPolicy productionStockTaskAccess;
     private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
+    private final com.uten.imp.application.port.ProductionQualityInspectionPort
+            productionQualityInspection;
 
     // ===== 列表 =====
 
     @Transactional(readOnly = true)
     public PageResponse<StockDocListItem> list(StockDocQueryFilter f, int page, int size, String sort, String order) {
+        if (!canViewCost() && "total".equals(sort)) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "无查看货品成本权限(" + StockCostMasker.PERMISSION + ")");
+        }
         var readScope = access.scope();
         Specification<StockDocument> spec = (Root<StockDocument> root,
                                              jakarta.persistence.criteria.CriteriaQuery<?> q,
@@ -208,6 +215,7 @@ public class StockDocService {
     private StockDocDetail createInternal(
             StockDocSaveRequest req,
             String balanceAdjustmentRequestKey) {
+        requireCostWritePermission(req.getItems());
         tx.bind();
         StockDocument d = new StockDocument();
         applyHeader(req, d);
@@ -236,6 +244,8 @@ public class StockDocService {
         requireBalanceAdjustmentPermission(d);
         rejectGenericMutationOfProductionDocument(d);
         if (d.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        requireCostWritePermission(req.getItems());
+        requireExistingItemsCostFreeForMaskedUpdate(id);
         applyHeader(req, d);
         itemRepo.deleteByDocId(id);
         itemRepo.flush();
@@ -352,6 +362,10 @@ public class StockDocService {
             }
             BigDecimal proposed = requirePositiveQuantity(
                     item.getQty(), "报工待入库数量");
+            productionQualityInspection.requireInboundReleased(
+                    item.getSourceDailyReportItemId(),
+                    item.getId(),
+                    proposed);
             BigDecimal actual = accepted.get(item.getId());
             if (actual.compareTo(proposed) > 0) {
                 throw new ApiException(
@@ -368,15 +382,27 @@ public class StockDocService {
         }
 
         if (!anyAccepted) {
+            // 整单零实收仍是仓库拒收事实，不得改写已经发生的 FQC PASS。
+            // 把全部未消费放行量复制为同来源待点收草稿，供生产重新交付；
+            // confirmation/residual 谱系让后续点收复用原 PASS release，绝不重复消费。
+            StockDocument residualDocument = newFinishedInboundResidual(document);
+            residualDocument.setRemark("仓库整单拒收待重新交付；来源成品入库单 "
+                    + document.getBillNo());
+            docRepo.saveAndFlush(residualDocument);
+            linkResidualFinishedInbound(planId, residualDocument.getId());
+
             UUID confirmationId = UUID.randomUUID();
             insertFinishedInboundConfirmation(
-                    confirmationId, document, null,
+                    confirmationId, document, residualDocument,
                     request.getIdempotencyKey().strip(), requestHash,
                     "REJECTED", varianceReason);
             for (StockDocumentItem item : items) {
                 BigDecimal proposed = item.getQty();
+                StockDocumentItem residualItem = copyFinishedInboundResidualItem(
+                        item, residualDocument, proposed);
+                itemRepo.saveAndFlush(residualItem);
                 insertFinishedInboundConfirmationLine(
-                        confirmationId, item.getId(), null,
+                        confirmationId, item.getId(), residualItem.getId(),
                         proposed, BigDecimal.ZERO, proposed);
             }
             // 拒收原因只存确认记录：单据备注是生产链守卫的不可变身份列，
@@ -387,6 +413,7 @@ public class StockDocService {
             chainNotice.notifyFinishedInboundRejected(
                     document.getId(), varianceReason,
                     request.getIdempotencyKey());
+            chainNotice.notifyFinishedInboundPending(residualDocument.getId());
             return detail(id);
         }
 
@@ -2026,6 +2053,7 @@ public class StockDocService {
     }
 
     private List<StockDocItemDto> saveItems(StockDocument d, List<StockDocItemLine> lines) {
+        requireCostWritePermission(lines);
         if ("CHECK".equals(d.getDocType())) {
             prepareCheckLines(d, lines);
         } else {
@@ -2077,6 +2105,44 @@ public class StockDocService {
             auto++;
         }
         return out;
+    }
+
+    /**
+     * 仓库普通制单是数量作业。无 goods:cost:view 时，客户端不得盲写单价或金额；
+     * 三个字段全部为 null 的纯数量单据保持原流程。
+     */
+    private void requireCostWritePermission(List<StockDocItemLine> lines) {
+        if (canViewCost() || lines == null) return;
+        for (int index = 0; index < lines.size(); index++) {
+            StockDocItemLine line = lines.get(index);
+            if (line != null && (line.getPrice() != null
+                    || line.getAmountOriginal() != null
+                    || line.getAmountLocal() != null)) {
+                int lineNo = line.getLineNo() == null ? index + 1 : line.getLineNo();
+                throw new ApiException(
+                        ErrorCode.FORBIDDEN,
+                        "第 " + lineNo + " 行无编辑货品成本权限("
+                                + StockCostMasker.PERMISSION + ")");
+            }
+        }
+    }
+
+    /**
+     * 无成本权限的编辑请求会把隐藏字段回传为 null，而 update 采用删旧重建明细。
+     * 历史草稿只要已有任一价格/金额，禁止走通用编辑，避免把真实成本静默清零。
+     */
+    private void requireExistingItemsCostFreeForMaskedUpdate(UUID documentId) {
+        if (canViewCost()) return;
+        boolean hasStoredCost = itemRepo.findByDocIdOrderByLineNoAsc(documentId).stream()
+                .anyMatch(item -> item.getPrice() != null
+                        || item.getAmountOriginal() != null
+                        || item.getAmountLocal() != null);
+        if (hasStoredCost) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "该仓库单据含成本金额，无查看货品成本权限("
+                            + StockCostMasker.PERMISSION + ")时禁止通用编辑");
+        }
     }
 
     private void captureGoodsSnapshots(
@@ -2265,10 +2331,13 @@ public class StockDocService {
     }
 
     private StockDocListItem toList(StockDocument d) {
+        boolean canViewCost = canViewCost();
         return new StockDocListItem(d.getId(), d.getDocType(), d.getBillNo(), d.getBillDate(),
-                d.getWarehouseId(), d.getToWarehouseId(), d.getTotalLocal(), d.getStatus(),
+                d.getWarehouseId(), d.getToWarehouseId(),
+                canViewCost ? d.getTotalLocal() : null, d.getStatus(),
                 d.isClosed(), d.getLegacyId(), d.getDepartmentId(),
-                "DRAW".equals(d.getDocType()) ? d.getIssueStatus() : null);
+                "DRAW".equals(d.getDocType()) ? d.getIssueStatus() : null,
+                !canViewCost);
     }
 
     private StockDocItemDto toItemDto(StockDocumentItem it) {
@@ -2283,10 +2352,14 @@ public class StockDocService {
                 it.getExecutionSegmentId(),
                 it.getExecutionSegmentSalesAllocationId(),
                 it.getSourceDailyReportItemId(), it.getSourceDocNo(), it.getRemark(),
-                it.getBillDate(), it.getIssuedQty());
+                it.getBillDate(), it.getIssuedQty(), false);
     }
 
     private StockDocDetail toDetail(StockDocument d, List<StockDocItemDto> items) {
+        boolean canViewCost = canViewCost();
+        List<StockDocItemDto> visibleItems = canViewCost
+                ? items
+                : items.stream().map(StockDocService::maskItemCost).toList();
         boolean productionLinked = isProductionLinked(d.getId());
         boolean authorizedBalanceAdjustment = isAuthorizedBalanceAdjustment(d);
         boolean canEdit = !productionLinked && !authorizedBalanceAdjustment && d.getStatus() != null
@@ -2320,13 +2393,31 @@ public class StockDocService {
         return new StockDocDetail(d.getId(), d.getLegacyId(), d.getDocType(), d.getBillNo(), d.getBillDate(),
                 d.getWarehouseId(), d.getToWarehouseId(), d.getSupplierId(), d.getClientId(),
                 d.getWorkerId(), d.getMakerId(), d.getApproverId(), d.getAssTeam(), d.getPlanNo(), d.getRemark(),
-                d.getTotalOriginal(), d.getTotalLocal(), d.getStatus(), d.isClosed(),
+                canViewCost ? d.getTotalOriginal() : null,
+                canViewCost ? d.getTotalLocal() : null, d.getStatus(), d.isClosed(),
                 d.getSourceDocNo(), d.getSourceDailyReportId(),
-                d.getDepartmentId(), d.getIssueStatus(), items,
+                d.getDepartmentId(), d.getIssueStatus(), visibleItems,
                 nameResolver.nameOf(d.getMakerId()), d.getCreatedAt(),
                 productionLinked, canEdit, canDelete, restrictionReason,
                 resolveSourcePlanId(d.getId()),
-                decision, finishedInboundVarianceReason);
+                decision, finishedInboundVarianceReason, !canViewCost);
+    }
+
+    private boolean canViewCost() {
+        return access.hasAuthority(StockCostMasker.PERMISSION);
+    }
+
+    private static StockDocItemDto maskItemCost(StockDocItemDto item) {
+        return new StockDocItemDto(
+                item.getId(), item.getLineNo(), item.getGoodsId(),
+                item.getGoodsCodeSnapshot(), item.getGoodsNameSnapshot(),
+                item.getGoodsSnapshotSource(), item.getGoodsSnapshotLockedAt(), item.getColorId(),
+                item.getUnitId(), item.getUnitRate(), item.getQty(), item.getReportedQty(),
+                item.getBaseQty(), null, null, null, item.getWeight(), item.getGiftQty(),
+                item.getSurplusQty(), item.getCountQty(), item.getPlace(), item.getUpstreamItemId(),
+                item.getExecutionSegmentId(), item.getExecutionSegmentSalesAllocationId(),
+                item.getSourceDailyReportItemId(), item.getSourceDocNo(), item.getRemark(),
+                item.getBillDate(), item.getIssuedQty(), true);
     }
 
     /** 经 plan_draw_links 反查本单据关联的生产计划 id（DRAW/FINISHED_IN 溯源跳转用；多计划取单号最早一张）。 */

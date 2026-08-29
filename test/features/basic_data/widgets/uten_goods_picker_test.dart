@@ -44,8 +44,8 @@ void main() {
     expect(goodsRepository.searchCategoryIdQueries, ['G-']);
     // sellable scope 已过滤原材料根；后端收到的是可见森林根，不是前端取前 20 条后再过滤。
     expect(goodsRepository.searchRootScopes.single, {'finished-root'});
-    expect(find.text('连接器甲（G-001）'), findsOneWidget);
-    expect(find.text('连接器乙（G-002）'), findsOneWidget);
+    expect(find.text('连接器甲(G-001)'), findsOneWidget);
+    expect(find.text('连接器乙(G-002)'), findsOneWidget);
 
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
@@ -55,7 +55,7 @@ void main() {
     expect(tree.selectedIds, {'section-a'});
 
     // 搜索期间改点另一个命中分类，关键词保留，并切换为该分类内搜索。
-    await tester.tap(find.text('分区乙（B）'));
+    await tester.tap(find.text('分区乙(B)'));
     await tester.pumpAndSettle();
     expect(goodsRepository.listCalls.last, ('section-b', 'G-'));
     expect(
@@ -92,7 +92,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('搜索货品失败，请稍后重试'), findsWidgets);
-    expect(find.text('范围外原料（RAW-001）'), findsNothing);
+    expect(find.text('范围外原料(RAW-001)'), findsNothing);
   });
 
   testWidgets('纯分类命中后点分类不把分类词当成货品关键词', (tester) async {
@@ -112,7 +112,7 @@ void main() {
     expect(goodsRepository.searchCategoryIdQueries, ['分区']);
     expect(goodsRepository.listCalls.last, ('section-a', null));
 
-    await tester.tap(find.text('分区乙（B）'));
+    await tester.tap(find.text('分区乙(B)'));
     await tester.pumpAndSettle();
 
     expect(goodsRepository.listCalls.last, ('section-b', null));
@@ -183,13 +183,13 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
-    expect(find.text('连接器甲（G-001）'), findsOneWidget);
+    expect(find.text('连接器甲(G-001)'), findsOneWidget);
 
     goodsRepository.completeDelayedSearch(const [_outOfScopeGoods]);
     await tester.pumpAndSettle();
 
-    expect(find.text('连接器甲（G-001）'), findsOneWidget);
-    expect(find.text('范围外原料（RAW-001）'), findsNothing);
+    expect(find.text('连接器甲(G-001)'), findsOneWidget);
+    expect(find.text('范围外原料(RAW-001)'), findsNothing);
     expect(find.text('搜索货品失败，请稍后重试'), findsNothing);
   });
 }

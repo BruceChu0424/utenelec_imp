@@ -193,7 +193,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                     ),
                     const SizedBox(height: UtenSpacing.s12),
                     Text(
-                      '月度汇总（${_docLabel(_docType!)}，共 ${_monthly.length} 条）',
+                      '月度汇总(${_docLabel(_docType!)}，共 ${_monthly.length} 条)',
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -217,7 +217,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                       ),
                     const SizedBox(height: UtenSpacing.s12),
                     Text(
-                      '待交货订货汇总（共 ${_pending.length} 条）',
+                      '待交货订货汇总(共 ${_pending.length} 条)',
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),

@@ -17,6 +17,7 @@ import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard;
 import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard.SourceTable;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.LinkedOrderReadGate;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
@@ -33,6 +34,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -95,8 +97,12 @@ public class SubcontractReturnService {
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.LinkedOrderReadGate linkedOrderReadGate;
 
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
+
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
+        boolean priceMasked = subcontractPriceMasked();
         var readScope = access.scope();
         Specification<SubcontractReturn> spec = (Root<SubcontractReturn> root,
                                                  jakarta.persistence.criteria.CriteriaQuery<?> q,
@@ -116,9 +122,11 @@ public class SubcontractReturnService {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
         Page<SubcontractReturn> p = returnRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
@@ -313,7 +321,7 @@ public class SubcontractReturnService {
                         .executeUpdate();
                 if (updated != 1) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外成品退货红冲量超过回厂明细已退量（可能已被改动），禁止负数");
+                            "委外成品退货红冲量超过回厂明细已退量(可能已被改动)，禁止负数");
                 }
             }
             if (it.getOrderItemId() != null) {
@@ -557,9 +565,10 @@ public class SubcontractReturnService {
         returnRepo.save(r);
     }
 
-    private ReturnListItem toList(SubcontractReturn r) {
+    private ReturnListItem toList(SubcontractReturn r, boolean priceMasked) {
         return new ReturnListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getSupplierId(),
-                r.getWarehouseId(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.isApPosted(), r.getLegacyId());
+                r.getWarehouseId(), priceMasked ? null : r.getTotalLocal(), r.getStatus(),
+                r.isClosed(), r.isApPosted(), r.getLegacyId(), priceMasked);
     }
 
     private ReturnItemDto toItemDto(SubcontractReturnItem it) {
@@ -573,13 +582,33 @@ public class SubcontractReturnService {
     }
 
     private ReturnDetail toDetail(SubcontractReturn r, List<ReturnItemDto> items) {
+        boolean priceMasked = subcontractPriceMasked();
+        List<ReturnItemDto> safeItems = priceMasked
+                ? items.stream().map(SubcontractReturnService::maskItemPrices).toList()
+                : items;
         return new ReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
+                r.getSupplierId(), r.getWarehouseId(), priceMasked ? null : r.getCurrencyId(),
+                priceMasked ? null : r.getExchangeRate(), priceMasked ? null : r.getTaxRate(),
                 r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
-                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                r.getSettlementStyleLegacy(), r.getSettlementMethodId(), r.getMakerLegacyId(),
+                priceMasked ? null : r.getTotalOriginal(), priceMasked ? null : r.getTotalLocal(),
+                r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,
+                priceMasked ? null : r.getSettlementStyleLegacy(),
+                priceMasked ? null : r.getSettlementMethodId(), r.getMakerLegacyId(),
                 (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
-                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
+                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt(), priceMasked);
+    }
+
+    private boolean subcontractPriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+    }
+
+    private static ReturnItemDto maskItemPrices(ReturnItemDto it) {
+        return new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
+                it.getQty(), null, null, null, it.getReceiptItemId(), it.getOrderItemId(),
+                it.getWeight(), it.getSourceDocNo(), it.getRemark(), it.getGirthQty(),
+                it.getStepLegacyId(), it.getReceiptNo(), it.getOrderNo());
     }
 
 

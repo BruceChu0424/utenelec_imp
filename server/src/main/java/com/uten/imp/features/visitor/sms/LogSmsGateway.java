@@ -18,7 +18,7 @@ public class LogSmsGateway implements SmsGateway {
 
     @Override
     public SmsSendResult sendCode(String phone, String code) {
-        log.info("[SMS-LOG] 已模拟发送访客验证码到 phoneSuffix={}（验证码不写日志）",
+        log.info("[SMS-LOG] 已模拟发送访客验证码到 phoneSuffix={}(验证码不写日志)",
                 ChinaMobileNumber.maskedSuffix(phone));
         return SmsSendResult.ACCEPTED;
     }

@@ -534,7 +534,7 @@ class _FinanceArApOverviewPageState
     final selectedLabel = _categoryType == null
         ? '全部'
         : _categoryId == null
-        ? (_categoryType == 'CLIENT' ? '客户类别（全部）' : '供应商类别（全部）')
+        ? (_categoryType == 'CLIENT' ? '客户类别(全部)' : '供应商类别(全部)')
         : (_categoryType == 'CLIENT'
               ? '客户：${_findIn(_clientTree, _categoryId!)?.name ?? ''}'
               : '供应商：${_findIn(_supplierTree, _categoryId!)?.name ?? ''}');
@@ -818,7 +818,7 @@ class _FinanceArApOverviewPageState
       toolbarActions: [
         UtenPrintPreviewButton(
           title: '应收应付',
-          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
           loader: _printLoader,
           exportEndpoint: '/finance/reports/export',
           exportPermission: Perm.financeReportExport,

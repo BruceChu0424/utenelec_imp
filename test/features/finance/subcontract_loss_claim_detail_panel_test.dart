@@ -31,6 +31,15 @@ void main() {
       expect(find.text('登记履约'), findsNWidgets(2));
       expect(find.text('反转责任决定'), findsOneWidget);
       expect(find.text('责任决定'), findsNothing);
+      expect(find.text('账面损失(本币)'), findsNothing);
+      expect(find.text('索赔额(本币)'), findsNothing);
+      expect(find.text('单位账面价值'), findsNothing);
+      expect(find.textContaining('金额 ¥'), findsNothing);
+
+      await tester.tap(find.text('登记履约').first);
+      await tester.pumpAndSettle();
+      expect(find.text('整笔履约数量'), findsOneWidget);
+      expect(find.text('方案金额(本币)'), findsNothing);
     },
   );
 
@@ -79,6 +88,19 @@ void main() {
 
     expect(find.text('责任决定'), findsOneWidget);
     expect(find.text('反转责任决定'), findsNothing);
+  });
+
+  testWidgets('finance-wide viewer retains monetary facts', (tester) async {
+    await _pump(
+      tester,
+      detail: _awaitingDetail,
+      permissions: const {Perm.subcontractLossClaimView, Perm.financeViewAll},
+    );
+
+    expect(find.text('账面损失(本币)'), findsOneWidget);
+    expect(find.text('索赔额(本币)'), findsOneWidget);
+    expect(find.text('单位账面价值'), findsOneWidget);
+    expect(find.textContaining('金额 ¥'), findsWidgets);
   });
 }
 

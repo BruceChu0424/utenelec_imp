@@ -82,10 +82,10 @@ public class ReservationHoldScheduler {
                 notified++;
             }
             if (notified > 0) {
-                log.info("预留持有逾期扫描完成：{} 笔订单持有截止已过（宽限 {} 天）", notified, grace);
+                log.info("预留持有逾期扫描完成：{} 笔订单持有截止已过(宽限 {} 天)", notified, grace);
             }
         } catch (Exception e) {
-            log.warn("预留持有逾期扫描失败（不影响业务）: {}", e.toString());
+            log.warn("预留持有逾期扫描失败(不影响业务): {}", e.toString());
         }
     }
 }

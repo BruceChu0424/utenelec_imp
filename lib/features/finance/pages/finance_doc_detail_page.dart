@@ -25,6 +25,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/finance_doc_config.dart';
+import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
@@ -80,7 +81,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       _error = null;
     });
     try {
-      await ref.read(financeNameServiceProvider).ensureLoaded();
+      await ref
+          .read(financeNameServiceProvider)
+          .ensureLoaded(refreshAccounts: true);
       // 费用/收入单及销售收款的其它费用项目：预载类别名称。
       if (_cfg.isAllocate || _cfg.type == FinanceDocType.receipt) {
         await ref
@@ -289,6 +292,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     final isReceipt = _cfg.type == FinanceDocType.receipt;
     final isCustomerPrepayment =
         isReceipt && d.receiptKind == 'CUSTOMER_PREPAYMENT';
+    final isV1Receipt = isReceipt && d.settlementAuthorityVersion == 1;
     final isPayment = _cfg.type == FinanceDocType.payment;
     final partyName = _cfg.isClient
         ? names.client(d.clientId)
@@ -296,6 +300,15 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         ? names.supplier(d.supplierId)
         : null;
     final accountName = names.account(d.accountId ?? d.outAccountId);
+    final cnyReceiptAccount =
+        names.accountIsBaseCurrency(d.accountId ?? d.outAccountId) == true;
+    final receiptLocalLabel = cnyReceiptAccount ? '本批人民币实际入账' : '本批本位币折算(人民币)';
+    final accountCurrencyLabel = names.currency(d.accountCurrencyId) != '—'
+        ? names.currency(d.accountCurrencyId)
+        : (names.accountCurrency(d.accountId) ?? '账户币种');
+    final feeCurrencyLabel = names.currency(d.feeAccountCurrencyId) != '—'
+        ? names.currency(d.feeAccountCurrencyId)
+        : accountCurrencyLabel;
     final receiptLocal = d.items.fold<double>(
       0,
       (sum, item) => sum + (item.amountLocal ?? 0),
@@ -308,38 +321,138 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       0,
       (sum, item) => sum + (item.appliedAmountLocal ?? 0),
     );
+    final exchangeDiffLocal = d.items.fold<double>(
+      0,
+      (sum, item) => sum + (item.exchangeDiff ?? 0),
+    );
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
       _KV('制单员', d.makerName),
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if (isReceipt) _KV('收款业务', financeReceiptKindLabel(d.receiptKind)),
+      if (isReceipt) _KV('结算口径', isV1Receipt ? 'V1 到账与 AR 核销分层' : '历史口径未分层'),
       if (isCustomerPrepayment) _KV('绑定销售订单 UUID', d.salesOrderId),
       if (_cfg.hasParty) _KV(_cfg.partyLabel, partyName),
       _KV(_cfg.accountLabel, accountName),
-      if (_cfg.hasCurrency && (!isReceipt || isCustomerPrepayment))
+      if (_cfg.hasCurrency &&
+          (!isReceipt || isCustomerPrepayment) &&
+          !isV1Receipt)
         _KV('币种', names.currency(d.currencyId)),
-      if ((!isReceipt || isCustomerPrepayment) && d.exchangeRate != null)
-        _KV('汇率', d.exchangeRate?.toString()),
-      if (isCustomerPrepayment && d.amountOriginal != null)
-        _KV('本次预收原币金额', d.amountOriginal?.toStringAsFixed(4)),
+      if (isReceipt && !isCustomerPrepayment && !isV1Receipt)
+        _KV('应收/核销原币', names.currency(d.currencyId)),
+      if ((!isReceipt || isCustomerPrepayment) &&
+          !isV1Receipt &&
+          d.exchangeRate != null)
+        _KV(
+          isCustomerPrepayment ? '当前批次实际到账汇率' : '汇率',
+          d.exchangeRate?.toString(),
+        ),
+      if (isCustomerPrepayment && !isV1Receipt && d.amountOriginal != null)
+        _KV(
+          cnyReceiptAccount ? '本批预收原币金额' : '本批账户原币实际入账',
+          d.amountOriginal?.toStringAsFixed(4),
+        ),
+      if (isReceipt &&
+          !isCustomerPrepayment &&
+          !isV1Receipt &&
+          d.amountOriginal != null)
+        _KV('本批到账(应收原币)', d.amountOriginal?.toStringAsFixed(4)),
       if (isPayment && d.amountOriginal != null)
         _KV('付款原币金额', d.amountOriginal?.toStringAsFixed(2)),
-      if (_cfg.hasBankFee && d.bankFee != null)
-        _KV('手续费（人民币）', d.bankFee?.toStringAsFixed(2)),
-      if (_cfg.hasOtherFee && d.otherFee != null)
-        _KV('其它费用（人民币）', d.otherFee?.toStringAsFixed(2)),
+      if (_cfg.hasBankFee && !isV1Receipt && d.bankFee != null)
+        _KV('手续费(人民币)', d.bankFee?.toStringAsFixed(2)),
+      if (_cfg.hasOtherFee && !isV1Receipt && d.otherFee != null)
+        _KV('其它费用(人民币)', d.otherFee?.toStringAsFixed(2)),
       if (_cfg.hasOtherFee && d.otherFeeStyleId != null)
         _KV('其它费用项目', names.styleName(d.otherFeeStyleId, 'EXPENSE')),
       if (_cfg.hasInvoiceNo) _KV('发票号', d.invoiceNo),
-      if (isCustomerPrepayment) ...[
-        _KV('预收到账本币', d.amountLocal?.toStringAsFixed(4)),
+      if (isV1Receipt) ...[
+        _KV(
+          '结算渠道',
+          d.settlementChannel == 'TRADE_AGENT_CONVERSION'
+              ? '外贸代理代收结汇'
+              : '真实账户直接到账',
+        ),
+        if (d.settlementAgentSupplierId != null)
+          _KV(
+            '外贸代理公司',
+            d.settlementAgentNameSnapshot ??
+                names.supplier(d.settlementAgentSupplierId),
+          ),
+        _KV('应收/预收原币', names.currency(d.currencyId)),
+        _KV('当前批次实际汇率', d.exchangeRateText),
+        _KV(
+          '汇率报价方向',
+          d.settlementRateQuoteDirection == 'BASE_PER_SETTLEMENT'
+              ? '本位币/结算原币（1 原币对应本位币金额）'
+              : d.settlementRateQuoteDirection,
+        ),
+        _KV(
+          '汇率来源',
+          d.exchangeRateSource == 'TRADE_AGENT_STATEMENT' ? '外贸代理结算单' : '银行回单',
+        ),
+        _KV('汇率生效时间', utenFmtIsoTime(d.exchangeRateEffectiveAt)),
+        _KV('银行入账时间', utenFmtIsoTime(d.bankBookedAt)),
+        _KV('银行入账流水号', d.bankReference),
+        if (d.agentStatementNo != null) _KV('外贸代理结算单号', d.agentStatementNo),
+        _KV('真实收款账户币种', accountCurrencyLabel),
+        _KV('账户本位币折算汇率', d.accountExchangeRateText),
+        _KV('账户折算汇率来源', switch (d.accountExchangeRateSource) {
+          'BASE_CURRENCY_IDENTITY' => '本位币同值',
+          'SETTLEMENT_RATE' => '本批结算汇率',
+          _ => d.accountExchangeRateSource,
+        }),
+        _KV('本批客户支付/核销原币', financeExactMoneyDisplay(d.amountOriginalText)),
+        _KV(
+          '本批结算毛额(人民币)',
+          financeExactMoneyDisplay(d.settlementGrossLocalText),
+        ),
+        _KV(
+          '真实账户实际入账($accountCurrencyLabel)',
+          financeExactMoneyDisplay(d.accountAmountText),
+        ),
+        _KV('实际入账本位币(人民币)', financeExactMoneyDisplay(d.accountAmountLocalText)),
+        _KV(
+          '银行手续费($feeCurrencyLabel)',
+          financeExactMoneyDisplay(d.bankFeeAccountAmountText),
+        ),
+        _KV(
+          '其它费用($feeCurrencyLabel)',
+          financeExactMoneyDisplay(d.otherFeeAccountAmountText),
+        ),
+        _KV('费用结算方式', switch (d.feeSettlementMode) {
+          'DEDUCTED_FROM_PROCEEDS' => '从本批到账中扣除',
+          'PAID_SEPARATELY' => '由其它真实账户另付',
+          _ => '无费用',
+        }),
+        _KV('费用承担方', switch (d.feeBearer) {
+          'COMPANY' => '本公司承担',
+          'NONE' => '无费用',
+          _ => '历史未分层',
+        }),
+        if (d.feePaymentAccountId != null)
+          _KV('费用付款账户', names.account(d.feePaymentAccountId)),
+        if (d.feePaymentAccountId != null) _KV('费用账户币种', feeCurrencyLabel),
+        if (d.feePaymentAccountId != null)
+          _KV('费用账户本位币汇率', d.feeAccountExchangeRateText),
+        if (d.bankFeeText != null)
+          _KV('银行费用本位币(人民币)', financeExactMoneyDisplay(d.bankFeeText)),
+        if (d.otherFeeText != null)
+          _KV('其它费用本位币(人民币)', financeExactMoneyDisplay(d.otherFeeText)),
+      ] else if (isCustomerPrepayment) ...[
+        _KV('收款账户币种', names.accountCurrency(d.accountId)),
+        _KV(
+          cnyReceiptAccount ? '本批人民币实际入账' : '本批本位币折算(人民币)',
+          d.amountLocal?.toStringAsFixed(4),
+        ),
         const _KV('资金来源', '已审核财务收款单；不是销售订单历史订金'),
       ] else if (isReceipt) ...[
-        _KV('本次收到金额（人民币）', receiptLocal.toStringAsFixed(2)),
-        _KV('冲销费用（人民币）', writeOffLocal.toStringAsFixed(2)),
-        _KV('本次总收到金额（人民币）', (receiptLocal + writeOffLocal).toStringAsFixed(2)),
-        _KV('冲减应收账面金额（人民币）', appliedLocal.toStringAsFixed(2)),
+        _KV(receiptLocalLabel, receiptLocal.toStringAsFixed(2)),
+        _KV('本批费用冲销(人民币)', writeOffLocal.toStringAsFixed(2)),
+        _KV('本批核销折算合计(人民币)', (receiptLocal + writeOffLocal).toStringAsFixed(2)),
+        _KV('冲减应收账面金额(人民币)', appliedLocal.toStringAsFixed(2)),
+        _KV('本批汇兑差额(人民币)', exchangeDiffLocal.toStringAsFixed(2)),
       ] else
         _KV(isPayment ? '付款本币合计' : '合计(本币)', d.amountLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
@@ -392,8 +505,8 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
         child: Text(
           _cfg.type == FinanceDocType.payment
-              ? '无应付核销明细（直接/预付款）'
-              : '无明细（直接${_cfg.shortLabel}，未指定核销/分摊）',
+              ? '无应付核销明细(直接/预付款)'
+              : '无明细(直接${_cfg.shortLabel}，未指定核销/分摊)',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -401,6 +514,19 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       );
     }
     final styleCat = _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
+    final cnyReceiptAccount =
+        names.accountIsBaseCurrency(
+          _detail!.accountId ?? _detail!.outAccountId,
+        ) ==
+        true;
+    final isV1Receipt =
+        _cfg.type == FinanceDocType.receipt &&
+        _detail!.settlementAuthorityVersion == 1;
+    final receiptLocalColumnLabel = isV1Receipt
+        ? '分配折算毛额(人民币)'
+        : cnyReceiptAccount
+        ? '本批人民币实际入账'
+        : '本批本位币折算(人民币)';
     final columns = <MasterColumnDef<FinanceDocItem>>[
       if (_cfg.type == FinanceDocType.receipt) ...[
         MasterColumnDef(
@@ -411,58 +537,74 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         ),
         MasterColumnDef(
           key: 'currency',
-          label: '币别',
-          width: 100,
+          label: '应收/核销原币',
+          width: 150,
           value: (it) => names.currency(it.currencyId),
         ),
         MasterColumnDef(
           key: 'amountOriginal',
-          label: _cfg.isClient ? '本次收款金额' : '本次付款金额',
-          width: 130,
+          label: _cfg.isClient ? '本批 AR 核销(应收原币)' : '本次付款金额',
+          width: _cfg.isClient ? 180 : 130,
           type: 'money',
-          value: (it) => it.amountOriginal?.toStringAsFixed(2),
+          value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
         ),
         MasterColumnDef(
           key: 'exchangeRate',
-          label: '汇率',
-          width: 90,
+          label: '当前批次实际到账汇率',
+          width: 190,
           type: 'number',
-          value: (it) => it.exchangeRate?.toStringAsFixed(4),
+          value: (it) => it.exchangeRateText,
         ),
         MasterColumnDef(
           key: 'amountLocal',
-          label: '换算人民币',
-          width: 110,
+          label: receiptLocalColumnLabel,
+          width: 170,
           type: 'money',
-          value: (it) => it.amountLocal?.toStringAsFixed(2),
+          value: (it) => financeExactMoneyDisplay(it.amountLocalText),
+        ),
+        if (!isV1Receipt) ...[
+          MasterColumnDef(
+            key: 'writeOffAmount',
+            label: '历史冲销(应收原币)',
+            width: 180,
+            type: 'money',
+            value: (it) => financeExactMoneyDisplay(it.writeOffAmountText),
+          ),
+          MasterColumnDef(
+            key: 'writeOffLocal',
+            label: '历史冲销(人民币)',
+            width: 150,
+            type: 'money',
+            value: (it) => financeExactMoneyDisplay(it.writeOffLocalText),
+          ),
+        ],
+        MasterColumnDef(
+          key: 'appliedAmountLocal',
+          label: '冲减应收账面金额(人民币)',
+          width: 200,
+          type: 'money',
+          value: (it) => financeExactMoneyDisplay(it.appliedAmountLocalText),
         ),
         MasterColumnDef(
-          key: 'writeOffAmount',
-          label: '冲销金额（原币）',
-          width: 110,
+          key: 'exchangeDiff',
+          label: '汇兑差额(人民币)',
+          width: 160,
           type: 'money',
-          value: (it) => it.writeOffAmount?.toStringAsFixed(2),
-        ),
-        MasterColumnDef(
-          key: 'writeOffLocal',
-          label: '冲销人民币',
-          width: 110,
-          type: 'money',
-          value: (it) => it.writeOffLocal?.toStringAsFixed(2),
+          value: (it) => financeExactMoneyDisplay(it.exchangeDiffText),
         ),
         MasterColumnDef(
           key: 'balanceBeforeOriginal',
           label: _cfg.isClient ? '收款前未收' : '付款前未付',
           width: 110,
           type: 'money',
-          value: (it) => it.balanceBeforeOriginal?.toStringAsFixed(2),
+          value: (it) => financeExactMoneyDisplay(it.balanceBeforeOriginalText),
         ),
         MasterColumnDef(
           key: 'balanceAfterOriginal',
           label: _cfg.isClient ? '收款后未收' : '付款后未付',
           width: 110,
           type: 'money',
-          value: (it) => it.balanceAfterOriginal?.toStringAsFixed(2),
+          value: (it) => financeExactMoneyDisplay(it.balanceAfterOriginalText),
         ),
         MasterColumnDef(
           key: 'remark',
@@ -479,7 +621,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         ),
         MasterColumnDef(
           key: 'amountOriginal',
-          label: '本次付款（原币）',
+          label: '本次付款(原币)',
           width: 110,
           type: 'money',
           value: (it) => it.amountOriginal?.toStringAsFixed(2),
@@ -585,7 +727,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          emptyMessage: '（无明细）',
+          emptyMessage: '(无明细)',
         ),
       ],
     );

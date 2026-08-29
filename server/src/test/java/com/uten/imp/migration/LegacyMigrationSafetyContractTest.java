@@ -85,8 +85,8 @@ class LegacyMigrationSafetyContractTest {
     void destructiveBootstrapRequiresTheExactCurrentFlywayInventory() throws IOException {
         String shell = compact(Files.readString(LEGACY_ROOT.resolve("migrate.sh")));
         assertThat(shell)
-                .contains("expected_flyway_migration_count=270")
-                .contains("expected_flyway_head=289")
+                .contains("expected_flyway_migration_count=385")
+                .contains("expected_flyway_head=423")
                 .contains("uten-imp-flyway-checksums-v1")
                 .contains("select count(*), count(*) filter (where success), "
                         + "count(distinct version), coalesce(max(version::integer), 0) "
@@ -96,7 +96,7 @@ class LegacyMigrationSafetyContractTest {
                 .contains("cmp -s")
                 .contains("tail -n +2 \"$flyway_checksum_manifest\"")
                 .contains("'uten-imp-flyway-checksums.tsv'")
-                .contains("mapping_version=\"bootstrap-v4-v289\"");
+                .contains("mapping_version=\"bootstrap-v9-v423\"");
     }
 
     @Test

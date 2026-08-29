@@ -65,7 +65,7 @@ V250 把已外部化 action/allocation 与采购申请、委外申请及其订�
 
 `procurement_arrival_exceptions` 只隔离“超财务批准余量”的数量：异常待决期间不写库存/AP；财务决定后的批准量仍由仓库再次审核，未批准量才产生原下单人的 `supplier_return_tasks`。它不等于 IQC、质检合格或生产可用。
 
-V222 `procurement_inspection_items/events` 承担最小 IQC sidecar：收货审核只生成 `PENDING` 冻结行；每次部分 PASS 即时写合格 `DIR_IN` 并刷新命中的活动物料分析，FAIL 不进可用库存；只有同一 receipt 全部明细终态，才执行一次正式来源推进。该最小链不能被表述为完整 QMS、特采、批次责任或供应商退回闭环。
+V222 `procurement_inspection_items/events` 承担最小 IQC sidecar：收货审核只生成 `PENDING` 冻结行；每次部分 PASS 即时写合格 `DIR_IN` 并刷新命中的活动物料分析，FAIL 不进可用库存；每次 PASS 均按累计合格量减既有有效分配的差额推进正式来源；同单其它待检行不阻塞，全部终态只执行一次幂等最终对账。该最小链不能被表述为完整 QMS、特采、批次责任或供应商退回闭环。
 
 V202 对全部 `public` 业务表重新执行审计触发器 sweep，不新增上述业务关系、不补历史审计。V196–V202
 已包含在开发原库 `uten_imp` V244 和公司目标库 V238；V250 仅在一次性隔离克隆 V250/231 验证。真实岗位/实物/IQC
@@ -229,7 +229,7 @@ erDiagram
     PlanOrderItemLink ||--o{ ExecutionSegmentSalesAllocation : "提供容量"
 ```
 
-V248 允许 `ProductionMaterialDemand` 以 `EXACT_SNAPSHOT` 冻结整包/固定批次需求，线性逐件需求继续使用 `LINEAR`。V249 要求每个执行段显式为 `DEMANDED` 或证据完备的 `ZERO_MATERIAL`：后者只允许 `DIRECT_MAKE`、`PLAN_BOM_OVERRIDE` 或 BOM 存在但无 START/ASSEMBLY/FINISH 硬门槛的 `NO_PRODUCTION_HARD_GATE`，没有需求、没有 DRAW、直接 READY；不能因为需求表为空而自动推断。
+V248 允许 `ProductionMaterialDemand` 以 `EXACT_SNAPSHOT` 冻结整包/固定批次需求，线性逐件需求继续使用 `LINEAR`。V249 要求每个执行段显式为 `DEMANDED` 或证据完备的 `ZERO_MATERIAL`：后者只允许 `DIRECT_MAKE`、`PLAN_BOM_OVERRIDE` 或 BOM 存在但无 START/ASSEMBLY/FINISH 硬门槛的 `NO_PRODUCTION_HARD_GATE`，没有需求、没有 DRAW、直接 READY；不能因为需求表为空而自动推断。V423（ADR-057）后新段只产生 `DIRECT_MAKE`（无 BOM、证据=物料分析事实）与 `NO_PRODUCTION_HARD_GATE` 两类零料原因；`PLAN_BOM_OVERRIDE` 仅存于历史段，其 CHECK 约束与证据列保留。
 
 ### 2.8 库存与领退耗
 

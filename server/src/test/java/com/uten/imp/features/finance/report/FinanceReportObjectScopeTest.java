@@ -230,7 +230,6 @@ class FinanceReportObjectScopeTest {
                 () -> service.partyStatementFlow(null, "AR", null, null, 1, 50),
                 () -> service.partyStatementDetail(null, "AR", null, null, 1, 50),
                 () -> service.partyAnnualStatement(null, "AR", 2026, 1, 50),
-                () -> service.accountStatement(null, null, null, null, 1, 50),
                 () -> service.bankReport("detail"),
                 () -> service.export("ar-ap/detail", Map.of("direction", "AR"), null, null),
                 () -> service.export("statements/supplier", Map.of(), null, null),
@@ -244,8 +243,36 @@ class FinanceReportObjectScopeTest {
             assertThat(error.getMessage()).contains("finance:view:all");
         }
 
+        ApiException accountStatementError = assertThrows(
+                ApiException.class,
+                () -> service.accountStatement(null, null, null, null, 1, 50));
+        assertThat(accountStatementError.getCode()).isEqualTo(ErrorCode.FORBIDDEN);
+        assertThat(accountStatementError.getMessage()).contains("账户流水要求同时具备");
+
         assertThat(fixture.queries()).isEmpty();
         verify(fixture.access(), times(companyEntries.size())).scope();
+    }
+
+    @Test
+    void dedicatedAccountAuthoritiesAllowStatementWithoutFinanceViewAllScope() {
+        Fixture fixture = restrictedFixture(Set.of(UUID.randomUUID()));
+        when(fixture.access().hasAuthority("account:view")).thenReturn(true);
+        when(fixture.access().hasAuthority("account:balance:view")).thenReturn(true);
+        when(fixture.access().hasAuthority("account:flow:view")).thenReturn(true);
+
+        fixture.service().accountStatement(
+                UUID.randomUUID(),
+                null,
+                LocalDate.of(2026, 12, 31),
+                null,
+                1,
+                50);
+
+        assertThat(fixture.queries()).hasSize(1);
+        assertThat(fixture.queries().get(0).sql())
+                .contains("FROM finance_reconciliations flow")
+                .doesNotContain(OWNERS_PARAM);
+        verify(fixture.access(), never()).scope();
     }
 
     @Test
@@ -258,7 +285,6 @@ class FinanceReportObjectScopeTest {
                 null, null, null, Map.of(), 1, 50, null, null);
         service.arApSummary("AR", null, null, null, Map.of(), 1, 50, null, null);
         service.partyStatementFlow(partyId, "AR", null, null, 1, 50);
-        service.accountStatement(UUID.randomUUID(), null, null, null, 1, 50);
         service.bankReport("detail");
         service.export("ar-ap/detail", Map.of("direction", "AR"), null, null);
         service.export("statements/supplier", Map.of(), null, null);
@@ -270,7 +296,7 @@ class FinanceReportObjectScopeTest {
         for (CapturedQuery captured : fixture.queries()) {
             verify(captured.query(), never()).setParameter(eq(OWNERS_PARAM), any());
         }
-        verify(fixture.access(), times(10)).scope();
+        verify(fixture.access(), times(9)).scope();
     }
 
     private static Fixture restrictedFixture(Set<UUID> visibleOwners) {

@@ -131,8 +131,8 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
           (viewer) => UtenEmployeePickerItem(
             id: viewer.employeeId,
             name: viewer.name,
+            employeeCode: viewer.code,
             departmentName: _personSubtitle(
-              code: viewer.code,
               departmentName: viewer.departmentName,
             ),
           ),
@@ -182,8 +182,8 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
           (employee) => UtenEmployeePickerItem(
             id: employee.employeeId,
             name: employee.name,
+            employeeCode: employee.code,
             departmentName: _personSubtitle(
-              code: employee.code,
               departmentName: employee.departmentName,
               status: employee.status,
             ),
@@ -453,14 +453,9 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
 bool _sameIds(Set<String> left, Set<String> right) =>
     left.length == right.length && left.every(right.contains);
 
-String? _personSubtitle({
-  String? code,
-  String? departmentName,
-  String? status,
-}) {
+String? _personSubtitle({String? departmentName, String? status}) {
   final parts = <String>[
     if (departmentName?.trim().isNotEmpty == true) departmentName!.trim(),
-    if (code?.trim().isNotEmpty == true) '工号 ${code!.trim()}',
     if (status?.trim().isNotEmpty == true) _statusLabel(status!.trim()),
   ];
   return parts.isEmpty ? null : parts.join(' · ');

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/uten_colors.dart';
+
 /// The shared Uten action button.
 ///
 /// Uses Material interaction primitives so pointer, keyboard, focus, ripple,
@@ -186,6 +188,7 @@ class UtenButton extends StatelessWidget {
         colorScheme.onSurface,
         colorScheme.outline,
       ),
+      UtenButtonType.success => (UtenColors.deepGreen, Colors.white, null),
       UtenButtonType.danger => (colorScheme.error, colorScheme.onError, null),
     };
   }
@@ -214,6 +217,6 @@ class UtenButton extends StatelessWidget {
   }
 }
 
-enum UtenButtonType { primary, secondary, tonal, ghost, danger }
+enum UtenButtonType { primary, secondary, tonal, ghost, success, danger }
 
 enum UtenButtonSize { small, medium, large }

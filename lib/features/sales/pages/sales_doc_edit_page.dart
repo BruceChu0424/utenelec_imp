@@ -23,6 +23,7 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -109,6 +110,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
+
+  // 财务驳回修订上下文：编辑页常驻提示原因，保存后明确进入重新审核流程。
+  bool _financeRejected = false;
+  String? _financeRejectedReason;
+  String? _financeRejectedAt;
+  String? _financeRejectedByName;
 
   final _grid = UtenEditableGridController<SalesGridRow>();
   final _scrollCtl = ScrollController();
@@ -242,9 +249,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _returnReason.text = d.returnReason ?? '';
         _makerName = d.makerName;
         _createdAt = d.createdAt;
+        _financeRejected = d.financeRejected;
+        _financeRejectedReason = d.financeRejectedReason;
+        _financeRejectedAt = d.financeRejectedAt;
+        _financeRejectedByName = d.financeRejectedByName;
         final rows = <SalesGridRow>[];
         for (final it in d.items) {
           final row = SalesGridRow(amountUsesDiscount: _amountUsesDiscount)
+            ..documentItemId = it.id
             ..goods = it.goodsId == null
                 ? null
                 : GoodsOption(
@@ -322,6 +334,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           _empCache[id] = UtenEmployeePickerItem(
             id: p.id,
             name: p.fullName ?? '',
+            employeeCode: p.code,
             departmentName: p.departmentName,
           );
         } catch (_) {
@@ -577,6 +590,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     if (_cfg.sellerRequired && _sellerId == null) fail('seller', '请选择业务员');
     if (_cfg.hasWarehouse && _warehouseId == null) fail('warehouse', '请选择仓库');
     if (_cfg.hasCurrency && _currencyId == null) fail('currency', '请选择币种');
+    if (_cfg.settlementRequired && _settlementMethodId == null) {
+      fail('settlementMethod', '请选择结账方式');
+    }
     if (_cfg.hasDeliverDate && _deliverDate == null) {
       fail('deliverDate', '请选择交货日期');
     }
@@ -605,7 +621,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     if (noGoodsRow > 0) {
       fail('items', '第 $noGoodsRow 行明细：请选择货品');
     } else if (rows.isEmpty) {
-      fail('items', '请至少添加一条明细（选择货品）');
+      fail('items', '请至少添加一条明细(选择货品)');
     } else {
       final priceRequired = widget.docType != SalesDocType.otherShipment;
       var badRow = 0;
@@ -670,6 +686,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       }
 
       final body = <String, dynamic>{
+        if (widget.docType == SalesDocType.order &&
+            (r.documentItemId?.isNotEmpty ?? false))
+          'id': r.documentItemId,
         'goodsId': r.goods!.id,
         'qty': qty,
         if (price case final price?) ...{
@@ -731,7 +750,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         'exchangeRate': double.tryParse(_rate.text) ?? 1,
       if (_cfg.hasCurrency && _taxRate.text.isNotEmpty)
         'taxRate': double.tryParse(_taxRate.text),
-      if (widget.docType != SalesDocType.quote && _settlementMethodId != null)
+      if (_cfg.hasSettlement && _settlementMethodId != null)
         'settlementMethodId': _settlementMethodId,
       if (_cfg.hasSeller && _sellerId != null) 'sellerId': _sellerId,
       if (_cfg.hasSender && _senderId != null) 'senderId': _senderId,
@@ -777,7 +796,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           ? await repo.create(body)
           : await repo.update(widget.id!, body);
       if (!mounted) return;
-      context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      context.appSuccess(
+        _financeRejected
+            ? '已转草稿，请重新审核提交财务'
+            : (widget.id == null ? '已创建' : '已保存'),
+      );
       bumpListRefresh(ref, _cfg.refreshKey);
       context.replace(SalesRoutePath.docDetail(_cfg.type.pathSegment, d.id));
     } on ApiException catch (e) {
@@ -802,7 +825,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
     final resolved = names.currency(_currencyId);
     final currency = resolved == '—' ? '订单币种' : resolved;
-    return '$prefix（$currency） ${value.toStringAsFixed(2)}';
+    return '$prefix($currency) ${value.toStringAsFixed(2)}';
   }
 
   @override
@@ -815,7 +838,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         const <ReferenceMethodOption>[];
     final settlementEntries = <String, String>{
       for (final item in settlementMethods)
-        item.id: '${item.name}（${item.code}）',
+        item.id: '${item.name}(${item.code})',
     };
     return Scaffold(
       appBar: UtenAppBar(
@@ -861,6 +884,104 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                     controller: _scrollCtl,
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     children: [
+                      if (_financeRejected) ...[
+                        Container(
+                          key: const ValueKey(
+                            'sales-order-finance-rejection-edit-notice',
+                          ),
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.errorContainer.withValues(
+                              alpha: 0.58,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: theme.colorScheme.error.withValues(
+                                alpha: 0.36,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.assignment_late_outlined,
+                                color: theme.colorScheme.error,
+                              ),
+                              const SizedBox(width: UtenSpacing.s8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '财务驳回，正在修订',
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onErrorContainer,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    const SizedBox(height: UtenSpacing.s4),
+                                    Text(
+                                      _financeRejectedReason
+                                                  ?.trim()
+                                                  .isNotEmpty ==
+                                              true
+                                          ? _financeRejectedReason!.trim()
+                                          : '未注明驳回原因',
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onErrorContainer,
+                                            height: 1.5,
+                                          ),
+                                    ),
+                                    if ((_financeRejectedByName?.isNotEmpty ??
+                                            false) ||
+                                        (_financeRejectedAt?.isNotEmpty ??
+                                            false)) ...[
+                                      const SizedBox(height: UtenSpacing.s4),
+                                      Text(
+                                        [
+                                          if (_financeRejectedByName
+                                                  ?.isNotEmpty ??
+                                              false)
+                                            _financeRejectedByName!,
+                                          if (_financeRejectedAt?.isNotEmpty ??
+                                              false)
+                                            utenFmtIsoTime(_financeRejectedAt),
+                                        ].join(' · '),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onErrorContainer,
+                                            ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: UtenSpacing.s4),
+                                    Text(
+                                      '保存后订单转为草稿；请重新审核，系统再提交财务确认。',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onErrorContainer,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
                       Card(
                         child: Padding(
                           padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -871,10 +992,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                 children: [
                                   // 单据号：系统自动生成，只读显示。
                                   TextFormField(
+                                    errorBuilder: utenTextFieldErrorBuilder,
                                     readOnly: true,
                                     controller: _billNo,
                                     decoration: InputDecoration(
-                                      labelText: '单据号（系统自动生成）',
+                                      labelText: '单据号(系统自动生成)',
                                       hintText: _billNo.text.isEmpty
                                           ? '保存后自动生成'
                                           : null,
@@ -907,7 +1029,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     initialId: _clientId,
                                     initialName: names.client(_clientId),
                                     required: _cfg.clientRequired,
-                                    errorText: _errors.contains('client')
+                                    errorMessage: _errors.contains('client')
                                         ? '请选择客户'
                                         : null,
                                     // 选客户后联动带出主档收货地址/联系电话。
@@ -925,7 +1047,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                         _clearError('warehouse');
                                       },
                                       required: true,
-                                      errorText: _errors.contains('warehouse')
+                                      errorMessage:
+                                          _errors.contains('warehouse')
                                           ? '请选择仓库'
                                           : null,
                                     ),
@@ -939,7 +1062,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                         _clearError('currency');
                                       },
                                       required: true,
-                                      errorText: _errors.contains('currency')
+                                      errorMessage: _errors.contains('currency')
                                           ? '请选择币种'
                                           : null,
                                       // 列表没有的币种可内联新增（currency:edit），
@@ -983,14 +1106,23 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       ),
                                     ),
                                   ],
-                                  if (widget.docType != SalesDocType.quote)
+                                  if (_cfg.hasSettlement)
                                     _dropdown(
-                                      '结帐方式',
+                                      '结账方式',
                                       _settlementMethodId,
                                       settlementEntries,
-                                      (value) => setState(
-                                        () => _settlementMethodId = value,
-                                      ),
+                                      (value) {
+                                        setState(
+                                          () => _settlementMethodId = value,
+                                        );
+                                        _clearError('settlementMethod');
+                                      },
+                                      required: _cfg.settlementRequired,
+                                      allowClear: !_cfg.settlementRequired,
+                                      errorMessage:
+                                          _errors.contains('settlementMethod')
+                                          ? '请选择结账方式'
+                                          : null,
                                       // 列表没有的结账方式可内联新增（payment_style:edit）。
                                       addNewLabel: '添加结账方式',
                                       onAddNew: _canAddSettlement
@@ -1006,6 +1138,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                               setState(
                                                 () => _settlementMethodId = id,
                                               );
+                                              _clearError('settlementMethod');
                                             }
                                           : null,
                                     ),
@@ -1039,7 +1172,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       label: '交货日期',
                                       required: true,
                                       value: _deliverDate,
-                                      errorText: _errors.contains('deliverDate')
+                                      errorMessage:
+                                          _errors.contains('deliverDate')
                                           ? '请选择交货日期'
                                           : null,
                                       onChanged: (d) {
@@ -1093,7 +1227,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     TextField(
                                       controller: _logisticsNo,
                                       decoration: const InputDecoration(
-                                        labelText: '物流单号（发货后可填）',
+                                        labelText: '物流单号(发货后可填)',
                                       ),
                                     ),
                                     // 件数：按明细数量自动汇总，只读（保存时同样按明细重算）。
@@ -1101,7 +1235,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       controller: _parcelCount,
                                       readOnly: true,
                                       decoration: const InputDecoration(
-                                        labelText: '件数（系统自动生成）',
+                                        labelText: '件数(系统自动生成)',
                                         hintText: '按明细数量自动汇总',
                                         filled: true,
                                         suffixIcon: Icon(
@@ -1309,7 +1443,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             label: '发运策略',
             value: value,
             required: true,
-            errorText: _errors.contains('shipmentPolicy') ? '请选择发运策略' : null,
+            errorMessage: _errors.contains('shipmentPolicy') ? '请选择发运策略' : null,
             items: [
               for (final policy in SalesShipmentPolicy.selectable)
                 UtenDropdownItem(
@@ -1372,6 +1506,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             UtenEmployeePickerItem(
               id: e.id,
               name: e.fullName,
+              employeeCode: e.code,
               departmentName: e.departmentName,
             ),
         ];
@@ -1396,7 +1531,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     Map<String, String> entries,
     ValueChanged<String?> onChanged, {
     bool required = false,
-    String? errorText,
+    bool allowClear = true,
+    String? errorMessage,
     Future<void> Function()? onAddNew,
     String? addNewLabel,
   }) {
@@ -1404,7 +1540,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       label: label,
       value: value,
       required: required,
-      errorText: errorText,
+      allowClear: allowClear,
+      errorMessage: errorMessage,
       searchable: true, // 客户/仓库/币种等主档下拉一律支持搜索
       items: [
         for (final e in entries.entries)

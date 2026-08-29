@@ -47,7 +47,8 @@ void main() {
     'production->basic_data',
     'production->department',
     'production->employee',
-    'production->rd_task',
+    // 2026-08-29：待排产「一键转发研发」随 BOM 缺失口径下线（ADR-057），
+    // production 不再依赖 rd_task。
     'production->report',
     'production->warehouse',
     'profile->department',
@@ -78,7 +79,6 @@ void main() {
     'subcontract->operations_workbench',
     'subcontract->report',
     'subcontract->warehouse',
-    'visitor_approval->notice',
     'visitor_approval->visitor',
     'visitor->department',
     'visitor->settings',

@@ -285,6 +285,10 @@ void main() {
       expect(requiredAnyPermFor(RouteName.basicinfoAccount), const [
         Perm.accountView,
       ]);
+      expect(
+        requiredAnyPermFor('/basicinfo/account/account-1?edit=true'),
+        const [Perm.accountView],
+      );
       expect(requiredAnyPermFor(RouteName.basicinfoPaymentStyle), const [
         Perm.paymentStyleView,
       ]);

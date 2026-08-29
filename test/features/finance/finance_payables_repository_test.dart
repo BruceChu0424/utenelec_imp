@@ -72,6 +72,7 @@ void main() {
     expect(item.sourceTypeLabel, '委外进仓');
     expect(item.supplierName, '精密加工厂');
     expect(item.currencyCode, 'CNY');
+    expect(item.currencyName, '人民币');
   });
 }
 
@@ -106,7 +107,8 @@ const _response = <String, dynamic>{
       'billDate': '2026-08-20',
       'dueDate': '2026-09-30',
       'settlementMethod': <String, dynamic>{'name': '月结'},
-      'currency': <String, dynamic>{'code': 'CNY'},
+      'currency': <String, dynamic>{'code': 'CNY', 'name': '人民币'},
+      'currencyName': '人民币',
       'grossOriginal': '9007199254740993.12',
       'grossLocal': '9007199254740993.12',
       'paidOriginal': '4000.10',

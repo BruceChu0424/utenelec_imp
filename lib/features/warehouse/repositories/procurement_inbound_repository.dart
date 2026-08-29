@@ -27,6 +27,17 @@ abstract interface class ProcurementInboundRepository {
   /// 一键入库：财务已定案(RECEIPT_ADJUSTED)的到货异常，按财务接受量入库+立应付。
   Future<ProcurementArrivalException> stockInAccepted(String id);
 
+  /// 到货登记一步完成（登记 + 送检审核）：仓库只登记数量/库位，币族由服务端按
+  /// 来源订货单权威回填；正常保存即转品质待检，超量返回 excessQuarantined（已隔离待财务）。
+  Future<WarehouseArrivalRegistration> registerArrival({
+    required ProcurementInboundOrderType orderType,
+    required Map<String, dynamic> body,
+  });
+
+  /// 完成中断的到货登记（断点恢复）：草稿收货单一键「继续送检」——服务端先按来源
+  /// 订货单权威修复表头币族（老草稿），再走同一审核链路；仓库不进采购/委外单据页。
+  Future<WarehouseArrivalRegistration> completeArrival(String receiptId);
+
   /// 货品资料「学习」回写：登记到货保存成功后回写库位号/系列/编码，返回 (updated, skipped)。
   Future<({int updated, int skipped})> saveGoodsProfileHints(
     List<Map<String, dynamic>> hints,
@@ -125,6 +136,26 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
       ApiEndpoints.warehouseArrivalExceptionStockIn(id),
     );
     return ProcurementArrivalException.fromJson(json);
+  }
+
+  @override
+  Future<WarehouseArrivalRegistration> registerArrival({
+    required ProcurementInboundOrderType orderType,
+    required Map<String, dynamic> body,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.warehouseInboundArrivals,
+      body: {'orderType': orderType.name.toUpperCase(), ...body},
+    );
+    return WarehouseArrivalRegistration.fromJson(json);
+  }
+
+  @override
+  Future<WarehouseArrivalRegistration> completeArrival(String receiptId) async {
+    final json = await api.post(
+      ApiEndpoints.warehouseInboundArrivalComplete(receiptId),
+    );
+    return WarehouseArrivalRegistration.fromJson(json);
   }
 
   @override

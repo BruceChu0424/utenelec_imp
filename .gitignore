@@ -107,6 +107,8 @@ server/legacy_migration/users_names.txt
 /服务器部署交接.md
 /docs/服务器部署交接.md
 /server-handoff.*.private.md
+# 现场配合指南包含内网地址、SSH 公钥与主机指纹，只保留在受控本机。
+/deploy/现场配合操作指南.zh-CN.md
 # One-time evidence-bound scripts for the audited physical test host. They can
 # contain immutable host identity and receipt hashes; never publish them.
 /deploy/setup/phase1-existing-test-host-*

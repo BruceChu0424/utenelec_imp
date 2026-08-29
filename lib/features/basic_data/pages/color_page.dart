@@ -553,7 +553,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
                         child: UtenSearchBar(
-                          hint: '搜索颜色（名称/编号）', // TODO(l10n): 补 arb
+                          hint: '搜索颜色(名称/编号)', // TODO(l10n): 补 arb
                           initialValue: _keyword,
                           onChanged: _onKeywordChanged,
                         ),

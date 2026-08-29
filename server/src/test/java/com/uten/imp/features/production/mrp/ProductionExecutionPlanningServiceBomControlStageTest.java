@@ -151,30 +151,6 @@ class ProductionExecutionPlanningServiceBomControlStageTest {
                 .perProductQty()).isEqualByComparingTo("0.500000");
     }
 
-    @Test
-    void zeroMaterialAuthorizationUsesOnlyConfirmedDirectOrExplicitOverrideFacts() {
-        UUID analysisId = UUID.randomUUID();
-        UUID actorId = UUID.randomUUID();
-
-        assertThat(ProductionExecutionPlanningService
-                .authorizedZeroMaterialReason(
-                        analysisId, "DIRECT_MAKE", null, null))
-                .isEqualTo(ProductionExecutionSegment
-                        .ZERO_MATERIAL_REASON_DIRECT_MAKE);
-        assertThat(ProductionExecutionPlanningService
-                .authorizedZeroMaterialReason(
-                        analysisId, "BOM_REQUIRED", "批准缺 BOM 直制", actorId))
-                .isEqualTo(ProductionExecutionSegment
-                        .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE);
-        assertThatThrownBy(() -> ProductionExecutionPlanningService
-                .authorizedZeroMaterialReason(
-                        analysisId, "BOM_REQUIRED", " ", actorId))
-                .isInstanceOf(RuntimeException.class);
-        assertThatThrownBy(() -> ProductionExecutionPlanningService
-                .authorizedZeroMaterialReason(
-                        null, "DIRECT_MAKE", null, null))
-                .isInstanceOf(RuntimeException.class);
-    }
 
     @Test
     void repeatedMaterialDimensionKeepsEveryNonLinearRule() {

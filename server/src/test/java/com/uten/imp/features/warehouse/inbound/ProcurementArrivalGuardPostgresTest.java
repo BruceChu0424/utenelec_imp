@@ -1,10 +1,18 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
+import com.uten.imp.features.purchase.receipt.ReceiptPriceMasker;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
@@ -16,10 +24,12 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 /** Real PostgreSQL proof for V201's receipt-bound finance allowance. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -47,6 +57,28 @@ class ProcurementArrivalGuardPostgresTest {
     @AfterAll
     static void stopPostgres() {
         POSTGRES.stop();
+    }
+
+    @Test
+    void emptyFiltersExecuteExpectationQueriesOnPostgres() {
+        JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        ProcurementArrivalControlService service =
+                new ProcurementArrivalControlService(
+                        jdbc,
+                        new ObjectMapper(),
+                        mock(BusinessEventPublisher.class),
+                        mock(SecurityContextCurrentUser.class),
+                        mock(TxSessionVars.class),
+                        mock(FinanceReviewerEligibilityPort.class),
+                        mock(ReceiptPriceMasker.class));
+
+        var page = assertDoesNotThrow(() -> service.expectations(1, 20, null, null));
+
+        assertTrue(page.getItems().isEmpty());
+        assertEquals(0L, page.getTotal());
+        assertEquals(0L, assertDoesNotThrow(service::countExpectations));
+        assertTrue(assertDoesNotThrow(service::countExpectationsByType).isEmpty());
     }
 
     @Test

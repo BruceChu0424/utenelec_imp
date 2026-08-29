@@ -48,6 +48,6 @@ final class OutboxWarnThrottler {
         suppressed = 0;
         lastMessage = message;
         lastLoggedAtMs = now;
-        return carried > 0 ? message + "（同期相同告警已静默 " + carried + " 条）" : message;
+        return carried > 0 ? message + "(同期相同告警已静默 " + carried + " 条)" : message;
     }
 }

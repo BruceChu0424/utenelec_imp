@@ -14,8 +14,9 @@ import 'sales_doc_link_picker.dart';
 /// 销售明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier）。
 ///
-/// 颜色/单位 + 上游明细 id（orderItemId/outItemId）为透传字段（详情回填或上游引入时预填，
-/// 保存时随行写回，UI 单元格只读/下拉同步到 row 字段）。报表补列（ machiningPrice 等）
+/// [documentItemId] 是当前单据自身明细 UUID；orderItemId/outItemId 只表示上游来源。
+/// 颜色/单位 + 上游明细 id 为透传字段（详情回填或上游引入时预填，保存时随行写回，
+/// UI 单元格只读/下拉同步到 row 字段）。报表补列（ machiningPrice 等）
 /// 按 docType 在列定义中显隐对应列。
 class SalesGridRow extends EditableGridRow with AmountRowMixin {
   /// 订单：金额 = 数量 × 单价 × 折扣（折扣由货品主档带入、锁定）；其它单据类型仍 = 数量 × 单价。
@@ -40,6 +41,11 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 
   final TextEditingController qty = TextEditingController();
   final TextEditingController price = TextEditingController();
+
+  /// 当前单据自身明细 UUID。仅受控更新既有销售订货行时回传为 JSON `id`。
+  ///
+  /// 不可与 [orderItemId] 混用：后者是出货/退货等下游单据对来源订货行的引用。
+  String? documentItemId;
 
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 直接映射为
   /// orderItemId/outItemId —— 销售双挂所以两 id 各自独立透传，不像采购三选一）。
@@ -118,6 +124,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 
   /// 深拷贝（明细复制/粘贴用）：新建行 + 拷贝各控制器文本 + 透传字段 + 自动重算金额。
   SalesGridRow clone() {
+    // 复制产生的是新明细，绝不能复制当前单据行 UUID；否则受控修订会覆盖原行。
     final c = SalesGridRow(amountUsesDiscount: amountUsesDiscount)
       ..goods = goods
       ..orderItemId = orderItemId
@@ -174,6 +181,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       label: '货品',
       width: 220,
       required: true,
+      textOf: (r) => r.goods?.name ?? '',
+      listenableOf: (r) => r.goodsNotifier,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,
@@ -207,6 +216,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       key: 'color',
       label: '颜色',
       width: 130,
+      textOf: (r) => colorEntries[r.colorId ?? ''] ?? '',
+      listenableOf: (r) => r.colorIdNotifier,
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
@@ -220,6 +231,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         key: 'stockPlace',
         label: '库位号',
         width: 90,
+        textOf: (r) => r.stockPlaceNotifier.value ?? '',
+        listenableOf: (r) => r.stockPlaceNotifier,
         cellBuilder: (context, row) => ValueListenableBuilder<String?>(
           valueListenable: row.stockPlaceNotifier,
           builder: (_, v, _) => Text(
@@ -237,6 +250,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       key: 'unit',
       label: '单位',
       width: 110,
+      textOf: (r) => unitEntries[r.unitId ?? ''] ?? '',
+      listenableOf: (r) => r.unitIdNotifier,
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
     ),
@@ -296,7 +311,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       key: 'amount',
       // 销售订单金额是所选订单币种的原币金额；销售端不展示人民币换算，
       // 也不要用“¥”让外币订单看起来像人民币。
-      label: docType == SalesDocType.order ? '金额（订单币种）' : '金额',
+      label: docType == SalesDocType.order ? '金额(订单币种)' : '金额',
       width: 110,
       numeric: true,
       cellBuilder: (context, row) => ValueListenableBuilder<double>(
@@ -348,11 +363,13 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         ),
       ),
     ],
-    // 行备注：5 类单据通用，固定放网格末列。
+    // 行备注：5 类单据通用，固定放网格末列。随输入自动加宽（封顶 480 后格内滚动）。
     EditableGridColumn<SalesGridRow>(
       key: 'remark',
       label: '备注',
       width: 160,
+      textOf: (r) => r.remark.text,
+      listenableOf: (r) => r.remark,
       cellBuilder: (context, row) => TextField(
         controller: row.remark,
         decoration: const InputDecoration(isDense: true, hintText: '备注'),

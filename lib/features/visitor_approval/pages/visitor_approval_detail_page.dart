@@ -26,7 +26,6 @@ import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
-import '../providers/visitor_notice_bridge.dart';
 import '../providers/visitor_pending_count_provider.dart';
 
 class VisitorApprovalDetailPage extends ConsumerWidget {
@@ -41,7 +40,7 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
     String? rejectReason,
   }) async {
     try {
-      final app = await ref
+      await ref
           .read(visitorStaffRepositoryProvider)
           .action(
             applicationId,
@@ -58,14 +57,12 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
       // 审批动作改变待办数，立即刷新徽章
       ref.read(visitorPendingCountProvider.notifier).refresh();
       ref.read(visitorHostPendingCountProvider.notifier).refresh();
-      // 审批事件 → 工作通知：通过/驳回/转接待自动生成 Notice 并弹到达提醒
-      await notifyVisitorApprovalOutcome(
-        context,
-        ref,
-        app: app,
-        action: action,
-        rejectReason: rejectReason,
-      );
+      context.appSuccess(switch (action) {
+        'approve' => '访客申请已批准',
+        'reject' => '访客申请已驳回',
+        'forward' => '已转接待人确认',
+        _ => '审批操作已完成',
+      });
     } on ApiException catch (e) {
       if (context.mounted) {
         context.appApiError(

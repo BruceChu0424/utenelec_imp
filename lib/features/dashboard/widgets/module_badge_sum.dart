@@ -12,8 +12,10 @@ import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../../subcontract/providers/subcontract_task_count_provider.dart';
 import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
+import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
 import '../../warehouse/providers/production_draw_count_provider.dart';
-import '../../warehouse/widgets/procurement_inspection_pending_badge.dart';
+import '../../../shared/providers/production_fqc_pending_count_provider.dart';
+import 'quality_inspection_pending_badge.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
 
 /// 工作台卡片通过枚举声明数据源，由共享组件统一取数和渲染。
@@ -28,7 +30,7 @@ enum WorkbenchBadgeKind {
   purchase, // 采购管理（待分解 + 待采购完成）
   finance, // 钱流管理（订货审批 + 销售订单财务确认 + 超量到货审批）
   subcontract, // 委外管理（待退回供应商）
-  sales, // 销售管理（订单完工提醒）
+  sales, // 销售管理（财务驳回待修正 + 订单完工提醒）
   qualityInspection, // 品质任务中心（待检处置：待检收货单张数）
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
@@ -49,10 +51,7 @@ class WorkbenchCardBadge extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (kind == WorkbenchBadgeKind.qualityInspection) {
-      return ProcurementInspectionPendingBadge(
-        size: size,
-        showLabel: showLabel,
-      );
+      return QualityInspectionPendingBadge(size: size, showLabel: showLabel);
     }
     return UtenNotificationBadge(
       count: _resolveCount(kind, ref),
@@ -80,10 +79,7 @@ class WorkbenchGroupBadge extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (kinds.length == 1 &&
         kinds.single == WorkbenchBadgeKind.qualityInspection) {
-      return ProcurementInspectionPendingBadge(
-        size: size,
-        showLabel: showLabel,
-      );
+      return QualityInspectionPendingBadge(size: size, showLabel: showLabel);
     }
     var total = 0;
     for (final kind in kinds) {
@@ -118,6 +114,7 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
         warehouseInboundExpectationCountProvider,
         warehouseArrivalExceptionCountProvider,
         warehouseProductionDrawPendingCountProvider,
+        warehouseProductionFinishedInboundPendingCountProvider,
       ]);
     case WorkbenchBadgeKind.finance:
       return _sum(ref, [
@@ -129,10 +126,12 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
       // 委外对齐采购：卡片徽标 = 委外任务台待办数（非到货退回数）。
       return ref.watch(subcontractTaskCountProvider);
     case WorkbenchBadgeKind.sales:
-      return ref.watch(salesCompletionCountProvider).valueOrNull ?? 0;
+      return ref.watch(salesAttentionCountProvider).valueOrNull ?? 0;
     case WorkbenchBadgeKind.qualityInspection:
-      return ref.watch(procurementInspectionPendingCountProvider).valueOrNull ??
-          0;
+      return _sum(ref, [
+        procurementInspectionPendingCountProvider,
+        productionFqcPendingCountProvider,
+      ]);
     case WorkbenchBadgeKind.none:
       return 0;
   }

@@ -74,7 +74,7 @@ public class AuditQueryService {
     private static final DateTimeFormatter EXPORT_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final List<ExportColumn> EXPORT_COLUMNS = List.of(
-            new ExportColumn("createdAt", "发生时间（北京时间）", ExportColumn.TEXT),
+            new ExportColumn("createdAt", "发生时间(北京时间)", ExportColumn.TEXT),
             new ExportColumn("actor", "操作人", ExportColumn.TEXT),
             new ExportColumn("actorName", "操作人姓名", ExportColumn.TEXT),
             new ExportColumn("actorDepartment", "操作人部门", ExportColumn.TEXT),
@@ -102,7 +102,7 @@ public class AuditQueryService {
             new ExportColumn("deviceBrowser", "浏览器", ExportColumn.TEXT),
             new ExportColumn("deviceLocale", "语言区域", ExportColumn.TEXT),
             new ExportColumn("deviceTimeZone", "本机时区", ExportColumn.TEXT),
-            new ExportColumn("deviceTimeZoneOffsetMinutes", "时区偏移（分钟）", ExportColumn.TEXT),
+            new ExportColumn("deviceTimeZoneOffsetMinutes", "时区偏移(分钟)", ExportColumn.TEXT),
             new ExportColumn("deviceIsPhysical", "物理设备状态", ExportColumn.TEXT),
             new ExportColumn("deviceInstallationId", "本机安装标识", ExportColumn.TEXT),
             new ExportColumn("clientEventId", "本地操作 ID", ExportColumn.TEXT),
@@ -113,7 +113,7 @@ public class AuditQueryService {
             new ExportColumn("httpMethod", "HTTP 方法", ExportColumn.TEXT),
             new ExportColumn("httpPath", "HTTP 路径", ExportColumn.TEXT),
             new ExportColumn("statusCode", "HTTP 状态码", ExportColumn.TEXT),
-            new ExportColumn("durationMs", "耗时（毫秒）", ExportColumn.TEXT),
+            new ExportColumn("durationMs", "耗时(毫秒)", ExportColumn.TEXT),
             new ExportColumn("requestId", "Request ID", ExportColumn.TEXT),
             new ExportColumn("auditId", "审计日志 ID", ExportColumn.TEXT));
 
@@ -223,7 +223,7 @@ public class AuditQueryService {
                 ? ""
                 : row.getCreatedAt()
                         .atZoneSameInstant(BusinessTime.ZONE)
-                        .format(EXPORT_TIME) + "（北京）");
+                        .format(EXPORT_TIME) + "(北京)");
         exported.put("actor", row.getActorDisplay());
         exported.put("actorName", firstNonBlank(row.getActorName(), ""));
         exported.put("actorDepartment", firstNonBlank(row.getActorDepartment(), ""));

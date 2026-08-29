@@ -189,7 +189,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
               : lines == null
               ? const Center(child: CircularProgressIndicator())
               : lines.isEmpty
-              ? const Center(child: Text('暂无可发货的订单行（reserved > 0）'))
+              ? const Center(child: Text('暂无可发货的订单行(reserved > 0)'))
               : ListView.separated(
                   padding: const EdgeInsets.all(UtenSpacing.s8),
                   itemCount: lines.length,
@@ -241,7 +241,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
               UtenButton(
                 icon: Icons.check_circle_outline,
                 onPressed: _selectedCount == 0 || _busy ? null : _confirm,
-                child: Text(_busy ? '开单中…' : '生成出货单（$_selectedCount 行）'),
+                child: Text(_busy ? '开单中…' : '生成出货单($_selectedCount 行)'),
               ),
             ],
           ),

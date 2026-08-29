@@ -1,7 +1,7 @@
 // 生产日报编辑页（新建/编辑，全页路由）：与生产计划/销售编辑页同构（统一模板）。
 //
 // 日报特点：
-//   - 明细只记录合格完工数量；客户端单价/金额不是计件工资权威，不在本页录入。
+//   - 明细只记录完工申报数量；品质 PASS 与仓库实收分别决定可入库量和 iqty。
 //   - 单据号系统自动生成（后端 DocNumberService，PRODUCTION_DAILY_REPORT），本页只读显示。
 //   - 仓库 = 下拉（UtenDropdownField，warehouseId）；车间 = 部门选择器（department_id + 部门名冗余 workshop_name）；
 //     生产工 = 员工选择器（workerId）。
@@ -12,12 +12,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -28,7 +30,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
@@ -75,6 +76,9 @@ class _ProductionDailyReportEditPageState
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
+  int _rowVersion = 0;
+  final String _createIdempotencyKey =
+      'daily-report-create-${const Uuid().v4()}';
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
@@ -134,6 +138,7 @@ class _ProductionDailyReportEditPageState
         _workerId = d.workerId;
         _makerName = d.makerName;
         _createdAt = d.createdAt;
+        _rowVersion = d.rowVersion;
         final rows = <DailyGridRow>[];
         for (final it in d.items) {
           final row = DailyGridRow()
@@ -143,6 +148,10 @@ class _ProductionDailyReportEditPageState
             ..executionSegmentId = it.executionSegmentId
             ..executionSegmentSalesAllocationId =
                 it.executionSegmentSalesAllocationId
+            ..fqcRecoveryAuthorizationId = it.fqcRecoveryAuthorizationId
+            ..fqcRecoveryDispositionCode = it.fqcRecoveryAuthorizationId == null
+                ? null
+                : 'RECOVERY'
             ..salesOrderItemId = it.salesOrderItemId
             ..salesOrderNo = it.salesOrderNo
             ..clientName = it.clientName
@@ -196,6 +205,7 @@ class _ProductionDailyReportEditPageState
           _empCache[id] = UtenEmployeePickerItem(
             id: p.id,
             name: p.fullName ?? '',
+            employeeCode: p.code,
             departmentName: p.departmentName,
           );
         } catch (_) {
@@ -206,16 +216,7 @@ class _ProductionDailyReportEditPageState
   }
 
   Future<void> _pickGoods(DailyGridRow row) async {
-    if (!row.legacyManual) {
-      await _pickSource(row);
-      return;
-    }
-    final g = await showUtenGoodsPicker(context, ref);
-    if (g == null) return;
-    row
-      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = g.colorId
-      ..unitId = g.unitId;
+    await _pickSource(row);
   }
 
   Future<void> _pickSource(
@@ -229,6 +230,13 @@ class _ProductionDailyReportEditPageState
       executionSegmentId: executionSegmentId,
     );
     if (source == null || !mounted) return;
+    if (!source.canReport) {
+      context.appWarning(
+        source.blockedReason ?? '当前来源没有可报数量，请刷新后重试',
+        force: true,
+      );
+      return;
+    }
     setState(() {
       row
         ..planItemId = source.planItemId
@@ -237,6 +245,10 @@ class _ProductionDailyReportEditPageState
             source.executionSegmentSalesAllocationId
         ..executionSegmentCode = source.executionSegmentCode
         ..executionSegmentVersion = source.executionSegmentVersion
+        ..fqcRecoveryAuthorizationId = source.fqcRecoveryAuthorizationId
+        ..fqcRecoveryDispositionCode = source.fqcRecoveryDispositionCode
+        ..fqcSourceReportNo = source.fqcSourceReportNo
+        ..isFinal = false
         ..salesOrderItemId = source.orderItemId
         ..salesOrderNo = source.orderNo
         ..clientName = source.clientName
@@ -268,6 +280,9 @@ class _ProductionDailyReportEditPageState
         ..executionSegmentSalesAllocationId = null
         ..executionSegmentCode = null
         ..executionSegmentVersion = null
+        ..fqcRecoveryAuthorizationId = null
+        ..fqcRecoveryDispositionCode = null
+        ..fqcSourceReportNo = null
         ..salesOrderItemId = null
         ..salesOrderNo = null
         ..clientName = null
@@ -303,11 +318,11 @@ class _ProductionDailyReportEditPageState
       if (r.goods == null) continue;
       final qty = double.tryParse(r.qty.text);
       if (qty == null || qty <= 0) {
-        context.appError('第 ${i + 1} 行合格完工量必须大于 0');
+        context.appError('第 ${i + 1} 行完工申报量必须大于 0');
         return;
       }
-      if (!r.legacyManual && !r.hasLinkedSource) {
-        context.appError('第 ${i + 1} 行必须先选择来源子任务');
+      if (!r.hasLinkedSource || r.executionSegmentId == null) {
+        context.appError('第 ${i + 1} 行必须先选择已开工的精确执行子任务');
         return;
       }
       if (r.hasLinkedSource &&
@@ -317,8 +332,12 @@ class _ProductionDailyReportEditPageState
       }
       if (r.maxReportQty != null && qty > r.maxReportQty! + 0.000001) {
         context.appError(
-          '第 ${i + 1} 行合格完工量超过当前可报数量 ${_quantityText(r.maxReportQty!)}',
+          '第 ${i + 1} 行完工申报量超过当前可报数量 ${_quantityText(r.maxReportQty!)}',
         );
+        return;
+      }
+      if (r.fqcRecoveryAuthorizationId != null && r.isFinal) {
+        context.appError('第 ${i + 1} 行是 FQC 返工/补产恢复报工，不能勾选完结');
         return;
       }
     }
@@ -326,6 +345,7 @@ class _ProductionDailyReportEditPageState
     final sourceCaps = <String, double>{};
     for (final r in rows.where((row) => row.hasLinkedSource)) {
       final key =
+          r.fqcRecoveryAuthorizationId ??
           r.executionSegmentSalesAllocationId ??
           '${r.executionSegmentId ?? r.planItemId}:'
               '${r.salesOrderItemId ?? 'internal'}';
@@ -336,7 +356,7 @@ class _ProductionDailyReportEditPageState
     for (final entry in sourceTotals.entries) {
       final cap = sourceCaps[entry.key];
       if (cap != null && entry.value > cap + 0.000001) {
-        context.appError('同一来源子任务的累计合格完工量超过当前可报数量 ${_quantityText(cap)}');
+        context.appError('同一来源子任务的累计完工申报量超过当前可报数量 ${_quantityText(cap)}');
         return;
       }
     }
@@ -365,6 +385,8 @@ class _ProductionDailyReportEditPageState
         if (r.executionSegmentSalesAllocationId != null)
           'executionSegmentSalesAllocationId':
               r.executionSegmentSalesAllocationId,
+        if (r.fqcRecoveryAuthorizationId != null)
+          'fqcRecoveryAuthorizationId': r.fqcRecoveryAuthorizationId,
         if (r.salesOrderItemId != null) 'salesOrderItemId': r.salesOrderItemId,
         if (r.salesOrderNo != null) 'salesOrderNo': r.salesOrderNo,
         if (r.clientName != null) 'clientName': r.clientName,
@@ -389,13 +411,21 @@ class _ProductionDailyReportEditPageState
     try {
       final repo = ref.read(productionDailyReportRepositoryProvider);
       final d = widget.id == null
-          ? await repo.create(body)
-          : await repo.update(widget.id!, body);
+          ? await repo.create(body, idempotencyKey: _createIdempotencyKey)
+          : await repo.update(widget.id!, body, expectedVersion: _rowVersion);
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       context.replace('/production/daily-reports/${d.id}');
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (!mounted) return;
+      if (e.code == 'CONFLICT' && widget.id != null) {
+        context.appWarning(
+          '保存冲突：该日报已被其他人修改。当前输入仍保留，请核对后重新进入最新草稿再编辑。',
+          force: true,
+        );
+      } else {
+        context.appError(e.message);
+      }
     } catch (_) {
       if (mounted) context.appError('保存失败，请稍后重试');
     } finally {
@@ -444,6 +474,7 @@ class _ProductionDailyReportEditPageState
             UtenEmployeePickerItem(
               id: e.id,
               name: e.fullName,
+              employeeCode: e.code,
               departmentName: e.departmentName,
             ),
         ];
@@ -513,6 +544,7 @@ class _ProductionDailyReportEditPageState
                                 children: [
                                   // 单据号：系统自动生成，只读显示。
                                   TextFormField(
+                                    errorBuilder: utenTextFieldErrorBuilder,
                                     readOnly: true,
                                     controller: _billNo,
                                     decoration: InputDecoration(
@@ -557,7 +589,7 @@ class _ProductionDailyReportEditPageState
                                   UtenDepartmentPicker(
                                     mode: UtenDepartmentPickerMode.single,
                                     label: '车间',
-                                    hint: '选择生产车间（部门）',
+                                    hint: '选择生产车间(部门)',
                                     selectablePredicate:
                                         isBusinessDepartmentNode,
                                     treeOverride: workshopTree,
@@ -617,9 +649,9 @@ class _ProductionDailyReportEditPageState
                             const SizedBox(width: UtenSpacing.s8),
                             Expanded(
                               child: Text(
-                                '数量口径：这里只填写可进入成品入库的合格完工量，不良品不得计入。'
-                                '发现不良时请暂停审核并交由生产主管处理；不良品隔离、返工和补产链路'
-                                '未上线前，系统不会把不良数量自动当成合格成品。',
+                                '数量口径：这里只填写本次实际完工申报量。审核后先进入生产成品质检；'
+                                '只有品质 PASS 数量会生成仓库待点收任务，仓库实收后才增加库存与完成率。'
+                                '疑似不良也应按实际完工事实申报，由品质登记 PASS、返工、报废或拒收。',
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: theme.colorScheme.onTertiaryContainer,
                                 ),

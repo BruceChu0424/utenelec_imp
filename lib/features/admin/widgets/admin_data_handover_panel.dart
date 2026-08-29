@@ -106,10 +106,10 @@ class _AdminDataHandoverPanelState
           (employee) => UtenEmployeePickerItem(
             id: employee.employeeId,
             name: employee.name,
+            employeeCode: employee.code,
             departmentName: [
               if (employee.departmentName?.isNotEmpty == true)
                 employee.departmentName!,
-              '工号 ${employee.code}',
               _statusLabel(employee.status),
             ].join(' · '),
           ),
@@ -202,7 +202,7 @@ class _AdminDataHandoverPanelState
         '交出人：${_source!.name}\n'
         '接收人：${widget.targetName}\n'
         '模块：${_scopes.map(dataHandoverScopeLabel).join('、')}\n'
-        '影响项次（分类合计）：${_preview?.total ?? 0}\n\n'
+        '影响项次(分类合计)：${_preview?.total ?? 0}\n\n'
         '当前责任会转给接收人，历史操作记录保持原员工。',
       ),
       confirmLabel: '确认执行',
@@ -411,7 +411,7 @@ class _AdminDataHandoverPanelState
       const SizedBox(height: UtenSpacing.s16),
       Row(
         children: [
-          const Expanded(child: Text('交接模块（默认全选）')),
+          const Expanded(child: Text('交接模块(默认全选)')),
           TextButton(
             onPressed: _scopes.length == _allScopes.length
                 ? null
@@ -499,7 +499,7 @@ class _AdminDataHandoverPanelState
       children: [
         Text('交出人：${_source!.name}'),
         Text('接收人：${widget.targetName}'),
-        Text('影响项次（分类合计）：${_preview?.total ?? 0}'),
+        Text('影响项次(分类合计)：${_preview?.total ?? 0}'),
         const SizedBox(height: UtenSpacing.s16),
         UtenInput(
           controller: _reasonController,
@@ -566,7 +566,7 @@ class _AdminDataHandoverPanelState
         ),
         const SizedBox(height: UtenSpacing.s12),
         Text('交接批次：${result.sequenceNo}'),
-        Text('执行回执项次（分类合计）：${result.processedTotal}'),
+        Text('执行回执项次(分类合计)：${result.processedTotal}'),
         if (result.replayed) const Text('本次为幂等重放，系统未重复执行交接。'),
         const SizedBox(height: UtenSpacing.s8),
         Text(

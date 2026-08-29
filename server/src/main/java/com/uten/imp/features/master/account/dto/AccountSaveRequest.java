@@ -31,6 +31,9 @@ public class AccountSaveRequest {
 
     private BigDecimal initBalance;
 
+    /** 可选余额警戒线；普通编辑只有同时具备 account:warning:manage 才能触碰。 */
+    private BigDecimal balanceFloor;
+
     private Integer parentLegacyId;
 
     /** 迁移兼容影子；普通 API 不能只提交该字段，也不能与 styleId 冲突。 */

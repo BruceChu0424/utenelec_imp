@@ -378,7 +378,8 @@ public class FinanceReportController {
 
     /** S 帐户进出流水帐（滚动余额，必填 accountId）。 */
     @GetMapping("/account/statement")
-    @PreAuthorize("hasAuthority('finance_report:view')")
+    @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
+            + "and hasAuthority('account:flow:view')")
     public ReportTableResponse accountStatement(
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,

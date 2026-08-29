@@ -16,7 +16,7 @@ class UtenLocaleSwitcher extends ConsumerWidget {
     final notifier = ref.read(localeProvider.notifier);
 
     final options = <(Locale, String, String)>[
-      (chinaLocale, '简体中文（中国大陆）', '中文'),
+      (chinaLocale, '简体中文(中国大陆)', '中文'),
       (englishLocale, 'English', '英文'),
       (koreanLocale, '한국어', '한국어'),
     ];

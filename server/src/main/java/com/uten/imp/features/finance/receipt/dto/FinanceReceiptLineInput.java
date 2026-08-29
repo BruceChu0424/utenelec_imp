@@ -22,9 +22,10 @@ public class FinanceReceiptLineInput {
 
     private UUID clientId;
 
+    /** 应收/核销原币；必须与被引用 AR 一致，不代表收款账户币种。 */
     private UUID currencyId;
 
-    /** 到账汇率必须由财务逐行明确填写，不得回退主表或应收开账汇率。 */
+    /** 当前批次实际到账汇率，必须逐行填写，不得覆盖其它批次或回退开账汇率。 */
     @NotNull
     @DecimalMin(value = "0", inclusive = false)
     private BigDecimal exchangeRate;

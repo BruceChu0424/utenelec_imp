@@ -127,7 +127,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         Text('选择未加密的 .xlsx 文件，系统会先检测再导入。', style: theme.textTheme.bodyMedium),
         const SizedBox(height: UtenSpacing.s8),
         Text(
-          '必填列：编号、类别（用 - 拼分类路径）、货品名称。\n'
+          '必填列：编号、类别(用 - 拼分类路径)、货品名称。\n'
           '可选列：系列、型号、规格、材质、主颜色、单位、来源、价格、状态。\n'
           '缺失的分类/颜色/单位会自动新建；编号重复或已存在会拦下，改完再传。\n'
           '如从「导出货品」取得文件，导出时请不要设置密码。',
@@ -201,7 +201,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$title（${items.length}）：${items.take(20).join("、")}${items.length > 20 ? " …" : ""}',
+            '$title(${items.length})：${items.take(20).join("、")}${items.length > 20 ? " …" : ""}',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

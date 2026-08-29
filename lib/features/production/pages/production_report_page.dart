@@ -422,7 +422,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
       toolbarActions: [
         UtenPrintPreviewButton(
           title: '生产${_kind.label}',
-          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',
           loader: _printLoader,
           exportEndpoint: '/production/reports/export',
           exportPermission: Perm.productionReportExport,

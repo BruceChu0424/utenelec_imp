@@ -1,7 +1,7 @@
 // 生产日报明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
 // 日报只记录生产数量事实。客户端单价/金额不是计件工资权威，已从操作界面移除。
-// DailyGridRow：货品(选择)/合格完工量；颜色/单位选货品后自动回填（只读）；
+// DailyGridRow：货品(选择)/完工申报量；颜色/单位选货品后自动回填（只读）；
 // 精确来源子任务 + 完结标记 + 备注。
 import 'package:flutter/material.dart';
 
@@ -27,6 +27,9 @@ class DailyGridRow extends EditableGridRow {
   String? executionSegmentSalesAllocationId;
   String? executionSegmentCode;
   int? executionSegmentVersion;
+  String? fqcRecoveryAuthorizationId;
+  String? fqcRecoveryDispositionCode;
+  String? fqcSourceReportNo;
   String? salesOrderItemId;
   String? salesOrderNo;
   String? clientName;
@@ -37,6 +40,16 @@ class DailyGridRow extends EditableGridRow {
 
   bool get hasLinkedSource => planItemId != null && planItemId!.isNotEmpty;
   bool get hasSourceSnapshot => planNo.text.trim().isNotEmpty;
+  bool get isFqcRecovery => fqcRecoveryAuthorizationId?.isNotEmpty == true;
+  String? get recoveryLabel {
+    if (!isFqcRecovery) return null;
+    return switch (fqcRecoveryDispositionCode) {
+      'REWORK' => '返工再检',
+      'SCRAP' => '报废补产',
+      'REJECT' => '拒收补产',
+      _ => 'FQC恢复',
+    };
+  }
 
   /// 颜色/单位（选货品后自动回填；单元格只读显示）。
   final colorIdNotifier = ValueNotifier<String?>(null);
@@ -46,7 +59,7 @@ class DailyGridRow extends EditableGridRow {
   String? get unitId => unitIdNotifier.value;
   set unitId(String? v) => unitIdNotifier.value = v;
 
-  /// 报工完结标记（V95）：勾选后该行计划行报工结束，合格不足自动生成补产计划。
+  /// 本批普通完工申报终结标记；不代表品质合格，FQC 后再按真实结果处理。
   final finalNotifier = ValueNotifier<bool>(false);
   bool get isFinal => finalNotifier.value;
   set isFinal(bool v) => finalNotifier.value = v;
@@ -64,7 +77,7 @@ class DailyGridRow extends EditableGridRow {
   }
 }
 
-/// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 合格完工量 /
+/// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 完工申报量 /
 /// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入。
 List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   required Future<void> Function(DailyGridRow row) onPickGoods,
@@ -79,6 +92,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       label: '货品',
       width: 220,
       required: true,
+      textOf: (r) => r.goods?.name ?? '',
+      listenableOf: (r) => r.goodsNotifier,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.goodsNotifier,
         isEmpty: () => row.goods == null,
@@ -112,6 +127,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'color',
       label: '颜色',
       width: 130,
+      textOf: (r) => colorEntries[r.colorId ?? ''] ?? '',
+      listenableOf: (r) => r.colorIdNotifier,
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
@@ -119,12 +136,14 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'unit',
       label: '单位',
       width: 110,
+      textOf: (r) => unitEntries[r.unitId ?? ''] ?? '',
+      listenableOf: (r) => r.unitIdNotifier,
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'qty',
-      label: '合格完工量',
+      label: '完工申报量',
       width: 118,
       numeric: true,
       required: true,
@@ -155,7 +174,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   builder: (_, value, _) => Text(
                     value.text.isEmpty
                         ? '点击选择'
-                        : '${value.text}${row.salesOrderNo == null ? '' : ' · ${row.salesOrderNo}'}',
+                        : '${row.recoveryLabel == null ? '' : '[${row.recoveryLabel}] '}'
+                              '${value.text}'
+                              '${row.fqcSourceReportNo == null ? '' : ' · 原报工 ${row.fqcSourceReportNo}'}'
+                              '${row.salesOrderNo == null ? '' : ' · ${row.salesOrderNo}'}',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -186,14 +208,25 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       width: 56,
       cellBuilder: (context, row) => ValueListenableBuilder<bool>(
         valueListenable: row.finalNotifier,
-        builder: (_, v, _) =>
-            Checkbox(value: v, onChanged: (nv) => row.isFinal = nv ?? false),
+        builder: (_, v, _) => Tooltip(
+          message: row.isFqcRecovery
+              ? '返工/补产恢复报工不能作为原计划完结行'
+              : '完结后按品质最终结果处理不足数量',
+          child: Checkbox(
+            value: row.isFqcRecovery ? false : v,
+            onChanged: row.isFqcRecovery
+                ? null
+                : (nv) => row.isFinal = nv ?? false,
+          ),
+        ),
       ),
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'remark',
       label: '备注',
       width: 180,
+      textOf: (r) => r.remark.text,
+      listenableOf: (r) => r.remark,
       cellBuilder: (context, row) => TextField(
         controller: row.remark,
         decoration: const InputDecoration(isDense: true),

@@ -47,6 +47,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -88,6 +89,7 @@ public class MaterialAnalysisCommandService {
         tx.bind();
         lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
+        requireNotFqcRecoveryWorkspace(analysisId);
         requireWritable(header, "只能下达本人负责的物料分析备料任务");
         String requestHash = notifyHash(analysisId, request);
         CommandReplay replay = commandReplay(analysisId, OP_NOTIFY,
@@ -106,32 +108,83 @@ public class MaterialAnalysisCommandService {
                 groups.stream().flatMap(group -> group.materials().stream())
                         .map(MaterialView::materialLineId)
                         .collect(Collectors.toSet()));
-        Map<String, BigDecimal> quantityOverrides = quantityOverrides(view, request, groups);
-
-        List<ActionDraft> created = new ArrayList<>();
+        Map<String, SupplyQuantityInput> quantityInputs =
+                quantityInputs(view, request, groups);
+        List<ActionPlan> plans = new ArrayList<>();
         for (ActionGroup group : groups) {
             BigDecimal existingOpen = activeOpenActionQty(
                     analysisId, group);
-            BigDecimal delta = group.requiredQty().subtract(existingOpen).max(BigDecimal.ZERO)
+            BigDecimal delta = group.demandRequiredQty().subtract(existingOpen)
+                    .max(BigDecimal.ZERO)
                     .setScale(4, RoundingMode.CEILING);
-            BigDecimal override = quantityOverrides.get(group.groupKey());
-            BigDecimal qty = delta;
-            if (override != null) {
-                BigDecimal requested = override.setScale(4, RoundingMode.CEILING);
-                if (delta.signum() == 0) {
-                    throw validation("「" + groupLabel(group)
-                            + "」已有足额在途任务，无需再提交；如需加量请先撤销原任务");
-                }
+            SupplyQuantityInput input = quantityInputs.get(group.groupKey());
+            BigDecimal demandQty = delta;
+            if (input != null) {
+                BigDecimal requested = input.qty().setScale(4, RoundingMode.CEILING);
                 if (requested.compareTo(delta) > 0) {
                     throw validation("「" + groupLabel(group) + "」本次最多还能提交 "
                             + delta.stripTrailingZeros().toPlainString()
-                            + "（缺口扣除在途任务后的余量），请把数量改小后再提交");
+                            + "(真实未绑定需求扣除在途后的余量)，请刷新后重新确认");
                 }
-                qty = requested;
+                demandQty = requested;
             }
-            if (qty.signum() == 0) {
-                continue;
+            SafetySnapshot safety = safetySnapshot(view.warehouseId(), group);
+            BigDecimal confirmedSafety = input == null
+                    || input.safetyReplenishmentQty() == null
+                    ? null
+                    : input.safetyReplenishmentQty()
+                            .setScale(4, RoundingMode.CEILING);
+            if ("BUY".equals(group.route())) {
+                if (safety.gapQty().signum() > 0
+                        && (confirmedSafety == null
+                        || confirmedSafety.compareTo(safety.gapQty()) != 0)) {
+                    throw validation("「" + groupLabel(group)
+                            + "」公共安全库存补库已变化：当前固定补库 "
+                            + safety.gapQty().stripTrailingZeros().toPlainString()
+                            + "，请刷新数量确认后再提交");
+                }
+                if (safety.gapQty().signum() == 0
+                        && confirmedSafety != null && confirmedSafety.signum() != 0) {
+                    throw validation("「" + groupLabel(group)
+                            + "」当前无需公共安全库存补库，请刷新后重新确认");
+                }
+            } else {
+                if (confirmedSafety != null && confirmedSafety.signum() != 0) {
+                    throw validation("只有采购路线可以提交公共安全库存补库");
+                }
+                if (safety.gapQty().signum() > 0) {
+                    throw conflict("「" + groupLabel(group) + "」当前公共安全库存缺口 "
+                            + safety.gapQty().stripTrailingZeros().toPlainString()
+                            + "；本版本仅支持采购路线的公共安全库存补库，"
+                            + "禁止重复下达委外/自制来伪装齐套，请先走独立补库或修正主数据");
+                }
             }
+            plans.add(new ActionPlan(group, demandQty, safety));
+        }
+
+        // 安全库存的物理粒度是仓+货+色；同一通知中的多个节点只能生成
+        // 一份公共补库。稳定优先附着到本次有 demand exact 的 BUY action，
+        // 若旧 demand 已 exact 到货而安全切片失败，则允许 safety-only action。
+        Map<SafetyDimension, ActionPlan> safetyOwners = new LinkedHashMap<>();
+        plans.stream().filter(plan -> "BUY".equals(plan.group().route()))
+                .filter(plan -> plan.safety().gapQty().signum() > 0)
+                .filter(plan -> plan.demandQty().signum() > 0)
+                .forEach(plan -> safetyOwners.putIfAbsent(
+                        SafetyDimension.of(plan.group()), plan));
+        plans.stream().filter(plan -> "BUY".equals(plan.group().route()))
+                .filter(plan -> plan.safety().gapQty().signum() > 0)
+                .forEach(plan -> safetyOwners.putIfAbsent(
+                        SafetyDimension.of(plan.group()), plan));
+
+        List<ActionDraft> created = new ArrayList<>();
+        for (ActionPlan plan : plans) {
+            ActionGroup group = plan.group();
+            SafetySnapshot frozenSafety = Objects.equals(
+                    safetyOwners.get(SafetyDimension.of(group)), plan)
+                    ? plan.safety()
+                    : SafetySnapshot.ZERO;
+            BigDecimal safetyQty = frozenSafety.gapQty();
+            if (plan.demandQty().signum() == 0 && safetyQty.signum() == 0) continue;
             ActionSequence sequence = nextActionSequence(
                     analysisId, group.groupKey(), group.route());
             UUID actionId = UUID.randomUUID();
@@ -143,13 +196,18 @@ public class MaterialAnalysisCommandService {
             em.createNativeQuery("""
                     INSERT INTO preplan_supply_actions (
                         id, analysis_id, warehouse_id, goods_id, color_id, unit_id,
-                        need_date, route, requested_qty, status,
+                        need_date, route, requested_qty,
+                        safety_replenishment_qty, safety_stock_snapshot_qty,
+                        public_available_snapshot_qty,
+                        open_safety_supply_snapshot_qty, status,
                         idempotency_key, action_group_key, request_business_key,
                         generation, predecessor_action_id, request_hash,
                         created_by
                     ) VALUES (
                         :id, :analysisId, :warehouseId, :goodsId, :colorId, :unitId,
-                        :needDate, :route, :qty, 'OPEN',
+                        :needDate, :route, :demandQty,
+                        :safetyQty, :safetyStock, :publicAvailable,
+                        :openSafetySupply, 'OPEN',
                         :idempotencyKey, :actionGroupKey, :businessKey,
                         :generation, :predecessorId, :requestHash,
                         :actorId
@@ -163,7 +221,11 @@ public class MaterialAnalysisCommandService {
                     .setParameter("unitId", group.dimension().unitId())
                     .setParameter("needDate", group.needDate())
                     .setParameter("route", group.route())
-                    .setParameter("qty", qty)
+                    .setParameter("demandQty", plan.demandQty())
+                    .setParameter("safetyQty", safetyQty)
+                    .setParameter("safetyStock", frozenSafety.safetyStockQty())
+                    .setParameter("publicAvailable", frozenSafety.publicAvailableQty())
+                    .setParameter("openSafetySupply", frozenSafety.openSupplyQty())
                     .setParameter("idempotencyKey", actionIdempotency)
                     .setParameter("actionGroupKey", group.groupKey())
                     .setParameter("businessKey", businessKey)
@@ -172,8 +234,10 @@ public class MaterialAnalysisCommandService {
                     .setParameter("requestHash", requestHash)
                     .setParameter("actorId", currentUser.requireId())
                     .executeUpdate();
-            allocateAction(actionId, analysisId, group.materials(), qty);
-            created.add(new ActionDraft(actionId, group, qty));
+            allocateAction(actionId, analysisId, group.materials(), plan.demandQty());
+            created.add(new ActionDraft(
+                    actionId, group, plan.demandQty(), safetyQty,
+                    safetyQty.signum() > 0 ? UUID.randomUUID() : null));
         }
 
         for (ActionDraft action : created) {
@@ -230,6 +294,7 @@ public class MaterialAnalysisCommandService {
         tx.bind();
         lockAnalysisInventoryDimensions(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.lockHeader(analysisId);
+        requireNotFqcRecoveryWorkspace(analysisId);
         requireWritable(header, "只能从本人负责的物料分析生成生产计划");
         String requestHash = generateHash(analysisId, request);
         CommandReplay replay = commandReplay(analysisId, OP_GENERATE,
@@ -244,13 +309,12 @@ public class MaterialAnalysisCommandService {
             throw validation("生成前必须先保存路线，generate-plan 不接受临时路线");
         }
         PlanPreview preview = analysisService.buildPlanPreviewLocked(
-                analysisId, request.warehouseId(), request.items(), request.routes(),
-                request.bomOverrides());
+                analysisId, request.warehouseId(), request.items(), request.routes());
         if (!preview.previewFingerprint().equalsIgnoreCase(request.previewFingerprint())) {
             throw conflict("联合预览已过期，请重新计算可生成数量");
         }
         if (!preview.allReady() || preview.items().stream().anyMatch(item -> !item.canGenerate())) {
-            throw conflict("所选批次数量尚未完整齐套，或 BOM/生产策略已阻断，不能生成正式计划");
+            throw conflict("所选批次数量尚未完整齐套，不能生成正式计划");
         }
         if (request.approveNow() && !access.hasAuthority("production_plan:approve")) {
             throw new ApiException(ErrorCode.FORBIDDEN, "生成并审核需要独立的生产计划审核权限");
@@ -259,7 +323,6 @@ public class MaterialAnalysisCommandService {
         AnalysisView view = analysisService.detailInternal(analysisId, false);
         Map<UUID, ProductView> products = view.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
-        Map<UUID, String> overrides = overrides(request.bomOverrides());
         List<GeneratedPlan> generated = new ArrayList<>();
         for (PlanQuantity quantity : request.items()) {
             ProductView product = products.get(quantity.analysisLineId());
@@ -267,8 +330,7 @@ public class MaterialAnalysisCommandService {
                 throw validation("待生成计划产品不属于当前分析");
             }
             validatePlanSchedule(quantity, request);
-            PlanDetail plan = createDraftPlan(analysisId, product, quantity, request,
-                    overrides.get(product.analysisLineId()));
+            PlanDetail plan = createDraftPlan(analysisId, product, quantity, request);
             ProductionPlanningDraftView draft = savePlanningDraft(
                     analysisId, product, plan, quantity, request);
             PlanningPackageResult applied = null;
@@ -410,6 +472,27 @@ public class MaterialAnalysisCommandService {
                 .toList());
     }
 
+    /**
+     * A V414 FQC replenishment analysis is a recovery-only BOM workspace.
+     * V415 is the sole authority that turns it into exact recovery demands;
+     * ordinary notify/generate would create a second top-level plan or supply
+     * chain for the same failed quantity.
+     */
+    private void requireNotFqcRecoveryWorkspace(UUID analysisId) {
+        Number linked = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_fqc_replenishment_analysis_links link
+                        WHERE link.material_analysis_id = :analysisId
+                        """)
+                .setParameter("analysisId", analysisId)
+                .getSingleResult();
+        if (linked != null && linked.longValue() > 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "该物料分析仅用于 FQC 补产 BOM 冻结；请在 FQC 补产待办确认物料方案，禁止重复生成普通计划或供给单");
+        }
+    }
+
     private List<ActionGroup> selectedGroups(AnalysisView view, NotifyRequest request) {
         Map<String, List<MaterialView>> allGroups = view.flatMaterials().stream()
                 .filter(MaterialView::actionable)
@@ -468,7 +551,7 @@ public class MaterialAnalysisCommandService {
                     line.goodsId(), line.colorId(), line.unitId())))) {
                 throw conflict("物料操作组维度不一致，请刷新分析");
             }
-            BigDecimal required = lines.stream().map(MaterialView::shortageQty)
+            BigDecimal required = lines.stream().map(MaterialView::demandSupplyGapQty)
                     .reduce(BigDecimal.ZERO, BigDecimal::add)
                     .setScale(4, RoundingMode.CEILING);
             result.add(new ActionGroup(key, route, dimension,
@@ -486,7 +569,7 @@ public class MaterialAnalysisCommandService {
      * 解析「指定提交数量」：按操作组归集（materialLineId 先翻译成所属操作组），
      * 只允许覆盖本次选中的组；数量合法性与实时余量在 notifySupply 主循环复核。
      */
-    private Map<String, BigDecimal> quantityOverrides(
+    private Map<String, SupplyQuantityInput> quantityInputs(
             AnalysisView view, NotifyRequest request, List<ActionGroup> selected) {
         if (request.quantities() == null || request.quantities().isEmpty()) {
             return Map.of();
@@ -497,7 +580,7 @@ public class MaterialAnalysisCommandService {
                         MaterialView::actionGroupKey));
         Set<String> selectedKeys = selected.stream()
                 .map(ActionGroup::groupKey).collect(Collectors.toSet());
-        Map<String, BigDecimal> result = new LinkedHashMap<>();
+        Map<String, SupplyQuantityInput> result = new LinkedHashMap<>();
         for (SupplyQuantityInput input : request.quantities()) {
             String key = MaterialAnalysisService.blankToNull(input.actionGroupKey());
             if (key == null && input.materialLineId() != null) {
@@ -509,11 +592,41 @@ public class MaterialAnalysisCommandService {
             if (!selectedKeys.contains(key)) {
                 throw validation("提交数量与所选物料不匹配，请刷新后重试");
             }
-            if (result.putIfAbsent(key, input.qty()) != null) {
+            if (result.putIfAbsent(key, input) != null) {
                 throw validation("同一物料的提交数量重复，请刷新后重试");
             }
         }
         return result;
+    }
+
+    private SafetySnapshot safetySnapshot(UUID warehouseId, ActionGroup group) {
+        List<WarehouseBreakdown> rows = group.materials().stream()
+                .flatMap(material -> material.warehouseBreakdown().stream())
+                .filter(row -> Objects.equals(row.warehouseId(), warehouseId))
+                .toList();
+        if (rows.isEmpty()) {
+            throw conflict("目标仓安全库存快照缺失，请刷新物料分析后重试");
+        }
+        BigDecimal safetyStock = group.materials().stream()
+                .map(MaterialView::safetyStockQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::max)
+                .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
+        BigDecimal publicAvailable = rows.stream()
+                .map(WarehouseBreakdown::publicAvailableQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::max)
+                .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+        BigDecimal openSupply = rows.stream()
+                .map(WarehouseBreakdown::openSafetySupplyQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::max)
+                .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+        BigDecimal gap = MaterialAnalysisService.publicSafetyReplenishmentGap(
+                safetyStock, publicAvailable, openSupply);
+        boolean inconsistent = rows.stream().anyMatch(row ->
+                row.safetyReplenishmentGapQty().compareTo(gap) != 0);
+        if (inconsistent) {
+            throw conflict("公共安全库存补库快照不一致，请刷新后重试");
+        }
+        return new SafetySnapshot(safetyStock, publicAvailable, openSupply, gap);
     }
 
     /** 操作组的可读标签（货品名/编码），用于数量校验报错时指认是哪一件料。 */
@@ -527,16 +640,16 @@ public class MaterialAnalysisCommandService {
 
     private void allocateAction(
             UUID actionId, UUID analysisId, List<MaterialView> materials, BigDecimal qty) {
-        BigDecimal total = materials.stream().map(MaterialView::shortageQty)
+        BigDecimal total = materials.stream().map(MaterialView::demandSupplyGapQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal remaining = qty;
         List<MaterialView> positive = materials.stream()
-                .filter(material -> material.shortageQty().signum() > 0).toList();
+                .filter(material -> material.demandSupplyGapQty().signum() > 0).toList();
         for (int index = 0; index < positive.size(); index++) {
             MaterialView material = positive.get(index);
             BigDecimal allocated = index == positive.size() - 1
                     ? remaining
-                    : qty.multiply(material.shortageQty()).divide(
+                    : qty.multiply(material.demandSupplyGapQty()).divide(
                             total, 4, RoundingMode.DOWN).min(remaining);
             if (allocated.signum() <= 0) continue;
             em.createNativeQuery("""
@@ -587,42 +700,67 @@ public class MaterialAnalysisCommandService {
         String sourceLabel = "计划前物料分析 "
                 + analyzedInstant.atZone(BusinessTime.ZONE).toLocalDate();
         if ("BUY".equals(action.group().route())) {
+            List<ProductionPurchaseRequestFacade.DraftLine> lines = new ArrayList<>();
+            if (action.demandQty().signum() > 0) {
+                lines.add(new ProductionPurchaseRequestFacade.DraftLine(
+                        action.actionId(), action.group().dimension().goodsId(),
+                        action.group().dimension().colorId(),
+                        action.group().dimension().unitId(), action.demandQty(),
+                        action.group().needDate(), "生产需求精确备料"));
+            }
+            if (action.safetyQty().signum() > 0) {
+                lines.add(new ProductionPurchaseRequestFacade.DraftLine(
+                        action.safetySliceId(), action.group().dimension().goodsId(),
+                        action.group().dimension().colorId(),
+                        action.group().dimension().unitId(), action.safetyQty(),
+                        action.group().needDate(),
+                        "公共安全库存补库(不绑定单一物料分析)"));
+            }
             ProductionPurchaseRequestFacade.DraftResult result =
                     purchaseRequests.createProductionDraft(
                             sourceLabel, analysisId, action.group().needDate(),
                             selectedWarehouse(analysisId),
-                            List.of(new ProductionPurchaseRequestFacade.DraftLine(
-                                    action.actionId(), action.group().dimension().goodsId(),
-                                    action.group().dimension().colorId(),
-                                    action.group().dimension().unitId(), action.qty(),
-                                    action.group().needDate(), "计划前物料分析备料")),
+                            List.copyOf(lines),
                             employeeId, employeeId);
-            ProductionPurchaseRequestFacade.DraftLineResult line = result.lines().getFirst();
+            Map<UUID, ProductionPurchaseRequestFacade.DraftLineResult> bySlice =
+                    result.lines().stream().collect(Collectors.toMap(
+                            ProductionPurchaseRequestFacade.DraftLineResult::demandId,
+                            value -> value));
+            UUID demandItemId = action.demandQty().signum() > 0
+                    ? Optional.ofNullable(bySlice.get(action.actionId()))
+                            .map(ProductionPurchaseRequestFacade.DraftLineResult::requestItemId)
+                            .orElseThrow(() -> conflict("采购申请缺少生产需求精确备料明细"))
+                    : null;
+            UUID safetyItemId = action.safetyQty().signum() > 0
+                    ? Optional.ofNullable(bySlice.get(action.safetySliceId()))
+                            .map(ProductionPurchaseRequestFacade.DraftLineResult::requestItemId)
+                            .orElseThrow(() -> conflict("采购申请缺少公共安全库存补库明细"))
+                    : null;
             markCreated(action.actionId(), "PURCHASE_REQUEST", result.requestId(),
-                    result.billNo(), line.requestItemId());
+                    result.billNo(), demandItemId, safetyItemId);
             chainNotice.notifyPreplanSupplyActionCreated(action.actionId());
             return;
         }
         if ("SUBCONTRACT".equals(action.group().route())) {
             ProductionSubcontractRequestPort.DraftResult result =
                     subcontractRequests.createProductionDraft(
-                            sourceLabel, analysisId, action.group().needDate(),
+                    sourceLabel, analysisId, action.group().needDate(),
                             selectedWarehouse(analysisId),
                             List.of(new ProductionSubcontractRequestPort.DraftLine(
                                     action.actionId(), action.group().dimension().goodsId(),
                                     action.group().dimension().colorId(),
-                                    action.group().dimension().unitId(), action.qty(),
+                                    action.group().dimension().unitId(), action.demandQty(),
                                     action.group().needDate(), "计划前物料分析委外备料")),
                             employeeId, employeeId);
             ProductionSubcontractRequestPort.DraftLineResult line = result.lines().getFirst();
             markCreated(action.actionId(), "SUBCONTRACT_APPLICATION",
-                    result.applicationId(), result.billNo(), line.applicationItemId());
+                    result.applicationId(), result.billNo(), line.applicationItemId(), null);
             chainNotice.notifyPreplanSupplyActionCreated(action.actionId());
             return;
         }
         UUID childItemId = createOrIncrementMakeDemand(analysisId, action);
         markCreated(action.actionId(), "PREPLAN_MAKE_TASK", childItemId,
-                makeDemandSourceRef(childItemId), childItemId);
+                makeDemandSourceRef(childItemId), childItemId, null);
     }
 
     /** 自制备料需求行的可读来源编号（自制备料 日期 尾码）：面向展示，禁止 UUID。 */
@@ -657,7 +795,7 @@ public class MaterialAnalysisCommandService {
                         updated_at = now(), updated_by = :actorId
                     WHERE id = :id
                     """)
-                    .setParameter("qty", action.qty())
+                    .setParameter("qty", action.demandQty())
                     .setParameter("needDate", action.group().needDate())
                     .setParameter("actorId", currentUser.requireId())
                     .setParameter("id", itemId).executeUpdate();
@@ -688,7 +826,7 @@ public class MaterialAnalysisCommandService {
                 .setParameter("unitId", action.group().dimension().unitId())
                 .setParameter("sourceRef", sourceRef)
                 .setParameter("sourceReason", "父级物料缺口确认自制备料")
-                .setParameter("qty", action.qty())
+                .setParameter("qty", action.demandQty())
                 .setParameter("needDate", action.group().needDate())
                 .setParameter("linePriority", linePriority)
                 .setParameter("parentId", representative)
@@ -733,31 +871,36 @@ public class MaterialAnalysisCommandService {
     }
 
     private void markCreated(UUID actionId, String type, UUID documentId,
-                             String documentNo, UUID externalItemId) {
+                             String documentNo, UUID externalItemId,
+                             UUID safetyExternalItemId) {
         em.createNativeQuery("""
                 UPDATE preplan_supply_actions
                 SET status = 'CREATED', external_document_type = :type,
                     external_document_id = :documentId,
                     external_document_no = :documentNo,
+                    safety_external_item_id = :safetyExternalItemId,
                     updated_at = now()
                 WHERE id = :id
                 """)
                 .setParameter("type", type)
                 .setParameter("documentId", documentId)
                 .setParameter("documentNo", documentNo)
+                .setParameter("safetyExternalItemId", safetyExternalItemId)
                 .setParameter("id", actionId).executeUpdate();
-        em.createNativeQuery("""
-                UPDATE preplan_supply_action_allocations
-                SET external_item_id = :externalItemId
-                WHERE action_id = :id
-                """)
-                .setParameter("externalItemId", externalItemId)
-                .setParameter("id", actionId).executeUpdate();
+        if (externalItemId != null) {
+            em.createNativeQuery("""
+                    UPDATE preplan_supply_action_allocations
+                    SET external_item_id = :externalItemId
+                    WHERE action_id = :id
+                    """)
+                    .setParameter("externalItemId", externalItemId)
+                    .setParameter("id", actionId).executeUpdate();
+        }
     }
 
     private PlanDetail createDraftPlan(
             UUID analysisId, ProductView product, PlanQuantity quantity,
-            GeneratePlanRequest request, String overrideReason) {
+            GeneratePlanRequest request) {
         BigDecimal qty = quantity.qty();
         LocalDate billDate = itemBillDate(quantity, request);
         LocalDate deliveryDate = itemDeliveryDate(quantity, request);
@@ -802,24 +945,15 @@ public class MaterialAnalysisCommandService {
         save.setRemark("物料分析 " + analysisId + " 原子生成");
         save.setItems(List.of(line));
         PlanDetail plan = planService.create(save);
-        // Resolve bom_override_by in Java, not via a SQL `CASE WHEN :overrideReason IS NULL`:
-        // a null parameter used only in an IS-NUL check leaves PostgreSQL unable to infer its type
-        // ("could not determine data type of parameter"), which would crash every generate-plan
-        // call that carries no BOM override.
-        UUID overrideBy = overrideReason == null ? null : currentUser.requireId();
         em.createNativeQuery("""
                 UPDATE production_plans
                 SET material_analysis_id = :analysisId,
                     material_analysis_item_id = :analysisItemId,
-                    bom_override_reason = :overrideReason,
-                    bom_override_by = :overrideBy,
                     updated_at = now(), updated_by = :actorId
                 WHERE id = :planId
                 """)
                 .setParameter("analysisId", analysisId)
                 .setParameter("analysisItemId", product.analysisLineId())
-                .setParameter("overrideReason", overrideReason)
-                .setParameter("overrideBy", overrideBy)
                 .setParameter("actorId", currentUser.requireId())
                 .setParameter("planId", plan.getId()).executeUpdate();
         ProductionPlan managedPlan = em.find(ProductionPlan.class, plan.getId());
@@ -1121,6 +1255,27 @@ public class MaterialAnalysisCommandService {
         if ("MAKE".equals(route)) {
             return activeOpenMakeActionQty(analysisId, groupKey);
         }
+        if ("BUY".equals(route)) {
+            return decimal(em.createNativeQuery("""
+                    SELECT COALESCE(SUM(LEAST(
+                        GREATEST(
+                            progress.demand_requested_qty
+                                - progress.demand_qualified_qty,
+                            0),
+                        progress.demand_future_qty
+                    )),0)
+                    FROM preplan_supply_actions action
+                    JOIN v_preplan_buy_action_slice_progress progress
+                      ON progress.action_id = action.id
+                    WHERE action.analysis_id = :analysisId
+                      AND action.action_group_key = :groupKey
+                      AND action.route = 'BUY'
+                      AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                      AND progress.demand_source_valid = TRUE
+                    """).setParameter("analysisId", analysisId)
+                    .setParameter("groupKey", groupKey)
+                    .getSingleResult());
+        }
         return decimal(em.createNativeQuery("""
                 SELECT COALESCE(SUM(CASE
                     WHEN action.external_document_type = 'PURCHASE_REQUEST'
@@ -1302,13 +1457,6 @@ public class MaterialAnalysisCommandService {
         return (UUID) value;
     }
 
-    private Map<UUID, String> overrides(List<BomOverride> values) {
-        if (values == null) return Map.of();
-        Map<UUID, String> result = new HashMap<>();
-        values.forEach(value -> result.put(value.analysisLineId(), value.reason().strip()));
-        return Map.copyOf(result);
-    }
-
     private void requireWritable(MaterialAnalysisService.AnalysisHeader header, String message) {
         access.requireWritable(header.makerId(), message, access.scope());
     }
@@ -1367,7 +1515,7 @@ public class MaterialAnalysisCommandService {
 
     private static String notifyHash(UUID analysisId, NotifyRequest request) {
         List<String> parts = new ArrayList<>(List.of(
-                "NOTIFY-V2", analysisId.toString(), Long.toString(request.version()),
+                "NOTIFY-V3", analysisId.toString(), Long.toString(request.version()),
                 request.fingerprint(), Objects.toString(request.target(), "")));
         if (request.actionGroupKeys() != null) request.actionGroupKeys().stream()
                 .sorted().forEach(value -> parts.add("GROUP|" + value));
@@ -1376,9 +1524,17 @@ public class MaterialAnalysisCommandService {
         if (request.quantities() != null) request.quantities().stream()
                 .map(value -> "QTY|" + Objects.toString(value.actionGroupKey(), "")
                         + "|" + Objects.toString(value.materialLineId(), "")
-                        + "|" + MaterialAnalysisService.decimalText(value.qty()))
+                        + "|" + MaterialAnalysisService.decimalText(value.qty())
+                        + "|SAFETY|" + canonicalOptionalQuantity(
+                                value.safetyReplenishmentQty()))
                 .sorted().forEach(parts::add);
         return PlanningPackageFingerprint.sha256(parts);
+    }
+
+    static String canonicalOptionalQuantity(BigDecimal value) {
+        return value == null
+                ? "NULL"
+                : MaterialAnalysisService.decimalText(value);
     }
 
     private static String generateHash(UUID analysisId, GeneratePlanRequest request) {
@@ -1406,8 +1562,6 @@ public class MaterialAnalysisCommandService {
             }
             parts.add(itemHash);
         });
-        if (request.bomOverrides() != null) request.bomOverrides().forEach(value ->
-                parts.add("BOM|" + value.analysisLineId() + "|" + value.reason().strip()));
         return PlanningPackageFingerprint.sha256(parts);
     }
 
@@ -1444,11 +1598,37 @@ public class MaterialAnalysisCommandService {
 
     private record ActionGroup(
             String groupKey, String route, MaterialDimension dimension,
-            int sourcePriority, LocalDate needDate, BigDecimal requiredQty,
+            int sourcePriority, LocalDate needDate, BigDecimal demandRequiredQty,
             List<MaterialView> materials) {
     }
 
-    private record ActionDraft(UUID actionId, ActionGroup group, BigDecimal qty) {
+    private record SafetyDimension(UUID goodsId, UUID colorId) {
+        static SafetyDimension of(ActionGroup group) {
+            return new SafetyDimension(
+                    group.dimension().goodsId(), group.dimension().colorId());
+        }
+    }
+
+    private record SafetySnapshot(
+            BigDecimal safetyStockQty,
+            BigDecimal publicAvailableQty,
+            BigDecimal openSupplyQty,
+            BigDecimal gapQty) {
+        static final SafetySnapshot ZERO = new SafetySnapshot(
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO);
+    }
+
+    private record ActionPlan(
+            ActionGroup group, BigDecimal demandQty, SafetySnapshot safety) {
+    }
+
+    private record ActionDraft(
+            UUID actionId,
+            ActionGroup group,
+            BigDecimal demandQty,
+            BigDecimal safetyQty,
+            UUID safetySliceId) {
     }
 
     private record ActionSequence(int generation, UUID predecessorId) {

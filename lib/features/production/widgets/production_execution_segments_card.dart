@@ -183,6 +183,9 @@ class _ProductionExecutionSegmentsCardState
             queryParameters: {'executionSegmentId': segment.id},
           ).toString(),
         );
+        if (!mounted) return;
+        await _load();
+        await widget.onChanged?.call();
         break;
     }
   }
@@ -341,6 +344,7 @@ class _ProductionExecutionSegmentsCardState
                             UtenEmployeePickerItem(
                               id: employee.id,
                               name: employee.fullName,
+                              employeeCode: employee.code,
                               departmentName: employee.departmentName,
                             ),
                         ];
@@ -430,7 +434,7 @@ class _ProductionExecutionSegmentsCardState
       builder: (ctx) => AlertDialog(
         title: const Text('解除人工暂缓'),
         content: const Text(
-          '系统会立即重新检查整套物料：已满足时转为可开工，'
+          '系统会立即重新检查整套物料：已满足时转为已齐套待派工，'
           '仍有缺口时保持待料并在后续到货后自动转产。确认继续？',
         ),
         actionsAlignment: MainAxisAlignment.center,
@@ -620,7 +624,7 @@ class _ProductionExecutionSegmentsCardState
                         ),
                       ),
                       Text(
-                        '可开工 $ready · 待料 $waiting · 人工暂缓 $deferred · '
+                        '待派工/发料 $ready · 待料 $waiting · 人工暂缓 $deferred · '
                         '执行中 $running · 已完成 $completed',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
@@ -675,11 +679,19 @@ class _ProductionExecutionSegmentsCardState
                 ),
                 MasterColumnDef(
                   key: 'reported',
-                  label: '已报 / 剩余',
+                  label: '有效报工 / 待补',
                   width: 105,
                   type: 'number',
                   value: (item) =>
                       '${_number(item.reportedQty)} / ${_number(item.remainingQty)}',
+                ),
+                MasterColumnDef(
+                  key: 'qualityInbound',
+                  label: '品质 / 入库',
+                  width: 210,
+                  value: (item) =>
+                      '${_qualityProgressText(item)} / '
+                      '${_finishedInboundProgressText(item)}',
                 ),
                 const MasterColumnDef(
                   key: 'material',
@@ -791,7 +803,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
             (segment.status == 'READY' || segment.status == 'WAITING')) ||
         (canDispatch && segment.status == 'READY') ||
         (canStart && segment.status == 'DISPATCHED') ||
-        (canReport && segment.status == 'IN_PROGRESS');
+        (canReport && _canReportSegment(segment));
 
     return Material(
       color: theme.colorScheme.surface,
@@ -850,8 +862,32 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                       product.isEmpty ? '未命名产品' : product,
                     ),
                     _detailRow(theme, '计划数量', _number(segment.plannedQty)),
-                    _detailRow(theme, '已报工', _number(segment.reportedQty)),
-                    _detailRow(theme, '剩余数量', _number(segment.remainingQty)),
+                    _detailRow(theme, '有效报工', _number(segment.reportedQty)),
+                    _detailRow(
+                      theme,
+                      '普通待报',
+                      _number(segment.ordinaryRemainingQty),
+                    ),
+                    _detailRow(
+                      theme,
+                      '品质判定',
+                      _qualityProgressText(segment),
+                      valueColor: segment.fqcFailedQty > 0
+                          ? theme.colorScheme.error
+                          : segment.fqcPendingQty > 0
+                          ? theme.colorScheme.tertiary
+                          : null,
+                    ),
+                    _detailRow(
+                      theme,
+                      '仓库入库',
+                      _finishedInboundProgressText(segment),
+                      valueColor: segment.finishedInboundPendingQty > 0
+                          ? theme.colorScheme.tertiary
+                          : segment.inboundQty > 0
+                          ? Colors.green.shade700
+                          : null,
+                    ),
                     _detailRow(
                       theme,
                       '物料齐套',
@@ -909,6 +945,30 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                         theme,
                         '任务已派工，但仓库尚未按领料单完成全部实物发料；发料完成前不能开工。',
                         theme.colorScheme.tertiary,
+                      )
+                    else if (segment.status == 'READY' &&
+                        !segment.materialIssued &&
+                        hasCommandPermission)
+                      _notice(
+                        theme,
+                        '整套物料已预留并生成领料单。可先完成车间分配和派工；'
+                        '仓库全部实际发料且派工完成后才能确认开工。',
+                        theme.colorScheme.tertiary,
+                      )
+                    else if (segment.status == 'READY' && hasCommandPermission)
+                      _notice(
+                        theme,
+                        '仓库已完成全部发料；请完成车间分配并派工，随后确认开工。',
+                        theme.colorScheme.primary,
+                      )
+                    else if (segment.status == 'IN_PROGRESS' &&
+                        !_canReportSegment(segment))
+                      _notice(
+                        theme,
+                        _postReportNextStep(segment),
+                        segment.fqcFailedQty > 0
+                            ? theme.colorScheme.error
+                            : theme.colorScheme.tertiary,
                       )
                     else if (segment.status == 'COMPLETED')
                       _notice(
@@ -978,12 +1038,20 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                           : null,
                       child: const Text('确认开工'),
                     ),
-                  if (canReport && segment.status == 'IN_PROGRESS')
+                  if (canReport && _canReportSegment(segment))
                     UtenButton(
                       icon: Icons.fact_check_outlined,
                       onPressed: () =>
                           Navigator.of(context).pop(_SegmentAction.report),
-                      child: const Text('分批报工'),
+                      child: Text(
+                        segment.ordinaryRemainingQty > 0
+                            ? '分批报工'
+                            : segment.fqcReworkAvailableQty > 0
+                            ? '返工再检报工'
+                            : segment.fqcReplacementReadyQty > 0
+                            ? '补产完工报工'
+                            : '分批报工',
+                      ),
                     ),
                 ],
               ),
@@ -1069,10 +1137,89 @@ String _segmentStatusText(ProductionExecutionSegmentView segment) =>
     segment.status == 'WAITING' && !segment.autoPromoteWhenReady
     ? '人工暂缓'
     : segment.status == 'READY' && !segment.materialIssued
-    ? '待仓库发料'
+    ? '已齐套·待发料'
     : segment.status == 'DISPATCHED' && !segment.materialIssued
     ? '已派工·待发料'
+    : segment.status == 'IN_PROGRESS' && segment.ordinaryRemainingQty > 0
+    ? '生产中·可继续报工'
+    : segment.status == 'IN_PROGRESS' && segment.fqcReworkAvailableQty > 0
+    ? '返工再检·待报工'
+    : segment.status == 'IN_PROGRESS' && segment.fqcReplacementReadyQty > 0
+    ? '补产物料已发·待报工'
+    : segment.status == 'IN_PROGRESS' && segment.fqcReplacementAvailableQty > 0
+    ? '补产待齐套/发料'
+    : segment.status == 'IN_PROGRESS' && !_canReportSegment(segment)
+    ? segment.finishedInboundRejectedQty > 0 &&
+              segment.finishedInboundPendingQty > 0
+          ? '仓库拒收·待重新交付'
+          : segment.finishedInboundRejectedQty > 0
+          ? '仓库拒收·待处理'
+          : segment.fqcPendingQty > 0
+          ? '已报完·待品质'
+          : segment.finishedInboundPendingQty > 0
+          ? '品质通过·待点收'
+          : segment.fqcFailedQty > 0
+          ? '品质异常·待处理'
+          : '已报完·待入库'
     : _statusText(segment.status);
+
+bool _canReportSegment(ProductionExecutionSegmentView segment) =>
+    segment.status == 'IN_PROGRESS' &&
+    (segment.ordinaryRemainingQty > 0.000001 ||
+        segment.fqcReworkAvailableQty > 0.000001 ||
+        segment.fqcReplacementReadyQty > 0.000001);
+
+String _qualityProgressText(ProductionExecutionSegmentView segment) {
+  if (segment.reportedQty <= 0 &&
+      segment.fqcPendingQty <= 0 &&
+      segment.fqcPassedQty <= 0 &&
+      segment.fqcFailedQty <= 0) {
+    return '尚未报工';
+  }
+  final parts = <String>[
+    if (segment.fqcPendingQty > 0) '待检 ${_number(segment.fqcPendingQty)}',
+    if (segment.fqcPassedQty > 0) 'PASS ${_number(segment.fqcPassedQty)}',
+    if (segment.fqcFailedQty > 0) '不合格 ${_number(segment.fqcFailedQty)}',
+    if (segment.fqcReworkAvailableQty > 0)
+      '返工再检待报 ${_number(segment.fqcReworkAvailableQty)}',
+    if (segment.fqcReplacementReadyQty > 0)
+      '补产物料已发待报 ${_number(segment.fqcReplacementReadyQty)}'
+    else if (segment.fqcReplacementAvailableQty > 0)
+      '报废/拒收补产待齐套 ${_number(segment.fqcReplacementAvailableQty)}',
+  ];
+  return parts.isEmpty ? '等待品质任务登记' : parts.join(' · ');
+}
+
+String _finishedInboundProgressText(ProductionExecutionSegmentView segment) {
+  final parts = <String>[
+    if (segment.finishedInboundRejectedQty > 0)
+      '仓库拒收 ${_number(segment.finishedInboundRejectedQty)}',
+    if (segment.finishedInboundPendingQty > 0)
+      '待点收 ${_number(segment.finishedInboundPendingQty)}',
+    if (segment.inboundQty > 0) '已入库 ${_number(segment.inboundQty)}',
+  ];
+  return parts.isEmpty ? '尚未形成合格入库' : parts.join(' · ');
+}
+
+String _postReportNextStep(ProductionExecutionSegmentView segment) {
+  final parts = <String>[
+    if (segment.fqcPendingQty > 0) '待品质判定 ${_number(segment.fqcPendingQty)}',
+    if (segment.finishedInboundRejectedQty > 0)
+      '仓库拒收 ${_number(segment.finishedInboundRejectedQty)}，已保留同源重新交付任务',
+    if (segment.finishedInboundPendingQty > 0)
+      '待仓库点收 ${_number(segment.finishedInboundPendingQty)}',
+    if (segment.inboundQty > 0) '已入库 ${_number(segment.inboundQty)}',
+    if (segment.fqcFailedQty > 0)
+      '品质不合格 ${_number(segment.fqcFailedQty)}，等待返工/补产处理',
+    if (segment.fqcReplacementAvailableQty > 0)
+      '补产 ${_number(segment.fqcReplacementAvailableQty)}，'
+          '等待重新齐套和发料后才能报工',
+  ];
+  if (parts.isEmpty) {
+    return '本执行段已全部报工，等待品质任务登记或仓库入库状态刷新。';
+  }
+  return '本执行段已全部报工：${parts.join('；')}。';
+}
 
 String _materialProgressText(ProductionExecutionSegmentView segment) {
   if (!segment.materialReady) return '缺 ${segment.shortageKindCount} 种';
@@ -1085,7 +1232,7 @@ String _materialProgressText(ProductionExecutionSegmentView segment) {
 
 String _statusText(String status) => switch (status) {
   'WAITING' => '待料',
-  'READY' => '可开工',
+  'READY' => '已齐套·待派工',
   'DISPATCHED' => '已派工',
   'IN_PROGRESS' => '生产中',
   'COMPLETED' => '已完成',

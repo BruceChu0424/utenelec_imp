@@ -4,6 +4,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.ChainNoticeService;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService;
@@ -46,10 +47,11 @@ public class ProductionExecutionSegmentService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final ChainNoticeService chainNotice;
+    private final ProductionDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public List<ExecutionSegmentView> list(UUID planId) {
-        requirePlan(planId);
+        requirePlanReadable(planId);
         return rows(planId, null);
     }
 
@@ -65,6 +67,8 @@ public class ProductionExecutionSegmentService {
         tx.bind();
         requireAssignmentRequest(request);
         LockedSegment segment = lock(planId, segmentId);
+        requireSegmentOperationAccess(
+                segment, "production_execution:assign");
         String requestHash = hashAssignment(request);
         ExecutionSegmentView replay =
                 replay(segment, ACTION_ASSIGNMENT, request.idempotencyKey(), requestHash);
@@ -136,9 +140,13 @@ public class ProductionExecutionSegmentService {
             SegmentTransitionRequest request) {
         tx.bind();
         requireTransitionRequest(request);
+        requirePlanOperationAccess(
+                planId, "production_execution:release_defer");
         UUID warehouseId = readiness.lockManualReleaseDimensions(
                 planId, segmentId);
         LockedSegment segment = lock(planId, segmentId);
+        requireSegmentOperationAccess(
+                segment, "production_execution:release_defer");
         String requestHash = hashTransition(
                 request, ACTION_RELEASE_DEFER);
         ExecutionSegmentView replay = replay(
@@ -194,7 +202,8 @@ public class ProductionExecutionSegmentService {
                 request,
                 ACTION_DISPATCH,
                 ProductionExecutionSegment.STATUS_READY,
-                ProductionExecutionSegment.STATUS_DISPATCHED);
+                ProductionExecutionSegment.STATUS_DISPATCHED,
+                "production_execution:dispatch");
     }
 
     @Transactional
@@ -208,7 +217,8 @@ public class ProductionExecutionSegmentService {
                 request,
                 ACTION_START,
                 ProductionExecutionSegment.STATUS_DISPATCHED,
-                ProductionExecutionSegment.STATUS_IN_PROGRESS);
+                ProductionExecutionSegment.STATUS_IN_PROGRESS,
+                "production_execution:start");
     }
 
     @Transactional
@@ -222,7 +232,8 @@ public class ProductionExecutionSegmentService {
                 request,
                 ACTION_CANCEL,
                 "CANCELLED",
-                ProductionExecutionSegment.STATUS_CANCELLED);
+                ProductionExecutionSegment.STATUS_CANCELLED,
+                "production_execution:cancel");
     }
 
     @Transactional
@@ -236,7 +247,8 @@ public class ProductionExecutionSegmentService {
                 request,
                 ACTION_REVERSE,
                 "REVERSED",
-                ProductionExecutionSegment.STATUS_REVERSED);
+                ProductionExecutionSegment.STATUS_REVERSED,
+                "production_execution:reverse");
     }
 
     private ExecutionSegmentView transition(
@@ -245,10 +257,12 @@ public class ProductionExecutionSegmentService {
             SegmentTransitionRequest request,
             String action,
             String fromStatus,
-            String toStatus) {
+            String toStatus,
+            String operationAuthority) {
         tx.bind();
         requireTransitionRequest(request);
         LockedSegment segment = lock(planId, segmentId);
+        requireSegmentOperationAccess(segment, operationAuthority);
         String requestHash = hashTransition(request, action);
         ExecutionSegmentView replay =
                 replay(segment, action, request.idempotencyKey(), requestHash);
@@ -300,10 +314,12 @@ public class ProductionExecutionSegmentService {
             SegmentTransitionRequest request,
             String action,
             String requiredPackageStatus,
-            String terminalStatus) {
+            String terminalStatus,
+            String operationAuthority) {
         tx.bind();
         requireTransitionRequest(request);
         LockedSegment segment = lock(planId, segmentId);
+        requireSegmentOperationAccess(segment, operationAuthority);
         String requestHash = hashTransition(request, action);
         ExecutionSegmentView replay =
                 replay(segment, action, request.idempotencyKey(), requestHash);
@@ -373,7 +389,8 @@ public class ProductionExecutionSegmentService {
                                        plan.is_canceled, plan.is_stopped,
                                        s.product_goods_id, s.workshop_department_id,
                                        s.auto_promote_when_ready,
-                                       s.material_requirement_mode
+                                       s.material_requirement_mode,
+                                       plan.maker_id
                                 FROM production_execution_segments s
                                 JOIN production_planning_packages p
                                   ON p.id = s.package_id
@@ -407,7 +424,8 @@ public class ProductionExecutionSegmentService {
                 (UUID) row[10],
                 (UUID) row[11],
                 Boolean.TRUE.equals(row[12]),
-                (String) row[13]);
+                (String) row[13],
+                (UUID) row[14]);
     }
 
     /**
@@ -435,8 +453,8 @@ public class ProductionExecutionSegmentService {
                 .filter(row -> !"FULFILLED".equals(row[1]))
                 .count();
         if (pending > 0) {
-            throw conflict("仓库尚未完成全部生产领料，不能开工（待发料 "
-                    + pending + " 项）");
+            throw conflict("仓库尚未完成全部生产领料，不能开工(待发料 "
+                    + pending + " 项)");
         }
     }
 
@@ -532,10 +550,11 @@ public class ProductionExecutionSegmentService {
                                s.product_code, s.product_name,
                                s.product_color_id, s.product_unit_id,
                                s.planned_qty,
-                               COALESCE(progress.reported_qty, 0),
+                               COALESCE(progress.effective_reported_qty, 0),
                                GREATEST(
                                    s.planned_qty
-                                   - COALESCE(progress.reported_qty, 0), 0),
+                                   - COALESCE(progress.gross_reported_qty, 0), 0)
+                                   + COALESCE(recovery.available_qty, 0),
                                s.status, s.workshop_department_id,
                                s.workshop_name, s.team_department_id,
                                s.team_name, s.responsible_employee_id,
@@ -555,12 +574,33 @@ public class ProductionExecutionSegmentService {
                                    THEN TRUE
                                  ELSE FALSE
                                END AS material_issued,
+                               COALESCE(fqc.pending_qty, 0),
+                               COALESCE(fqc.passed_qty, 0),
+                                COALESCE(fqc.failed_qty, 0),
+                                COALESCE(finished.pending_qty, 0),
+                                COALESCE(finished.inbound_qty, 0),
+                                COALESCE(finished.rejected_qty, 0),
+                                GREATEST(
+                                   s.planned_qty
+                                   - COALESCE(progress.gross_reported_qty, 0), 0),
+                               COALESCE(recovery.available_qty, 0),
+                               COALESCE(recovery.rework_available_qty, 0),
+                               COALESCE(recovery.replacement_available_qty, 0),
+                               COALESCE(recovery.replacement_ready_qty, 0),
                                s.lock_version
                         FROM v_production_execution_segments s
                         JOIN production_execution_segments base
                           ON base.id = s.id
                         LEFT JOIN LATERAL (
-                            SELECT SUM(item.qty) AS reported_qty
+                            SELECT SUM(item.qty) AS gross_reported_qty,
+                                   SUM(item.qty)
+                                   - COALESCE(SUM((
+                                       SELECT SUM(adjustment.adjusted_qty)
+                                       FROM production_fqc_contribution_adjustments
+                                            adjustment
+                                       WHERE adjustment.source_report_item_id =
+                                             item.id
+                                   )), 0) AS effective_reported_qty
                             FROM production_daily_report_items item
                             JOIN production_daily_reports report
                               ON report.id = item.report_id
@@ -578,6 +618,90 @@ public class ProductionExecutionSegmentService {
                               AND demand.is_deleted = FALSE
                               AND demand.status NOT IN ('RELEASED', 'REVERSED')
                         ) issue ON TRUE
+                        LEFT JOIN LATERAL (
+                            SELECT COALESCE(SUM(GREATEST(
+                                       inspection.reported_qty
+                                       - inspection.passed_qty
+                                       - inspection.failed_qty, 0)), 0)
+                                       AS pending_qty,
+                                   COALESCE(SUM(inspection.passed_qty), 0)
+                                       AS passed_qty,
+                                   COALESCE(SUM(inspection.failed_qty), 0)
+                                       AS failed_qty
+                            FROM production_fqc_inspections inspection
+                            WHERE inspection.execution_segment_id = s.id
+                              AND inspection.status <> 'CANCELLED'
+                        ) fqc ON TRUE
+                        LEFT JOIN LATERAL (
+                            SELECT COALESCE(SUM(item.qty) FILTER (
+                                       WHERE document.status = 0), 0)
+                                       AS pending_qty,
+                                   COALESCE(SUM(item.qty) FILTER (
+                                        WHERE document.status = 1), 0)
+                                        AS inbound_qty,
+                                   COALESCE(SUM(confirmation_item.residual_qty)
+                                       FILTER (
+                                           WHERE confirmation.decision =
+                                                 'REJECTED'
+                                             AND rejected_residual.status = 0
+                                             AND rejected_residual.is_deleted =
+                                                 FALSE), 0)
+                                       AS rejected_qty
+                             FROM stock_document_items item
+                             JOIN stock_documents document
+                              ON document.id = item.doc_id
+                              AND document.doc_type = 'FINISHED_IN'
+                              AND document.is_deleted = FALSE
+                            LEFT JOIN production_finished_in_confirmations
+                                 confirmation
+                              ON confirmation.stock_document_id = document.id
+                             AND confirmation.decision = 'REJECTED'
+                            LEFT JOIN production_finished_in_confirmation_items
+                                 confirmation_item
+                              ON confirmation_item.confirmation_id =
+                                 confirmation.id
+                             AND confirmation_item.stock_document_item_id =
+                                 item.id
+                            LEFT JOIN stock_documents rejected_residual
+                              ON rejected_residual.id =
+                                 confirmation.residual_stock_document_id
+                             WHERE item.execution_segment_id = s.id
+                              AND item.is_deleted = FALSE
+                        ) finished ON TRUE
+                        LEFT JOIN LATERAL (
+                            SELECT COALESCE(SUM(GREATEST(
+                                       balance.available_qty, 0)), 0)
+                                       AS available_qty,
+                                   COALESCE(SUM(GREATEST(
+                                       balance.available_qty, 0)) FILTER (
+                                       WHERE recovery_auth.disposition_code =
+                                             'REWORK'), 0)
+                                       AS rework_available_qty,
+                                   COALESCE(SUM(GREATEST(
+                                       balance.available_qty, 0)) FILTER (
+                                       WHERE recovery_auth.disposition_code
+                                             IN ('SCRAP', 'REJECT')), 0)
+                                       AS replacement_available_qty,
+                                   COALESCE(SUM(GREATEST(
+                                       balance.available_qty, 0)) FILTER (
+                                       WHERE recovery_auth.disposition_code
+                                             IN ('SCRAP', 'REJECT')
+                                         AND EXISTS (
+                                             SELECT 1
+                                             FROM v_production_fqc_replenishment_material_ready
+                                                  ready
+                                             WHERE ready.authorization_id =
+                                                   recovery_auth.id
+                                         )), 0)
+                                       AS replacement_ready_qty
+                            FROM v_production_fqc_recovery_balance balance
+                            JOIN production_fqc_recovery_authorizations
+                                 recovery_auth
+                              ON recovery_auth.id = balance.authorization_id
+                            WHERE balance.execution_segment_id = s.id
+                              AND balance.cancelled = FALSE
+                              AND balance.available_qty > 0
+                        ) recovery ON TRUE
                         WHERE s.plan_id = :planId
                         """ + segmentFilter + """
                         ORDER BY s.segment_no, s.id
@@ -599,17 +723,39 @@ public class ProductionExecutionSegmentService {
         return result.getFirst();
     }
 
-    private void requirePlan(UUID planId) {
-        Number count = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
+    private UUID requirePlanOwner(UUID planId) {
+        List<?> owners = em.createNativeQuery("""
+                        SELECT maker_id
                         FROM production_plans
                         WHERE id = :id AND is_deleted = FALSE
                         """)
                 .setParameter("id", planId)
-                .getSingleResult();
-        if (count.longValue() != 1) {
+                .getResultList();
+        if (owners.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在");
         }
+        return (UUID) owners.getFirst();
+    }
+
+    private void requirePlanReadable(UUID planId) {
+        access.requireReadable(
+                requirePlanOwner(planId), "生产计划不存在");
+    }
+
+    private void requirePlanOperationAccess(
+            UUID planId, String operationAuthority) {
+        access.requireScopedOperationWritable(
+                requirePlanOwner(planId),
+                "无权操作此生产计划的执行任务",
+                operationAuthority);
+    }
+
+    private void requireSegmentOperationAccess(
+            LockedSegment segment, String operationAuthority) {
+        access.requireScopedOperationWritable(
+                segment.planMakerId(),
+                "无权操作此生产计划的执行任务",
+                operationAuthority);
     }
 
     private static void requireAssignmentRequest(
@@ -707,7 +853,18 @@ public class ProductionExecutionSegmentService {
                 ((Number) row[27]).intValue(),
                 ((Number) row[28]).intValue(),
                 Boolean.TRUE.equals(row[29]),
-                ((Number) row[30]).longValue());
+                decimal(row[30]),
+                decimal(row[31]),
+                decimal(row[32]),
+                decimal(row[33]),
+                decimal(row[34]),
+                decimal(row[35]),
+                decimal(row[36]),
+                decimal(row[37]),
+                decimal(row[38]),
+                decimal(row[39]),
+                decimal(row[40]),
+                ((Number) row[41]).longValue());
     }
 
     private static BigDecimal decimal(Object value) {
@@ -744,6 +901,7 @@ public class ProductionExecutionSegmentService {
             UUID productGoodsId,
             UUID workshopDepartmentId,
             boolean autoPromoteWhenReady,
-            String materialRequirementMode) {
+            String materialRequirementMode,
+            UUID planMakerId) {
     }
 }

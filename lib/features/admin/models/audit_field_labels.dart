@@ -46,7 +46,7 @@ abstract final class AuditFieldLabels {
     'seat_no': '工位号',
     'attendance_group': '考勤组',
     'paper_archive_no': '纸质档案号',
-    'birth_month_day': '生日（月-日）',
+    'birth_month_day': '生日(月-日)',
     'avatar_storage_key': '头像',
     'legacy_id': '旧系统 ID',
     'legacy_category': '旧系统分类',
@@ -156,7 +156,7 @@ abstract final class AuditFieldLabels {
   static String valueOf(dynamic value) {
     if (value == null) return '—';
     if (value is bool) return value ? '是' : '否';
-    if (value is String && value.isEmpty) return '（空）';
+    if (value is String && value.isEmpty) return '(空)';
     return value.toString();
   }
 

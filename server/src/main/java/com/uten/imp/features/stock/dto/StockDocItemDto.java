@@ -42,4 +42,6 @@ public class StockDocItemDto {
     private LocalDate billDate;
     /** 已出库量（仅 DRAW 领料行；qty−issuedQty=剩余可出）。 */
     private BigDecimal issuedQty;
+    /** 当前用户无 goods:cost:view 时单价和金额已由服务端置空。 */
+    private boolean costMasked;
 }

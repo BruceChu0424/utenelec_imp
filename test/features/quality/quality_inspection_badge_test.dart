@@ -231,18 +231,15 @@ void main() {
       await _pumpInspectionDispositionPage(tester, repository);
 
       await _openFirstInspectionItem(tester);
-      await tester.tap(find.text('合格放行'));
-      await tester.pumpAndSettle();
-
       expect(
         find.byKey(const Key('reviewer-responsibility-notice')),
         findsOneWidget,
       );
-      expect(find.text('审核员：品质审核员（QA-001）'), findsOneWidget);
-      expect(find.text('确认后系统将记录该审核员、结论、数量和时间，请对本次检验结果负责。'), findsOneWidget);
-      expect(find.text('放行说明（选填）'), findsOneWidget);
+      expect(find.text('审核员：品质审核员(QA-001)'), findsOneWidget);
+      expect(find.text('系统将记录审核员、结论、数量与时间，请依据本行实物检验结果确认。'), findsOneWidget);
+      expect(find.text('放行说明(选填)'), findsOneWidget);
 
-      await tester.tap(find.text('确认'));
+      await tester.tap(find.text('确认合格'));
       await tester.pumpAndSettle();
 
       expect(repository.disposeCalls, hasLength(1));
@@ -259,18 +256,94 @@ void main() {
       await _pumpInspectionDispositionPage(tester, repository);
 
       await _openFirstInspectionItem(tester);
-      await tester.tap(find.text('不合格'));
+      await tester.tap(find.byKey(const Key('iqc-action-fail')));
       await tester.pumpAndSettle();
 
-      expect(find.text('审核员：品质审核员（QA-001）'), findsOneWidget);
-      expect(find.text('不合格原因（必填）'), findsOneWidget);
+      expect(find.text('审核员：品质审核员(QA-001)'), findsOneWidget);
+      expect(find.text('不合格原因(必填)'), findsOneWidget);
 
-      await tester.tap(find.text('确认'));
+      await tester.tap(find.text('确认不合格'));
       await tester.pump();
 
-      expect(find.text('必填'), findsOneWidget);
-      expect(find.text('登记不合格（FAIL）'), findsOneWidget);
+      expect(find.text('不合格原因必填'), findsOneWidget);
+      expect(find.text('检验本行'), findsOneWidget);
       expect(repository.disposeCalls, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'same receipt stays open after one decision and shows the next item',
+    (tester) async {
+      final repository = _twoItemDispositionRepository();
+      await _pumpInspectionDispositionPage(tester, repository);
+
+      final first = find.text('测试物料A(G0001)');
+      await tester.tap(first);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认合格'));
+      await tester.pumpAndSettle();
+
+      expect(repository.disposeCalls, hasLength(1));
+      expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
+      expect(find.text('测试物料B(G0002)'), findsOneWidget);
+      expect(find.text('CJ20260822000001'), findsNWidgets(2));
+    },
+  );
+
+  testWidgets('selected lines use one atomic batch pass request', (
+    tester,
+  ) async {
+    final repository = _twoItemDispositionRepository();
+    await _pumpInspectionDispositionPage(tester, repository);
+
+    await tester.tap(find.text('测试物料A(G0001)'));
+    await tester.pump();
+    await tester.tap(find.text('测试物料B(G0002)'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('iqc-batch-pass')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('批量合格放行 2 条'), findsOneWidget);
+    expect(
+      find.byKey(const Key('reviewer-responsibility-notice')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('确认整批合格'));
+    await tester.pumpAndSettle();
+
+    expect(repository.batchPassCalls, hasLength(1));
+    final call = repository.batchPassCalls.single;
+    expect(call.items.map((item) => item.inspectionItemId).toSet(), {
+      'inspection-item-1',
+      'inspection-item-2',
+    });
+    expect(call.items.map((item) => item.expectedRemainingBaseQty).toSet(), {
+      5,
+      3,
+    });
+    expect(call.reason, isNull);
+    expect(repository.disposeCalls, isEmpty);
+  });
+
+  testWidgets(
+    '375px keeps receipt queue and item table operable without overflow',
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 812);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await _pumpInspectionDispositionPage(
+        tester,
+        _twoItemDispositionRepository(),
+      );
+
+      expect(find.byKey(const Key('iqc-receipt-queue-table')), findsOneWidget);
+      expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
+      expect(find.byKey(const Key('iqc-batch-pass')), findsOneWidget);
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -332,10 +405,17 @@ Future<void> _pumpInspectionDispositionPage(
 }
 
 Future<void> _openFirstInspectionItem(WidgetTester tester) async {
-  await tester.tap(find.text('CJ20260822000001'));
+  expect(find.byKey(const Key('iqc-receipt-queue-table')), findsOneWidget);
+  expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
+  final row = find.text('测试物料(G0001)');
+  expect(row, findsOneWidget);
+  await tester.tap(row);
+  await tester.pump(const Duration(milliseconds: 50));
+  await tester.tap(row);
   await tester.pumpAndSettle();
-  expect(find.text('合格放行'), findsOneWidget);
-  expect(find.text('不合格'), findsOneWidget);
+  expect(find.text('检验本行'), findsOneWidget);
+  expect(find.byKey(const Key('iqc-action-pass')), findsOneWidget);
+  expect(find.byKey(const Key('iqc-action-fail')), findsOneWidget);
 }
 
 _FakeInspectionRepository _dispositionRepository() => _FakeInspectionRepository(
@@ -364,6 +444,45 @@ _FakeInspectionRepository _dispositionRepository() => _FakeInspectionRepository(
   ],
 );
 
+_FakeInspectionRepository _twoItemDispositionRepository() =>
+    _FakeInspectionRepository(
+      receipts: const [
+        PendingInspectionReceipt(
+          receiptType: 'PURCHASE',
+          receiptId: 'receipt-1',
+          billNo: 'CJ20260822000001',
+          itemCount: 2,
+          pendingBaseQty: 8,
+        ),
+      ],
+      inspectionItems: const [
+        ProcurementInspectionItem(
+          id: 'inspection-item-1',
+          receiptItemId: 'receipt-item-1',
+          goodsId: 'goods-1',
+          goodsCode: 'G0001',
+          goodsName: '测试物料A',
+          receivedBaseQty: 5,
+          passedBaseQty: 0,
+          failedBaseQty: 0,
+          remainingBaseQty: 5,
+          status: 'PENDING',
+        ),
+        ProcurementInspectionItem(
+          id: 'inspection-item-2',
+          receiptItemId: 'receipt-item-2',
+          goodsId: 'goods-2',
+          goodsCode: 'G0002',
+          goodsName: '测试物料B',
+          receivedBaseQty: 3,
+          passedBaseQty: 0,
+          failedBaseQty: 0,
+          remainingBaseQty: 3,
+          status: 'PENDING',
+        ),
+      ],
+    );
+
 Widget _routerApp(GoRouter router) {
   return MaterialApp.router(
     routerConfig: router,
@@ -376,15 +495,17 @@ Widget _routerApp(GoRouter router) {
 class _FakeInspectionRepository implements ProcurementInspectionRepository {
   _FakeInspectionRepository({
     this.pendingCountValue = 0,
-    this.receipts = const [],
-    this.inspectionItems = const [],
-  });
+    List<PendingInspectionReceipt> receipts = const [],
+    List<ProcurementInspectionItem> inspectionItems = const [],
+  }) : receipts = List.of(receipts),
+       inspectionItems = List.of(inspectionItems);
 
   int pendingCountValue;
   int pendingCountCalls = 0;
   final List<PendingInspectionReceipt> receipts;
   final List<ProcurementInspectionItem> inspectionItems;
   final List<_DispositionCall> disposeCalls = [];
+  final List<_BatchPassCall> batchPassCalls = [];
 
   @override
   Future<int> pendingCount() async {
@@ -414,6 +535,21 @@ class _FakeInspectionRepository implements ProcurementInspectionRepository {
     disposeCalls.add(
       _DispositionCall(action: action, baseQty: baseQty, reason: reason),
     );
+    inspectionItems.removeWhere((item) => item.id == inspectionItemId);
+    if (inspectionItems.isEmpty) receipts.clear();
+  }
+
+  @override
+  Future<void> passBatch({
+    required String receiptType,
+    required String receiptId,
+    required List<ProcurementInspectionBatchPassItem> items,
+    String? reason,
+  }) async {
+    batchPassCalls.add(_BatchPassCall(items: List.of(items), reason: reason));
+    final ids = items.map((item) => item.inspectionItemId).toSet();
+    inspectionItems.removeWhere((item) => ids.contains(item.id));
+    if (inspectionItems.isEmpty) receipts.clear();
   }
 }
 
@@ -440,5 +576,12 @@ class _DispositionCall {
 
   final String action;
   final double? baseQty;
+  final String? reason;
+}
+
+class _BatchPassCall {
+  const _BatchPassCall({required this.items, required this.reason});
+
+  final List<ProcurementInspectionBatchPassItem> items;
   final String? reason;
 }

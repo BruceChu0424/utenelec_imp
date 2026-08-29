@@ -24,8 +24,10 @@ public interface ProductionSupplyTransitionPort {
     void onPurchaseReceiptApproved(UUID receiptId);
 
     /**
-     * Refreshes material-analysis availability after one IQC PASS movement.
-     * Formal receipt fulfillment remains whole-receipt-only.
+     * Advances one IQC PASS slice into material analysis and formal production
+     * fulfillment. Implementations must derive the cumulative qualified
+     * quantity from the inspection ledger and subtract existing effective
+     * receipt allocations, so replay and later PASS decisions are exact.
      */
     default void afterPurchaseInspectionPassed(
             UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {

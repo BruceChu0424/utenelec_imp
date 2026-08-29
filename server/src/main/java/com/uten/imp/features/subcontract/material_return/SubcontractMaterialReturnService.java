@@ -10,6 +10,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.LinkedOrderReadGate;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
@@ -26,6 +27,7 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -76,8 +78,12 @@ public class SubcontractMaterialReturnService {
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.LinkedOrderReadGate linkedOrderReadGate;
 
+    @Autowired
+    private CommercialPriceVisibility commercialPriceVisibility;
+
     @Transactional(readOnly = true)
     public PageResponse<MaterialReturnListItem> list(MaterialReturnQueryFilter f, int page, int size, String sort, String order) {
+        boolean priceMasked = subcontractPriceMasked();
         var readScope = access.scope();
         Specification<SubcontractMaterialReturn> spec = (Root<SubcontractMaterialReturn> root,
                                                          jakarta.persistence.criteria.CriteriaQuery<?> q,
@@ -99,7 +105,8 @@ public class SubcontractMaterialReturnService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractMaterialReturn> p = returnRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
@@ -220,7 +227,7 @@ public class SubcontractMaterialReturnService {
                         .executeUpdate();
                 if (updated != 1) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外退料量超过可退余量（在供应商处 − 已消费 − 已退 − 已损耗），禁止超退");
+                            "委外退料量超过可退余量(在供应商处 − 已消费 − 已退 − 已损耗)，禁止超退");
                 }
             }
         }
@@ -261,7 +268,7 @@ public class SubcontractMaterialReturnService {
                         .executeUpdate();
                 if (updated != 1) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外退料红冲量超过已退量（可能已被其它单据改动），禁止负数");
+                            "委外退料红冲量超过已退量(可能已被其它单据改动)，禁止负数");
                 }
             }
         }
@@ -489,9 +496,10 @@ public class SubcontractMaterialReturnService {
         returnRepo.save(r);
     }
 
-    private MaterialReturnListItem toList(SubcontractMaterialReturn r) {
+    private MaterialReturnListItem toList(SubcontractMaterialReturn r, boolean priceMasked) {
         return new MaterialReturnListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getSupplierId(),
-                r.getWarehouseId(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getLegacyId());
+                r.getWarehouseId(), priceMasked ? null : r.getTotalLocal(), r.getStatus(),
+                r.isClosed(), r.getLegacyId(), priceMasked);
     }
 
     private MaterialReturnItemDto toItemDto(SubcontractMaterialReturnItem it) {
@@ -507,13 +515,33 @@ public class SubcontractMaterialReturnService {
     }
 
     private MaterialReturnDetail toDetail(SubcontractMaterialReturn r, List<MaterialReturnItemDto> items) {
+        boolean priceMasked = subcontractPriceMasked();
+        List<MaterialReturnItemDto> safeItems = priceMasked
+                ? items.stream().map(SubcontractMaterialReturnService::maskItemPrices).toList()
+                : items;
         return new MaterialReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
-                r.getBStyle(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), r.getSourceDocNo(), items, r.getOperatorLegacyId(), r.getOperatorName(),
+                r.getBStyle(), r.getRemark(), priceMasked ? null : r.getTotalOriginal(),
+                priceMasked ? null : r.getTotalLocal(), r.getStatus(),
+                r.isClosed(), r.getSourceDocNo(), safeItems, r.getOperatorLegacyId(), r.getOperatorName(),
                 r.getMakerLegacyId(),
                 (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
-                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
+                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt(), priceMasked);
+    }
+
+    private boolean subcontractPriceMasked() {
+        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+    }
+
+    private static MaterialReturnItemDto maskItemPrices(MaterialReturnItemDto it) {
+        return new MaterialReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
+                it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
+                it.getQty(), null, null, null, it.getMaterialIssueItemId(), it.getOrderItemId(),
+                it.getParentGoodsId(), it.getParentGoodsCodeSnapshot(), it.getParentGoodsNameSnapshot(),
+                it.getParentGoodsSnapshotSource(), it.getParentGoodsSnapshotLockedAt(),
+                it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
+                it.getGirthQty(), it.getIssueNo(), it.getOrderNo());
     }
 
     private SubcontractMaterialReturn requireReturn(UUID id) {

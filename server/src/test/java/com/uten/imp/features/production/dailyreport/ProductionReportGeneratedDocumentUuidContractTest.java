@@ -32,11 +32,27 @@ class ProductionReportGeneratedDocumentUuidContractTest {
     void generatedWritesReverseAndNoticeUseReportUuidWhileNumberRemainsSnapshot() throws IOException {
         String dailyReport = source("src/main/java/com/uten/imp/features/production/"
                 + "dailyreport/ProductionDailyReportService.java");
+        String finishedInbound = source(
+                "src/main/java/com/uten/imp/features/production/dailyreport/"
+                        + "ProductionFqcFinishedInboundService.java");
+        String fqc = source(
+                "src/main/java/com/uten/imp/features/production/quality/"
+                        + "ProductionFqcInspectionService.java");
         String notice = source("src/main/java/com/uten/imp/features/notice/ChainNoticeService.java");
         String stockEntity = source("src/main/java/com/uten/imp/features/stock/StockDocument.java");
         String planEntity = source("src/main/java/com/uten/imp/features/production/plan/ProductionPlan.java");
 
-        assertThat(dailyReport).contains("d.setSourceDailyReportId(r.getId())");
+        assertThat(dailyReport)
+                .contains("qualityInspection.registerApprovedReport(r.getId())")
+                .doesNotContain("createFinishedInDraft(");
+        assertThat(finishedInbound)
+                .contains("document.setSourceDailyReportId((UUID) row[0])")
+                .contains("item.setSourceDailyReportItemId((UUID) row[6])")
+                .contains("production_fqc_inspections inspection")
+                .contains("production_fqc_decision_events decision");
+        assertThat(fqc)
+                .contains("finishedInbound.createReleasedDraft(")
+                .contains("allocateReleasedQuantity(");
         assertThat(dailyReport).contains("rp.setSourceDailyReportId(r.getId())");
         assertThat(dailyReport).contains("docsBySource(\"FINISHED_IN\", r.getId())");
         assertThat(dailyReport).contains("remakePlansOf(r.getId())");

@@ -390,7 +390,10 @@ class ProductionMaterialAnalysisView {
     this.products = const [],
     this.materials = const [],
     this.warehouses = const [],
+    this.supplyActions = const [],
     this.allowedActions = const {},
+    this.fqcReplenishmentOnly = false,
+    this.fqcRecoveryAuthorizationId,
   });
 
   final String analysisId;
@@ -402,7 +405,10 @@ class ProductionMaterialAnalysisView {
   final List<ProductionMaterialAnalysisProduct> products;
   final List<ProductionMaterialAnalysisMaterial> materials;
   final List<ProductionMaterialAnalysisWarehouse> warehouses;
+  final List<MaterialAnalysisSupplyAction> supplyActions;
   final Set<String> allowedActions;
+  final bool fqcReplenishmentOnly;
+  final String? fqcRecoveryAuthorizationId;
 
   bool get routesConfirmed => materials
       .where((item) => item.shortageQty > 0)
@@ -430,7 +436,13 @@ class ProductionMaterialAnalysisView {
           json['warehouses'],
           ProductionMaterialAnalysisWarehouse.fromJson,
         ),
+        supplyActions: _mapList(
+          json['supplyActions'],
+          MaterialAnalysisSupplyAction.fromJson,
+        ),
         allowedActions: _stringList(json['allowedActions']).toSet(),
+        fqcReplenishmentOnly: json['fqcReplenishmentOnly'] == true,
+        fqcRecoveryAuthorizationId: _string(json['fqcRecoveryAuthorizationId']),
       );
 }
 
@@ -467,10 +479,6 @@ class ProductionMaterialAnalysisProduct {
     this.readyByDateQty,
     this.readinessRatio = 0,
     this.status,
-    this.productionBomPolicy,
-    this.missingBom = false,
-    this.bomOverrideRequired = false,
-    this.hasActiveBom,
     this.allocationPriority,
     this.parentAnalysisLineId,
     this.parentGoodsName,
@@ -510,10 +518,6 @@ class ProductionMaterialAnalysisProduct {
   final double? readyByDateQty;
   final double readinessRatio;
   final String? status;
-  final String? productionBomPolicy;
-  final bool missingBom;
-  final bool bomOverrideRequired;
-  final bool? hasActiveBom;
   final int? allocationPriority;
 
   /// For MAKE_COMPONENT self-make items: the parent assembly product this
@@ -523,10 +527,6 @@ class ProductionMaterialAnalysisProduct {
   final String? planExecutionStatus;
   final String? latestPlanId;
   final String? latestPlanNo;
-
-  bool get hasBomPolicyError =>
-      productionBomPolicy == 'BOM_REQUIRED' &&
-      (missingBom || hasActiveBom == false || bomOverrideRequired);
 
   factory ProductionMaterialAnalysisProduct.fromJson(
     Map<String, dynamic> json,
@@ -564,10 +564,6 @@ class ProductionMaterialAnalysisProduct {
     readyByDateQty: _double(json['readyByDateQty']),
     readinessRatio: _normaliseRatio(json['readinessRatio']),
     status: _string(json['status']),
-    productionBomPolicy: _string(json['productionBomPolicy']),
-    missingBom: json['missingBom'] == true,
-    bomOverrideRequired: json['bomOverrideRequired'] == true,
-    hasActiveBom: _boolOrNull(json['hasActiveBom']),
     allocationPriority: _int(json['allocationPriority']),
     parentAnalysisLineId: _string(json['parentAnalysisLineId']),
     parentGoodsName: _string(json['parentGoodsName']),
@@ -621,6 +617,7 @@ class ProductionMaterialAnalysisMaterial {
     this.safetyStockQty = 0,
     this.inboundQty = 0,
     this.shortageQty = 0,
+    this.demandSupplyGapQty = 0,
     this.sourceSuggestion,
     this.sourceConfirmed,
     this.routeConfirmed = false,
@@ -633,8 +630,6 @@ class ProductionMaterialAnalysisMaterial {
     this.basisOutputQty,
     this.allowPartialPackage,
     this.hardGate,
-    this.productionBomPolicy,
-    this.hasActiveBom,
     this.notifiedTargets = const [],
     this.borrowedInQty = 0,
     this.borrowedOutQty = 0,
@@ -687,6 +682,12 @@ class ProductionMaterialAnalysisMaterial {
   final double safetyStockQty;
   final double inboundQty;
   final double shortageQty;
+
+  /// 尚未被本批已分配现货或节点精确到货权益覆盖的生产需求。
+  ///
+  /// 这与 [shortageQty] 不同：后者仍包含安全库存硬保护造成的阻断；提交
+  /// 采购/委外/自制的“本批生产需求”只能使用本字段，避免合格到货后重复下达。
+  final double demandSupplyGapQty;
   final MaterialSupplyRoute? sourceSuggestion;
   final MaterialSupplyRoute? sourceConfirmed;
   final bool routeConfirmed;
@@ -699,8 +700,6 @@ class ProductionMaterialAnalysisMaterial {
   final double? basisOutputQty;
   final bool? allowPartialPackage;
   final bool? hardGate;
-  final String? productionBomPolicy;
-  final bool? hasActiveBom;
   final List<MaterialAnalysisNotificationTarget> notifiedTargets;
 
   /// 现货层借用（调货）投影：本节点被其它产品借入/借出的生效数量，
@@ -724,9 +723,6 @@ class ProductionMaterialAnalysisMaterial {
 
   MaterialSupplyRoute? get confirmedRoute =>
       routeConfirmed ? sourceConfirmed : null;
-
-  bool get hasBomPolicyError =>
-      productionBomPolicy == 'BOM_REQUIRED' && hasActiveBom == false;
 
   factory ProductionMaterialAnalysisMaterial.fromJson(
     Map<String, dynamic> json,
@@ -758,6 +754,7 @@ class ProductionMaterialAnalysisMaterial {
     safetyStockQty: _double(json['safetyStockQty']) ?? 0,
     inboundQty: _double(json['inboundQty']) ?? 0,
     shortageQty: _double(json['shortageQty']) ?? 0,
+    demandSupplyGapQty: _demandSupplyGap(json),
     sourceSuggestion: MaterialSupplyRoute.fromWire(
       json['sourceSuggestion'] ?? json['suggestedRoute'],
     ),
@@ -774,10 +771,6 @@ class ProductionMaterialAnalysisMaterial {
     basisOutputQty: _double(json['basisOutputQty']),
     allowPartialPackage: _boolOrNull(json['allowPartialPackage']),
     hardGate: _boolOrNull(json['hardGate']),
-    productionBomPolicy: _string(
-      json['productionBomPolicy'] ?? json['bomPolicy'],
-    ),
-    hasActiveBom: _boolOrNull(json['hasActiveBom'] ?? json['bomReady']),
     // 优先取下游引用（含单据号/状态/分摊量），它是「已下达多少、进行到哪步」
     // 的权威投影；旧版 notifiedTargets 只有路线名，仅作回退。
     notifiedTargets: _notificationTargets(
@@ -813,6 +806,9 @@ class MaterialWarehouseStock {
     this.reservedQty = 0,
     this.availableQty = 0,
     this.ownPeggedQty = 0,
+    this.publicAvailableQty = 0,
+    this.openSafetySupplyQty = 0,
+    this.safetyReplenishmentGapQty = 0,
   });
 
   final String warehouseId;
@@ -830,6 +826,16 @@ class MaterialWarehouseStock {
   /// 参与可用量运算。
   final double ownPeggedQty;
 
+  /// 不含本分析 exact peg 的公共可用库存。
+  final double publicAvailableQty;
+
+  /// 其它有效 BUY 行动中仍会到货的公共安全库存补库切片。
+  final double openSafetySupplyQty;
+
+  /// max(安全库存 - 公共可用 - 公共补库在途, 0)。同 SKU 路径会重复，
+  /// 客户端提交前必须按 goods/color/unit 去重且显式回传。
+  final double safetyReplenishmentGapQty;
+
   /// 安全库存抵扣前的现货量（在库 - 预留），用于解释「有在库但现货为 0」。
   double get preSafetyQty =>
       (onHandQty - reservedQty).clamp(0.0, double.infinity);
@@ -843,6 +849,10 @@ class MaterialWarehouseStock {
         reservedQty: _double(json['reservedQty']) ?? 0,
         availableQty: _double(json['availableQty']) ?? 0,
         ownPeggedQty: _double(json['ownPeggedQty']) ?? 0,
+        publicAvailableQty: _double(json['publicAvailableQty']) ?? 0,
+        openSafetySupplyQty: _double(json['openSafetySupplyQty']) ?? 0,
+        safetyReplenishmentGapQty:
+            _double(json['safetyReplenishmentGapQty']) ?? 0,
       );
 }
 
@@ -1132,6 +1142,79 @@ class MaterialAnalysisNotificationTarget {
   );
 }
 
+/// 一条服务端物料供给行动的权威数量快照。
+///
+/// [requestedQty] 只表示本批生产需求；[safetyReplenishmentQty] 是独立、
+/// 显式确认的公共安全库存补库，二者不得在客户端合并后丢失来源语义。
+class MaterialAnalysisSupplyAction {
+  const MaterialAnalysisSupplyAction({
+    required this.actionId,
+    this.actionGroupKey,
+    this.generation = 0,
+    this.predecessorActionId,
+    this.route,
+    this.status,
+    this.goodsId,
+    this.colorId,
+    this.unitId,
+    this.requestedQty = 0,
+    this.safetyReplenishmentQty = 0,
+    this.totalRequestedQty = 0,
+    this.safetyStockSnapshotQty = 0,
+    this.publicAvailableSnapshotQty = 0,
+    this.openSafetySupplySnapshotQty = 0,
+    this.needDate,
+    this.documentType,
+    this.documentId,
+    this.documentNo,
+  });
+
+  final String actionId;
+  final String? actionGroupKey;
+  final int generation;
+  final String? predecessorActionId;
+  final MaterialSupplyRoute? route;
+  final String? status;
+  final String? goodsId;
+  final String? colorId;
+  final String? unitId;
+  final double requestedQty;
+  final double safetyReplenishmentQty;
+  final double totalRequestedQty;
+  final double safetyStockSnapshotQty;
+  final double publicAvailableSnapshotQty;
+  final double openSafetySupplySnapshotQty;
+  final String? needDate;
+  final String? documentType;
+  final String? documentId;
+  final String? documentNo;
+
+  factory MaterialAnalysisSupplyAction.fromJson(Map<String, dynamic> json) =>
+      MaterialAnalysisSupplyAction(
+        actionId: _string(json['actionId'] ?? json['id']) ?? '',
+        actionGroupKey: _string(json['actionGroupKey']),
+        generation: _int(json['generation']) ?? 0,
+        predecessorActionId: _string(json['predecessorActionId']),
+        route: MaterialSupplyRoute.fromWire(json['route']),
+        status: _string(json['status']),
+        goodsId: _string(json['goodsId']),
+        colorId: _string(json['colorId']),
+        unitId: _string(json['unitId']),
+        requestedQty: _double(json['requestedQty']) ?? 0,
+        safetyReplenishmentQty: _double(json['safetyReplenishmentQty']) ?? 0,
+        totalRequestedQty: _double(json['totalRequestedQty']) ?? 0,
+        safetyStockSnapshotQty: _double(json['safetyStockSnapshotQty']) ?? 0,
+        publicAvailableSnapshotQty:
+            _double(json['publicAvailableSnapshotQty']) ?? 0,
+        openSafetySupplySnapshotQty:
+            _double(json['openSafetySupplySnapshotQty']) ?? 0,
+        needDate: _string(json['needDate']),
+        documentType: _string(json['documentType']),
+        documentId: _string(json['documentId']),
+        documentNo: _string(json['documentNo']),
+      );
+}
+
 class ProductionMaterialAnalysisWarehouse {
   const ProductionMaterialAnalysisWarehouse({
     required this.warehouseId,
@@ -1241,21 +1324,6 @@ class MaterialRouteDecision {
   };
 }
 
-class MaterialBomOverride {
-  const MaterialBomOverride({
-    required this.analysisLineId,
-    required this.reason,
-  });
-
-  final String analysisLineId;
-  final String reason;
-
-  Map<String, dynamic> toJson() => {
-    'analysisLineId': analysisLineId,
-    'reason': reason.trim(),
-  };
-}
-
 /// 提交采购/委外/自制时的指定数量：二选一标识操作组，
 /// 服务端按「缺口 − 在途任务」实时余量复核，超出会被拒。
 class MaterialSupplyQuantityInput {
@@ -1263,16 +1331,19 @@ class MaterialSupplyQuantityInput {
     this.actionGroupKey,
     this.materialLineId,
     required this.qty,
+    required this.safetyReplenishmentQty,
   }) : assert(actionGroupKey != null || materialLineId != null);
 
   final String? actionGroupKey;
   final String? materialLineId;
   final double qty;
+  final double safetyReplenishmentQty;
 
   Map<String, dynamic> toJson() => {
     if (actionGroupKey != null) 'actionGroupKey': actionGroupKey,
     if (materialLineId != null) 'materialLineId': materialLineId,
     'qty': qty,
+    'safetyReplenishmentQty': safetyReplenishmentQty,
   };
 }
 
@@ -1534,6 +1605,17 @@ List<MaterialAnalysisNotificationTarget> _notificationTargets(Object? raw) {
     }
   }
   return result;
+}
+
+double _demandSupplyGap(Map<String, dynamic> json) {
+  final explicit = _double(json['demandSupplyGapQty']);
+  if (explicit != null) return explicit > 0 ? explicit : 0;
+  final required = _double(json['requiredQty']) ?? 0;
+  final allocated = _double(json['allocatedAvailableQty']) ?? 0;
+  final exactPegged = _double(json['exactPeggedQty']) ?? 0;
+  final covered = allocated > exactPegged ? allocated : exactPegged;
+  final gap = required - covered;
+  return gap > 0 ? gap : 0;
 }
 
 String? _string(Object? value) {

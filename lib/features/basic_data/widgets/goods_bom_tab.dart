@@ -252,7 +252,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
 
   Future<void> _addItem() async {
     final candidates = <_BomParentOption>[
-      _BomParentOption(goodsId: widget.goodsId, label: '顶层（本货品）'),
+      _BomParentOption(goodsId: widget.goodsId, label: '顶层(本货品)'),
       for (final r in _visibleRows)
         _BomParentOption(
           goodsId: r.node.item.componentGoodsId,
@@ -527,10 +527,10 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   _loading
                       ? '加载中…'
                       : _auditMode
-                      ? '审计模式：点击行标记/取消「已核对无误」（已审 $auditedCount/${visible.length}；编辑组件后需重新核对）' // TODO(l10n)
+                      ? '审计模式：点击行标记/取消「已核对无误」(已审 $auditedCount/${visible.length}；编辑组件后需重新核对)' // TODO(l10n)
                       : (roots.isEmpty
                             ? '该货品暂无组装信息'
-                            : '共 ${roots.length} 个组件（▶ = 含子类，点行展开；选中组件后再添加默认为其子组件）'), // TODO(l10n): 补 arb
+                            : '共 ${roots.length} 个组件(▶ = 含子类，点行展开；选中组件后再添加默认为其子组件)'), // TODO(l10n): 补 arb
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: _auditMode
                         ? Colors.green.shade700
@@ -1082,7 +1082,7 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                           Expanded(
                             child: InputDecorator(
                               decoration: const InputDecoration(
-                                labelText: '单价（取自组件）',
+                                labelText: '单价(取自组件)',
                                 border: OutlineInputBorder(),
                                 isDense: true,
                                 filled: true,

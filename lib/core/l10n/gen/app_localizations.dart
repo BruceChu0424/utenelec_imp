@@ -709,7 +709,7 @@ abstract class AppLocalizations {
   /// No description provided for @visitorCodeSentDev.
   ///
   /// In zh, this message translates to:
-  /// **'验证码：{code}（开发期）'**
+  /// **'验证码：{code}(开发期)'**
   String visitorCodeSentDev(Object code);
 
   /// No description provided for @visitorIsEmployee.
@@ -1081,7 +1081,7 @@ abstract class AppLocalizations {
   /// No description provided for @visitorApprovalRejectReasonHint.
   ///
   /// In zh, this message translates to:
-  /// **'请填写拒绝原因（选填）'**
+  /// **'请填写拒绝原因(选填)'**
   String get visitorApprovalRejectReasonHint;
 
   /// No description provided for @visitorApprovalConfirmApprove.
@@ -1363,7 +1363,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeDetailContract.
   ///
   /// In zh, this message translates to:
-  /// **'合同 / 薪资（按权限可见）'**
+  /// **'合同 / 薪资(按权限可见)'**
   String get employeeDetailContract;
 
   /// No description provided for @employeeDetailEmergency.
@@ -1609,7 +1609,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeProbationValue.
   ///
   /// In zh, this message translates to:
-  /// **'{months} 个月（至 {end}）'**
+  /// **'{months} 个月(至 {end})'**
   String employeeProbationValue(Object end, Object months);
 
   /// No description provided for @employeeRenewCountValue.
@@ -1651,7 +1651,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeProbationExpiring.
   ///
   /// In zh, this message translates to:
-  /// **'试用期将于 {date} 到期（剩 {days} 天），请及时办理转正'**
+  /// **'试用期将于 {date} 到期(剩 {days} 天)，请及时办理转正'**
   String employeeProbationExpiring(Object date, Object days);
 
   /// No description provided for @employeeProbationExpired.
@@ -1663,7 +1663,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeContractExpiring.
   ///
   /// In zh, this message translates to:
-  /// **'劳动合同将于 {date} 到期（剩 {days} 天），请及时续签'**
+  /// **'劳动合同将于 {date} 到期(剩 {days} 天)，请及时续签'**
   String employeeContractExpiring(Object date, Object days);
 
   /// No description provided for @employeeContractExpired.
@@ -1783,7 +1783,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardGroupPay.
   ///
   /// In zh, this message translates to:
-  /// **'薪资 / 银行（可选，仅 HR/管理员可见）'**
+  /// **'薪资 / 银行(可选，仅 HR/管理员可见)'**
   String get employeeOnboardGroupPay;
 
   /// No description provided for @employeeOnboardSubmit.
@@ -1807,13 +1807,13 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardNote.
   ///
   /// In zh, this message translates to:
-  /// **'提交后将自动生成工号（UT 前缀）、以手机号作为登录账号，并生成一次性临时密码（身份证后 6 位）；首次登录必须修改密码。'**
+  /// **'提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，并生成一次性临时密码(身份证后 6 位)；首次登录必须修改密码。'**
   String get employeeOnboardNote;
 
   /// No description provided for @employeeOnboardCodeAutoNote.
   ///
   /// In zh, this message translates to:
-  /// **'工号提交后自动生成（UT 前缀，唯一递增）'**
+  /// **'工号提交后自动生成(UT 前缀，唯一递增)'**
   String get employeeOnboardCodeAutoNote;
 
   /// No description provided for @positionPickerTitle.
@@ -2227,7 +2227,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeRehireBody.
   ///
   /// In zh, this message translates to:
-  /// **'复职后员工状态将恢复为「在职」，其登录账号将重新启用（需重新登录）。'**
+  /// **'复职后员工状态将恢复为「在职」，其登录账号将重新启用(需重新登录)。'**
   String get employeeRehireBody;
 
   /// No description provided for @employeeRehireSuccess.
@@ -2569,13 +2569,13 @@ abstract class AppLocalizations {
   /// No description provided for @departmentEmployeesHeader.
   ///
   /// In zh, this message translates to:
-  /// **'员工（{count}）'**
+  /// **'员工({count})'**
   String departmentEmployeesHeader(Object count);
 
   /// No description provided for @departmentEmployeesEmpty.
   ///
   /// In zh, this message translates to:
-  /// **'该部门（含子部门）暂无员工'**
+  /// **'该部门(含子部门)暂无员工'**
   String get departmentEmployeesEmpty;
 
   /// No description provided for @departmentStatValue.
@@ -2749,7 +2749,7 @@ abstract class AppLocalizations {
   /// No description provided for @payrollTableRowName.
   ///
   /// In zh, this message translates to:
-  /// **'{name}（{code}）'**
+  /// **'{name}({code})'**
   String payrollTableRowName(Object name, Object code);
 
   /// No description provided for @payrollTableRowNet.
@@ -2833,7 +2833,7 @@ abstract class AppLocalizations {
   /// No description provided for @noticePublishTitleHint.
   ///
   /// In zh, this message translates to:
-  /// **'通知标题（必填）'**
+  /// **'通知标题(必填)'**
   String get noticePublishTitleHint;
 
   /// No description provided for @noticePublishContentHint.
@@ -2971,7 +2971,7 @@ abstract class AppLocalizations {
   /// No description provided for @noticePublishDepartmentsLabel.
   ///
   /// In zh, this message translates to:
-  /// **'接收部门（可多选）'**
+  /// **'接收部门(可多选)'**
   String get noticePublishDepartmentsLabel;
 
   /// No description provided for @noticePublishDepartmentsHint.
@@ -2989,7 +2989,7 @@ abstract class AppLocalizations {
   /// No description provided for @noticePublishEmployeesHint.
   ///
   /// In zh, this message translates to:
-  /// **'选择指定人员（可多选）'**
+  /// **'选择指定人员(可多选)'**
   String get noticePublishEmployeesHint;
 
   /// No description provided for @noticePublishEmployeePickerTitle.
@@ -3478,19 +3478,19 @@ abstract class AppLocalizations {
   /// No description provided for @profileChangeSectionBasic.
   ///
   /// In zh, this message translates to:
-  /// **'基本信息（直改生效）'**
+  /// **'基本信息(直改生效)'**
   String get profileChangeSectionBasic;
 
   /// No description provided for @profileChangeSectionReview.
   ///
   /// In zh, this message translates to:
-  /// **'联系方式与重要字段（需 HR 审核）'**
+  /// **'联系方式与重要字段(需 HR 审核)'**
   String get profileChangeSectionReview;
 
   /// No description provided for @profileChangeSectionIdentity.
   ///
   /// In zh, this message translates to:
-  /// **'姓名与紧急联系人（需 HR 审核）'**
+  /// **'姓名与紧急联系人(需 HR 审核)'**
   String get profileChangeSectionIdentity;
 
   /// No description provided for @profileChangeFieldDirect.
@@ -3883,6 +3883,30 @@ abstract class AppLocalizations {
   /// **'紧急联系人'**
   String get profileFieldGroupEmergency;
 
+  /// No description provided for @profileFieldGroupOrganization.
+  ///
+  /// In zh, this message translates to:
+  /// **'组织信息'**
+  String get profileFieldGroupOrganization;
+
+  /// No description provided for @profileEditPolicyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'绿色「可直接修改」提交后立即生效；黄色「需 HR 审核」由人事核对后生效；其余字段由人事统一维护。'**
+  String get profileEditPolicyHint;
+
+  /// No description provided for @profileEditPendingConflictHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'你有 {count} 条待审申请；相关字段在审核通过前再次修改，可能与在途申请冲突。'**
+  String profileEditPendingConflictHint(int count);
+
+  /// No description provided for @profileEditFieldAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改'**
+  String get profileEditFieldAction;
+
   /// No description provided for @profileFieldGroupOrg.
   ///
   /// In zh, this message translates to:
@@ -4084,7 +4108,7 @@ abstract class AppLocalizations {
   /// No description provided for @profileFieldProbationMonths.
   ///
   /// In zh, this message translates to:
-  /// **'试用期（月）'**
+  /// **'试用期(月)'**
   String get profileFieldProbationMonths;
 
   /// No description provided for @profileFieldRenewCount.
@@ -4108,7 +4132,7 @@ abstract class AppLocalizations {
   /// No description provided for @hubDisabledDocNotice.
   ///
   /// In zh, this message translates to:
-  /// **'该单据类型暂未启用（老库无数据）'**
+  /// **'该单据类型暂未启用(老库无数据)'**
   String get hubDisabledDocNotice;
 
   /// 明细报表共享副标题：一行一货品
@@ -4384,7 +4408,7 @@ abstract class AppLocalizations {
   /// No description provided for @subcontractHubDocInquirySub.
   ///
   /// In zh, this message translates to:
-  /// **'询价（未启用）'**
+  /// **'询价(未启用)'**
   String get subcontractHubDocInquirySub;
 
   /// No description provided for @subcontractHubDocApplication.
@@ -4852,7 +4876,7 @@ abstract class AppLocalizations {
   /// No description provided for @warehouseHubSectionReportsDesc.
   ///
   /// In zh, this message translates to:
-  /// **'明细（一行一货品）·汇总（一行一单）'**
+  /// **'明细(一行一货品)·汇总(一行一单)'**
   String get warehouseHubSectionReportsDesc;
 
   /// No description provided for @warehouseHubTaskExpected.
@@ -5206,7 +5230,7 @@ abstract class AppLocalizations {
   /// No description provided for @impersonationBannerTitle.
   ///
   /// In zh, this message translates to:
-  /// **'正在以 {name} 身份查看（只读）'**
+  /// **'正在以 {name} 身份查看(只读)'**
   String impersonationBannerTitle(String name);
 
   /// No description provided for @impersonationBannerSwitch.
@@ -5278,7 +5302,7 @@ abstract class AppLocalizations {
   /// No description provided for @exportPasswordOptionalLabel.
   ///
   /// In zh, this message translates to:
-  /// **'打开密码（可选，1–128 位）'**
+  /// **'打开密码(可选，1–128 位)'**
   String get exportPasswordOptionalLabel;
 
   /// No description provided for @exportPasswordConfirmLabel.
@@ -5328,6 +5352,204 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已保存：{path}'**
   String exportDownloadSaved(String path);
+
+  /// No description provided for @profileLoadingMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在加载员工档案…'**
+  String get profileLoadingMessage;
+
+  /// No description provided for @profileLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工档案加载失败'**
+  String get profileLoadFailed;
+
+  /// No description provided for @profileUnboundTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前账号未绑定员工档案'**
+  String get profileUnboundTitle;
+
+  /// No description provided for @profileUnboundDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'请联系管理员或人事完成账号与员工档案绑定。'**
+  String get profileUnboundDescription;
+
+  /// No description provided for @profileSessionUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前未登录或会话不可用'**
+  String get profileSessionUnavailable;
+
+  /// No description provided for @profileValueNotProvided.
+  ///
+  /// In zh, this message translates to:
+  /// **'未填写'**
+  String get profileValueNotProvided;
+
+  /// No description provided for @profileValueNotRegistered.
+  ///
+  /// In zh, this message translates to:
+  /// **'未登记'**
+  String get profileValueNotRegistered;
+
+  /// No description provided for @profileAlternatePhoneLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'备用手机号'**
+  String get profileAlternatePhoneLabel;
+
+  /// No description provided for @profileContractSummaryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'合同摘要'**
+  String get profileContractSummaryTitle;
+
+  /// No description provided for @profileTabOrgContract.
+  ///
+  /// In zh, this message translates to:
+  /// **'组织与合同'**
+  String get profileTabOrgContract;
+
+  /// No description provided for @profileTabContactVehicle.
+  ///
+  /// In zh, this message translates to:
+  /// **'联系与车辆'**
+  String get profileTabContactVehicle;
+
+  /// No description provided for @profileTabMyDocuments.
+  ///
+  /// In zh, this message translates to:
+  /// **'我的文件'**
+  String get profileTabMyDocuments;
+
+  /// No description provided for @profileEmploymentHistoryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'任职记录'**
+  String get profileEmploymentHistoryTitle;
+
+  /// No description provided for @profileScopeNoticeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'信息范围说明'**
+  String get profileScopeNoticeTitle;
+
+  /// No description provided for @profileCompensationBoundaryDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'薪酬与银行信息不会在“我的”页展示；这是有意设置的隐私边界。本人月度收入请从工资条核对，其他问题请联系授权人事。'**
+  String get profileCompensationBoundaryDescription;
+
+  /// No description provided for @profileMissingEmergencyContact.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未登记紧急联系人，请先联系人事登记；登记后可在这里申请修改。'**
+  String get profileMissingEmergencyContact;
+
+  /// No description provided for @profileAlternatePhoneCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'已登记 {count} 个备用号码'**
+  String profileAlternatePhoneCount(int count);
+
+  /// No description provided for @profileVehiclesPhonesEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记车辆与备用手机号，按车牌快速找到你'**
+  String get profileVehiclesPhonesEmptyHint;
+
+  /// No description provided for @historyEventConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'转正'**
+  String get historyEventConfirm;
+
+  /// No description provided for @accountProvisionPermissionDenied.
+  ///
+  /// In zh, this message translates to:
+  /// **'你没有开通账号权限，请联系账号支持人员处理'**
+  String get accountProvisionPermissionDenied;
+
+  /// No description provided for @accountProvisionAlreadyExists.
+  ///
+  /// In zh, this message translates to:
+  /// **'该员工已有账号或账号未启用，不能重复开通'**
+  String get accountProvisionAlreadyExists;
+
+  /// No description provided for @accountProvisionConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通账号确认'**
+  String get accountProvisionConfirmTitle;
+
+  /// No description provided for @accountProvisionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通账号失败，请稍后重试'**
+  String get accountProvisionFailed;
+
+  /// No description provided for @accountProvisionInProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通中'**
+  String get accountProvisionInProgress;
+
+  /// No description provided for @accountStatusNotProvisioned.
+  ///
+  /// In zh, this message translates to:
+  /// **'未开通账号'**
+  String get accountStatusNotProvisioned;
+
+  /// No description provided for @accountStatusInactive.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号未启用'**
+  String get accountStatusInactive;
+
+  /// No description provided for @pagePermissionAccountNotProvisionedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'此人还未开通账号，暂不能设置权限'**
+  String get pagePermissionAccountNotProvisionedTitle;
+
+  /// No description provided for @pagePermissionAccountNotProvisionedCanProvision.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先开通登录账号；一次性凭据确认保存后，将自动加载此人的权限详情。'**
+  String get pagePermissionAccountNotProvisionedCanProvision;
+
+  /// No description provided for @pagePermissionAccountNotProvisionedNoAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'请联系具备“账号支持”权限的人员开通登录账号。'**
+  String get pagePermissionAccountNotProvisionedNoAccess;
+
+  /// No description provided for @employeePermissionSettingsTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置员工权限'**
+  String get employeePermissionSettingsTooltip;
+
+  /// No description provided for @employeeAccountNotProvisionedTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'该员工未开通账号'**
+  String get employeeAccountNotProvisionedTooltip;
+
+  /// No description provided for @employeeResignedCannotProvision.
+  ///
+  /// In zh, this message translates to:
+  /// **'该员工已离职，不能开通登录账号'**
+  String get employeeResignedCannotProvision;
+
+  /// No description provided for @employeeAccountNotProvisionedContactSupport.
+  ///
+  /// In zh, this message translates to:
+  /// **'该员工还未开通账号，请联系账号支持人员处理'**
+  String get employeeAccountNotProvisionedContactSupport;
 }
 
 class _AppLocalizationsDelegate

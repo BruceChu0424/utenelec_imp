@@ -723,8 +723,8 @@ class _ExecutionPlanningSheetState
                           Expanded(
                             child: Text(
                               _showAllProductGroups
-                                  ? '产品与物料明细（系统初始齐套快照，全部展开）'
-                                  : '对应物料详情（${_visibleProductGroups.length} 个产品）',
+                                  ? '产品与物料明细(系统初始齐套快照，全部展开)'
+                                  : '对应物料详情(${_visibleProductGroups.length} 个产品)',
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -752,7 +752,7 @@ class _ExecutionPlanningSheetState
                         children: [
                           Expanded(
                             child: Text(
-                              '执行子计划（${_grid.length} 行）',
+                              '执行子计划(${_grid.length} 行)',
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -787,7 +787,7 @@ class _ExecutionPlanningSheetState
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
                           value: true,
-                          title: const Text('自动生成采购申请（必需）'),
+                          title: const Text('自动生成采购申请(必需)'),
                           subtitle: Text(
                             '按 $_purchaseShortageKinds 种未覆盖外购物料的净缺口生成采购申请；'
                             '申请与执行分段同事务提交，失败会整体回滚，'
@@ -1044,7 +1044,7 @@ class _ExecutionPlanningSheetState
   List<MasterColumnDef<_MaterialDisplayRow>> _materialColumns() => [
     MasterColumnDef(
       key: 'material',
-      label: '编号 · 货品名称（规格）/ 颜色',
+      label: '编号 · 货品名称(规格)/ 颜色',
       width: 270,
       value: (row) {
         final color = widget.names.color(row.colorId);
@@ -1056,7 +1056,7 @@ class _ExecutionPlanningSheetState
         final spec = row.spec?.trim();
         return <String>[
           if (code != null && code.isNotEmpty) code,
-          spec == null || spec.isEmpty ? name : '$name（$spec）',
+          spec == null || spec.isEmpty ? name : '$name($spec)',
           if (color != '—') color,
         ].join(' · ');
       },
@@ -1290,6 +1290,7 @@ class _ExecutionPlanningSheetState
                 UtenEmployeePickerItem(
                   id: employee.id,
                   name: employee.fullName,
+                  employeeCode: employee.code,
                   departmentName: employee.departmentName,
                 ),
             ];

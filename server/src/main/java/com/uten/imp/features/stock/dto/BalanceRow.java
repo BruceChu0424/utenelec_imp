@@ -17,5 +17,8 @@ public class BalanceRow {
     private UUID colorId;
     private BigDecimal qty;
     private BigDecimal amountLocal;
+    private BigDecimal weight;
     private OffsetDateTime lastMovementDate;
+    /** 当前用户无 goods:cost:view 时金额已由服务端置空。 */
+    private boolean costMasked;
 }

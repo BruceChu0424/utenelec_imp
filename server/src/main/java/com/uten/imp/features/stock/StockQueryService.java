@@ -37,8 +37,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StockQueryService {
 
-    /** 余额列排序白名单：前端列 key → JPA 实体属性名（数量可排序；命中才排序，否则默认 lastMovementDate DESC）。 */
-    private static final Map<String, String> BALANCE_ALLOWED_SORT = Map.of("qty", "qty");
+    /** 余额列排序白名单：前端列 key → JPA 实体属性名（数量/重量可排序；否则默认 lastMovementDate DESC）。 */
+    private static final Map<String, String> BALANCE_ALLOWED_SORT = Map.of(
+            "qty", "qty", "weight", "weight");
 
     /** 流水列排序白名单：前端列 key → JPA 实体属性名（日期/数量可排序；命中才排序，否则默认 transactionDate DESC）。 */
     private static final Map<String, String> MOVEMENT_ALLOWED_SORT = Map.of(
@@ -47,6 +48,7 @@ public class StockQueryService {
     private final StockBalanceRepository balanceRepo;
     private final StockMovementRepository movementRepo;
     private final EntityManager em;
+    private final StockCostMasker costMasker;
 
     @Transactional(readOnly = true)
     public PageResponse<BalanceRow> balances(UUID warehouseId, UUID goodsId, int page, int size,
@@ -62,7 +64,8 @@ public class StockQueryService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "lastMovementDate"), BALANCE_ALLOWED_SORT));
         Page<StockBalance> p = balanceRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toBalanceRow).getContent(), page, size,
+        boolean canViewCost = costMasker.canView();
+        return new PageResponse<>(p.map(balance -> toBalanceRow(balance, canViewCost)).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());
     }
 
@@ -84,7 +87,8 @@ public class StockQueryService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "transactionDate"), MOVEMENT_ALLOWED_SORT));
         Page<StockMovement> p = movementRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toMovementRow).getContent(), page, size,
+        boolean canViewCost = costMasker.canView();
+        return new PageResponse<>(p.map(movement -> toMovementRow(movement, canViewCost)).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());
     }
 
@@ -124,6 +128,12 @@ public class StockQueryService {
                                                               boolean includeDefective,
                                                               String keyword, int page, int size,
                                                               String sort, String order) {
+        boolean canViewCost = costMasker.canView();
+        if (!canViewCost && "costAmount".equals(sort)) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "无查看货品成本权限(" + StockCostMasker.PERMISSION + ")");
+        }
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -164,28 +174,35 @@ public class StockQueryService {
                 )
                 """;
 
+        String costExpression = canViewCost
+                ? "COALESCE(base.amount_local, 0)"
+                : "CAST(NULL AS NUMERIC)";
         String core = cte + """
                 SELECT g.id AS goods_id, base.color_id, mc.name AS category_name,
                        g.model, g.c_number, g.name, g.spec,
                        c.name AS color_name, u.name AS unit_name, g.paper AS remark,
                        COALESCE(base.weight, 0) AS weight,
                        COALESCE(base.qty, 0) AS qty,
-                       COALESCE(g.c_total, 0) * COALESCE(base.qty, 0) AS cost_amount,
+                """ + costExpression + """
+                       AS cost_amount,
                        COALESCE(pm.more_qty, 0) AS more_qty,
                        g.code AS goods_code, g.series, g.stock_place,
                        COALESCE(iqc.pending_qty, 0) AS pending_qty
                 FROM goods g
                 LEFT JOIN (
-                    SELECT u.goods_id, u.color_id, SUM(u.qty) AS qty, SUM(u.weight) AS weight
+                    SELECT u.goods_id, u.color_id,
+                           SUM(u.qty) AS qty,
+                           SUM(u.weight) AS weight,
+                           SUM(u.amount_local) AS amount_local
                     FROM (
-                        (SELECT b.goods_id, b.color_id, b.qty, b.weight
+                        (SELECT b.goods_id, b.color_id, b.qty, b.weight, b.amount_local
                          FROM stock_balances b
                          JOIN warehouses w ON w.id = b.warehouse_id
                 """ + balWhere + """
                         )
                         UNION ALL
-                        -- 待检品尚无余额行：并入 0 量占位行，保证「货在待检」在即时库存可见（行粒度=货品×颜色）。
-                        (SELECT i.goods_id, i.color_id, 0, 0
+                        -- 待检品尚无余额行：并入 0 量占位行，保证「货在待检」在即时库存可见(行粒度=货品×颜色)。
+                        (SELECT i.goods_id, i.color_id, 0, 0, 0
                          FROM procurement_inspection_items i
                          JOIN warehouses w ON w.id = i.warehouse_id
                 """ + iqcWhere + """
@@ -241,8 +258,10 @@ public class StockQueryService {
                     (UUID) r[0], (UUID) r[1],
                     (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
                     (String) r[7], (String) r[8], (String) r[9],
-                    (BigDecimal) r[10], (BigDecimal) r[11], (BigDecimal) r[12], (BigDecimal) r[13],
-                    (String) r[14], (String) r[15], (String) r[16], (BigDecimal) r[17]));
+                    (BigDecimal) r[10], (BigDecimal) r[11],
+                    canViewCost ? (BigDecimal) r[12] : null, (BigDecimal) r[13],
+                    (String) r[14], (String) r[15], (String) r[16], (BigDecimal) r[17],
+                    !canViewCost));
         }
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
@@ -329,7 +348,7 @@ public class StockQueryService {
                        COALESCE(c.name, '') AS color_name
                   FROM goods g
                   LEFT JOIN colors c ON c.id = g.color_id
-                """ + where + """
+                """ + where + "\n" + """
                 ORDER BY split_part(g.stock_place, '-', 1),
                          CASE WHEN split_part(g.stock_place, '-', 2) ~ '^\\d+$'
                               THEN split_part(g.stock_place, '-', 2)::int ELSE 999999 END,
@@ -368,14 +387,16 @@ public class StockQueryService {
                 .map(Object::toString).toList();
     }
 
-    private BalanceRow toBalanceRow(StockBalance b) {
+    private BalanceRow toBalanceRow(StockBalance b, boolean canViewCost) {
         return new BalanceRow(b.getId(), b.getWarehouseId(), b.getGoodsId(), b.getColorId(),
-                b.getQty(), b.getAmountLocal(), b.getLastMovementDate());
+                b.getQty(), canViewCost ? b.getAmountLocal() : null,
+                b.getWeight(), b.getLastMovementDate(), !canViewCost);
     }
 
-    private MovementRow toMovementRow(StockMovement m) {
+    private MovementRow toMovementRow(StockMovement m, boolean canViewCost) {
         return new MovementRow(m.getId(), m.getTransactionDate(), m.getMovementType(),
                 m.getSourceDocType(), m.getSourceDocId(), m.getGoodsId(), m.getColorId(),
-                m.getWarehouseId(), m.getDirection(), m.getQty(), m.getAmountLocal(), m.getRemark());
+                m.getWarehouseId(), m.getDirection(), m.getQty(),
+                canViewCost ? m.getAmountLocal() : null, m.getRemark(), !canViewCost);
     }
 }

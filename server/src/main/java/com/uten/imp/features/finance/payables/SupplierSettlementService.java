@@ -570,7 +570,8 @@ public class SupplierSettlementService {
 
     private static String batchSelect(){return """
             SELECT batch.id,batch.batch_no,batch.supplier_id,supplier.code,supplier.name,
-                   batch.currency_id,currency.code,batch.period_start,batch.period_end,batch.due_date,
+                   batch.currency_id,currency.code,currency.name,
+                   batch.period_start,batch.period_end,batch.due_date,
                    batch.status,batch.opening_balance_original,batch.period_posted_original,
                    batch.period_paid_original,batch.period_offset_original,batch.closing_balance_original,
                    batch.opening_balance_local,batch.period_posted_local,batch.period_paid_local,
@@ -578,7 +579,7 @@ public class SupplierSettlementService {
                    batch.row_version,batch.snapshot_hash,batch.created_at
             """;}
     private static String batchFrom(){return " FROM supplier_settlement_batches batch JOIN suppliers supplier ON supplier.id=batch.supplier_id JOIN currencies currency ON currency.id=batch.currency_id";}
-    private BatchSummary batchSummary(Object[]r){return new BatchSummary(uuid(r[0]),text(r[1]),uuid(r[2]),text(r[3]),text(r[4]),uuid(r[5]),text(r[6]),date(r[7]),date(r[8]),date(r[9]),text(r[10]),money(r[11]),money(r[12]),money(r[13]),money(r[14]),money(r[15]),money(r[16]),money(r[17]),money(r[18]),money(r[19]),money(r[20]),((Number)r[21]).intValue(),((Number)r[22]).longValue(),text(r[23]),text(r[24]));}
+    private BatchSummary batchSummary(Object[]r){return new BatchSummary(uuid(r[0]),text(r[1]),uuid(r[2]),text(r[3]),text(r[4]),uuid(r[5]),text(r[6]),text(r[7]),date(r[8]),date(r[9]),date(r[10]),text(r[11]),money(r[12]),money(r[13]),money(r[14]),money(r[15]),money(r[16]),money(r[17]),money(r[18]),money(r[19]),money(r[20]),money(r[21]),((Number)r[22]).intValue(),((Number)r[23]).longValue(),text(r[24]),text(r[25]));}
     private static void add(StringBuilder w,Map<String,Object>p,String q,String n,Object v){w.append(" AND ").append(q);p.put(n,v);} private static void bind(Query q,Map<String,Object>p){p.forEach(q::setParameter);}
     private static String bounded(String v,int m,String l){if(v==null||v.isBlank())throw validation(l+"不能为空");return optional(v,m);} private static String optional(String v,int m){if(v==null)return null;String t=v.trim();if(t.length()>m)throw validation("文本不能超过 "+m+" 个字符");return t.isEmpty()?null:t;}
     private static UUID uuid(Object v){return v instanceof UUID u?u:v==null?null:UUID.fromString(v.toString());} private static String text(Object v){return v==null?null:v.toString();} private static String date(Object v){return v==null?null:v.toString();}

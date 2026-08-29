@@ -2,6 +2,7 @@ package com.uten.imp.features.stock;
 
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.application.port.ProductionCompletionReversePort;
+import com.uten.imp.application.port.ProductionQualityInspectionPort;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
@@ -16,6 +17,7 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,10 +32,12 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -54,6 +58,7 @@ class StockDocFinishedInboundConfirmationTest {
     private ProductionStockTaskAccessPolicy taskAccess;
     private SecurityContextCurrentUser currentUser;
     private ChainNoticeService notices;
+    private ProductionQualityInspectionPort qualityInspection;
     private StockDocService service;
     private StockDocument document;
     private StockDocumentItem item;
@@ -70,6 +75,7 @@ class StockDocFinishedInboundConfirmationTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         notices = mock(ChainNoticeService.class);
         taskAccess = mock(ProductionStockTaskAccessPolicy.class);
+        qualityInspection = mock(ProductionQualityInspectionPort.class);
         when(access.hasAuthority(anyString())).thenReturn(true);
         when(taskAccess.canAccessWarehouseTasks()).thenReturn(true);
 
@@ -114,7 +120,8 @@ class StockDocFinishedInboundConfirmationTest {
                 mock(TaskClaimService.class),
                 access,
                 taskAccess,
-                mock(PreplanAnalysisPegPort.class));
+                mock(PreplanAnalysisPegPort.class),
+                qualityInspection);
     }
 
     @Test
@@ -165,6 +172,31 @@ class StockDocFinishedInboundConfirmationTest {
     }
 
     @Test
+    void missingFqcReleaseStopsBeforeInventoryMutation() {
+        arrangeConfirmationQueries(List.of());
+        doThrow(new ApiException(
+                com.uten.imp.common.web.ErrorCode.CONFLICT,
+                "没有足额 FQC PASS 放行来源"))
+                .when(qualityInspection)
+                .requireInboundReleased(
+                        eq(item.getSourceDailyReportItemId()),
+                        eq(itemId),
+                        eq(new BigDecimal("10.0000")));
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.confirmFinishedInbound(
+                        documentId,
+                        request(
+                                "10.0000",
+                                null,
+                                "confirm-fqc-denied")));
+
+        assertThat(error.getMessage()).contains("FQC PASS");
+        verifyNoInteractions(stock);
+    }
+
+    @Test
     void shortConfirmationRequiresAVarianceReason() {
         arrangeConfirmationQueries(List.of());
 
@@ -199,6 +231,18 @@ class StockDocFinishedInboundConfirmationTest {
         when(currentUser.requireEmployeeId()).thenReturn(employeeId);
         when(documents.findById(documentId)).thenReturn(Optional.of(document));
         when(balanceAdjustments.existsByStockDocumentId(documentId)).thenReturn(false);
+        when(documents.saveAndFlush(any(StockDocument.class)))
+                .thenAnswer(invocation -> {
+                    StockDocument saved = invocation.getArgument(0);
+                    if (saved.getId() == null) saved.setId(UUID.randomUUID());
+                    return saved;
+                });
+        when(items.saveAndFlush(any(StockDocumentItem.class)))
+                .thenAnswer(invocation -> {
+                    StockDocumentItem saved = invocation.getArgument(0);
+                    if (saved.getId() == null) saved.setId(UUID.randomUUID());
+                    return saved;
+                });
         arrangeConfirmationQueries(List.of());
 
         assertThat(service.confirmFinishedInbound(
@@ -207,11 +251,31 @@ class StockDocFinishedInboundConfirmationTest {
                 .getId()).isEqualTo(documentId);
 
         assertThat(document.getStatus()).isEqualTo((short) -1);
+        ArgumentCaptor<StockDocument> documentCaptor =
+                ArgumentCaptor.forClass(StockDocument.class);
+        verify(documents, times(2)).saveAndFlush(documentCaptor.capture());
+        StockDocument residualDocument = documentCaptor.getAllValues().stream()
+                .filter(saved -> saved != document)
+                .findFirst()
+                .orElseThrow();
+        assertThat(residualDocument.getStatus()).isEqualTo((short) 0);
+        assertThat(residualDocument.getDocType()).isEqualTo("FINISHED_IN");
+        assertThat(residualDocument.getRemark()).contains("整单拒收待重新交付");
+
+        ArgumentCaptor<StockDocumentItem> itemCaptor =
+                ArgumentCaptor.forClass(StockDocumentItem.class);
+        verify(items).saveAndFlush(itemCaptor.capture());
+        StockDocumentItem residualItem = itemCaptor.getValue();
+        assertThat(residualItem.getDocId()).isEqualTo(residualDocument.getId());
+        assertThat(residualItem.getQty()).isEqualByComparingTo("10.0000");
+        assertThat(residualItem.getSourceDailyReportItemId())
+                .isEqualTo(item.getSourceDailyReportItemId());
         // 拒收原因只存确认记录，单据备注保持不可变身份列原值（草稿建单时未写备注）
         assertThat(document.getRemark()).isNull();
         verifyNoInteractions(stock);
         verify(notices).notifyFinishedInboundRejected(
                 documentId, "整批实物未到仓", "confirm-reject-02");
+        verify(notices).notifyFinishedInboundPending(residualDocument.getId());
     }
 
     @Test
@@ -254,6 +318,8 @@ class StockDocFinishedInboundConfirmationTest {
                 .contains(".setParameter(\"documentId\", id.toString())")
                 .contains("return approveInternal(id, true)")
                 .contains("\"REJECTED\", varianceReason")
+                .contains("confirmationId, document, residualDocument")
+                .contains("notifyFinishedInboundPending(residualDocument.getId())")
                 .contains("document.setStatus(STATUS_REVERSED)")
                 .contains("notifyFinishedInboundRejected")
                 .contains("public StockDocDetail reverseFinishedInbound")

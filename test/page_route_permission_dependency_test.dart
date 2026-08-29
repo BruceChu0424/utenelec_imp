@@ -201,11 +201,20 @@ void main() {
       }
     });
     test('material analysis requires view besides action permissions', () {
+      final summaryPath = RoutePath.productionMaterialAnalysisSummary(
+        'analysis-1',
+      );
       expect(
         requiredAnyPermFor(RouteName.productionMaterialAnalysis),
         contains(Perm.productionMaterialAnalysisCrossReallocate),
       );
       expect(requiredAllPermsFor(RouteName.productionMaterialAnalysis), const [
+        Perm.productionMaterialAnalysisView,
+      ]);
+      expect(requiredAnyPermFor(summaryPath), const [
+        Perm.productionMaterialAnalysisView,
+      ]);
+      expect(requiredAllPermsFor(summaryPath), const [
         Perm.productionMaterialAnalysisView,
       ]);
       expect(

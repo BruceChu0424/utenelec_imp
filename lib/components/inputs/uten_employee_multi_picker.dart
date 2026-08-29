@@ -14,6 +14,7 @@ import '../feedback/uten_skeleton.dart';
 import '../layout/uten_bottom_action_bar.dart';
 import 'required_field_decoration.dart';
 import 'uten_employee_picker.dart';
+import 'uten_field_message.dart';
 import 'uten_search_bar.dart';
 
 class UtenEmployeeMultiPicker extends StatefulWidget {
@@ -197,7 +198,9 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
                           ),
                     hintText: widget.hint,
                     enabled: widget.enabled,
-                    errorText: field.errorText,
+                    error: field.errorText == null
+                        ? null
+                        : UtenFieldMessage.error(field.errorText!),
                     prefixIcon: const Icon(Icons.group_add_outlined),
                     suffixIcon: Icon(
                       Icons.unfold_more_rounded,
@@ -229,7 +232,7 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
                         Icons.person_outline_rounded,
                         size: 18,
                       ),
-                      label: Text(item.name),
+                      label: Text(item.displayName),
                       tooltip: item.departmentName,
                       onDeleted: widget.enabled ? () => _remove(item) : null,
                     ),
@@ -415,7 +418,7 @@ class _EmployeeMultiPickerSheetState extends State<_EmployeeMultiPickerSheet> {
                                 : item.name.characters.first,
                           ),
                         ),
-                        title: Text(item.name),
+                        title: Text(item.displayName),
                         subtitle: Text(
                           [
                             if (item.departmentName?.isNotEmpty == true)

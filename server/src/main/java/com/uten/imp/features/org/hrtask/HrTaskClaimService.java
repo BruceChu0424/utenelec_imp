@@ -87,7 +87,7 @@ public class HrTaskClaimService {
                 .ifPresent(claim -> {
                     if (!claim.getClaimedBy().equals(me) && !canManage) {
                         throw new ApiException(ErrorCode.FORBIDDEN,
-                                "只能释放自己认领的事项（或由持员工编辑权限者接管）");
+                                "只能释放自己认领的事项(或由持员工编辑权限者接管)");
                     }
                     claim.setReleasedAt(OffsetDateTime.now());
                     claimRepo.save(claim);
@@ -130,7 +130,7 @@ public class HrTaskClaimService {
     private static void requireTaskType(String taskType) {
         if (taskType == null || !ALLOWED_TASK_TYPES.contains(taskType)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "未知任务类型: " + taskType + "（可选: " + ALLOWED_TASK_TYPES + "）");
+                    "未知任务类型: " + taskType + "(可选: " + ALLOWED_TASK_TYPES + ")");
         }
     }
 

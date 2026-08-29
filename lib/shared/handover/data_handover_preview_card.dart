@@ -45,7 +45,7 @@ class DataHandoverPreviewCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '影响 ${preview.total} 项次（按分类合计，可能包含同一业务记录的不同处理动作）。'
+                '影响 ${preview.total} 项次(按分类合计，可能包含同一业务记录的不同处理动作)。'
                 '只转移当前责任；历史制单、审批和审计记录不改写。',
                 style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
               ),

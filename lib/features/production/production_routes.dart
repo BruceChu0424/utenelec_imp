@@ -15,6 +15,7 @@ import 'pages/production_material_analysis_history_page.dart';
 import 'pages/production_plan_detail_page.dart';
 import 'pages/production_plan_edit_page.dart';
 import 'pages/production_plan_list_page.dart';
+import 'pages/production_plan_summary_sheet_page.dart';
 import 'pages/production_report_page.dart';
 import 'pages/where_used_report_page.dart';
 
@@ -50,6 +51,19 @@ final List<RouteBase> productionRoutes = [
     path: RouteName.productionMaterialAnalysisHistory,
     name: 'production-material-analysis-history',
     builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(),
+  ),
+  GoRoute(
+    path: '/production/material-analyses/:id/summary',
+    name: 'production-material-analysis-summary',
+    builder: (_, state) {
+      final initialAnalysis = state.extra is ProductionMaterialAnalysisView
+          ? state.extra! as ProductionMaterialAnalysisView
+          : null;
+      return ProductionPlanSummarySheetPage(
+        analysisId: state.pathParameters['id']!,
+        initialAnalysis: initialAnalysis,
+      );
+    },
   ),
   GoRoute(
     path: '/production/plans/new',

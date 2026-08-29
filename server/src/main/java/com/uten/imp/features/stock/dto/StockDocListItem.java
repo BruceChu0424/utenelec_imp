@@ -25,4 +25,6 @@ public class StockDocListItem {
     private UUID departmentId;
     /** 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完；其他类型恒 null。 */
     private Short issueStatus;
+    /** 当前用户无 goods:cost:view 时合计金额已由服务端置空。 */
+    private boolean costMasked;
 }

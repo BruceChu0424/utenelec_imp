@@ -51,9 +51,9 @@ String fmtDateTime(DateTime d, [String locale = 'zh_CN']) {
       ? ChinaDateTime.fromInstant(d)
       : ChinaDateTime.asWallTime(d);
   try {
-    return '${DateFormat.yMd(locale).add_Hm().format(chinaTime)}（北京）';
+    return '${DateFormat.yMd(locale).add_Hm().format(chinaTime)}(北京)';
   } catch (_) {
     // locale 数据未初始化时降级为 ISO 格式
-    return '${ChinaDateTime.formatDateTime(chinaTime)}（北京）';
+    return '${ChinaDateTime.formatDateTime(chinaTime)}(北京)';
   }
 }

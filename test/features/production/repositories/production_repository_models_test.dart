@@ -84,23 +84,15 @@ void main() {
   });
 
   group('SchedulePendingRow', () {
-    test('marks rows without an active BOM as unavailable', () {
+    test('parses core scheduling facts', () {
       final row = SchedulePendingRow.fromJson({
         'orderItemId': 'order-item-1',
         'orderId': 'order-1',
-        'bomReady': false,
+        'urgent': true,
       });
 
-      expect(row.bomReady, isFalse);
-    });
-
-    test('defaults BOM readiness to true for older API responses', () {
-      final row = SchedulePendingRow.fromJson({
-        'orderItemId': 'order-item-2',
-        'orderId': 'order-2',
-      });
-
-      expect(row.bomReady, isTrue);
+      expect(row.urgent, isTrue);
+      expect(row.orderItemId, 'order-item-1');
     });
   });
 }

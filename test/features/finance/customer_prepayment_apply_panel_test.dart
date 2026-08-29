@@ -4,10 +4,43 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/finance/models/customer_prepayment.dart';
 import 'package:uten_imp/features/finance/widgets/customer_prepayment_apply_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  test(
+    'incomplete prepayment pages use the additive local-currency summary',
+    () {
+      const singleCurrencyItem = CustomerPrepaymentItem(
+        ledgerId: 'prepayment-1',
+        currencyId: 'currency-cny',
+      );
+      const completePage = CustomerPrepaymentPage(
+        summary: CustomerPrepaymentSummary(),
+        items: [singleCurrencyItem],
+        page: 1,
+        size: 100,
+        total: 1,
+        totalPages: 1,
+      );
+      const incompletePage = CustomerPrepaymentPage(
+        summary: CustomerPrepaymentSummary(),
+        items: [singleCurrencyItem],
+        page: 1,
+        size: 100,
+        total: 101,
+        totalPages: 2,
+      );
+
+      expect(customerPrepaymentSummaryUsesLocalCurrency(completePage), isFalse);
+      expect(
+        customerPrepaymentSummaryUsesLocalCurrency(incompletePage),
+        isTrue,
+      );
+    },
+  );
+
   testWidgets('375px applies exact prepayment and can reverse the result', (
     tester,
   ) async {
@@ -48,7 +81,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('应用客户预收'), findsOneWidget);
-    expect(find.text('70.10'), findsWidgets);
+    expect(find.textContaining('人民币'), findsOneWidget);
+    expect(find.textContaining('美金'), findsOneWidget);
+    expect(find.text('累计预收(本币)'), findsOneWidget);
+    expect(find.text('1080.8885'), findsOneWidget);
+    expect(find.textContaining(' · 001'), findsNothing);
+    expect(find.textContaining(' · 002'), findsNothing);
 
     await tester.tap(
       find.descendant(
@@ -73,10 +111,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('AR-001'), findsOneWidget);
+    expect(find.textContaining('001 65.1234'), findsNothing);
     await tester.enterText(
       find.byWidgetPredicate(
         (widget) =>
-            widget is TextField && widget.decoration?.labelText == '应用原因（必填）',
+            widget is TextField && widget.decoration?.labelText == '应用原因(必填)',
       ),
       '客户确认预收用于订单 XD-001',
     );
@@ -100,7 +139,7 @@ void main() {
     await tester.enterText(
       find.byWidgetPredicate(
         (widget) =>
-            widget is TextField && widget.decoration?.labelText == '反转原因（必填）',
+            widget is TextField && widget.decoration?.labelText == '反转原因(必填)',
       ),
       '客户要求改用其它订单',
     );
@@ -162,11 +201,11 @@ class _ApplyPanelApi extends ApiClient {
 const _prepayments = <String, dynamic>{
   'summary': {
     'receivedOriginal': '100.1234',
-    'receivedLocal': '720.8885',
+    'receivedLocal': '1080.8885',
     'appliedOriginal': '30.0234',
     'appliedSourceBookLocal': '216.1685',
     'availableOriginal': '70.1000',
-    'availableLocal': '504.7200',
+    'availableLocal': '864.7200',
   },
   'items': [
     {
@@ -177,8 +216,9 @@ const _prepayments = <String, dynamic>{
       'salesOrderId': 'source-order-1',
       'clientId': 'client-1',
       'clientName': '甲客户',
-      'currencyId': 'currency-usd',
-      'currencyCode': 'USD',
+      'currencyId': 'currency-cny',
+      'currencyCode': '001',
+      'currencyName': '人民币',
       'exchangeRate': '7.200000',
       'receivedOriginal': '100.1234',
       'receivedLocal': '720.8885',
@@ -187,10 +227,28 @@ const _prepayments = <String, dynamic>{
       'availableOriginal': '70.1000',
       'availableLocal': '504.7200',
     },
+    {
+      'ledgerId': 'prepayment-ledger-2',
+      'receiptId': 'receipt-2',
+      'billNo': 'YS-002',
+      'billDate': '2026-08-19',
+      'clientId': 'client-1',
+      'clientName': '甲客户',
+      'currencyId': 'currency-usd',
+      'currencyCode': '002',
+      'currencyName': '美金',
+      'exchangeRate': '7.200000',
+      'receivedOriginal': '50.0000',
+      'receivedLocal': '360.0000',
+      'appliedOriginal': '0.0000',
+      'appliedSourceBookLocal': '0.0000',
+      'availableOriginal': '50.0000',
+      'availableLocal': '360.0000',
+    },
   ],
   'page': 1,
   'size': 100,
-  'total': 1,
+  'total': 2,
   'totalPages': 1,
 };
 
@@ -206,8 +264,8 @@ const _openReceivables = <String, dynamic>{
       'billNo': 'AR-001',
       'billDate': '2026-08-22',
       'clientId': 'client-1',
-      'currencyId': 'currency-usd',
-      'currencyCode': 'USD',
+      'currencyId': 'currency-cny',
+      'currencyCode': '001',
       'amountOriginal': 100,
       'amountReceivedOriginal': 20,
       'amountWriteOffOriginal': 5,

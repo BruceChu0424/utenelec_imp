@@ -35,7 +35,6 @@ class SalesOrderPlanProgressQuery {
                        analysis.status, analysis.analyzed_at,
                        ai.requested_qty, ai.submitted_qty, ai.approved_qty,
                        ai.delivery_date, ai.line_priority,
-                       goods.production_bom_policy,
                        ai.ready_now_qty, ai.ready_by_date_qty,
                        CASE
                            WHEN ai.ready_now_qty <
@@ -76,8 +75,8 @@ class SalesOrderPlanProgressQuery {
                      (UUID) row[0], (UUID) row[1], (UUID) row[2],
                      (String) row[3], offsetDateTime(row[4]),
                      decimal(row[5]), decimal(row[6]), decimal(row[7]),
-                     localDate(row[8]), (String) row[10],
-                     decimal(row[11]), decimal(row[12]), localDate(row[13]));
+                     localDate(row[8]),
+                     decimal(row[10]), decimal(row[11]), localDate(row[12]));
             sourcesByAnalysis.computeIfAbsent(source.analysisId(), ignored -> new ArrayList<>())
                     .add(source);
         }
@@ -183,7 +182,6 @@ class SalesOrderPlanProgressQuery {
             BigDecimal submittedQty,
             BigDecimal approvedQty,
             LocalDate deliveryDate,
-            String productionBomPolicy,
             BigDecimal readyNowQty,
             BigDecimal readyByDateQty,
             LocalDate expectedReadyDate) {

@@ -2,7 +2,7 @@ package com.uten.imp.features.production.dailyreport.dto;
 
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -16,6 +16,12 @@ import java.util.UUID;
 @Getter
 @Setter
 public class DailyReportSaveRequest {
+    /** Required for create; excluded from the canonical request hash. */
+    @Size(min = 8, max = 128)
+    private String idempotencyKey;
+    /** Required for PUT; compared with the persisted rowVersion before mutation. */
+    @Min(0)
+    private Long expectedVersion;
     private String billNo;
     @NotNull private LocalDate billDate;
     private UUID warehouseId;

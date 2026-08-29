@@ -92,7 +92,7 @@ class ProductionCompletionReversePostgresTest {
             // IN_PROGRESS and can reverse the exact report fact.
             update(connection, """
                     UPDATE production_daily_reports
-                    SET status = -1
+                    SET status = -1, row_version = row_version + 1
                     WHERE id = ?
                     """, fixture.reportId());
             assertShort(connection, """

@@ -16,17 +16,17 @@ class FinancePayablesKpiStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = <_KpiData>[
-      _KpiData('应付（本币）', summary?.payableLocal, Icons.receipt_long_outlined),
-      _KpiData('现金已付（本币）', summary?.paidLocal, Icons.task_alt_rounded),
-      _KpiData('账面核销（本币）', summary?.settledBookLocal, Icons.menu_book_outlined),
+      _KpiData('应付(本币)', summary?.payableLocal, Icons.receipt_long_outlined),
+      _KpiData('现金已付(本币)', summary?.paidLocal, Icons.task_alt_rounded),
+      _KpiData('账面核销(本币)', summary?.settledBookLocal, Icons.menu_book_outlined),
       _KpiData(
-        '汇兑差额（本币）',
+        '汇兑差额(本币)',
         summary?.exchangeDifferenceLocal,
         Icons.currency_exchange_outlined,
       ),
-      _KpiData('抵销（本币）', summary?.offsetLocal, Icons.rule_rounded),
+      _KpiData('抵销(本币)', summary?.offsetLocal, Icons.rule_rounded),
       _KpiData(
-        '未付（本币）',
+        '未付(本币)',
         summary?.outstandingLocal,
         Icons.account_balance_wallet_outlined,
       ),
@@ -35,7 +35,7 @@ class FinancePayablesKpiStrip extends StatelessWidget {
         summary?.dueThisMonthLocal,
         Icons.event_available_outlined,
       ),
-      _KpiData('逾期（本币）', summary?.overdueLocal, Icons.warning_amber_rounded),
+      _KpiData('逾期(本币)', summary?.overdueLocal, Icons.warning_amber_rounded),
       _KpiData('索赔贷项', summary?.creditLocal, Icons.price_change_outlined),
       _KpiData('供应商预付', summary?.prepaymentLocal, Icons.savings_outlined),
       _KpiData(

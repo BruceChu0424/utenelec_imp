@@ -6,6 +6,7 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/reportable_plan_line.dart';
 import '../repositories/production_repository.dart';
@@ -122,7 +123,7 @@ class _ReportablePlanLineSheetState
                         ),
                         const SizedBox(height: UtenSpacing.s4),
                         Text(
-                          '仅显示已审核、未停止且仍有可报数量的计划；合并排产按销售订单行分开。',
+                          '显示普通可报任务和 FQC 恢复任务；返工可再检报工，报废/拒收补产须重新齐套发料。',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -157,8 +158,8 @@ class _ReportablePlanLineSheetState
                   const SizedBox(width: UtenSpacing.s8),
                   Expanded(
                     child: Text(
-                      '选择后会锁定计划行、销售订单行和单位换算口径。提交审核时后台再次校验剩余量，'
-                      '并发报工不会超报或串单。',
+                      '选择后会锁定计划行、销售订单行、单位口径和 FQC 恢复授权。'
+                      '提交审核时后台再次校验剩余量，并发报工不会超报、串单或重复贡献。',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onPrimaryContainer,
                       ),
@@ -203,7 +204,7 @@ class _ReportablePlanLineSheetState
               hint: _picked == null
                   ? (_total > 100
                         ? '共 $_total 条，当前展示前 100 条，可继续搜索缩小范围'
-                        : '共 $_total 条可报工任务')
+                        : '共 $_total 条报工/恢复任务')
                   : null,
               onConfirm: () => Navigator.of(context).pop(_picked),
             ),
@@ -256,10 +257,19 @@ class _ReportablePlanLineSheetState
             label: '任务状态',
             width: 100,
             value: (item) => switch (item.executionSegmentStatus) {
-              'DISPATCHED' => '已派工',
-              'IN_PROGRESS' => '生产中',
+              'IN_PROGRESS' when item.fqcRecoveryRequiresMaterial => '待补料/待发料',
+              'IN_PROGRESS' when item.isFqcRecovery => '恢复报工',
+              'IN_PROGRESS' => '普通报工',
               _ => item.executionSegmentStatus ?? '历史计划',
             },
+          ),
+          MasterColumnDef(
+            key: 'sourceType',
+            label: '报工类型',
+            width: 120,
+            value: (item) =>
+                item.fqcRecoveryLabel ??
+                (item.isFqcRecovery ? 'FQC恢复' : '正常生产'),
           ),
           MasterColumnDef(
             key: 'goods',
@@ -285,14 +295,18 @@ class _ReportablePlanLineSheetState
           ),
           MasterColumnDef(
             key: 'remaining',
-            label: '计划剩余',
+            label: '计划/恢复余量',
             width: 90,
             type: 'number',
-            value: (item) => _fmt(item.remainingPlanQty),
+            value: (item) => _fmt(
+              item.isFqcRecovery
+                  ? item.fqcRecoveryAvailableQty
+                  : item.remainingPlanQty,
+            ),
           ),
           MasterColumnDef(
             key: 'maxReport',
-            label: '本行可报',
+            label: '当前可报',
             width: 90,
             type: 'number',
             value: (item) => _fmt(item.maxReportQty),
@@ -309,10 +323,22 @@ class _ReportablePlanLineSheetState
         nullCounts: const {},
         filters: const {},
         onFilterChanged: (_, _) {},
-        onRowTap: (item) => setState(() => _picked = item),
+        onRowTap: (item) {
+          if (!item.canReport) {
+            context.appWarning(
+              item.blockedReason ?? '当前来源没有可报数量，请刷新后重试',
+              force: true,
+            );
+            return;
+          }
+          setState(() => _picked = item);
+        },
         isSelected: (item) => identical(_picked, item),
         emptyMessage: '没有符合条件的可报工任务',
         rowColor: (item) {
+          if (!item.canReport) {
+            return theme.colorScheme.tertiaryContainer.withValues(alpha: 0.28);
+          }
           final date = DateTime.tryParse(item.deliveryDate ?? '');
           if (date == null) return null;
           final days = DateUtils.dateOnly(

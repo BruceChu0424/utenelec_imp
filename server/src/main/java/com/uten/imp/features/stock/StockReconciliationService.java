@@ -71,7 +71,7 @@ public class StockReconciliationService {
             return;
         }
         long total = countDrift();
-        log.warn("库存对账发现 {} 个维度余额≠流水（余额=当前库存表，流水=Σ出入库带方向），"
+        log.warn("库存对账发现 {} 个维度余额≠流水(余额=当前库存表，流水=Σ出入库带方向)，"
                 + "禁止手工改库修复，须走 CHECK 盘点/授权调整单留痕纠偏。前 {} 条明细：", total, rows.size());
         for (Map<String, Object> row : rows) {
             log.warn("  [库存漂移] 仓={} 货品={}({}) 颜色={} 余额={} 流水合计={} 差额={}",

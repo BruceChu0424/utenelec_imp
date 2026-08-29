@@ -1,3 +1,21 @@
+/// 到货任务在仓库流水线中的当前步骤（到货登记 → [超量待财务] → 送检 → 品质放行入库）。
+enum InboundArrivalStep {
+  /// 可登记实际到货（还有批准剩余量可收）。
+  readyToRegister,
+
+  /// 已登记待送检（草稿收货单在途）：一键「继续送检」完成停止的步骤。
+  draftPendingInspection,
+
+  /// 实到超量已隔离，待财务定案（到货异常任务中心处理）。
+  excessPendingFinance,
+
+  /// 已送检，待品质部检验放行（放行后自动入库存，仓库无需操作）。
+  awaitingQuality,
+
+  /// 暂不能登记（数据/授权不完整）。
+  blocked,
+}
+
 enum ProcurementInboundOrderType { purchase, subcontract, unknown }
 
 ProcurementInboundOrderType procurementInboundOrderTypeFrom(Object? value) {
@@ -127,6 +145,9 @@ class InboundExpectation {
     this.ownerEmployeeId,
     this.ownerEmployeeName,
     this.allowedActions = const <String>{},
+    this.draftReceiptIds = const <String>[],
+    this.pendingInspectionReceipts = 0,
+    this.openArrivalExceptions = 0,
   });
 
   final String id;
@@ -154,6 +175,33 @@ class InboundExpectation {
   final num registeredQty;
   final List<InboundExpectationItem> items;
   final Set<String> allowedActions;
+
+  /// 该任务当前挂着的草稿收货单 id（服务端按订货明细关联聚合）：
+  /// 「已登记待审核」态据此提供「继续送检」恢复入口（中途退出的恢复步骤）。
+  final List<String> draftReceiptIds;
+
+  /// 待品质放行的收货单张数（已审核、IQC 未结，货在待检隔离未进可用库存）：
+  /// 任务卡的「待品质检验」步骤。
+  final int pendingInspectionReceipts;
+
+  /// 未结到货异常数（超量被隔离，待财务定案）：任务卡的「超量待财务」步骤。
+  final int openArrivalExceptions;
+
+  /// 流水线当前步骤（优先级：超量待财务 > 待送检 > 待品质 > 待登记 > 不可登记）。
+  InboundArrivalStep get arrivalStep {
+    if (openArrivalExceptions > 0) {
+      return InboundArrivalStep.excessPendingFinance;
+    }
+    if (draftReceiptIds.isNotEmpty) {
+      return InboundArrivalStep.draftPendingInspection;
+    }
+    if (pendingInspectionReceipts > 0) {
+      return InboundArrivalStep.awaitingQuality;
+    }
+    if (canCreateReceipt) return InboundArrivalStep.readyToRegister;
+    if (awaitingReceiptReview) return InboundArrivalStep.draftPendingInspection;
+    return InboundArrivalStep.blocked;
+  }
 
   /// 还可登记量 = 未收量 − 已登记待审核量。
   num get effectiveRemainingQty {
@@ -243,6 +291,9 @@ class InboundExpectation {
         json['items'],
       ).map(InboundExpectationItem.fromJson).toList(growable: false),
       allowedActions: _actions(json['allowedActions']),
+      draftReceiptIds: _texts(json['draftReceiptIds']),
+      pendingInspectionReceipts: _int(json['pendingInspectionReceipts']),
+      openArrivalExceptions: _int(json['openArrivalExceptions']),
     );
   }
 }
@@ -533,6 +584,45 @@ enum FinanceArrivalDecision {
   };
 }
 
+/// 到货登记一步完成（登记 + 送检审核）的结果。
+enum WarehouseArrivalRegistrationOutcome {
+  /// 已审核并转品质部待检（IQC），合格放行后自动入库存。
+  submittedForInspection,
+
+  /// 实到超过财务批准量：未入库、未立应付，已隔离等待财务定案。
+  excessQuarantined;
+
+  static WarehouseArrivalRegistrationOutcome fromName(String? value) =>
+      value == 'EXCESS_QUARANTINED'
+      ? excessQuarantined
+      : submittedForInspection;
+}
+
+class WarehouseArrivalRegistration {
+  const WarehouseArrivalRegistration({
+    required this.outcome,
+    this.receiptId,
+    this.receiptBillNo,
+    this.exceptionId,
+  });
+
+  final WarehouseArrivalRegistrationOutcome outcome;
+  final String? receiptId;
+  final String? receiptBillNo;
+  final String? exceptionId;
+
+  factory WarehouseArrivalRegistration.fromJson(Map<String, dynamic> json) {
+    return WarehouseArrivalRegistration(
+      outcome: WarehouseArrivalRegistrationOutcome.fromName(
+        _text(json['outcome']),
+      ),
+      receiptId: _text(json['receiptId']),
+      receiptBillNo: _text(json['receiptBillNo']),
+      exceptionId: _text(json['exceptionId']),
+    );
+  }
+}
+
 String procurementQty(num value) {
   final fixed = value.toStringAsFixed(4);
   return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
@@ -553,6 +643,8 @@ int? _integer(Object? value) {
   if (value is num) return value.toInt();
   return int.tryParse(value?.toString() ?? '');
 }
+
+int _int(Object? value) => _integer(value) ?? 0;
 
 Map<String, dynamic>? _map(Object? value) {
   if (value is Map<String, dynamic>) return value;
@@ -575,4 +667,9 @@ Set<String> _actions(Object? value) {
       .whereType<String>()
       .map((action) => action.toUpperCase())
       .toSet();
+}
+
+List<String> _texts(Object? value) {
+  if (value is! List) return const <String>[];
+  return value.map(_text).whereType<String>().toList(growable: false);
 }

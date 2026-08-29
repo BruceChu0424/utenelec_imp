@@ -1696,7 +1696,7 @@ public class FinanceReportService {
                     WHERE payment.status IN(1,-1)
                       AND COALESCE(payment.is_deleted,FALSE)=FALSE
                       AND payment.supplier_id IS NOT NULL
-                      AND """ + documentScope.predicate() + """
+                      AND %s
                 ), supplier_payable_events AS (
                     SELECT ledger.bill_date AS event_date,ledger.bill_no AS ref_no,
                            ledger.amount_original AS posted_original,ledger.exchange_rate AS posted_rate,
@@ -1776,7 +1776,7 @@ public class FinanceReportService {
                     LEFT JOIN currencies currency ON currency.id=allocation.currency_id
                     WHERE allocation.status='REVERSED' AND allocation.reversed_at IS NOT NULL
                 )
-                """;
+                """.formatted(documentScope.predicate());
     }
 
     // ======================== ⑤ 账户流水 S / 银行存取 Q·R ========================
@@ -1785,7 +1785,10 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse accountStatement(UUID accountId, LocalDate dateFrom, LocalDate dateTo,
                                                 String keyword, int page, int size) {
-        requireCompanyWideReportAccess();
+        if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "开始日期不能晚于结束日期");
+        }
+        requireAccountStatementAccess();
         return accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, page, size);
     }
 
@@ -1797,16 +1800,123 @@ public class FinanceReportService {
                 ReportColumn.text("checkNo", "支票号", 120), ReportColumn.text("summary", "摘要", 160),
                 ReportColumn.text("counterpartName", "对方单位", 160), ReportColumn.text("source", "支票来源", 120),
                 ReportColumn.date("settledDate", "核销日期"), ReportColumn.money("inAmount", "收款金额"),
-                ReportColumn.money("outAmount", "支出金额"), ReportColumn.money("balance", "余额"));
+                ReportColumn.money("outAmount", "支出金额"), ReportColumn.money("balance", "余额"),
+                ReportColumn.text("entryKind", "流水类型", 100));
         if (accountId == null) return empty(cols);
-        String sql = "SELECT r.bill_date AS billDate, r.bill_no AS billNo, COALESCE(r.check_no,'') AS checkNo, "
-                + "COALESCE(r.remark,'') AS summary, COALESCE(r.counterpart_name,'') AS counterpartName, "
-                + "COALESCE(r.source_remark,'') AS source, r.settled_date AS settledDate, "
-                + "r.in_amount AS inAmount, r.out_amount AS outAmount FROM finance_reconciliations r "
-                + "WHERE COALESCE(r.is_deleted,false)=false AND r.account_id=:aid "
-                + "AND (CAST(:to AS date) IS NULL OR r.bill_date<=:to) "
-                + "ORDER BY r.bill_date ASC, r.bill_no ASC";
-        return buildAccountRunning(cols, sql, accountId, dateFrom, dateTo, keyword, page, size);
+        int safePage=Math.max(1,page);
+        int safeSize=Math.min(Math.max(1,size),500);
+        long offset=(long)(safePage-1)*safeSize;
+        java.time.OffsetDateTime fromAt=dateFrom==null?null:BusinessTime.startOfDay(dateFrom);
+        LocalDate fromMonth=dateFrom==null?null:dateFrom.withDayOfMonth(1);
+        java.time.OffsetDateTime fromMonthAt=fromMonth==null
+                ?null:BusinessTime.startOfDay(fromMonth);
+        java.time.OffsetDateTime toExclusive=dateTo==null?null:BusinessTime.startOfDay(dateTo.plusDays(1));
+        String normalizedKeyword=keyword==null||keyword.isBlank()
+                ?null:"%"+keyword.trim().toLowerCase(Locale.ROOT)+"%";
+        String sql="""
+                WITH account_base AS (
+                  SELECT id,currency_id,init_balance
+                  FROM accounts
+                  WHERE id=:aid AND COALESCE(is_deleted,FALSE)=FALSE
+                ), closed_months AS (
+                  SELECT COALESCE(SUM(summary.in_amount-summary.out_amount),0) AS amount
+                  FROM account_base base
+                  LEFT JOIN account_flow_monthly_summaries summary
+                    ON summary.account_id=base.id
+                   AND summary.account_currency_id=base.currency_id
+                   AND CAST(:fromMonth AS date) IS NOT NULL
+                   AND summary.month_start<CAST(:fromMonth AS date)
+                ), current_month_tail AS (
+                  SELECT COALESCE(SUM(flow.in_amount-flow.out_amount),0) AS amount
+                  FROM account_base base
+                  LEFT JOIN finance_reconciliations flow
+                    ON flow.account_id=base.id
+                   AND COALESCE(flow.is_deleted,FALSE)=FALSE
+                   AND CAST(:fromAt AS timestamptz) IS NOT NULL
+                   AND flow.bill_date>=CAST(:fromMonthAt AS timestamptz)
+                   AND flow.bill_date<CAST(:fromAt AS timestamptz)
+                ), opening AS (
+                  SELECT base.init_balance+closed.amount+tail.amount AS amount
+                  FROM account_base base
+                  CROSS JOIN closed_months closed
+                  CROSS JOIN current_month_tail tail
+                ), windowed AS (
+                  SELECT (flow.bill_date AT TIME ZONE 'Asia/Shanghai')::date AS bill_date,
+                         flow.bill_no,COALESCE(flow.check_no,'') AS check_no,
+                         COALESCE(flow.remark,'') AS summary,
+                         COALESCE(flow.counterpart_name,'') AS counterpart_name,
+                         COALESCE(flow.source_remark,'') AS source,
+                         flow.settled_date,flow.in_amount,flow.out_amount,
+                         opening.amount+SUM(flow.in_amount-flow.out_amount) OVER(
+                           ORDER BY flow.bill_date,flow.posting_seq
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance,
+                         flow.source_doc_type,flow.source_doc_id,flow.entry_kind,
+                         flow.reversal_of_id,
+                         LOWER(COALESCE(flow.bill_no,'')||' '||COALESCE(flow.check_no,'')||' '
+                           ||COALESCE(flow.counterpart_name,'')||' '||COALESCE(flow.remark,'')||' '
+                           ||COALESCE(flow.source_remark,'')||' '||COALESCE(flow.source_doc_type,'')) AS searchable,
+                         flow.bill_date AS sort_bill_date,flow.posting_seq AS sort_posting_seq,
+                         flow.id AS entry_id
+                  FROM finance_reconciliations flow
+                  CROSS JOIN opening
+                  WHERE flow.account_id=:aid AND COALESCE(flow.is_deleted,FALSE)=FALSE
+                    AND (CAST(:fromAt AS timestamptz) IS NULL
+                         OR flow.bill_date>=CAST(:fromAt AS timestamptz))
+                    AND (CAST(:toExclusive AS timestamptz) IS NULL
+                         OR flow.bill_date<CAST(:toExclusive AS timestamptz))
+                ), filtered AS (
+                  SELECT windowed.*,COUNT(*) OVER() AS total_count
+                  FROM windowed
+                  WHERE CAST(:keyword AS text) IS NULL
+                     OR searchable LIKE CAST(:keyword AS text)
+                )
+                SELECT bill_date,bill_no,check_no,summary,counterpart_name,source,
+                       settled_date,in_amount,out_amount,balance,
+                       source_doc_type,source_doc_id,entry_kind,reversal_of_id,
+                       entry_id,sort_posting_seq,total_count
+                FROM filtered
+                ORDER BY sort_bill_date,sort_posting_seq
+                LIMIT :limit OFFSET :offset
+                """;
+        var query=em.createNativeQuery(sql)
+                .setParameter("aid",accountId)
+                .setParameter("fromAt",fromAt)
+                .setParameter("fromMonth",fromMonth)
+                .setParameter("fromMonthAt",fromMonthAt)
+                .setParameter("toExclusive",toExclusive)
+                .setParameter("keyword",normalizedKeyword)
+                .setParameter("limit",safeSize)
+                .setParameter("offset",offset);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows=query.getResultList();
+        List<Map<String,Object>> items=new ArrayList<>(rows.size());
+        long total=rows.isEmpty()?0:((Number)rows.getFirst()[16]).longValue();
+        for(Object[] row:rows){
+            Map<String,Object> item=new LinkedHashMap<>();
+            item.put("billDate",norm(row[0]));
+            item.put("billNo",norm(row[1]));
+            item.put("checkNo",norm(row[2]));
+            item.put("summary",norm(row[3]));
+            item.put("counterpartName",norm(row[4]));
+            item.put("source",norm(row[5]));
+            item.put("settledDate",norm(row[6]));
+            item.put("inAmount",norm(row[7]));
+            item.put("outAmount",norm(row[8]));
+            item.put("balance",norm(row[9]));
+            item.put("sourceDocType",norm(row[10]));
+            item.put("sourceDocId",norm(row[11]));
+            item.put("entryKind",norm(row[12]));
+            item.put("reversalOfId",norm(row[13]));
+            item.put("entryId",norm(row[14]));
+            item.put("postingSeq",norm(row[15]));
+            item.put("inAmountText",num(row[7]).toPlainString());
+            item.put("outAmountText",num(row[8]).toPlainString());
+            item.put("balanceText",num(row[9]).toPlainString());
+            items.add(item);
+        }
+        int totalPages=(int)((total+safeSize-1)/safeSize);
+        return new ReportTableResponse(
+                cols,items,new LinkedHashMap<>(),safePage,safeSize,total,totalPages);
     }
 
     /** Q 银行存取明细 / R 汇总（M_Bank 0 行，返回空结构）。 */
@@ -1961,6 +2071,16 @@ public class FinanceReportService {
         }
     }
 
+    private void requireAccountStatementAccess() {
+        if (!access.hasAuthority("account:view")
+                || !access.hasAuthority("account:balance:view")
+                || !access.hasAuthority("account:flow:view")) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "账户流水要求同时具备账户查看、余额查看和账户流水查看权限");
+        }
+    }
+
     /**
      * 五类财务单据报表统一复用对象级读取范围。
      *
@@ -2092,7 +2212,9 @@ public class FinanceReportService {
     private ReportTableResponse buildAccountRunning(List<ReportColumn> cols, String sql, UUID aid,
                                                     LocalDate dateFrom, LocalDate dateTo, String kw, int page, int size) {
         String keyword = (kw == null || kw.isBlank()) ? null : kw.toLowerCase(Locale.ROOT);
-        var q = em.createNativeQuery(sql).setParameter("aid", aid).setParameter("to", dateTo);
+        var q = em.createNativeQuery(sql)
+                .setParameter("aid", aid)
+                .setParameter("to", dateTo);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         // 从期初额开始遍历截止日以前的全部流水；日期/关键字只裁返回行，不能裁滚动余额事实。
@@ -2111,8 +2233,11 @@ public class FinanceReportService {
             }
             if (keyword != null) {
                 String searchable = (Objects.toString(r[1], "") + " "
+                        + Objects.toString(r[2], "") + " "
                         + Objects.toString(r[4], "") + " "
-                        + Objects.toString(r[3], "")).toLowerCase(Locale.ROOT);
+                        + Objects.toString(r[3], "") + " "
+                        + Objects.toString(r[5], "") + " "
+                        + Objects.toString(r[9], "")).toLowerCase(Locale.ROOT);
                 if (!searchable.contains(keyword)) {
                     continue;
                 }
@@ -2122,6 +2247,11 @@ public class FinanceReportService {
             m.put("summary", norm(r[3])); m.put("counterpartName", norm(r[4])); m.put("source", norm(r[5]));
             m.put("settledDate", norm(r[6])); m.put("inAmount", norm(inAmt)); m.put("outAmount", norm(outAmt));
             m.put("balance", norm(running));
+            m.put("sourceDocType", norm(r[9]));
+            m.put("sourceDocId", norm(r[10]));
+            m.put("inAmountText", inAmt.toPlainString());
+            m.put("outAmountText", outAmt.toPlainString());
+            m.put("balanceText", running.toPlainString());
             all.add(m);
         }
         return paginate(cols, all, page, size);
@@ -2195,7 +2325,7 @@ public class FinanceReportService {
     }
 
     private static String normalizeDirection(String direction) {
-        if (direction == null) throw new ApiException(ErrorCode.BUSINESS, "direction 必填（AR/AP）");
+        if (direction == null) throw new ApiException(ErrorCode.BUSINESS, "direction 必填(AR/AP)");
         String d = direction.trim().toUpperCase();
         if (!d.equals("AR") && !d.equals("AP")) throw new ApiException(ErrorCode.BUSINESS, "direction 只能是 AR 或 AP");
         return d;
@@ -2217,6 +2347,9 @@ public class FinanceReportService {
      */
     @Transactional(readOnly = true)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        if ("account/statement".equals(report)) {
+            requireAccountStatementAccess();
+        }
         boolean companyWide = requiresCompanyWideExportAccess(report);
         OwnerScope exportDocumentScope;
         if (companyWide) {

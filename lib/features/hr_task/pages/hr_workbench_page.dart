@@ -386,7 +386,7 @@ class HrWorkbenchPage extends ConsumerWidget {
           Expanded(
             child: Text(
               '另有 ${s.unconfirmedLegacyCount} 名入职满一年的员工未登记转正日期，'
-              '请在员工档案中补录（编辑员工 → 转正日期）。',
+              '请在员工档案中补录(编辑员工 → 转正日期)。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

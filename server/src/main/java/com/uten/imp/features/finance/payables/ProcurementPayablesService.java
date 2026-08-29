@@ -310,7 +310,7 @@ public class ProcurementPayablesService {
                        to_char(date_trunc('month', ledger.bill_date), 'YYYY-MM'),
                        method.id, method.code, method.name,
                        COALESCE(NULLIF(supplier.tday, 0), method.default_due_days),
-                       currency.id, currency.code, ledger.exchange_rate,
+                       currency.id, currency.code, currency.name, ledger.exchange_rate,
                        ledger.amount_original, ledger.amount_original_local,
                        ledger.amount_received_original, ledger.amount_received_local,
                        ledger.amount_offset_original, ledger.amount_offset_local,
@@ -345,9 +345,9 @@ public class ProcurementPayablesService {
                 uuid(row[0]), text(row[1]), text(row[2]), text(row[3]), uuid(row[4]), text(row[5]),
                 uuid(row[6]), text(row[7]), text(row[8]), date(row[9]), date(row[10]), text(row[11]),
                 uuid(row[12]), text(row[13]), text(row[14]), integer(row[15]), uuid(row[16]), text(row[17]),
-                rate(row[18]), money(row[19]), money(row[20]), money(row[21]), money(row[22]),
-                money(row[23]), money(row[24]), money(row[25]), money(row[26]), text(row[27]),
-                integer(row[28]) == null ? 0 : integer(row[28]), text(row[29]));
+                text(row[18]), rate(row[19]), money(row[20]), money(row[21]), money(row[22]),
+                money(row[23]), money(row[24]), money(row[25]), money(row[26]), money(row[27]),
+                text(row[28]), integer(row[29]) == null ? 0 : integer(row[29]), text(row[30]));
     }
 
     private static String upper(String value) {

@@ -285,8 +285,8 @@ public class SalesReturnService {
         }
         if (!"PENDING".equals(r.getDispositionStatus())) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "退货已确认客户处置（" + r.getCustomerDisposition()
-                            + "），不能直接红冲；请走受控补偿流程后再处理");
+                    "退货已确认客户处置(" + r.getCustomerDisposition()
+                            + ")，不能直接红冲；请走受控补偿流程后再处理");
         }
         List<SalesReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         requireNonNegativeStoredCommercial(r, items);
@@ -365,8 +365,8 @@ public class SalesReturnService {
                 return detail(id);
             }
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该退货单已确认客户处置（" + r.getCustomerDisposition()
-                            + "），如需更改请先走受控补偿流程");
+                    "该退货单已确认客户处置(" + r.getCustomerDisposition()
+                            + ")，如需更改请先走受控补偿流程");
         }
 
         List<SalesReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);

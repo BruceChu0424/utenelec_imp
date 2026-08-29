@@ -16,6 +16,7 @@ import '../../features/basic_data/pages/basic_data_hub_page.dart';
 import '../../features/basic_data/pages/client_category_page.dart';
 import '../../features/basic_data/pages/color_page.dart';
 import '../../features/basic_data/pages/account_page.dart';
+import '../../features/basic_data/pages/account_detail_page.dart';
 import '../../features/basic_data/pages/currency_page.dart';
 import '../../features/basic_data/pages/goods_detail_page.dart';
 import '../../features/basic_data/pages/mould_category_page.dart';
@@ -79,7 +80,9 @@ import '../../features/warehouse/pages/procurement_inspection_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
+import '../../features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import '../../features/quality/pages/quality_task_center_page.dart';
+import '../../features/quality/pages/production_fqc_inspections_page.dart';
 import '../../shared/models/procurement_inbound.dart';
 import '../../features/warehouse/pages/stock_doc_detail_page.dart';
 import '../../features/warehouse/pages/stock_doc_edit_page.dart';
@@ -99,8 +102,6 @@ import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/production_routes.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
-import '../../features/profile/pages/my_vehicle_phone_page.dart';
-import '../../features/profile/pages/my_documents_page.dart';
 import '../../features/department/pages/my_department_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
@@ -601,6 +602,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const AccountPage(),
           ),
           GoRoute(
+            path: RouteName.basicinfoAccountDetail,
+            name: 'basicinfo-account-detail',
+            builder: (_, state) => AccountDetailPage(
+              accountId: state.pathParameters['id']!,
+              startEditing: state.uri.queryParameters['edit'] == 'true',
+            ),
+          ),
+          GoRoute(
             path: RouteName.basicinfoPaymentStyle,
             name: 'basicinfo-payment-style',
             builder: (_, _) => const PaymentStylePage(),
@@ -769,6 +778,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const QualityTaskCenterPage(),
           ),
           GoRoute(
+            path: RouteName.productionFqcInspections,
+            name: 'production-fqc-inspections',
+            builder: (_, _) => const ProductionFqcInspectionsPage(),
+          ),
+          GoRoute(
             path: RouteName.warehouseInboundExpectations,
             name: 'warehouse-inbound-expectations',
             builder: (_, _) => const WarehouseInboundExpectationsPage(),
@@ -777,6 +791,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseArrivalExceptions,
             name: 'warehouse-arrival-exceptions',
             builder: (_, _) => const WarehouseArrivalExceptionsPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseProductionFinishedInboundTasks,
+            name: 'warehouse-production-finished-inbound-tasks',
+            builder: (_, _) => const ProductionFinishedInboundTasksPage(),
           ),
           // 仓库登记实际到货独立页（须在 /warehouse/:code 系列之前；extra 带预填）。
           GoRoute(
@@ -1195,7 +1214,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.profileEdit,
             name: 'profile-edit',
-            builder: (_, _) => const ProfileEditPage(),
+            // ?field=xxx：从「我的」页字段铅笔进入，编辑页定位聚焦该字段。
+            builder: (_, s) =>
+                ProfileEditPage(initialField: s.uri.queryParameters['field']),
           ),
           GoRoute(
             path: RouteName.profileMyChanges,
@@ -1207,16 +1228,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'profile-my-department',
             builder: (_, _) => const MyDepartmentPage(),
           ),
-          GoRoute(
-            path: RouteName.profileMyVehicles,
-            name: 'profile-my-vehicles',
-            builder: (_, _) => const MyVehiclePhonePage(),
-          ),
-          GoRoute(
-            path: RouteName.profileMyDocuments,
-            name: 'profile-my-documents',
-            builder: (_, _) => const MyDocumentsPage(),
-          ),
+          // 我的车辆与号码(/profile/me/vehicles)、我的文件(/profile/me/documents)
+          // 独立页已吸收为「我的」页 Tab（我的页 v7），路由下线。
 
           // —— HR 端：工作台（今日概览 + 转正/生日/周年/新入职子页，ADR-021） ——
           GoRoute(

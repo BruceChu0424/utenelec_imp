@@ -71,7 +71,7 @@ class UtenPerformanceTierSwitcher extends ConsumerWidget {
               Expanded(
                 child: Text(
                   currentPref.isAuto
-                      ? '当前档位：${currentTier.name}（设备推荐：${recommended?.name ?? '-'}）'
+                      ? '当前档位：${currentTier.name}(设备推荐：${recommended?.name ?? '-'})'
                       : '当前档位：${currentTier.name}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),

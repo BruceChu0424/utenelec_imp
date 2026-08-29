@@ -83,6 +83,7 @@ public class ImpersonationService {
         return page.getItems().stream()
                 .map(e -> new ImpersonationTargetDto(
                         e.getId(), e.getFullName(),
+                        e.getCode(),
                         e.getDepartmentName(), e.getPositionName()))
                 .toList();
     }

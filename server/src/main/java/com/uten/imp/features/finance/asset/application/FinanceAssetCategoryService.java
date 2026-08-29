@@ -179,7 +179,7 @@ public class FinanceAssetCategoryService {
         }
         if ("DEFERRED_EXPENSE".equals(category.objectType()) && category.accumulatedStyleId() != null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "长期待摊费用政策不应使用累计折旧（备抵）科目");
+                    "长期待摊费用政策不应使用累计折旧(备抵)科目");
         }
         requireDistinctAccounts(category);
         requirePostableStyle(category.costStyleId(), "成本科目", "ACCOUNT", "账户");

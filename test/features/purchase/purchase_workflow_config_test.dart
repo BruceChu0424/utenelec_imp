@@ -17,7 +17,14 @@ void main() {
       expect(PurchaseDocConfig.order.allowDirectCreate, isTrue);
       expect(PurchaseDocConfig.order.skipListOnCreate, isTrue);
       expect(PurchaseDocConfig.order.supplierRequired, isTrue);
+      expect(PurchaseDocConfig.order.hasSettlement, isTrue);
+      expect(PurchaseDocConfig.order.settlementRequired, isTrue);
       expect(PurchaseDocConfig.order.linkToRequestItem, isTrue);
+
+      expect(PurchaseDocConfig.receipt.hasSettlement, isTrue);
+      expect(PurchaseDocConfig.receipt.settlementRequired, isFalse);
+      expect(PurchaseDocConfig.returnDoc.hasSettlement, isTrue);
+      expect(PurchaseDocConfig.returnDoc.settlementRequired, isFalse);
     },
   );
 

@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 
 import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
+import '../../features/admin/pages/admin_audit_session_detail_page.dart';
+import '../../features/admin/models/audit_session.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
 import '../../features/admin/pages/page_permission_settings_page.dart';
@@ -1295,6 +1297,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminAuditLogs,
             name: 'admin-audit-logs',
             builder: (_, _) => const AdminAuditLogPage(),
+          ),
+          GoRoute(
+            path: RouteName.adminAuditSession,
+            name: 'admin-audit-session',
+            builder: (_, state) => AdminAuditSessionDetailPage(
+              sessionId: state.pathParameters['sessionId'] ?? '',
+              routeSnapshotAuditId: int.tryParse(
+                state.uri.queryParameters['snapshotAuditId'] ?? '',
+              ),
+              initialSummary: state.extra is AuditSessionSummary
+                  ? state.extra! as AuditSessionSummary
+                  : null,
+            ),
           ),
           GoRoute(
             path: RouteName.adminSystemSettings,

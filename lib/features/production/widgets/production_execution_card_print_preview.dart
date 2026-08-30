@@ -91,7 +91,7 @@ class _ProductionExecutionCardPrintDialogState
       final bytes = await buildProductionExecutionCardPdf(latest);
       await printPdfBytes(
         bytes,
-        '生产执行工卡_${_safeFilename(latest.planBillNo ?? latest.planId)}.pdf',
+        '生产计划单_${_safeFilename(latest.planBillNo ?? latest.planId)}_执行工卡.pdf',
       );
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message, force: true);
@@ -151,7 +151,7 @@ class _ProductionExecutionCardPrintDialogState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'A4 生产执行工卡',
+                  'A4 生产计划单 · 流水线执行工卡',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -171,7 +171,7 @@ class _ProductionExecutionCardPrintDialogState
           ),
           IconButton(
             onPressed: _printing ? null : () => Navigator.pop(context),
-            tooltip: '关闭工卡预览',
+            tooltip: '关闭生产计划打印预览',
             icon: const Icon(Icons.close_rounded),
           ),
         ],
@@ -448,7 +448,7 @@ class _ProductionExecutionCardPrintDialogState
               onPressed: _view?.isPrintable == true && !_printing
                   ? _print
                   : null,
-              child: Text(compact ? '打印全部' : '打印全部 A4 工卡'),
+              child: Text(compact ? '打印全部' : '打印全部 A4 计划工卡'),
             ),
           ],
         ),
@@ -467,7 +467,7 @@ Future<Uint8List> buildProductionExecutionCardPdf(
   final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
   final font = pw.Font.ttf(fontData);
   final document = pw.Document(
-    title: '生产执行工卡_${view.planBillNo ?? view.planId}',
+    title: '生产计划单_${view.planBillNo ?? view.planId}_执行工卡',
     author: 'Uten IMP',
     creator: 'Uten IMP production planning',
     subject: 'Confirmed production execution package work cards',
@@ -497,6 +497,22 @@ Future<Uint8List> buildProductionExecutionCardPdf(
 }
 
 pw.Widget _pdfHeader(ProductionWorkCardView view, ProductionWorkCard card) {
+  final product = [
+    card.productNo,
+    card.productCode,
+    card.productName,
+    card.productSpec,
+    card.productModel,
+  ].where(_present).join(' / ');
+  final quantity = [
+    _qty(card.plannedQty),
+    card.productUnitName,
+  ].where(_present).join(' ');
+  final assignment = [
+    card.workshopName,
+    card.teamName,
+    card.responsibleEmployeeName,
+  ].where(_present).join(' / ');
   return pw.Padding(
     padding: const pw.EdgeInsets.only(bottom: 8),
     child: pw.Row(
@@ -507,7 +523,15 @@ pw.Widget _pdfHeader(ProductionWorkCardView view, ProductionWorkCard card) {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                '生产执行工卡',
+                '中山市优腾电器有限公司',
+                style: const pw.TextStyle(
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                '生产计划单（流水线执行工卡）',
                 style: const pw.TextStyle(
                   fontSize: 18,
                   fontWeight: pw.FontWeight.bold,
@@ -515,7 +539,23 @@ pw.Widget _pdfHeader(ProductionWorkCardView view, ProductionWorkCard card) {
               ),
               pw.SizedBox(height: 3),
               pw.Text(
-                '计划单 ${_value(view.planBillNo)}  ·  执行分段 ${card.segmentCode}',
+                '计划单 ${_value(view.planBillNo)}  ·  执行分段 ${card.segmentCode}'
+                '  ·  开单 ${_value(view.planBillDate)}  ·  交期 ${_value(view.deliveryDate)}',
+                style: const pw.TextStyle(fontSize: 9),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                _value(product),
+                style: const pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                '本批数量 ${_value(quantity)}  ·  '
+                '${_value(assignment)}  ·  '
+                '${_value(card.planBeginDate)} 至 ${_value(card.planEndDate)}',
                 style: const pw.TextStyle(fontSize: 9),
               ),
             ],

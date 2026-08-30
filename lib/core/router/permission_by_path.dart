@@ -55,12 +55,14 @@ bool _isOrderDetailPath(String location, String module) {
 ///
 /// 这是路由守卫与工作台显隐共用的唯一数据源。
 List<String>? requiredAnyPermFor(String location) {
+  final routePath = Uri.tryParse(location)?.path ?? location.split('?').first;
   // 账号支持可进入员工账号列表；只有超级管理员能看到并修改授权部分。
   if (location == RouteName.adminPermissions) {
     return const [Perm.accountSupport, Perm.authorizationManage];
   }
   // 审计中心与本机回执核查共享独立的只读权限；导出仍另需 audit_log:export。
-  if (location == RouteName.adminAuditLogs ||
+  if (routePath == RouteName.adminAuditLogs ||
+      routePath.startsWith('${RouteName.adminAuditLogs}/') ||
       location == RouteName.deviceAuditReceipts) {
     return const [Perm.auditLogView];
   }

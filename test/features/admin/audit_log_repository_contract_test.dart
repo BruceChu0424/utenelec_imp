@@ -179,6 +179,42 @@ void main() {
       });
     },
   );
+
+  test('session summary supports a direct detail-page deep link', () async {
+    final api = _CaptureApi({
+      'sessionId': 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      'actorId': '123e4567-e89b-42d3-a456-426614174099',
+      'actorDisplay': '王小明（sales01）',
+      'startAction': 'login',
+      'startLabel': '员工登录',
+      'firstActivityAt': '2026-08-30T07:00:00+08:00',
+      'lastActivityAt': '2026-08-30T08:00:00+08:00',
+      'status': 'normal_logout',
+      'statusLabel': '正常退出',
+      'operationCount': 3,
+      'eventCount': 5,
+      'successCount': 5,
+      'failureCount': 0,
+      'postLogoutCount': 0,
+      'timelinePartial': false,
+      'snapshotAuditId': 9001,
+    });
+    final repository = DioAuditLogRepository(api);
+
+    final summary = await repository.sessionSummary(
+      sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      snapshotAuditId: 9001,
+    );
+
+    expect(
+      api.path,
+      '/admin/audit-sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+    );
+    expect(api.query, {'snapshotAuditId': 9001});
+    expect(summary.actorDisplay, '王小明（sales01）');
+    expect(summary.statusLabel, '正常退出');
+    expect(summary.snapshotAuditId, 9001);
+  });
 }
 
 const _emptyPage = <String, dynamic>{

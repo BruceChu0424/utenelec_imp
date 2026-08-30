@@ -275,6 +275,7 @@ public class AuditEventInterpreter {
         if ("view_audit_log_summary".equals(action)) return "查看审计统计";
         if ("view_audit_log_detail".equals(action)) return "查看审计日志详情";
         if ("view_audit_session_list".equals(action)) return "查看登录会话列表";
+        if ("view_audit_session_detail".equals(action)) return "查看登录会话概览";
         if ("view_audit_session_events".equals(action)) return "查看登录会话时间线";
         if ("session_start_after_password_change".equals(action))
             return "修改密码后建立新会话";
@@ -335,24 +336,24 @@ public class AuditEventInterpreter {
         if ("task_renew".equals(action)) return "续租任务认领(自动协调)";
         if ("task_force_release".equals(action)) return "强制释放任务";
         if ("audit_retention_failed".equals(action)) return "审计留存任务失败";
-        if (path.contains("/approve")) return "审批通过";
-        if (path.contains("/reject")) return "驳回";
-        if (path.contains("/submit")) return "提交";
-        if (path.contains("/withdraw")) return "撤回";
-        if (path.contains("/pay")) return "确认付款";
-        if (path.contains("/unlock")) return "解锁账号";
-        if (path.contains("/lock")) return "锁定账号";
-        if (path.contains("/disable")) return "停用账号";
-        if (path.contains("/enable")) return "启用账号";
-        if (path.contains("/reset-password")) return "重置密码";
+        if (hasPathSegment(path, "approve")) return "审批通过";
+        if (hasPathSegment(path, "reject")) return "驳回";
+        if (hasPathSegment(path, "submit")) return "提交";
+        if (hasPathSegment(path, "withdraw")) return "撤回";
+        if (hasPathSegment(path, "pay")) return "确认付款";
+        if (hasPathSegment(path, "unlock")) return "解锁账号";
+        if (hasPathSegment(path, "lock")) return "锁定账号";
+        if (hasPathSegment(path, "disable")) return "停用账号";
+        if (hasPathSegment(path, "enable")) return "启用账号";
+        if (hasPathSegment(path, "reset-password")) return "重置密码";
         if (!"http_get".equals(action)
                 && containsAny(path, "/permission-overrides", "/permissions"))
             return "调整权限";
         if (!"http_get".equals(action) && path.contains("/data-scopes"))
             return "调整数据范围";
-        if (path.contains("/reverse")) return "执行红冲/撤销";
-        if (path.contains("/dispatch")) return "下达执行";
-        if (path.contains("/complete")) return "标记完成";
+        if (hasPathSegment(path, "reverse")) return "执行红冲/撤销";
+        if (hasPathSegment(path, "dispatch")) return "下达执行";
+        if (hasPathSegment(path, "complete")) return "标记完成";
         // 任务认领 / 通知互动的写请求：按路径给出具体动词，避免显示成泛化的"新增/修改"
         if (!"http_get".equals(action)) {
             if (containsAny(path, "/claim", "/claims")) return "认领任务";
@@ -401,8 +402,16 @@ public class AuditEventInterpreter {
     private String objectLabel(String target, String path) {
         String direct = TARGET_LABELS.get(target);
         if (direct != null) return direct;
+        String bestRouteKey = null;
         for (Map.Entry<String, String> entry : ROUTE_LABELS.entrySet()) {
-            if (path.contains(entry.getKey())) return entry.getValue();
+            if (path.contains(entry.getKey())
+                    && (bestRouteKey == null
+                    || entry.getKey().length() > bestRouteKey.length())) {
+                bestRouteKey = entry.getKey();
+            }
+        }
+        if (bestRouteKey != null) {
+            return ROUTE_LABELS.get(bestRouteKey);
         }
         for (Map.Entry<String, String> entry : TARGET_LABELS.entrySet()) {
             if (path.contains('/' + entry.getKey().replace('_', '-'))) return entry.getValue();
@@ -412,10 +421,16 @@ public class AuditEventInterpreter {
             if (segments.length > 0) {
                 String first = segments[0];
                 String asTable = first.replace('-', '_');
-                return TARGET_LABELS.getOrDefault(asTable, "其他业务对象");
+                String firstSegmentLabel = TARGET_LABELS.get(asTable);
+                if (firstSegmentLabel != null) {
+                    return firstSegmentLabel;
+                }
             }
         }
-        return "其他业务对象";
+        // 最后只允许回退到已登记的中文页面名；绝不把英文 targetType/path
+        // 或“其他业务对象”这类无法核查的泛化描述带到会话时间线。
+        // 没有页面映射时宁可留空，交由覆盖测试暴露缺口，也不伪造业务对象。
+        return pageLabel(path);
     }
 
     /** export_purchase_report → 导出采购报表。 */
@@ -761,6 +776,7 @@ public class AuditEventInterpreter {
     private static Map<String, String> pageLabels() {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("/api/admin/audit-logs", "系统管理 · 审计中心");
+        values.put("/api/admin/audit-sessions", "系统管理 · 登录会话审计");
         values.put("/api/admin/system-settings", "系统管理 · 系统设置");
         values.put("/api/admin/departments", "系统管理 · 部门权限");
         values.put("/api/admin/permissions", "系统管理 · 权限配置");
@@ -787,9 +803,10 @@ public class AuditEventInterpreter {
         values.put("/api/master/payment-styles", "基础资料 · 结算方式");
         values.put("/api/master", "基础资料");
         values.put("/api/sales/orders", "销售 · 销售订单");
-        values.put("/api/sales/shipments", "销售 · 销售出货");
-        values.put("/api/sales/returns", "销售 · 销售退货");
         values.put("/api/sales/quotes", "销售 · 销售报价");
+        values.put("/api/sales/shipments", "销售 · 销售出货");
+        values.put("/api/sales/other-shipments", "销售 · 销售其他出库");
+        values.put("/api/sales/returns", "销售 · 销售退货");
         values.put("/api/sales/reports", "销售 · 销售报表");
         values.put("/api/sales", "销售");
         values.put("/api/purchase/requests", "采购 · 采购申请");
@@ -799,14 +816,22 @@ public class AuditEventInterpreter {
         values.put("/api/purchase/reports", "采购 · 采购报表");
         values.put("/api/purchase", "采购");
         values.put("/api/subcontract/orders", "委外 · 委外订单");
+        values.put("/api/subcontract/applications", "委外 · 委外申请");
+        values.put("/api/subcontract/inquiries", "委外 · 委外询价");
         values.put("/api/subcontract/receipts", "委外 · 委外收货");
         values.put("/api/subcontract/returns", "委外 · 委外退货");
+        values.put("/api/subcontract/material-issues", "委外 · 委外发料");
+        values.put("/api/subcontract/material-returns", "委外 · 委外退料");
+        values.put("/api/subcontract/wastes", "委外 · 委外废料");
         values.put("/api/subcontract", "委外");
         values.put("/api/production/daily-reports", "生产 · 生产日报");
         values.put("/api/production/plans", "生产 · 生产计划");
         values.put("/api/production/material-analysis", "生产 · 物料分析");
+        values.put("/api/production/material-analyses", "生产 · 物料分析");
+        values.put("/api/production/quality-inspections", "生产 · 成品检验");
         values.put("/api/production", "生产");
         values.put("/api/stock/documents", "仓库 · 库存单据");
+        values.put("/api/stock/docs", "仓库 · 库存单据");
         values.put("/api/stock/balances", "仓库 · 即时库存");
         values.put("/api/stock/movements", "仓库 · 库存流水");
         values.put("/api/stock", "仓库");
@@ -817,9 +842,17 @@ public class AuditEventInterpreter {
         values.put("/api/finance/expenses", "财务 · 费用单");
         values.put("/api/finance/other-incomes", "财务 · 其他收入单");
         values.put("/api/finance/bank-transfers", "财务 · 银行转账单");
+        values.put("/api/finance/incomes", "财务 · 其他收入单");
+        values.put("/api/finance/ar-ap", "财务 · 应收应付台账");
+        values.put("/api/finance/supplier-settlements", "财务 · 供应商对账单");
+        values.put("/api/finance/subcontract-loss-claims", "财务 · 委外损耗索赔");
+        values.put("/api/finance/payables", "财务 · 采购应付明细");
+        values.put("/api/finance/procurement-arrival-exceptions",
+                "财务 · 采购到货异常审批");
         values.put("/api/finance/reports", "财务 · 钱流报表");
         values.put("/api/finance", "财务");
         values.put("/api/warehouse/inbound", "仓库 · 到货入库");
+        values.put("/api/procurement/arrival-exceptions", "采购 · 到货异常");
         values.put("/api/warehouse", "仓库");
         values.put("/api/notices", "工作台 · 通知");
         values.put("/api/org/hr-tasks", "人事 · HR任务中心");
@@ -827,6 +860,7 @@ public class AuditEventInterpreter {
         values.put("/api/suggestions", "工作台 · 意见建议");
         values.put("/api/dashboard", "工作台");
         values.put("/api/visitor", "访客管理");
+        values.put("/api/visitor-approval", "访客管理 · 访客审批");
         values.put("/api/website-inquiries", "官网询价");
         values.put("/api/rd/tasks", "研发任务");
         values.put("/api/attachments", "附件");
@@ -1140,6 +1174,7 @@ public class AuditEventInterpreter {
     private static Map<String, String> routeLabels() {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("/api/admin/audit-logs", "审计日志");
+        values.put("/api/admin/audit-sessions", "登录会话审计");
         values.put("/permission-overrides", "个人权限");
         values.put("/effective-permissions", "有效权限");
         values.put("/data-scopes", "数据范围");
@@ -1168,19 +1203,29 @@ public class AuditEventInterpreter {
         values.put("/api/org/departments", "部门");
         values.put("/api/positions", "岗位");
         values.put("/api/sales/orders", "销售订单");
+        values.put("/api/sales/quotes", "销售报价");
         values.put("/api/sales/shipments", "销售出货");
+        values.put("/api/sales/other-shipments", "销售其他出库");
         values.put("/api/sales/returns", "销售退货");
         values.put("/api/purchase/requests", "采购申请");
         values.put("/api/purchase/orders", "采购订单");
         values.put("/api/purchase/receipts", "采购收货");
         values.put("/api/purchase/returns", "采购退货");
         values.put("/api/subcontract/orders", "委外订单");
+        values.put("/api/subcontract/applications", "委外申请");
+        values.put("/api/subcontract/inquiries", "委外询价");
         values.put("/api/subcontract/receipts", "委外收货");
         values.put("/api/subcontract/returns", "委外退货");
+        values.put("/api/subcontract/material-issues", "委外发料");
+        values.put("/api/subcontract/material-returns", "委外退料");
+        values.put("/api/subcontract/wastes", "委外废料");
         values.put("/api/production/plans", "生产计划");
         values.put("/api/production/daily-reports", "生产日报");
         values.put("/api/production/material-analysis", "生产物料分析");
+        values.put("/api/production/material-analyses", "生产物料分析");
+        values.put("/api/production/quality-inspections", "成品检验");
         values.put("/api/stock/documents", "库存单据");
+        values.put("/api/stock/docs", "库存单据");
         values.put("/api/stock/balances", "即时库存");
         values.put("/api/stock/movements", "库存流水");
         values.put("/api/finance/fixed-assets", "固定资产");
@@ -1190,6 +1235,14 @@ public class AuditEventInterpreter {
         values.put("/api/finance/expenses", "费用单");
         values.put("/api/finance/other-incomes", "其他收入单");
         values.put("/api/finance/bank-transfers", "银行转账单");
+        values.put("/api/finance/incomes", "其他收入单");
+        values.put("/api/finance/ar-ap", "应收应付台账");
+        values.put("/api/finance/supplier-settlements", "供应商对账单");
+        values.put("/api/finance/subcontract-loss-claims", "委外损耗索赔");
+        values.put("/api/finance/payables", "采购应付明细");
+        values.put("/api/finance/procurement-arrival-exceptions",
+                "采购到货异常财务审批");
+        values.put("/api/procurement/arrival-exceptions", "采购到货异常");
         values.put("/api/finance/fa/depreciate", "固定资产折旧");
         values.put("/api/finance/fa/amortize", "待摊费用摊销");
         values.put("/api/notices", "通知");
@@ -1197,6 +1250,8 @@ public class AuditEventInterpreter {
         values.put("/api/task-claims", "任务认领");
         values.put("/api/suggestions", "意见建议");
         values.put("/api/visitor/applications", "访客申请");
+        values.put("/api/visitor-approval", "访客审批");
+        values.put("/api/website-inquiries", "官网询价");
         values.put("/api/expense-claims", "报销单");
         values.put("/api/payroll", "工资业务");
         return Collections.unmodifiableMap(new LinkedHashMap<>(values));
@@ -1457,6 +1512,20 @@ public class AuditEventInterpreter {
         return false;
     }
 
+    /**
+     * 只把独立路径段识别为动作端点，避免把 /payments、/payables、/payroll
+     * 错译成“确认付款”。
+     */
+    private static boolean hasPathSegment(String path, String expectedSegment) {
+        String normalizedPath = normalized(path);
+        for (String segment : normalizedPath.split("/")) {
+            if (expectedSegment.equals(segment)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean isAuditInvestigation(String action) {
         return "view_audit_log_list".equals(action)
                 || "view_audit_log_summary".equals(action)
@@ -1469,6 +1538,7 @@ public class AuditEventInterpreter {
         return "view_audit_log_detail".equals(action)
                 || "verify_local_audit_receipt".equals(action)
                 || "view_audit_session_list".equals(action)
+                || "view_audit_session_detail".equals(action)
                 || "view_audit_session_events".equals(action);
     }
 

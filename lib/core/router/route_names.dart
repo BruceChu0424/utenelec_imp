@@ -157,6 +157,8 @@ abstract final class RouteName {
       '/page-permissions/${Uri.encodeComponent(surfaceKey)}';
   // 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const String adminAuditLogs = '/admin/audit-logs';
+  static const String adminAuditSession =
+      '/admin/audit-logs/sessions/:sessionId';
   // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';
 
@@ -340,6 +342,18 @@ abstract final class RoutePath {
   }
 
   static String payrollSlipDetail(String id) => '/payroll/slip/$id';
+
+  static String adminAuditSession(String sessionId, {int? snapshotAuditId}) {
+    final path =
+        '${RouteName.adminAuditLogs}/sessions/'
+        '${Uri.encodeComponent(sessionId.trim())}';
+    return snapshotAuditId == null || snapshotAuditId <= 0
+        ? path
+        : Uri(
+            path: path,
+            queryParameters: {'snapshotAuditId': snapshotAuditId.toString()},
+          ).toString();
+  }
 
   /// 货品资料：新增 / 详情整页。[tab]：0=基本信息，1=组装信息，2=成本预算。
   static String basicinfoGoodsNew(String categoryId) =>

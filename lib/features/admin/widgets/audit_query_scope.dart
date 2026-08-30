@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -73,6 +74,16 @@ class AuditQueryScopeComposer extends StatelessWidget {
         ? '${ChinaDateTime.formatDate(range.start)}(单日)'
         : '${ChinaDateTime.formatDate(range.start)} 至 '
               '${ChinaDateTime.formatDate(range.end)}';
+    final completedSteps = (hasActorScope ? 1 : 0) + (range != null ? 1 : 0);
+    final readyToQuery = hasActorScope && range != null;
+    final actorLabel = systemAnomalyMode
+        ? '系统异常'
+        : anonymousMode
+        ? '未识别访问'
+        : actor?.primaryLabel ?? '尚未选择人员';
+    const scopeButtonStyle = ButtonStyle(
+      minimumSize: WidgetStatePropertyAll(Size(0, 48)),
+    );
 
     Widget stepCard({
       required int step,
@@ -217,6 +228,7 @@ class AuditQueryScopeComposer extends StatelessWidget {
               children: [
                 OutlinedButton.icon(
                   key: const ValueKey('audit-select-actor'),
+                  style: scopeButtonStyle,
                   onPressed: onPickActor,
                   icon: const Icon(Icons.person_search_outlined),
                   label: const Text('选择人员'),
@@ -224,12 +236,14 @@ class AuditQueryScopeComposer extends StatelessWidget {
                 const SizedBox(height: UtenSpacing.s8),
                 TextButton.icon(
                   key: const ValueKey('audit-select-anonymous'),
+                  style: scopeButtonStyle,
                   onPressed: onSelectAnonymous,
                   icon: const Icon(Icons.shield_outlined, size: 18),
                   label: const Text('查看未识别访问'),
                 ),
                 TextButton.icon(
                   key: const ValueKey('audit-select-system-anomaly'),
+                  style: scopeButtonStyle,
                   onPressed: onSelectSystemAnomaly,
                   icon: const Icon(Icons.warning_amber_rounded, size: 18),
                   label: const Text('查看系统异常'),
@@ -283,26 +297,31 @@ class AuditQueryScopeComposer extends StatelessWidget {
             children: [
               OutlinedButton(
                 key: const ValueKey('audit-date-today'),
+                style: scopeButtonStyle,
                 onPressed: hasActorScope ? onToday : null,
                 child: const Text('今天'),
               ),
               OutlinedButton(
                 key: const ValueKey('audit-date-yesterday'),
+                style: scopeButtonStyle,
                 onPressed: hasActorScope ? onYesterday : null,
                 child: const Text('昨天'),
               ),
               OutlinedButton(
                 key: const ValueKey('audit-date-seven-days'),
+                style: scopeButtonStyle,
                 onPressed: hasActorScope ? onSevenDays : null,
                 child: const Text('近 7 天'),
               ),
               OutlinedButton(
                 key: const ValueKey('audit-date-thirty-days'),
+                style: scopeButtonStyle,
                 onPressed: hasActorScope ? onThirtyDays : null,
                 child: const Text('近 30 天'),
               ),
               OutlinedButton.icon(
                 key: const ValueKey('audit-date-custom'),
+                style: scopeButtonStyle,
                 onPressed: hasActorScope ? onCustomDate : null,
                 icon: const Icon(Icons.date_range_outlined, size: 18),
                 label: const Text('自定义区间'),
@@ -324,8 +343,115 @@ class AuditQueryScopeComposer extends StatelessWidget {
       ),
     );
 
-    return UtenCard(
-      padding: const EdgeInsets.all(UtenSpacing.s20),
+    final scopeEditor = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 760) {
+              return Column(
+                children: [
+                  actorStep,
+                  const SizedBox(height: UtenSpacing.s12),
+                  dateStep,
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: actorStep),
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(child: dateStep),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: UtenSpacing.s16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final runButton = FilledButton.icon(
+              key: const ValueKey('audit-run-query'),
+              style: const ButtonStyle(
+                minimumSize: WidgetStatePropertyAll(Size(0, 48)),
+              ),
+              onPressed: !readyToQuery || loading ? null : onRunQuery,
+              icon: loading && scopeApplied
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.search_rounded),
+              label: Text(
+                actor != null
+                    ? scopeApplied
+                          ? '重新加载登录会话'
+                          : '查看登录会话'
+                    : scopeApplied
+                    ? '重新加载操作记录'
+                    : '查看操作记录',
+              ),
+            );
+            final hint = Text(
+              actor != null
+                  ? '按登录会话分页展示；点击会话后再按需加载完整时间线。'
+                  : '页面每页 20 条；单次导出最多 10,000 条。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.45,
+              ),
+            );
+            if (constraints.maxWidth < 560) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  runButton,
+                  const SizedBox(height: UtenSpacing.s8),
+                  hint,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: hint),
+                const SizedBox(width: UtenSpacing.s16),
+                runButton,
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: UtenSpacing.s8),
+        ExpansionTile(
+          key: const ValueKey('audit-request-investigation'),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+          leading: const Icon(Icons.account_tree_outlined),
+          title: const Text('高级排查：按操作关联编号'),
+          subtitle: const Text('仅调查某一次操作及其关联证据时使用'),
+          children: [
+            Semantics(
+              key: const ValueKey('audit-request-id-field'),
+              textField: true,
+              label: '按操作关联编号精确排查',
+              child: UtenSearchBar(
+                hint: '输入完整的操作关联编号',
+                controller: requestIdController,
+                onChanged: onRequestIdChanged,
+                onSubmitted: onRequestIdSubmitted,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s20,
+        UtenSpacing.s20,
+        UtenSpacing.s20,
+        UtenSpacing.s16,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -350,16 +476,25 @@ class AuditQueryScopeComposer extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '先确定调查对象和时间',
+                      requestInvestigation
+                          ? '关联操作排查'
+                          : scopeApplied
+                          ? '调查范围已应用'
+                          : '建立审计调查范围',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '未完成选择前不会加载日志，避免一次读取过多记录。',
+                      requestInvestigation
+                          ? '正在按完整关联编号查看同一次操作的证据链。'
+                          : scopeApplied
+                          ? '$actorLabel · $rangeLabel · 全部为北京时间'
+                          : '先选择人员，再选择北京时间；点击查询前不会加载日志。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
+                        height: 1.45,
                       ),
                     ),
                   ],
@@ -373,106 +508,174 @@ class AuditQueryScopeComposer extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: UtenSpacing.s16),
-          if (requestInvestigation)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.tertiaryContainer,
-                borderRadius: UtenRadius.lgAll,
+          const SizedBox(height: UtenSpacing.s12),
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              UtenStatusBadge(
+                label: requestInvestigation
+                    ? '精确排查'
+                    : scopeApplied
+                    ? '已加载范围'
+                    : readyToQuery
+                    ? '可以查询'
+                    : hasActorScope
+                    ? '待选日期'
+                    : '待选人员',
+                type: requestInvestigation || scopeApplied || readyToQuery
+                    ? UtenStatusBadgeType.success
+                    : UtenStatusBadgeType.info,
+                icon: requestInvestigation
+                    ? Icons.account_tree_outlined
+                    : scopeApplied || readyToQuery
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.pending_outlined,
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.account_tree_outlined,
-                    color: theme.colorScheme.onTertiaryContainer,
+              if (!requestInvestigation)
+                Text(
+                  '已完成 $completedSteps / 2 步',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
-                  const SizedBox(width: UtenSpacing.s12),
-                  Expanded(
-                    child: Text(
-                      '正在查看同一操作的完整关联证据',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: theme.colorScheme.onTertiaryContainer,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  TextButton(onPressed: onClear, child: const Text('返回选人')),
-                ],
-              ),
-            )
-          else ...[
-            LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth < 760) {
-                  return Column(
-                    children: [
-                      actorStep,
-                      const SizedBox(height: UtenSpacing.s12),
-                      dateStep,
-                    ],
-                  );
-                }
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: actorStep),
-                    const SizedBox(width: UtenSpacing.s12),
-                    Expanded(child: dateStep),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: UtenSpacing.s16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                key: const ValueKey('audit-run-query'),
-                onPressed: !hasActorScope || range == null || loading
-                    ? null
-                    : onRunQuery,
-                icon: loading && scopeApplied
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.search_rounded),
-                label: const Text('查看操作记录'),
+                ),
+            ],
+          ),
+          if (!requestInvestigation) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Semantics(
+              label: '调查范围完成 $completedSteps 步，共 2 步',
+              value: '$completedSteps/2',
+              child: ClipRRect(
+                borderRadius: UtenRadius.pillAll,
+                child: LinearProgressIndicator(
+                  value: completedSteps / 2,
+                  minHeight: 5,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                ),
               ),
             ),
             const SizedBox(height: UtenSpacing.s8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                '页面每页 20 条；单次导出最多 10,000 条。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+            Text(
+              readyToQuery
+                  ? '人员与时间范围已经确定，可以开始查询。'
+                  : hasActorScope
+                  ? '第 1 步已完成，请继续选择日期。'
+                  : '第 1 步：先从人员目录选择调查对象。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
-          const SizedBox(height: UtenSpacing.s8),
-          ExpansionTile(
-            key: const ValueKey('audit-request-investigation'),
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            title: const Text('按操作关联编号精确排查'),
-            subtitle: const Text('仅在调查某一次操作时使用'),
-            children: [
-              Semantics(
-                key: const ValueKey('audit-request-id-field'),
-                textField: true,
-                label: '按操作关联编号精确排查',
-                child: UtenSearchBar(
-                  hint: '输入完整的操作关联编号',
-                  controller: requestIdController,
-                  onChanged: onRequestIdChanged,
-                  onSubmitted: onRequestIdSubmitted,
+        ],
+      ),
+    );
+
+    return UtenCard(
+      padding: EdgeInsets.zero,
+      elevation: UtenCardElevation.low,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          if (requestInvestigation)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s20,
+                0,
+                UtenSpacing.s20,
+                UtenSpacing.s20,
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final copy = Row(
+                    children: [
+                      Icon(
+                        Icons.account_tree_outlined,
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                      const SizedBox(width: UtenSpacing.s12),
+                      Expanded(
+                        child: Text(
+                          '正在查看同一操作的完整关联证据',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onTertiaryContainer,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(UtenSpacing.s16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.tertiaryContainer,
+                      borderRadius: UtenRadius.lgAll,
+                    ),
+                    child: constraints.maxWidth < 480
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              copy,
+                              const SizedBox(height: UtenSpacing.s8),
+                              TextButton(
+                                onPressed: onClear,
+                                child: const Text('返回选人'),
+                              ),
+                            ],
+                          )
+                        : Row(
+                            children: [
+                              Expanded(child: copy),
+                              TextButton(
+                                onPressed: onClear,
+                                child: const Text('返回选人'),
+                              ),
+                            ],
+                          ),
+                  );
+                },
+              ),
+            )
+          else if (scopeApplied)
+            ExpansionTile(
+              key: const ValueKey('audit-scope-expansion'),
+              tilePadding: const EdgeInsets.symmetric(
+                horizontal: UtenSpacing.s20,
+                vertical: UtenSpacing.s4,
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s20,
+                0,
+                UtenSpacing.s20,
+                UtenSpacing.s20,
+              ),
+              leading: Icon(
+                Icons.tune_rounded,
+                color: theme.colorScheme.primary,
+              ),
+              title: Text(
+                '$actorLabel · $rangeLabel',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-            ],
-          ),
+              subtitle: const Text('展开可更换人员或调整北京时间范围'),
+              children: [scopeEditor],
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s20,
+                0,
+                UtenSpacing.s20,
+                UtenSpacing.s20,
+              ),
+              child: scopeEditor,
+            ),
         ],
       ),
     );

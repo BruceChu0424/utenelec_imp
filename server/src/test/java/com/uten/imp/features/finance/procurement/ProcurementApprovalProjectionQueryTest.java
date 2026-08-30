@@ -71,7 +71,7 @@ class ProcurementApprovalProjectionQueryTest {
     }
 
     @Test
-    void pendingCaseOffersOnlyGrantedApproveActionToEligibleReviewer() throws Exception {
+    void pendingCaseDoesNotExposeApproveActionInOrderDetail() throws Exception {
         UUID orderId = UUID.randomUUID();
         UUID reviewerId = UUID.randomUUID();
         SecurityContextCurrentUser currentUser = currentUser(
@@ -94,10 +94,11 @@ class ProcurementApprovalProjectionQueryTest {
         FinanceApproval result =
                 query.latestForOrder("PURCHASE", orderId, (short) 0);
 
-        assertEquals(List.of("APPROVE"), result.allowedActions());
+        assertEquals(List.of(), result.allowedActions());
     }
+
     @Test
-    void pendingCaseOffersOnlyGrantedRejectActionToEligibleReviewer() throws Exception {
+    void pendingCaseDoesNotExposeRejectActionInOrderDetail() throws Exception {
         UUID orderId = UUID.randomUUID();
         UUID reviewerId = UUID.randomUUID();
         SecurityContextCurrentUser currentUser = currentUser(
@@ -120,14 +121,13 @@ class ProcurementApprovalProjectionQueryTest {
         FinanceApproval result =
                 query.latestForOrder("PURCHASE", orderId, (short) 0);
 
-        assertEquals(List.of("REJECT"), result.allowedActions());
+        assertEquals(List.of(), result.allowedActions());
     }
-
 
     @Test
     void pendingCaseHidesActionsFromNonEligibleSuperAdmin() throws Exception {
-        // V229/ADR-027：审批 gate 是「财务部门持 review 权限的审核组」资格，而非纯权限或超管标记。
-        // 超管不在财务部门 → 资格失败 → 即便持有 review 权限也不可见审批动作（保留 ADR-019 的安全边界）。
+        // ADR-027/V328：审批 gate 是实时审核组资格，而非纯动作权限或超管标记。
+        // 超管不在财务部门且未被个人点名 → 即便聚合出 approve/reject 也不能成为审核员。
         UUID orderId = UUID.randomUUID();
         UUID superAdminId = UUID.randomUUID();
         SecurityContextCurrentUser currentUser = currentUser(

@@ -88,6 +88,9 @@ class _ProductionPlanWizardPageState
     super.initState();
     _drafts = widget.entries.map(_PlanDraft.fromEntry).toList();
     _formKeys = List.generate(_drafts.length, (_) => GlobalKey<FormState>());
+    // 审核权限由调用页和服务端双重门控。持有权限时默认采用现场最常用的
+    // “生成并审核下达”，但仍保留汇总二次确认和显式取消勾选。
+    _approveNow = widget.canApprove;
   }
 
   @override

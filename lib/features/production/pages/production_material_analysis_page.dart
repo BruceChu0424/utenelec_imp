@@ -29,6 +29,7 @@ import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/material_reallocation_dialog.dart';
+import '../widgets/production_execution_card_print_preview.dart';
 import 'production_plan_wizard_page.dart';
 
 /// Independent, pre-plan material analysis workbench.
@@ -77,6 +78,7 @@ class _ProductionMaterialAnalysisPageState
   bool _borrowing = false;
   bool _previewingPlan = false;
   bool _generating = false;
+  bool _planSubmissionApproveNow = false;
   MaterialSupplyRoute? _notifyingRoute;
   int _candidatePageNo = 1;
   final int _candidatePageSize = 100;
@@ -183,6 +185,8 @@ class _ProductionMaterialAnalysisPageState
       _previewingPlan ||
       _generating ||
       _notifyingRoute != null;
+
+  bool get _planSubmissionInProgress => _previewingPlan || _generating;
 
   bool get _canAdjustPriorities =>
       _canReallocate &&
@@ -2843,27 +2847,55 @@ class _ProductionMaterialAnalysisPageState
       ),
     );
     if (!mounted || result == null || result.items.isEmpty) return;
-    final previewPassed = await _previewPlan(result.items);
-    if (!mounted || !previewPassed) return;
-    await _generatePlan(result.items, approveNow: result.approveNow);
+    setState(() => _planSubmissionApproveNow = result.approveNow);
+    try {
+      final previewPassed = await _previewPlan(result.items);
+      if (!mounted || !previewPassed) return;
+      await _generatePlan(result.items, approveNow: result.approveNow);
+    } finally {
+      if (mounted && _planSubmissionApproveNow) {
+        setState(() => _planSubmissionApproveNow = false);
+      }
+    }
   }
 
   /// 生成结果对话框：把「生产计划单 + 物料提货单（领料单）」摆在同一屏。
   /// - 已审核下达（approveNow）：列出随计划包自动生成的提货单，可直接打开；
   /// - 待审核：明说下一步——审核并正式下达后系统自动出提货单，仓库按单发料。
+  Future<void> _openGeneratedPlanPrint(ProductionGeneratedPlanRef plan) async {
+    final packageId = plan.packageId?.trim();
+    if (packageId == null || packageId.isEmpty) {
+      context.appWarning('当前生成结果没有可打印的确认计划包，请进入计划详情核对');
+      return;
+    }
+    final repo = ref.read(productionPlanRepositoryProvider);
+    await showProductionExecutionCardPrintPreview(
+      context,
+      loader: () => repo.productionWorkCards(plan.planId, packageId),
+    );
+  }
+
   Future<void> _showGeneratedPlans(
     List<ProductionGeneratedPlanRef> plans,
   ) async {
     final valid = plans.where((plan) => plan.planId.isNotEmpty).toList();
     if (valid.isEmpty || !mounted) return;
     if (valid.length == 1) {
-      final open = await showDialog<bool>(
+      final action = await showDialog<_GeneratedPlanDialogAction>(
         context: context,
         builder: (dialogContext) {
           final plan = valid.single;
           final approved = plan.status == 'APPROVED';
+          final printable =
+              approved && plan.packageId?.trim().isNotEmpty == true;
           return AlertDialog(
-            title: Text(approved ? '计划单与提货单已生成' : '生产计划已生成'),
+            title: Text(
+              approved && plan.drawDocuments.isNotEmpty
+                  ? '计划单与提货单已生成'
+                  : approved
+                  ? '生产计划已审核下达'
+                  : '生产计划已生成',
+            ),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
               child: Column(
@@ -2886,7 +2918,7 @@ class _ProductionMaterialAnalysisPageState
                         title: Text('物料提货单(领料单)${draw.billNo ?? ''}'),
                         subtitle: const Text('仓库按单发料 · 点击打开'),
                         onTap: () {
-                          Navigator.pop(dialogContext, false);
+                          Navigator.pop(dialogContext);
                           context.push(
                             RoutePath.stockDocDetail('DRAW', draw.drawId),
                           );
@@ -2914,39 +2946,72 @@ class _ProductionMaterialAnalysisPageState
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('留在物料分析'),
               ),
+              if (printable)
+                OutlinedButton.icon(
+                  key: ValueKey('generated-plan-print-${plan.planId}'),
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    _GeneratedPlanDialogAction.print(plan),
+                  ),
+                  icon: const Icon(Icons.print_outlined, size: 18),
+                  label: const Text('打印生产计划单'),
+                ),
               FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  _GeneratedPlanDialogAction.view(plan),
+                ),
                 child: const Text('查看计划'),
               ),
             ],
           );
         },
       );
-      if (open == true && mounted) {
-        await context.push(RoutePath.productionPlanDetail(valid.single.planId));
+      if (!mounted || action == null) return;
+      if (action.print) {
+        await _openGeneratedPlanPrint(action.plan);
+      } else {
+        await context.push(RoutePath.productionPlanDetail(action.plan.planId));
       }
       return;
     }
-    final selected = await showDialog<String>(
+    final action = await showDialog<_GeneratedPlanDialogAction>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
         title: const Text('已生成生产计划'),
         children: [
           for (final plan in valid)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(dialogContext, plan.planId),
-              child: ListTile(
-                leading: const Icon(Icons.assignment_turned_in_outlined),
-                title: Text(plan.planNo ?? plan.planId),
-                subtitle: Text(
-                  plan.drawDocuments.isNotEmpty
-                      ? '已审核下达 · 提货单 ${plan.drawDocuments.length} 张 · 打开详情'
-                      : '待审核 · 审核下达后自动生成提货单',
-                ),
+            ListTile(
+              key: ValueKey('generated-plan-row-${plan.planId}'),
+              onTap: () => Navigator.pop(
+                dialogContext,
+                _GeneratedPlanDialogAction.view(plan),
               ),
+              leading: const Icon(Icons.assignment_turned_in_outlined),
+              title: Text(plan.planNo ?? plan.planId),
+              subtitle: Text(
+                plan.status == 'APPROVED'
+                    ? plan.drawDocuments.isNotEmpty
+                          ? '已审核下达 · 提货单 ${plan.drawDocuments.length} 张'
+                          : '已审核下达 · 本批无需领料'
+                    : '待审核 · 审核下达后按需生成提货单',
+              ),
+              trailing:
+                  plan.status == 'APPROVED' &&
+                      plan.packageId?.trim().isNotEmpty == true
+                  ? IconButton(
+                      key: ValueKey('generated-plan-print-${plan.planId}'),
+                      tooltip: '打印生产计划单',
+                      onPressed: () => Navigator.pop(
+                        dialogContext,
+                        _GeneratedPlanDialogAction.print(plan),
+                      ),
+                      icon: const Icon(Icons.print_outlined),
+                    )
+                  : const Icon(Icons.chevron_right_rounded),
             ),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(dialogContext),
@@ -2958,8 +3023,11 @@ class _ProductionMaterialAnalysisPageState
         ],
       ),
     );
-    if (selected != null && mounted) {
-      await context.push(RoutePath.productionPlanDetail(selected));
+    if (!mounted || action == null) return;
+    if (action.print) {
+      await _openGeneratedPlanPrint(action.plan);
+    } else {
+      await context.push(RoutePath.productionPlanDetail(action.plan.planId));
     }
   }
 
@@ -2974,13 +3042,17 @@ class _ProductionMaterialAnalysisPageState
     );
     final theme = Theme.of(context);
     final compact = context.breakpoint.isCompact;
-    return Scaffold(
+    final page = Scaffold(
       appBar: UtenAppBar(
         title: '物料分析准备',
-        leading: UtenBackButton(
-          onPressed: () =>
-              popOrBackTo(context, defaultPath: RouteName.productionSchedule),
-        ),
+        leading: _planSubmissionInProgress
+            ? const SizedBox(width: 48)
+            : UtenBackButton(
+                onPressed: () => popOrBackTo(
+                  context,
+                  defaultPath: RouteName.productionSchedule,
+                ),
+              ),
         actions: [
           if (compact)
             SizedBox(
@@ -3004,7 +3076,7 @@ class _ProductionMaterialAnalysisPageState
                     value: 'sheet',
                     child: ListTile(
                       leading: Icon(Icons.summarize_outlined),
-                      title: Text('计划单预览'),
+                      title: Text('备料汇总预览'),
                     ),
                   ),
                   PopupMenuItem(
@@ -3031,7 +3103,7 @@ class _ProductionMaterialAnalysisPageState
                 type: UtenButtonType.tonal,
                 icon: Icons.summarize_outlined,
                 onPressed: _busy ? null : _openSummarySheet,
-                child: const Text('计划单预览'),
+                child: const Text('备料汇总预览'),
               ),
               const SizedBox(width: UtenSpacing.s8),
             ],
@@ -3066,22 +3138,32 @@ class _ProductionMaterialAnalysisPageState
         ],
       ),
       body: SafeArea(
-        // 竖向进度条的数字浮层：点按其它任意位置即消失（onTapDown 与
-        // 子组件不竞争手势，按钮点击照常生效）。
-        child: GestureDetector(
-          behavior: HitTestBehavior.deferToChild,
-          onTapDown: (_) {
-            if (_progressPeekLineId != null) {
-              setState(() => _progressPeekLineId = null);
-            }
-          },
-          child: UtenContentContainer.wide(
-            child: _booting
-                ? const Center(child: CircularProgressIndicator())
-                : _analysis == null
-                ? _candidateBody(theme)
-                : _analysisBody(theme),
-          ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 竖向进度条的数字浮层：点按其它任意位置即消失（onTapDown 与
+            // 子组件不竞争手势，按钮点击照常生效）。
+            ExcludeFocus(
+              excluding: _planSubmissionInProgress,
+              child: GestureDetector(
+                behavior: HitTestBehavior.deferToChild,
+                onTapDown: (_) {
+                  if (_progressPeekLineId != null) {
+                    setState(() => _progressPeekLineId = null);
+                  }
+                },
+                child: UtenContentContainer.wide(
+                  child: _booting
+                      ? const Center(child: CircularProgressIndicator())
+                      : _analysis == null
+                      ? _candidateBody(theme)
+                      : _analysisBody(theme),
+                ),
+              ),
+            ),
+            if (_planSubmissionInProgress)
+              Positioned.fill(child: _planSubmissionOverlay(theme)),
+          ],
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -3091,6 +3173,126 @@ class _ProductionMaterialAnalysisPageState
       floatingActionButton: _analysis == null
           ? _candidateFloatingAction()
           : _floatingActions(),
+    );
+    return PopScope(canPop: !_planSubmissionInProgress, child: page);
+  }
+
+  Widget _planSubmissionOverlay(ThemeData theme) {
+    final generating = _generating;
+    final title = generating
+        ? _planSubmissionApproveNow
+              ? '正在生成并审核下达'
+              : '正在生成生产计划'
+        : '正在校验最新库存与齐套状态';
+    final description = generating
+        ? _planSubmissionApproveNow
+              ? '系统正在同一事务内创建计划、审核下达、锁定物料并按需生成提货单。'
+              : '系统正在创建计划草稿并提交审批。'
+        : '系统正在重新核对可生产数量，避免库存变化造成重复占用。';
+    final stepLabel = generating ? '第 2 / 2 步' : '第 1 / 2 步';
+
+    return BlockSemantics(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ModalBarrier(
+            dismissible: false,
+            color: theme.colorScheme.scrim.withValues(alpha: 0.42),
+            semanticsLabel: '生产计划提交处理中',
+          ),
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s24),
+            child: SingleChildScrollView(
+              child: Semantics(
+                key: const Key('material-analysis-plan-submission-progress'),
+                container: true,
+                liveRegion: true,
+                label: '$title。$description。$stepLabel。',
+                child: ExcludeSemantics(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
+                    child: Material(
+                      color: theme.colorScheme.surface,
+                      elevation: 12,
+                      borderRadius: UtenRadius.lgAll,
+                      child: Padding(
+                        padding: const EdgeInsets.all(UtenSpacing.s24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(
+                                  width: 32,
+                                  height: 32,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                  ),
+                                ),
+                                const SizedBox(width: UtenSpacing.s16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title,
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                      const SizedBox(height: UtenSpacing.s8),
+                                      Text(
+                                        description,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                              height: 1.45,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: UtenSpacing.s20),
+                            const LinearProgressIndicator(minHeight: 4),
+                            const SizedBox(height: UtenSpacing.s12),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.hourglass_top_rounded,
+                                  size: 18,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(width: UtenSpacing.s8),
+                                Expanded(
+                                  child: Text(
+                                    '$stepLabel · 请勿重复提交或关闭页面',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -6916,6 +7118,13 @@ class _ProductionMaterialAnalysisPageState
     return dimension.isEmpty ? material.materialLineId : dimension;
   }
 
+  bool _canArrangePendingMakeCandidate(_PendingMakeCandidate candidate) {
+    final group = candidate.group;
+    return !candidate.material.lowerLevelPending &&
+        group != null &&
+        _isExecutableSupplyGroup(group, MaterialSupplyRoute.make);
+  }
+
   Widget _productSection(
     ThemeData theme,
     ProductionMaterialAnalysisView analysis,
@@ -6926,6 +7135,17 @@ class _ProductionMaterialAnalysisPageState
         .toList(growable: false);
     final remainingPendingMake =
         pendingMakeCandidates.length - visiblePendingMake.length;
+    final pendingMakeAllBlocked =
+        pendingMakeCandidates.isNotEmpty &&
+        pendingMakeCandidates.every(
+          (candidate) => !_canArrangePendingMakeCandidate(candidate),
+        );
+    final pendingMakeSectionAccent = pendingMakeAllBlocked
+        ? theme.colorScheme.error
+        : theme.colorScheme.primary;
+    final pendingMakeSectionForeground = pendingMakeAllBlocked
+        ? theme.colorScheme.onErrorContainer
+        : theme.colorScheme.onSurface;
     final byId = {
       for (final product in analysis.products) product.analysisLineId: product,
     };
@@ -7021,11 +7241,15 @@ class _ProductionMaterialAnalysisPageState
             key: const Key('material-analysis-pending-make-section'),
             padding: const EdgeInsets.all(UtenSpacing.s12),
             decoration: BoxDecoration(
-              color: theme.colorScheme.tertiaryContainer.withValues(
-                alpha: 0.34,
-              ),
+              color: pendingMakeAllBlocked
+                  ? theme.colorScheme.errorContainer.withValues(alpha: 0.22)
+                  : theme.colorScheme.surfaceContainerLow,
               borderRadius: UtenRadius.mdAll,
-              border: Border.all(color: theme.colorScheme.outlineVariant),
+              border: Border.all(
+                color: pendingMakeAllBlocked
+                    ? theme.colorScheme.error.withValues(alpha: 0.42)
+                    : theme.colorScheme.outlineVariant,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -7034,8 +7258,10 @@ class _ProductionMaterialAnalysisPageState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      Icons.account_tree_outlined,
-                      color: theme.colorScheme.onTertiaryContainer,
+                      pendingMakeAllBlocked
+                          ? Icons.do_not_disturb_on_outlined
+                          : Icons.account_tree_outlined,
+                      color: pendingMakeSectionAccent,
                     ),
                     const SizedBox(width: UtenSpacing.s8),
                     Expanded(
@@ -7043,9 +7269,11 @@ class _ProductionMaterialAnalysisPageState
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '已确认自制 · 下层备料',
+                            pendingMakeAllBlocked
+                                ? '已确认自制 · 下层未齐套'
+                                : '已确认自制 · 下层备料',
                             style: theme.textTheme.titleSmall?.copyWith(
-                              color: theme.colorScheme.onTertiaryContainer,
+                              color: pendingMakeSectionForeground,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -7053,7 +7281,9 @@ class _ProductionMaterialAnalysisPageState
                             '路线已经保存，但这些自制件尚未形成真实子任务。'
                             '卡片持续显示阻断原因；直接子层级齐套后才可安排生产。',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onTertiaryContainer,
+                              color: pendingMakeAllBlocked
+                                  ? theme.colorScheme.onErrorContainer
+                                  : theme.colorScheme.onSurfaceVariant,
                               height: 1.45,
                             ),
                           ),
@@ -7118,21 +7348,32 @@ class _ProductionMaterialAnalysisPageState
   Widget _pendingMakeCard(ThemeData theme, _PendingMakeCandidate candidate) {
     final material = candidate.material;
     final waiting = material.lowerLevelPending;
-    final accent = waiting
-        ? theme.colorScheme.tertiary
-        : theme.colorScheme.primary;
     final group = candidate.group;
-    final canArrange =
-        !waiting &&
-        group != null &&
-        _isExecutableSupplyGroup(group, MaterialSupplyRoute.make);
+    final canArrange = _canArrangePendingMakeCandidate(candidate);
+    final blocked = !canArrange;
+    final accent = blocked
+        ? theme.colorScheme.error
+        : theme.colorScheme.primary;
+    final statusSurface = blocked
+        ? theme.colorScheme.errorContainer
+        : theme.colorScheme.primaryContainer;
+    final onStatusSurface = blocked
+        ? theme.colorScheme.onErrorContainer
+        : theme.colorScheme.onPrimaryContainer;
     final description = waiting
         ? candidate.shortageKindCount > 0
               ? '下层还缺 ${candidate.shortageKindCount} 种物料'
                     '${candidate.shortagePathCount > candidate.shortageKindCount ? ' · 共 ${candidate.shortagePathCount} 条 BOM 路径' : ''}'
                     '${candidate.unconfirmedPathCount > 0 ? ' · 其中 ${candidate.unconfirmedPathCount} 条路线待确认' : ''}'
               : '下层物料尚未齐套，请继续处理下方 BOM 缺口'
-        : '直接子层级已经齐套，可以创建真实自制子任务并填写生产计划';
+        : canArrange
+        ? '直接子层级已经齐套，可以创建真实自制子任务并填写生产计划'
+        : '当前快照尚未满足自制任务执行门槛，请刷新后再试';
+    final statusLabel = waiting
+        ? '下层备料中'
+        : canArrange
+        ? '下层已齐套'
+        : '暂不可安排';
     final meta = [
       material.goodsCode,
       material.spec,
@@ -7164,21 +7405,21 @@ class _ProductionMaterialAnalysisPageState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Semantics(
-                    label: waiting ? '下层备料中，不可排产' : '下层已齐套，可安排生产',
+                    label: canArrange ? '下层已齐套，可安排生产' : '$statusLabel，不可排产',
                     child: SizedBox(
                       width: 48,
                       height: 48,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.12),
+                          color: statusSurface.withValues(alpha: 0.5),
                           borderRadius: UtenRadius.smAll,
                           border: Border.all(
                             color: accent.withValues(alpha: 0.42),
                           ),
                         ),
                         child: Icon(
-                          waiting
-                              ? Icons.account_tree_outlined
+                          blocked
+                              ? Icons.do_not_disturb_on_outlined
                               : Icons.precision_manufacturing_outlined,
                           color: accent,
                         ),
@@ -7201,7 +7442,7 @@ class _ProductionMaterialAnalysisPageState
                               ? '自制路线已确认'
                               : '用于组装 ${candidate.parentLabel}',
                           style: theme.textTheme.labelMedium?.copyWith(
-                            color: theme.colorScheme.primary,
+                            color: accent,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -7214,11 +7455,11 @@ class _ProductionMaterialAnalysisPageState
                       vertical: UtenSpacing.s4,
                     ),
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.12),
+                      color: statusSurface.withValues(alpha: 0.5),
                       borderRadius: UtenRadius.smAll,
                     ),
                     child: Text(
-                      waiting ? '下层备料中' : '下层已齐套',
+                      statusLabel,
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: accent,
                         fontWeight: FontWeight.w800,
@@ -7238,17 +7479,20 @@ class _ProductionMaterialAnalysisPageState
               ],
               const SizedBox(height: UtenSpacing.s8),
               Container(
+                key: ValueKey(
+                  'material-analysis-pending-make-status-${material.materialLineId}',
+                ),
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.08),
+                  color: statusSurface.withValues(alpha: 0.5),
                   borderRadius: UtenRadius.smAll,
-                  border: Border.all(color: accent.withValues(alpha: 0.28)),
+                  border: Border.all(color: accent.withValues(alpha: 0.45)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      waiting ? '待备料 · $description' : '下层已齐套 · 可安排生产',
+                      canArrange ? '下层已齐套 · 可安排生产' : '暂不可生产 · $description',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: accent,
                         fontWeight: FontWeight.w800,
@@ -7258,9 +7502,11 @@ class _ProductionMaterialAnalysisPageState
                     Text(
                       waiting
                           ? '这是一张待办展示卡，不是生产计划；请在下方 BOM 继续处理子层级。'
-                          : '点击安排后才会创建真实 MAKE_COMPONENT；取消计划表单不会伪造正式计划。',
+                          : canArrange
+                          ? '点击安排后才会创建真实 MAKE_COMPONENT；取消计划表单不会伪造正式计划。'
+                          : '当前状态不开放安排生产；刷新后仍会由服务端重新校验。',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                        color: onStatusSurface,
                         height: 1.4,
                       ),
                     ),
@@ -7276,7 +7522,7 @@ class _ProductionMaterialAnalysisPageState
                   icon: Icons.precision_manufacturing_outlined,
                   isLoading: _notifyingRoute == MaterialSupplyRoute.make,
                   onPressed: canArrange && _canNotify && !_busy
-                      ? () => _arrangeMakeProduction(group)
+                      ? () => _arrangeMakeProduction(group!)
                       : null,
                   onDisabledTap: _busy
                       ? null
@@ -7906,12 +8152,23 @@ class _ProductionMaterialAnalysisPageState
     final hint = readiness.state == _ReadinessState.waitingMake
         ? '先排产并入库下级自制件，本件可完工会自动上调'
         : '已通知对应部门，等合格到货后刷新';
-    final accent = selected ? Colors.white70 : theme.colorScheme.tertiary;
+    final accent = selected ? Colors.white70 : theme.colorScheme.error;
+    final message = '等待：${parts.join(' · ')} · $hint';
     return Padding(
       padding: const EdgeInsets.only(top: UtenSpacing.s4),
-      child: Text(
-        '等待：${parts.join(' · ')} · $hint',
-        style: theme.textTheme.bodySmall?.copyWith(color: accent),
+      child: Semantics(
+        container: true,
+        label: '生产阻断：$message',
+        child: Text(
+          key: ValueKey(
+            'material-analysis-product-blocker-${product.analysisLineId}',
+          ),
+          message,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: accent,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -8384,8 +8641,8 @@ class _ProductionMaterialAnalysisPageState
     if (material.lowerLevelPending) {
       return _StatusView(
         '待齐套 · 下层 ${material.expectedReadyDate ?? '日期待定'}',
-        Icons.account_tree_outlined,
-        theme.colorScheme.tertiary,
+        Icons.do_not_disturb_on_outlined,
+        theme.colorScheme.error,
       );
     }
     final confirmedRoute = material.confirmedRoute;
@@ -10055,6 +10312,15 @@ class _SupplyProgressDialogState extends ConsumerState<_SupplyProgressDialog> {
       ),
     );
   }
+}
+
+class _GeneratedPlanDialogAction {
+  const _GeneratedPlanDialogAction.view(this.plan) : print = false;
+
+  const _GeneratedPlanDialogAction.print(this.plan) : print = true;
+
+  final ProductionGeneratedPlanRef plan;
+  final bool print;
 }
 
 /// 进度时间线中的一步：左侧状态圆点 + 连接线，右侧步骤名、状态、单号与时间。

@@ -129,7 +129,7 @@ void main() {
   });
 
   testWidgets(
-    'selected person defaults to folded sessions and event opens existing detail',
+    'selected person defaults to session summaries without inline event fetch',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1;
@@ -161,18 +161,14 @@ void main() {
         const ValueKey('audit-session-${_AuditRepository.sessionId}'),
       );
       await _scrollAuditPageUntilVisible(tester, sessionCard);
-      await tester.tap(sessionCard);
-      await tester.pumpAndSettle();
-
-      expect(repository.sessionEventCalls, hasLength(1));
-      expect(repository.sessionEventCalls.single['cursorAt'], isNull);
-      expect(repository.sessionEventCalls.single['cursorId'], isNull);
-      expect(repository.sessionEventCalls.single['snapshotAuditId'], 9001);
-
-      await tester.tap(find.byKey(const ValueKey('audit-session-event-42')));
-      await tester.pumpAndSettle();
-      expect(repository.detailCalls, 1);
-      expect(find.text('审计详情 #42'), findsOneWidget);
+      expect(sessionCard, findsOneWidget);
+      expect(find.text('查看会话时间线'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('audit-session-event-42')),
+        findsNothing,
+      );
+      expect(repository.sessionEventCalls, isEmpty);
+      expect(repository.detailCalls, 0);
     },
   );
 
@@ -1098,6 +1094,31 @@ Future<void> _scrollAuditPageUntilVisible(
   await tester.pumpAndSettle();
 }
 
+Future<void> _scrollAuditPageUntilBuilt(
+  WidgetTester tester,
+  Finder finder,
+) async {
+  final pageScrollable = find
+      .descendant(
+        of: find.byType(CustomScrollView),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+  // Applying a scope collapses the tall two-step editor while preserving the
+  // previous scroll offset. Return to the top before scanning lazy slivers.
+  for (var attempt = 0; attempt < 12 && finder.evaluate().isEmpty; attempt++) {
+    await tester.drag(pageScrollable, const Offset(0, 640));
+    await tester.pump();
+  }
+  for (var attempt = 0; attempt < 30 && finder.evaluate().isEmpty; attempt++) {
+    await tester.drag(pageScrollable, const Offset(0, -320));
+    await tester.pumpAndSettle();
+  }
+  expect(finder, findsOneWidget);
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _scrollAuditDetailUntilVisible(
   WidgetTester tester,
   Finder finder,
@@ -1123,7 +1144,7 @@ Future<void> _selectDefaultAuditScope(
   bool eventView = true,
 }) async {
   final selectActor = find.byKey(const ValueKey('audit-select-actor'));
-  await tester.ensureVisible(selectActor);
+  await _scrollAuditPageUntilVisible(tester, selectActor);
   await tester.tap(selectActor);
   await tester.pumpAndSettle();
 
@@ -1135,18 +1156,23 @@ Future<void> _selectDefaultAuditScope(
   await tester.pumpAndSettle();
 
   final today = find.byKey(const ValueKey('audit-date-today'));
-  await tester.ensureVisible(today);
+  await _scrollAuditPageUntilVisible(tester, today);
   await tester.tap(today);
   await tester.pumpAndSettle();
 
   final runQuery = find.byKey(const ValueKey('audit-run-query'));
-  await tester.ensureVisible(runQuery);
+  await _scrollAuditPageUntilVisible(tester, runQuery);
   await tester.tap(runQuery);
   await tester.pumpAndSettle();
 
   if (eventView) {
-    final eventMode = find.text('事件明细');
-    await tester.ensureVisible(eventMode);
+    final modeSwitch = find.byKey(const ValueKey('audit-view-mode'));
+    await _scrollAuditPageUntilBuilt(tester, modeSwitch);
+    final eventMode = find.descendant(
+      of: modeSwitch,
+      matching: find.byIcon(Icons.list_alt_rounded),
+    );
+    expect(eventMode, findsOneWidget);
     await tester.tap(eventMode);
     await tester.pumpAndSettle();
   }
@@ -1255,6 +1281,37 @@ class _AuditRepository implements AuditLogRepository {
       size: size,
       total: emptySessions ? 0 : sessionTotalPages,
       totalPages: emptySessions ? 0 : sessionTotalPages,
+      snapshotAuditId: snapshotAuditId ?? 9001,
+    );
+  }
+
+  @override
+  Future<AuditSessionSummary> sessionSummary({
+    required String sessionId,
+    int? snapshotAuditId,
+  }) async {
+    final entry = primaryEntry;
+    return AuditSessionSummary(
+      sessionId: sessionId,
+      actorId: actorId,
+      actorAccount: entry?.actorAccount ?? 'planner',
+      actorDisplay: entry?.actorDisplay ?? '计划员(planner)',
+      actorDepartment: entry?.actorDepartment ?? '生产部',
+      actorPosition: entry?.actorPosition ?? '计划专员',
+      startAction: 'login',
+      startLabel: '员工登录',
+      loginAt: '2026-08-29T23:30:00Z',
+      firstActivityAt: '2026-08-29T23:31:00Z',
+      lastActivityAt: '2026-08-30T01:00:00Z',
+      logoutAt: '2026-08-30T01:30:00Z',
+      status: 'normal_logout',
+      statusLabel: '正常退出',
+      operationCount: 2,
+      eventCount: 3,
+      successCount: 2,
+      failureCount: 1,
+      deviceLabel: '测试电脑',
+      devicePlatform: 'Windows',
       snapshotAuditId: snapshotAuditId ?? 9001,
     );
   }

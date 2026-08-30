@@ -8,9 +8,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,6 +25,10 @@ class DetailViewAuditCoverageArchitectureTest {
             "@GetMapping\\(\\\"[^\\\"]*\\{id}\\\"\\)");
     private static final Pattern DETAIL_ACTION = Pattern.compile(
             "\\\"(view_[a-z0-9_]+_detail)\\\"");
+    private static final Pattern DETAIL_RECORD = Pattern.compile(
+            "\\.record\\(\\s*\\\"(view_[a-z0-9_]+_detail)\\\""
+                    + "\\s*,\\s*\\\"([a-z0-9_]+)\\\"",
+            Pattern.DOTALL);
 
     @Test
     void everyTerminalUuidDetailGetHasExplicitAuditOrReviewedSemanticReplacement()
@@ -70,40 +74,74 @@ class DetailViewAuditCoverageArchitectureTest {
     }
 
     @Test
-    void everyExplicitDetailActionHasSpecificChineseCurrentAndHistoryLabels()
+    void everyExplicitDetailRecordHasSpecificChineseObjectActionAndReferenceSummary()
             throws Exception {
-        Set<String> actions = new LinkedHashSet<>();
+        Map<String, String> actionTargets = new LinkedHashMap<>();
         for (Path controller : controllerSources()) {
             String source = Files.readString(controller, StandardCharsets.UTF_8);
-            Matcher matcher = DETAIL_ACTION.matcher(source);
+            Matcher matcher = DETAIL_RECORD.matcher(source);
             while (matcher.find()) {
-                actions.add(matcher.group(1));
+                String action = matcher.group(1);
+                String targetType = matcher.group(2);
+                String previous = actionTargets.putIfAbsent(action, targetType);
+                assertTrue(previous == null || previous.equals(targetType),
+                        () -> action + " uses conflicting target types: "
+                                + previous + " / " + targetType);
             }
         }
-        assertTrue(actions.size() >= 58, "detail action inventory unexpectedly shrank");
+        assertTrue(actionTargets.size() >= 58,
+                "detail action/target inventory unexpectedly shrank");
 
         AuditEventInterpreter interpreter = new AuditEventInterpreter();
-        for (String action : actions) {
-            String current = actionLabel(interpreter, action);
-            assertFalse("其他操作".equals(current), action);
-            assertFalse("查看详情".equals(current),
+        for (Map.Entry<String, String> entry : actionTargets.entrySet()) {
+            String action = entry.getKey();
+            String targetType = entry.getValue();
+            AuditEventInterpreter.InterpretedEvent current = interpretDetail(
+                    interpreter, action, targetType, "业务编号 TEST-001");
+            assertFalse("其他操作".equals(current.actionLabel()), action);
+            assertFalse("查看详情".equals(current.actionLabel()),
                     action + " must have a specific Chinese subject");
-            assertFalse(current.contains("_"), action);
+            assertFalse(current.actionLabel().contains("_"), action);
+            assertFalse(current.objectLabel().isBlank(),
+                    action + " / " + targetType + " has no Chinese object label");
+            assertFalse("其他业务对象".equals(current.objectLabel()),
+                    action + " / " + targetType);
+            assertFalse(current.objectLabel().contains("_"), targetType);
+            assertTrue(current.summary().contains("业务编号 TEST-001"),
+                    () -> action + " summary lost the business reference: "
+                            + current.summary());
+            assertFalse(current.summary().contains("其他业务对象"), current.summary());
 
-            String history = actionLabel(interpreter, action + "_history");
-            assertFalse("查看历史资料".equals(history),
+            AuditEventInterpreter.InterpretedEvent history = interpretDetail(
+                    interpreter,
+                    action + "_history",
+                    targetType,
+                    "业务编号 TEST-001(旧系统编号 88)");
+            assertFalse("查看历史资料".equals(history.actionLabel()),
                     action + " history must have a specific Chinese subject");
-            assertFalse(history.contains("_"), action);
+            assertFalse(history.actionLabel().contains("_"), action);
+            assertTrue(history.actionLabel().contains("历史"), history.actionLabel());
+            assertTrue(history.summary().contains("业务编号 TEST-001"),
+                    history.summary());
+            assertTrue(history.summary().contains("旧系统编号 88"),
+                    history.summary());
+            assertFalse(history.summary().contains("其他业务对象"), history.summary());
         }
     }
 
-    private String actionLabel(AuditEventInterpreter interpreter, String action) {
+    private AuditEventInterpreter.InterpretedEvent interpretDetail(
+            AuditEventInterpreter interpreter,
+            String action,
+            String targetType,
+            String displayName) {
         AuditLog value = new AuditLog();
         value.setAction(action);
-        value.setTargetType("coverage_target");
+        value.setTargetType(targetType);
         value.setEventSource("business");
         value.setResult("success");
-        return interpreter.interpret(value).actionLabel();
+        value.setAfter("{\"view_metadata_kind\":\"business_detail_view\","
+                + "\"view_display_name\":\"" + displayName + "\"}");
+        return interpreter.interpret(value);
     }
 
     private List<Path> controllerSources() throws IOException {

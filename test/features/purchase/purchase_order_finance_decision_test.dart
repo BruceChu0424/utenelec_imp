@@ -1,8 +1,7 @@
-// 采购订货单详情页页内财务审批测试。
+// 采购订货单详情页的财务审批入口边界测试。
 //
-// 背景：财务审核员从「订货审批任务中心」点进具体订货单详情时，此前底栏只有
-// 「返回列表」；V426 起待审且服务端 allowedActions 含 APPROVE/REJECT 的，
-// 详情页直接给出「驳回 / 审批通过」（与任务中心共用同一端点和责任留痕）。
+// 即使当前账号是合格财务审核员、详情投影意外带有 APPROVE/REJECT，业务详情页
+// 也只能展示待审状态；审批唯一入口是「财务 → 订货审批任务中心」。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -135,23 +134,8 @@ Future<void> _pump(WidgetTester tester, _RecordingApi api) async {
 }
 
 void main() {
-  testWidgets('待审订货单对持权审核员显示驳回/审批通过，而非仅返回列表', (tester) async {
+  testWidgets('持权审核员打开待审采购详情仍只读，不暴露财务审批动作', (tester) async {
     final api = _RecordingApi();
-    await _pump(tester, api);
-
-    expect(
-      find.byKey(const Key('purchase-order-finance-reject')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('purchase-order-finance-approve')),
-      findsOneWidget,
-    );
-    expect(find.text('返回列表'), findsNothing);
-  });
-
-  testWidgets('无办理权限（allowedActions 空）时保持只读，仅返回列表', (tester) async {
-    final api = _RecordingApi()..allowedActions = const [];
     await _pump(tester, api);
 
     expect(
@@ -163,68 +147,7 @@ void main() {
       findsNothing,
     );
     expect(find.text('返回列表'), findsOneWidget);
-  });
-
-  testWidgets('页内审批通过走订货审批端点并携带 expectedVersion', (tester) async {
-    final api = _RecordingApi();
-    await _pump(tester, api);
-
-    await tester.tap(find.byKey(const Key('purchase-order-finance-approve')));
-    await tester.pumpAndSettle();
-
-    // 审核责任确认框：责任提示 + 业务影响说明。
-    expect(find.text('审批通过订货单'), findsOneWidget);
-    expect(
-      find.byKey(const Key('reviewer-responsibility-notice')),
-      findsOneWidget,
-    );
-
-    await tester.tap(find.text('确认通过'));
-    await tester.pumpAndSettle();
-
-    expect(api.posts, hasLength(1));
-    expect(api.posts.single.path, '/purchase/orders/order-1/approve');
-    expect(api.posts.single.body, containsPair('expectedVersion', 3));
-
-    // 决策成功后刷新投影：按钮退场，横幅切换为已通过。
-    expect(
-      find.byKey(const Key('purchase-order-finance-approve')),
-      findsNothing,
-    );
-    expect(find.text('财务已通过'), findsOneWidget);
-  });
-
-  testWidgets('页内驳回要求必填退回原因并携带 expectedVersion', (tester) async {
-    final api = _RecordingApi();
-    await _pump(tester, api);
-
-    await tester.tap(find.byKey(const Key('purchase-order-finance-reject')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('驳回订货单'), findsOneWidget);
-    expect(find.text('确认驳回'), findsOneWidget);
-
-    // 原因为空时确认按钮禁用；填写后可提交。
-    final confirm = find.widgetWithText(FilledButton, '确认驳回');
-    expect(
-      tester.widget<FilledButton>(confirm).enabled,
-      isFalse,
-      reason: '退回原因为空时不得提交',
-    );
-    await tester.enterText(find.byType(TextField), '单价与合同不符，请修改后重提');
-    await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(confirm).enabled, isTrue);
-
-    await tester.tap(confirm);
-    await tester.pumpAndSettle();
-
-    expect(api.posts, hasLength(1));
-    expect(api.posts.single.path, '/purchase/orders/order-1/reject');
-    expect(api.posts.single.body, containsPair('expectedVersion', 3));
-    expect(api.posts.single.body, containsPair('reason', '单价与合同不符，请修改后重提'));
-    expect(
-      find.byKey(const Key('purchase-order-finance-reject')),
-      findsNothing,
-    );
+    expect(find.textContaining('财务 → 订货审批任务中心'), findsOneWidget);
+    expect(api.posts, isEmpty);
   });
 }

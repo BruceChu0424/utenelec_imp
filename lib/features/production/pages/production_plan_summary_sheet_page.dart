@@ -102,7 +102,7 @@ class _ProductionPlanSummarySheetPageState
         _analysisLoading = false;
         _analysisError = error is ApiException
             ? error.message
-            : '计划单预览加载失败，请重试';
+            : '备料汇总预览加载失败，请重试';
       });
     }
   }
@@ -311,7 +311,7 @@ class _ProductionPlanSummarySheetPageState
             children: [
               CircularProgressIndicator(),
               SizedBox(height: UtenSpacing.s12),
-              Text('正在恢复计划单预览…'),
+              Text('正在恢复备料汇总预览…'),
             ],
           ),
         );
@@ -328,7 +328,7 @@ class _ProductionPlanSummarySheetPageState
                 size: 36,
               ),
               const SizedBox(height: UtenSpacing.s8),
-              Text(_analysisError ?? '计划单预览不可用'),
+              Text(_analysisError ?? '备料汇总预览不可用'),
               const SizedBox(height: UtenSpacing.s12),
               UtenButton(
                 icon: Icons.refresh_rounded,

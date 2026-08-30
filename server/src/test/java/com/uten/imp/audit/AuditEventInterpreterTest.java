@@ -97,6 +97,7 @@ class AuditEventInterpreterTest {
                 Map.entry("suppliers", "供应商"),
                 Map.entry("stock_balances", "即时库存"),
                 Map.entry("sales_orders", "销售订单"),
+                Map.entry("audit_session", "登录会话审计"),
                 Map.entry("user_permission_overrides", "个人权限"),
                 Map.entry("finance_asset_categories", "资产/待摊分类"),
                 Map.entry("finance_asset_books", "固定资产账簿"),
@@ -172,6 +173,9 @@ class AuditEventInterpreterTest {
                 interpreter.interpret(historyOnly).targetName());
         assertEquals("查看销售报价历史单据",
                 interpreter.interpret(historyOnly).actionLabel());
+        assertEquals("销售报价", interpreter.interpret(historyOnly).objectLabel());
+        assertEquals("查看销售报价历史单据 销售报价单(旧系统编号 11)",
+                interpreter.interpret(historyOnly).summary());
     }
 
     @Test
@@ -237,6 +241,17 @@ class AuditEventInterpreterTest {
         assertEquals("security", investigation.category());
         assertEquals("medium", investigation.riskLevel());
 
+        AuditLog sessionDetail = new AuditLog();
+        sessionDetail.setAction("view_audit_session_detail");
+        sessionDetail.setTargetType("audit_session");
+        sessionDetail.setEventSource("business");
+        sessionDetail.setResult("success");
+        AuditEventInterpreter.InterpretedEvent detail =
+                interpreter.interpret(sessionDetail);
+        assertEquals("查看登录会话概览", detail.actionLabel());
+        assertEquals("security", detail.category());
+        assertEquals("medium", detail.riskLevel());
+
         AuditLog passwordRestart = new AuditLog();
         passwordRestart.setAction("session_start_after_password_change");
         passwordRestart.setTargetType("refresh_tokens");
@@ -260,6 +275,45 @@ class AuditEventInterpreterTest {
                     request("http_post", path));
             assertEquals(label, event.objectLabel(), path);
             assertEquals("新增" + label, event.summary(), path);
+        });
+    }
+
+    @Test
+    void labelsAuditedBusinessRoutesWithExactChineseSubjects() {
+        Map<String, String> expected = Map.ofEntries(
+                Map.entry("/api/admin/audit-sessions", "登录会话审计"),
+                Map.entry("/api/sales/quotes", "销售报价"),
+                Map.entry("/api/sales/other-shipments", "销售其他出库"),
+                Map.entry("/api/subcontract/applications", "委外申请"),
+                Map.entry("/api/subcontract/inquiries", "委外询价"),
+                Map.entry("/api/subcontract/material-issues", "委外发料"),
+                Map.entry("/api/subcontract/material-returns", "委外退料"),
+                Map.entry("/api/subcontract/wastes", "委外废料"),
+                Map.entry("/api/production/material-analyses", "生产物料分析"),
+                Map.entry("/api/production/quality-inspections", "成品检验"),
+                Map.entry("/api/stock/docs", "库存单据"),
+                Map.entry("/api/finance/incomes", "其他收入单"),
+                Map.entry("/api/finance/ar-ap", "应收应付台账"),
+                Map.entry("/api/finance/payments", "付款单"),
+                Map.entry("/api/finance/supplier-settlements", "供应商对账单"),
+                Map.entry("/api/finance/subcontract-loss-claims", "委外损耗索赔"),
+                Map.entry("/api/finance/payables", "采购应付明细"),
+                Map.entry("/api/finance/procurement-arrival-exceptions",
+                        "采购到货异常财务审批"),
+                Map.entry("/api/procurement/arrival-exceptions", "采购到货异常"),
+                Map.entry("/api/payroll", "工资业务"),
+                Map.entry("/api/master/payment-styles", "结算方式"),
+                Map.entry("/api/visitor-approval", "访客审批"),
+                Map.entry("/api/website-inquiries", "官网询价"));
+
+        expected.forEach((path, label) -> {
+            AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(
+                    request("http_get", path));
+            assertEquals(label, event.objectLabel(), path);
+            assertEquals("查看" + label, event.summary(), path);
+            assertTrue(!event.pageLabel().isBlank(), path);
+            assertTrue(!event.summary().contains("其他业务对象"), event.summary());
+            assertTrue(!event.summary().contains("/api/"), event.summary());
         });
     }
 
@@ -523,10 +577,11 @@ class AuditEventInterpreterTest {
         AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
 
         assertEquals("其他操作", event.actionLabel());
-        assertEquals("其他业务对象", event.objectLabel());
+        assertEquals("", event.objectLabel());
         assertEquals("结果待核查", event.resultLabel());
-        assertTrue(event.summary().startsWith("其他操作 · 其他业务对象"));
+        assertEquals("其他操作（结果待核查）", event.summary());
         assertTrue(event.summary().contains("结果待核查"));
+        assertTrue(!event.summary().contains("其他业务对象"), event.summary());
         assertTrue(!event.summary().contains("internal_"), event.summary());
     }
 

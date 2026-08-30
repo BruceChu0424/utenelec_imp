@@ -52,6 +52,25 @@ public class AuditSessionController {
         return response;
     }
 
+    @GetMapping("/{sessionId}")
+    @PreAuthorize("hasAuthority('audit_log:view')")
+    public AuditSessionRow session(
+            @PathVariable String sessionId,
+            @RequestParam(required = false) Long snapshotAuditId) {
+        UUID parsedSessionId = parseCanonicalUuid(sessionId, "登录会话编号");
+        AuditSessionRow response = queryService.session(
+                parsedSessionId, snapshotAuditId);
+        logAccess(
+                "view_audit_session_detail",
+                "登录会话编号=" + parsedSessionId
+                        + "；操作人员=" + response.actorDisplay()
+                        + "；会话状态=" + response.statusLabel()
+                        + "；操作次数=" + response.operationCount()
+                        + "；查询快照=" + (snapshotAuditId == null
+                        ? "最新" : snapshotAuditId));
+        return response;
+    }
+
     @GetMapping("/{sessionId}/events")
     @PreAuthorize("hasAuthority('audit_log:view')")
     public AuditSessionEventPageResponse events(

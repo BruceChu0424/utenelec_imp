@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/pages/production_plan_detail_page.dart';
@@ -82,7 +83,7 @@ void main() {
         isEmpty,
       );
 
-      final openDocuments = find.text('查看执行单据 / 打印工卡');
+      final openDocuments = find.text('查看执行单据');
       await tester.ensureVisible(openDocuments);
       await tester.tap(openDocuments);
       await tester.pump();
@@ -234,6 +235,85 @@ void main() {
 
     expect(find.text('删除'), findsOneWidget);
     expect(find.text('编辑'), findsNothing);
+    expect(find.byKey(const Key('production-print-plan')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'approved plan exposes direct production-plan print and loads work card',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(375, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _approvedPlanDetailApi();
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionWriteAllDocumentScope(),
+            productionPlanRepositoryProvider.overrideWithValue(
+              ProductionPlanRepository(api),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionPlanView,
+              Perm.productionPlanReverse,
+            }),
+          ],
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(1.3)),
+              child: child!,
+            ),
+            home: const ProductionPlanDetailPage(id: 'plan-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final printPlan = find.byKey(const Key('production-print-plan'));
+      expect(printPlan, findsOneWidget);
+      expect(find.text('红冲'), findsOneWidget);
+      await tester.ensureVisible(printPlan);
+      await tester.tap(printPlan);
+      await tester.pumpAndSettle();
+
+      expect(find.text('A4 生产计划单 · 流水线执行工卡'), findsOneWidget);
+      expect(find.textContaining('SEG-001 · 测试产品'), findsOneWidget);
+      await tester.tap(find.byTooltip('关闭生产计划打印预览'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('stopped approved plan keeps print action disabled', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _approvedPlanDetailApi(stopped: true);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionWriteAllDocumentScope(),
+          productionPlanRepositoryProvider.overrideWithValue(
+            ProductionPlanRepository(api),
+          ),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionPlanView,
+          }),
+        ],
+        child: const MaterialApp(home: ProductionPlanDetailPage(id: 'plan-1')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final printPlan = find.byKey(const Key('production-print-plan'));
+    expect(printPlan, findsOneWidget);
+    expect(tester.widget<UtenButton>(printPlan).onPressed, isNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -296,7 +376,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final openResult = find.text('查看执行单据 / 打印工卡');
+      final openResult = find.text('查看执行单据');
       await tester.ensureVisible(openResult);
       await tester.tap(openResult);
       await tester.pumpAndSettle();
@@ -491,7 +571,11 @@ ApiClient _plainDraftPlanDetailApi() {
   return ApiClient(dio);
 }
 
-ApiClient _approvedPlanDetailApi({bool withInProgressSegment = false}) {
+ApiClient _approvedPlanDetailApi({
+  bool withInProgressSegment = false,
+  bool stopped = false,
+  bool canceled = false,
+}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -503,6 +587,8 @@ ApiClient _approvedPlanDetailApi({bool withInProgressSegment = false}) {
             'billNo': 'SJ-1',
             'billDate': '2026-08-08',
             'status': 1,
+            'stopped': stopped,
+            'canceled': canceled,
             'allowedActions': ['VIEW', 'REVERSE'],
             'items': <Map<String, dynamic>>[],
           },
@@ -515,6 +601,8 @@ ApiClient _approvedPlanDetailApi({bool withInProgressSegment = false}) {
               'executionSegments': <Map<String, dynamic>>[],
               'drawDocuments': <Map<String, dynamic>>[],
             },
+          '/production/plans/plan-1/planning-packages/package-1/work-cards' =>
+            _detailWorkCardJson(),
           '/production/plans/plan-1/execution-segments' =>
             withInProgressSegment
                 ? <Map<String, dynamic>>[
@@ -564,3 +652,44 @@ ApiClient _approvedPlanDetailApi({bool withInProgressSegment = false}) {
   );
   return ApiClient(dio);
 }
+
+Map<String, dynamic> _detailWorkCardJson() => {
+  'planId': 'plan-1',
+  'planBillNo': 'SJ-1',
+  'planBillDate': '2026-08-08',
+  'deliveryDate': '2026-08-10',
+  'packageId': 'package-1',
+  'packageStatus': 'CONFIRMED',
+  'executionModelVersion': 1,
+  'packageLockVersion': 1,
+  'confirmedAt': '2026-08-08T08:30:00Z',
+  'approverName': '审核员',
+  'warehouseId': 'warehouse-1',
+  'warehouseCode': 'WH-01',
+  'warehouseName': '主仓',
+  'generatedAt': '2026-08-08T08:31:00Z',
+  'namePolicy': 'CURRENT_MASTER_DATA',
+  'cards': [
+    {
+      'segmentId': 'segment-1',
+      'segmentCode': 'SEG-001',
+      'sourcePlanItemId': 'plan-item-1',
+      'sourceLineNo': 1,
+      'productNo': 'V6-0001',
+      'productGoodsId': 'goods-1',
+      'productCode': 'P-001',
+      'productName': '测试产品',
+      'productSpec': '三插压板',
+      'productUnitName': '件',
+      'plannedQty': 10,
+      'status': 'READY',
+      'materialRequirementMode': 'ZERO_MATERIAL',
+      'zeroMaterialReason': 'DIRECT_MAKE',
+      'workshopName': '装配一车间',
+      'responsibleEmployeeName': '负责人',
+      'planBeginDate': '2026-08-08',
+      'planEndDate': '2026-08-10',
+      'materials': <Map<String, dynamic>>[],
+    },
+  ],
+};

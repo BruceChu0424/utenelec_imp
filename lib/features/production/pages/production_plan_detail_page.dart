@@ -365,6 +365,20 @@ class _ProductionPlanDetailPageState
     );
   }
 
+  /// 已审计划的一键打印入口：预览弹窗先打开，再在弹窗内部读取最新确认包。
+  /// 每次真正打印前 loader 会再次执行，失效/取消/冲销包会由服务端拒绝，
+  /// 因此补打不会把旧页面缓存冒充为当前有效生产计划。
+  Future<void> _openLatestProductionPlanPrint() {
+    final repo = ref.read(productionPlanRepositoryProvider);
+    return showProductionExecutionCardPrintPreview(
+      context,
+      loader: () async {
+        final result = await repo.latestPlanningPackageResult(widget.id);
+        return repo.productionWorkCards(widget.id, result.packageId);
+      },
+    );
+  }
+
   Future<void> _showLatestPlanningResultAfterApproval(
     ProductionPlanRepository repo,
   ) async {
@@ -671,7 +685,7 @@ class _ProductionPlanDetailPageState
                 const _PlanningResultSelection.printWorkCards(),
               ),
               icon: const Icon(Icons.print_outlined, size: 18),
-              label: const Text('预览 / 打印生产执行工卡'),
+              label: const Text('打印生产计划单 / 执行工卡'),
             ),
           if (result.status == 'CONFIRMED' && _canCancelPlanningPackage)
             OutlinedButton.icon(
@@ -776,7 +790,7 @@ class _ProductionPlanDetailPageState
                   icon: Icons.receipt_long_outlined,
                   isLoading: _executionBusy,
                   onPressed: _commandBusy ? null : _openLatestPlanningResult,
-                  child: const Text('查看执行单据 / 打印工卡'),
+                  child: const Text('查看执行单据'),
                 ),
                 UtenButton(
                   key: const Key('production-open-material-ledger'),
@@ -1481,17 +1495,35 @@ class _ProductionPlanDetailPageState
           ),
         );
       }
-    } else if (s == kProductionStatusApproved && _canReverse) {
+    } else if (s == kProductionStatusApproved) {
+      final printBlocked = _detail!.stopped || _detail!.canceled;
       children.add(
         UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.undo_outlined,
-          onPressed: _commandBusy ? null : _reverse,
-          onDisabledTap: () =>
-              context.appWarning('生产计划操作正在处理，请完成后再红冲', force: true),
-          child: const Text('红冲'),
+          key: const Key('production-print-plan'),
+          type: UtenButtonType.tonal,
+          icon: Icons.print_outlined,
+          onPressed: _commandBusy || printBlocked
+              ? null
+              : _openLatestProductionPlanPrint,
+          onDisabledTap: printBlocked
+              ? () => context.appWarning('已停止或已取消的生产计划不能打印流水线工卡', force: true)
+              : () => context.appWarning('生产计划操作正在处理，请完成后再打印', force: true),
+          child: const Text('打印生产计划单'),
         ),
       );
+      if (_canReverse) {
+        children.add(const SizedBox(width: UtenSpacing.s8));
+        children.add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.undo_outlined,
+            onPressed: _commandBusy ? null : _reverse,
+            onDisabledTap: () =>
+                context.appWarning('生产计划操作正在处理，请完成后再红冲', force: true),
+            child: const Text('红冲'),
+          ),
+        );
+      }
     }
     if (children.isEmpty) {
       children.add(

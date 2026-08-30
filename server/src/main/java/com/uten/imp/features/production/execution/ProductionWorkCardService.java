@@ -3,8 +3,11 @@ package com.uten.imp.features.production.execution;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.ProductionPlanningPackage;
 import com.uten.imp.features.production.fulfillment.ProductionPlanningPackageRepository;
+import com.uten.imp.features.production.plan.ProductionPlan;
+import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,11 +29,29 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ProductionWorkCardService {
 
+    private static final short STATUS_APPROVED = 1;
+
     private final ProductionPlanningPackageRepository packageRepository;
+    private final ProductionPlanRepository planRepository;
+    private final ProductionDocumentAccessPolicy access;
     private final EntityManager em;
 
     @Transactional
     public ProductionWorkCardView view(UUID planId, UUID packageId) {
+        ProductionPlan plan = planRepository.lockForWorkCard(planId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND,
+                        "生产计划不存在"));
+        access.requireReadable(
+                plan.getMakerId(), "生产计划不存在", "production_plan:approve");
+        if (plan.getStatus() == null
+                || plan.getStatus() != STATUS_APPROVED
+                || plan.isStopped()
+                || plan.isCanceled()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "只有当前已审且未停止、未取消的生产计划可以打印");
+        }
         ProductionPlanningPackage planningPackage = packageRepository
                 .lockConfirmedExecutionPackage(planId, packageId)
                 .orElseThrow(() -> new ApiException(

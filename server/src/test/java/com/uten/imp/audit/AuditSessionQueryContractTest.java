@@ -91,6 +91,23 @@ class AuditSessionQueryContractTest {
     }
 
     @Test
+    void sessionDetailRequiresIdentityAndValidSnapshot() {
+        UUID sessionId = UUID.randomUUID();
+        assertDoesNotThrow(() ->
+                AuditSessionQueryService.validateSessionDetailScope(
+                        sessionId, null));
+        assertDoesNotThrow(() ->
+                AuditSessionQueryService.validateSessionDetailScope(
+                        sessionId, 0L));
+        assertThrows(ApiException.class, () ->
+                AuditSessionQueryService.validateSessionDetailScope(
+                        null, null));
+        assertThrows(ApiException.class, () ->
+                AuditSessionQueryService.validateSessionDetailScope(
+                        sessionId, -1L));
+    }
+
+    @Test
     void dateOnlySelectsSessionAndTimelineAggregationCrossesMidnight()
             throws IOException {
         String source = source("AuditSessionQueryService.java");
@@ -134,11 +151,12 @@ class AuditSessionQueryContractTest {
     }
 
     @Test
-    void bothEndpointsRequireAuditViewPermission() throws IOException {
+    void everySessionEndpointRequiresAuditViewPermission() throws IOException {
         String source = source("AuditSessionController.java");
         String permission = "@PreAuthorize(\"hasAuthority('audit_log:view')\")";
-        assertEquals(2, occurrences(source, permission));
+        assertEquals(3, occurrences(source, permission));
         assertTrue(source.contains("@RequestMapping(\"/api/admin/audit-sessions\")"));
+        assertTrue(source.contains("@GetMapping(\"/{sessionId}\")"));
         assertTrue(source.contains("@GetMapping(\"/{sessionId}/events\")"));
     }
 

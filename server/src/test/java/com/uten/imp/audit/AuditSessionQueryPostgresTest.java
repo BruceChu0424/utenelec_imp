@@ -83,6 +83,15 @@ class AuditSessionQueryPostgresTest {
         assertEquals("activity_after_logout", crossMidnight.status());
         assertEquals(1, crossMidnight.postLogoutCount());
         assertFalse(crossMidnight.timelinePartial());
+        assertEquals(page.snapshotAuditId(), crossMidnight.snapshotAuditId());
+
+        AuditSessionRow direct = sessions.session(
+                firstSession, page.snapshotAuditId());
+        assertEquals(firstSession, direct.sessionId());
+        assertEquals(crossMidnight.actorId(), direct.actorId());
+        assertEquals(crossMidnight.operationCount(), direct.operationCount());
+        assertEquals(crossMidnight.lastActivityAt(), direct.lastActivityAt());
+        assertEquals(page.snapshotAuditId(), direct.snapshotAuditId());
 
         AuditSessionEventPageResponse first = sessions.events(
                 firstSession, null, null, 2, page.snapshotAuditId());

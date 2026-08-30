@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,9 +20,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 采购/委外订货单财务审批只读投影：按订单聚合最新审批 case、计算当前可执行动作
- * （提交 / 审批 / 驳回），并判定当前财务审核员能否查看特定待审订单
+ * 采购/委外订货单财务审批只读投影：按订单聚合最新审批 case、计算业务侧可执行动作
+ * （提交 / 重新提交），并判定当前财务审核员能否查看特定待审订单
  * （不放宽列表范围，仅允许在有待审 case 时穿透 owner 隔离）。
+ * 财务通过/驳回动作只由财务任务接口投影，业务详情不暴露。
  */
 @Service
 @RequiredArgsConstructor
@@ -165,18 +165,8 @@ public class ProcurementApprovalProjectionQuery {
     private List<String> caseActions(
             String orderType, short orderStatus, CaseRow row) {
         if ("PENDING".equals(row.status())) {
-            AuthUser actor = currentUser.get().orElse(null);
-            if (actor != null
-                    && reviewerEligibility.findEligible(actor.getId()).isPresent()) {
-                List<String> actions = new ArrayList<>(2);
-                if (has("finance_order_approval:approve")) {
-                    actions.add("APPROVE");
-                }
-                if (has("finance_order_approval:reject")) {
-                    actions.add("REJECT");
-                }
-                return List.copyOf(actions);
-            }
+            // ADR-027 §5: 采购/委外详情始终只读等待。审核员可穿透 owner
+            // 隔离查看待审事实，但 APPROVE/REJECT 只随财务任务接口返回。
             return List.of();
         }
         if (orderStatus == 0

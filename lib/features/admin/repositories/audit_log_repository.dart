@@ -23,6 +23,12 @@ abstract interface class AuditLogRepository {
     int? snapshotAuditId,
   });
 
+  /// 独立会话详情页使用；支持沿用列表快照，也支持直接深链加载最新摘要。
+  Future<AuditSessionSummary> sessionSummary({
+    required String sessionId,
+    int? snapshotAuditId,
+  });
+
   /// 懒加载单个会话的事件；返回现有 AuditLogPage 以复用详情链路。
   Future<AuditSessionEventPage> sessionEvents({
     required String sessionId,
@@ -124,6 +130,19 @@ class DioAuditLogRepository implements AuditLogRepository {
       },
     );
     return AuditSessionPage.fromJson(Map<String, dynamic>.from(json as Map));
+  }
+
+  @override
+  Future<AuditSessionSummary> sessionSummary({
+    required String sessionId,
+    int? snapshotAuditId,
+  }) async {
+    final safeSessionId = Uri.encodeComponent(sessionId.trim());
+    final json = await api.get(
+      '/admin/audit-sessions/$safeSessionId',
+      query: <String, dynamic>{'snapshotAuditId': ?snapshotAuditId},
+    );
+    return AuditSessionSummary.fromJson(Map<String, dynamic>.from(json as Map));
   }
 
   @override

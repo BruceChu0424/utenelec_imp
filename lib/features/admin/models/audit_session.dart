@@ -35,6 +35,7 @@ class AuditSessionSummary {
     this.devicePlatform,
     this.lastIp,
     this.timelinePartial = false,
+    this.snapshotAuditId = 0,
   });
 
   final String sessionId;
@@ -65,6 +66,7 @@ class AuditSessionSummary {
   final String? devicePlatform;
   final String? lastIp;
   final bool timelinePartial;
+  final int snapshotAuditId;
 
   factory AuditSessionSummary.fromJson(Map<String, dynamic> json) =>
       AuditSessionSummary(
@@ -97,6 +99,7 @@ class AuditSessionSummary {
         devicePlatform: json['devicePlatform'] as String?,
         lastIp: json['lastIp'] as String?,
         timelinePartial: json['timelinePartial'] as bool? ?? false,
+        snapshotAuditId: _parseInt(json['snapshotAuditId']) ?? 0,
       );
 
   static int? _parseInt(dynamic value) {

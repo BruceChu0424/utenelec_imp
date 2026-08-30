@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -516,12 +518,22 @@ void main() {
 
       expect(detailReads, 1);
       expect(find.text('整套物料未齐，暂不可生产'), findsOneWidget);
+      final blocker = find.byKey(
+        const ValueKey('material-analysis-product-blocker-product-line-1'),
+      );
+      expect(blocker, findsOneWidget);
+      final blockerText = tester.widget<Text>(blocker);
+      expect(
+        blockerText.style?.color,
+        Theme.of(tester.element(blocker)).colorScheme.error,
+      );
 
       await tester.pump(const Duration(seconds: 45));
       await tester.pumpAndSettle();
 
       expect(detailReads, 2);
       expect(find.text('最多可生产 7 个'), findsOneWidget);
+      expect(blocker, findsNothing);
       expect(
         harness.requests.where(
           (request) =>
@@ -1385,6 +1397,9 @@ void main() {
   testWidgets(
     'confirmed MAKE stays visible as a blocked candidate before child creation',
     (tester) async {
+      final theme = ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+      );
       final harness = await _pumpPage(
         tester,
         size: const Size(375, 900),
@@ -1394,16 +1409,56 @@ void main() {
           Perm.productionMaterialAnalysisNotify,
         },
         analysisJson: _pendingMakeCandidateAnalysisJson(),
+        theme: theme,
+        textScale: 1.3,
       );
 
       final candidate = find.byKey(
         const ValueKey('material-analysis-pending-make-pending-make-1'),
       );
       expect(candidate, findsOneWidget);
+      expect(find.text('已确认自制 · 下层未齐套'), findsOneWidget);
+      final blockedCard = tester.widget<Card>(candidate);
+      final blockedShape = blockedCard.shape! as RoundedRectangleBorder;
+      expect(
+        blockedShape.side.color,
+        theme.colorScheme.error.withValues(alpha: 0.5),
+      );
+      final blockedSection = tester.widget<Container>(
+        find.byKey(const Key('material-analysis-pending-make-section')),
+      );
+      final blockedSectionDecoration =
+          blockedSection.decoration! as BoxDecoration;
+      expect(
+        blockedSectionDecoration.color,
+        theme.colorScheme.errorContainer.withValues(alpha: 0.22),
+      );
+      final blockedStatus = tester.widget<Container>(
+        find.byKey(
+          const ValueKey(
+            'material-analysis-pending-make-status-pending-make-1',
+          ),
+        ),
+      );
+      final blockedStatusDecoration =
+          blockedStatus.decoration! as BoxDecoration;
+      expect(
+        blockedStatusDecoration.color,
+        theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+      );
       expect(
         find.descendant(
           of: candidate,
-          matching: find.text('待备料 · 下层还缺 2 种物料 · 共 3 条 BOM 路径 · 其中 3 条路线待确认'),
+          matching: find.byIcon(Icons.do_not_disturb_on_outlined),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: candidate,
+          matching: find.text(
+            '暂不可生产 · 下层还缺 2 种物料 · 共 3 条 BOM 路径 · 其中 3 条路线待确认',
+          ),
         ),
         findsOneWidget,
       );
@@ -1426,12 +1481,16 @@ void main() {
         ),
         isEmpty,
       );
+      expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
     'pending MAKE card enables arrange only after lower level ready',
     (tester) async {
+      final theme = ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+      );
       await _pumpPage(
         tester,
         size: const Size(1200, 900),
@@ -1443,6 +1502,7 @@ void main() {
         analysisJson: _pendingMakeCandidateAnalysisJson(
           lowerLevelPending: false,
         ),
+        theme: theme,
       );
 
       final candidate = find.byKey(
@@ -1452,11 +1512,78 @@ void main() {
         find.descendant(of: candidate, matching: find.text('下层已齐套 · 可安排生产')),
         findsOneWidget,
       );
+      final readyCard = tester.widget<Card>(candidate);
+      final readyShape = readyCard.shape! as RoundedRectangleBorder;
+      expect(
+        readyShape.side.color,
+        theme.colorScheme.primary.withValues(alpha: 0.5),
+      );
+      final readyStatus = tester.widget<Container>(
+        find.byKey(
+          const ValueKey(
+            'material-analysis-pending-make-status-pending-make-1',
+          ),
+        ),
+      );
+      final readyStatusDecoration = readyStatus.decoration! as BoxDecoration;
+      expect(
+        readyStatusDecoration.color,
+        theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+      );
       final arrange = find.byKey(
         const ValueKey('material-analysis-pending-make-arrange-pending-make-1'),
       );
       expect(arrange, findsOneWidget);
       expect(tester.widget<UtenButton>(arrange).onPressed, isNotNull);
+    },
+  );
+
+  testWidgets(
+    'ready-looking MAKE candidate stays red when execution gate is closed',
+    (tester) async {
+      final theme = ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+      );
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: _pendingMakeCandidateAnalysisJson(
+          lowerLevelPending: false,
+          actionable: false,
+        ),
+        theme: theme,
+      );
+
+      final candidate = find.byKey(
+        const ValueKey('material-analysis-pending-make-pending-make-1'),
+      );
+      expect(
+        find.descendant(of: candidate, matching: find.text('暂不可安排')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: candidate,
+          matching: find.textContaining('当前快照尚未满足自制任务执行门槛'),
+        ),
+        findsOneWidget,
+      );
+      final blockedCard = tester.widget<Card>(candidate);
+      final blockedShape = blockedCard.shape! as RoundedRectangleBorder;
+      expect(
+        blockedShape.side.color,
+        theme.colorScheme.error.withValues(alpha: 0.5),
+      );
+      final arrange = find.byKey(
+        const ValueKey('material-analysis-pending-make-arrange-pending-make-1'),
+      );
+      expect(arrange, findsOneWidget);
+      expect(tester.widget<UtenButton>(arrange).onPressed, isNull);
     },
   );
 
@@ -3130,6 +3257,10 @@ void main() {
       expect(find.textContaining('PP-20260809-001'), findsOneWidget);
       expect(find.text('留在物料分析'), findsOneWidget);
       expect(find.text('查看计划'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('generated-plan-print-plan-1')),
+        findsNothing,
+      );
       await tester.tap(find.text('留在物料分析'));
       await tester.pumpAndSettle();
 
@@ -3289,8 +3420,10 @@ void main() {
   );
 
   testWidgets(
-    'approve-now generation produces plan and draw documents in one pass',
+    'approve-now defaults on and shows both submission stages before result',
     (tester) async {
+      final previewGate = Completer<void>();
+      final generateGate = Completer<void>();
       final secondRound = _analysisJson(const [
         'PLAN_PREVIEW',
         'GENERATE_PLAN',
@@ -3310,8 +3443,9 @@ void main() {
         departmentId: 'workshop-1',
         workshopName: '装配一车间',
         workerId: 'worker-1',
-        responseOverride: (request) {
+        responseOverride: (request) async {
           if (request.path.endsWith('/plan-preview')) {
+            await previewGate.future;
             return {
               'analysisId': 'analysis-1',
               'version': 3,
@@ -3332,6 +3466,7 @@ void main() {
             };
           }
           if (request.path.endsWith('/generate-plan')) {
+            await generateGate.future;
             return {
               'analysis': secondRound,
               'plans': [
@@ -3339,6 +3474,8 @@ void main() {
                   'planId': 'plan-1',
                   'planNo': 'PP-20260809-001',
                   'status': 'APPROVED',
+                  'packageId': 'package-1',
+                  'segmentIds': ['segment-1'],
                   'drawIds': ['draw-1'],
                   'drawDocuments': [
                     {'drawId': 'draw-1', 'billNo': 'LL-20260809-001'},
@@ -3346,6 +3483,9 @@ void main() {
                 },
               ],
             };
+          }
+          if (request.path.endsWith('/work-cards')) {
+            return _confirmedWorkCardJson();
           }
           return null;
         },
@@ -3367,9 +3507,42 @@ void main() {
         const Key('production-plan-wizard-approve-now'),
       );
       expect(approveNow, findsOneWidget);
-      await tester.tap(approveNow);
-      await tester.pumpAndSettle();
+      expect(tester.widget<CheckboxListTile>(approveNow).value, isTrue);
+      expect(find.text('确认生成并审核下达'), findsOneWidget);
       await tester.tap(find.text('确认生成并审核下达'));
+
+      // The wizard route closes first, then the parent page performs the
+      // authoritative preview. Keep the request pending so the intermediate
+      // state is observable and cannot regress to a blank page.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('material-analysis-plan-submission-progress')),
+        findsOneWidget,
+      );
+      expect(find.text('正在校验最新库存与齐套状态'), findsOneWidget);
+      expect(find.textContaining('第 1 / 2 步'), findsOneWidget);
+
+      previewGate.complete();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('material-analysis-plan-submission-progress')),
+        findsOneWidget,
+      );
+      expect(find.text('正在生成并审核下达'), findsOneWidget);
+      expect(find.textContaining('第 2 / 2 步'), findsOneWidget);
+      expect(
+        harness.requests.where(
+          (request) => request.path.endsWith('/generate-plan'),
+        ),
+        hasLength(1),
+      );
+
+      generateGate.complete();
+      await tester.pump();
       await tester.pumpAndSettle();
 
       final generate = harness.requests.singleWhere(
@@ -3382,8 +3555,95 @@ void main() {
       expect(find.textContaining('PP-20260809-001'), findsOneWidget);
       expect(find.text('已审核下达'), findsOneWidget);
       expect(find.text('物料提货单(领料单)LL-20260809-001'), findsOneWidget);
-      await tester.tap(find.text('留在物料分析'));
+      final printPlan = find.byKey(
+        const ValueKey('generated-plan-print-plan-1'),
+      );
+      expect(printPlan, findsOneWidget);
+      await tester.tap(printPlan);
       await tester.pumpAndSettle();
+
+      expect(find.text('A4 生产计划单 · 流水线执行工卡'), findsOneWidget);
+      expect(find.textContaining('SEG-001 · 测试产品'), findsOneWidget);
+      expect(
+        harness.requests.where(
+          (request) => request.path.endsWith('/work-cards'),
+        ),
+        hasLength(1),
+      );
+      await tester.tap(find.byTooltip('关闭生产计划打印预览'));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'plan preview failure clears submission overlay and never posts generate',
+    (tester) async {
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisGenerate,
+          Perm.productionPlanApprove,
+        },
+        analysisJson: _analysisJson(const ['PLAN_PREVIEW', 'GENERATE_PLAN']),
+        billDate: '2026-08-09',
+        deliveryDate: '2026-08-12',
+        departmentId: 'workshop-1',
+        workshopName: '装配一车间',
+        workerId: 'worker-1',
+        errorOverride: (request) {
+          if (!request.path.endsWith('/plan-preview')) return null;
+          return DioException(
+            requestOptions: request,
+            type: DioExceptionType.badResponse,
+            response: Response<dynamic>(
+              requestOptions: request,
+              statusCode: 500,
+              data: const {'code': 'INTERNAL_ERROR', 'message': '计划预览服务暂时不可用'},
+            ),
+          );
+        },
+      );
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey('material-analysis-product-select-product-line-1'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('生成总装计划(1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('汇总确认'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+              find.byKey(const Key('production-plan-wizard-approve-now')),
+            )
+            .value,
+        isTrue,
+      );
+
+      await tester.tap(find.text('确认生成并审核下达'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('material-analysis-plan-submission-progress')),
+        findsNothing,
+      );
+      expect(
+        harness.requests.where(
+          (request) => request.path.endsWith('/generate-plan'),
+        ),
+        isEmpty,
+      );
+      expect(
+        find.byKey(const Key('material-analysis-generate')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -4193,7 +4453,8 @@ Future<_Harness> _pumpPage(
   List<MaterialAnalysisSourceInput>? sources,
   Map<String, dynamic>? analysisJson,
   DioException? Function(RequestOptions request)? errorOverride,
-  Map<String, dynamic>? Function(RequestOptions request)? responseOverride,
+  FutureOr<Map<String, dynamic>?> Function(RequestOptions request)?
+  responseOverride,
   String? billDate,
   String? deliveryDate,
   String? departmentId,
@@ -4293,19 +4554,20 @@ ApiClient _api(
   List<String> allowedActions, {
   Map<String, dynamic>? analysisJson,
   DioException? Function(RequestOptions request)? errorOverride,
-  Map<String, dynamic>? Function(RequestOptions request)? responseOverride,
+  FutureOr<Map<String, dynamic>?> Function(RequestOptions request)?
+  responseOverride,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) {
+      onRequest: (request, handler) async {
         requests.add(request);
         final failure = errorOverride?.call(request);
         if (failure != null) {
           handler.reject(failure);
           return;
         }
-        final custom = responseOverride?.call(request);
+        final custom = await responseOverride?.call(request);
         final data =
             custom ??
             switch (request.path) {
@@ -4707,6 +4969,7 @@ Map<String, dynamic> _makeReadyChildAnalysisJson() {
 Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
   bool lowerLevelPending = true,
   bool includeRealChild = false,
+  bool actionable = true,
 }) {
   final json = _analysisJson(const ['NOTIFY_SUPPLY', 'GENERATE_PLAN']);
   final childShortage = lowerLevelPending ? 4 : 0;
@@ -4721,6 +4984,7 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
       controlStage: 'ASSEMBLY',
     ),
     'lowerLevelPending': lowerLevelPending,
+    'actionable': actionable,
     if (includeRealChild)
       'notifiedTargets': [
         {
@@ -5109,6 +5373,47 @@ Map<String, dynamic> _materialJson({
   'routeReason': routeConfirmed ? '交期紧急，改为车间自制' : null,
   'lowerLevelPending': false,
   'actionable': true,
+};
+
+Map<String, dynamic> _confirmedWorkCardJson() => {
+  'planId': 'plan-1',
+  'planBillNo': 'PP-20260809-001',
+  'planBillDate': '2026-08-09',
+  'deliveryDate': '2026-08-12',
+  'packageId': 'package-1',
+  'packageStatus': 'CONFIRMED',
+  'executionModelVersion': 1,
+  'packageLockVersion': 1,
+  'confirmedAt': '2026-08-09T08:30:00Z',
+  'approverName': '审核员',
+  'warehouseId': 'warehouse-1',
+  'warehouseCode': 'WH-01',
+  'warehouseName': '主仓',
+  'generatedAt': '2026-08-09T08:31:00Z',
+  'namePolicy': 'CURRENT_MASTER_DATA',
+  'cards': [
+    {
+      'segmentId': 'segment-1',
+      'segmentCode': 'SEG-001',
+      'sourcePlanItemId': 'plan-item-1',
+      'sourceLineNo': 1,
+      'productNo': 'V6-0001',
+      'productGoodsId': 'goods-1',
+      'productCode': 'P-001',
+      'productName': '测试产品',
+      'productSpec': '三插压板',
+      'productUnitName': '件',
+      'plannedQty': 4,
+      'status': 'READY',
+      'materialRequirementMode': 'ZERO_MATERIAL',
+      'zeroMaterialReason': 'DIRECT_MAKE',
+      'workshopName': '装配一车间',
+      'responsibleEmployeeName': '负责人',
+      'planBeginDate': '2026-08-09',
+      'planEndDate': '2026-08-12',
+      'materials': <Map<String, dynamic>>[],
+    },
+  ],
 };
 
 class _Harness {

@@ -142,6 +142,77 @@ void main() {
     },
   );
 
+  testWidgets(
+    'authorized summary defaults approve-now on but allows explicit opt-out',
+    (tester) async {
+      ProductionPlanWizardResult? result;
+      await tester.binding.setSurfaceSize(const Size(1280, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionWorkshopTreeProvider.overrideWith(
+              (ref) async => _workshops(),
+            ),
+            departmentPickerTreeProvider.overrideWith(
+              (ref) async => const <DepartmentNode>[],
+            ),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: FilledButton(
+                  onPressed: () async {
+                    result = await Navigator.of(context)
+                        .push<ProductionPlanWizardResult>(
+                          MaterialPageRoute(
+                            builder: (_) => ProductionPlanWizardPage(
+                              entries: [_entries().first],
+                              canApprove: true,
+                            ),
+                          ),
+                        );
+                  },
+                  child: const Text('打开授权计划单'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('打开授权计划单'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('汇总确认'));
+      await tester.pumpAndSettle();
+
+      final approveNow = find.byKey(
+        const Key('production-plan-wizard-approve-now'),
+      );
+      expect(tester.widget<CheckboxListTile>(approveNow).value, isTrue);
+      expect(
+        find.byKey(const Key('reviewer-responsibility-notice')),
+        findsOneWidget,
+      );
+      expect(find.text('确认生成并审核下达'), findsOneWidget);
+
+      await tester.tap(approveNow);
+      await tester.pump();
+      expect(tester.widget<CheckboxListTile>(approveNow).value, isFalse);
+      expect(
+        find.byKey(const Key('reviewer-responsibility-notice')),
+        findsNothing,
+      );
+      expect(find.text('确认并提交审批'), findsOneWidget);
+
+      await tester.tap(find.text('确认并提交审批'));
+      await tester.pumpAndSettle();
+      expect(result, isNotNull);
+      expect(result!.approveNow, isFalse);
+    },
+  );
+
   testWidgets('compact wizard keeps one-paper form and actions usable', (
     tester,
   ) async {

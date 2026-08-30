@@ -91,11 +91,44 @@ public class AuditSessionQueryService {
         AuditActorDirectory.Resolution actors = actorDirectory.resolve(
                 actorIds, actorAccounts);
         List<AuditSessionRow> items = aggregates.stream()
-                .map(value -> toRow(value, actors))
+                .map(value -> toRow(value, actors, snapshotAuditId))
                 .toList();
         int totalPages = (int) ((total + size - 1) / size);
         return new AuditSessionPageResponse(
                 items, page, size, total, totalPages, snapshotAuditId);
+    }
+
+    /**
+     * Loads one complete login-session summary for a dedicated detail page.
+     *
+     * <p>The caller may keep the list page's high-water mark so the summary and
+     * its lazy event timeline remain a stable investigation snapshot. A direct
+     * deep link without a snapshot receives a fresh high-water mark.
+     */
+    @Transactional(readOnly = true)
+    public AuditSessionRow session(
+            UUID sessionId,
+            Long requestedSnapshotAuditId) {
+        validateSessionDetailScope(sessionId, requestedSnapshotAuditId);
+        long snapshotAuditId = snapshot(requestedSnapshotAuditId);
+        Query query = entityManager.createNativeQuery(SESSION_DETAIL_SQL);
+        query.setParameter("sessionId", sessionId);
+        query.setParameter("snapshotAuditId", snapshotAuditId);
+
+        List<?> rows = query.getResultList();
+        if (rows.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "登录会话不存在或已归档");
+        }
+        SessionAggregate aggregate = toAggregate((Object[]) rows.get(0));
+        Set<UUID> actorIds = aggregate.actorId() == null
+                ? Set.of()
+                : Set.of(aggregate.actorId());
+        Set<String> actorAccounts = notBlank(aggregate.actorAccount())
+                ? Set.of(aggregate.actorAccount())
+                : Set.of();
+        AuditActorDirectory.Resolution actors = actorDirectory.resolve(
+                actorIds, actorAccounts);
+        return toRow(aggregate, actors, snapshotAuditId);
     }
 
     @Transactional(readOnly = true)
@@ -198,6 +231,17 @@ public class AuditSessionQueryService {
         }
     }
 
+    static void validateSessionDetailScope(
+            UUID sessionId,
+            Long snapshotAuditId) {
+        if (sessionId == null) {
+            throw malformed("登录会话编号不能为空");
+        }
+        if (snapshotAuditId != null && snapshotAuditId < 0) {
+            throw malformed("查询快照编号不能为负数");
+        }
+    }
+
     private long sessionCount(
             UUID actorId,
             OffsetDateTime from,
@@ -260,7 +304,8 @@ public class AuditSessionQueryService {
 
     private AuditSessionRow toRow(
             SessionAggregate value,
-            AuditActorDirectory.Resolution actors) {
+            AuditActorDirectory.Resolution actors,
+            long snapshotAuditId) {
         AuditActorDirectory.ActorProfile profile = actors.forActor(
                 value.actorId(), value.actorAccount());
         String actorDisplay = profile == null
@@ -297,7 +342,8 @@ public class AuditSessionQueryService {
                 value.refreshRevokedAt(),
                 credentialStatus,
                 credentialStatusLabel(credentialStatus),
-                false);
+                false,
+                snapshotAuditId);
     }
 
     private String sessionStatus(SessionAggregate value) {
@@ -640,6 +686,15 @@ public class AuditSessionQueryService {
             ORDER BY COALESCE(grouped.login_at, grouped.first_activity_at) DESC,
                      grouped.session_id DESC
             """;
+
+    private static final String SESSION_DETAIL_SCOPE = """
+            a.session_id = :sessionId
+            AND a.id <= :snapshotAuditId
+            AND LOWER(COALESCE(a.event_source, '')) <> 'database'
+            """;
+
+    private static final String SESSION_DETAIL_SQL =
+            SESSION_PAGE_SQL.replace(SESSION_SCOPE, SESSION_DETAIL_SCOPE);
 
     private static final String SESSION_EVENTS_FIRST_JPQL = """
             SELECT a

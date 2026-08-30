@@ -14,41 +14,307 @@ typedef AuditSessionEventLoader =
       int? snapshotAuditId,
     });
 
-/// 一次稳定 sessionId 一张卡；折叠时只展示摘要，展开后才懒加载事件。
-class AuditSessionCard extends StatefulWidget {
+/// 审计中心只展示会话摘要；点击后进入独立路由查看时间线。
+class AuditSessionCard extends StatelessWidget {
   const AuditSessionCard({
     required this.session,
-    required this.snapshotAuditId,
-    required this.loadEvents,
-    required this.onOpenEvent,
+    required this.onOpen,
     super.key,
   });
 
   final AuditSessionSummary session;
-  final int snapshotAuditId;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final actor = auditSessionActor(session);
+    final status = auditSessionStatusLabel(session);
+    final loginAt = auditBeijingTime(session.loginAt, fallback: '开始时间未知');
+    final lastAt = auditBeijingTime(
+      session.lastActivityAt ?? session.firstActivityAt,
+      fallback: '暂无活动时间',
+    );
+    final logoutAt = session.logoutAt == null
+        ? null
+        : auditBeijingTime(session.logoutAt, fallback: '退出时间未知');
+    return Semantics(
+      button: true,
+      excludeSemantics: true,
+      label: [
+        '登录会话',
+        '操作人 $actor',
+        '状态 $status',
+        '开始时间 $loginAt',
+        if (logoutAt != null) '退出时间 $logoutAt' else '最后活动 $lastAt',
+        '人工操作 ${session.operationCount} 项',
+        if (session.failureCount > 0) '失败 ${session.failureCount} 项',
+        if (session.postLogoutCount > 0) '退出后操作 ${session.postLogoutCount} 项',
+        '点击进入会话时间线',
+      ].join('，'),
+      child: UtenCard(
+        padding: EdgeInsets.zero,
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: UtenRadius.lgAll,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: ValueKey('audit-session-${session.sessionId}'),
+            onTap: onOpen,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 112),
+              child: Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 620;
+                    final content = AuditSessionSummaryContent(
+                      session: session,
+                      compact: compact,
+                    );
+                    if (compact) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          content,
+                          const SizedBox(height: UtenSpacing.s12),
+                          const _OpenTimelineHint(compact: true),
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: content),
+                        const SizedBox(width: UtenSpacing.s16),
+                        const _OpenTimelineHint(compact: false),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class AuditSessionSummaryPanel extends StatelessWidget {
+  const AuditSessionSummaryPanel({required this.session, super.key});
+
+  final AuditSessionSummary session;
+
+  @override
+  Widget build(BuildContext context) {
+    return UtenCard(
+      padding: const EdgeInsets.all(UtenSpacing.s20),
+      child: LayoutBuilder(
+        builder: (context, constraints) => AuditSessionSummaryContent(
+          session: session,
+          compact: constraints.maxWidth < 620,
+          detailed: true,
+        ),
+      ),
+    );
+  }
+}
+
+class AuditSessionSummaryContent extends StatelessWidget {
+  const AuditSessionSummaryContent({
+    required this.session,
+    required this.compact,
+    this.detailed = false,
+    super.key,
+  });
+
+  final AuditSessionSummary session;
+  final bool compact;
+  final bool detailed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = auditSessionStatusLabel(session);
+    final statusColor = auditSessionStatusColor(
+      theme.colorScheme,
+      session.status,
+    );
+    final loginAt = auditBeijingTime(session.loginAt, fallback: '开始时间未知');
+    final lastAt = auditBeijingTime(
+      session.lastActivityAt ?? session.firstActivityAt,
+      fallback: '暂无活动时间',
+    );
+    final logoutAt = session.logoutAt == null
+        ? null
+        : auditBeijingTime(session.logoutAt, fallback: '退出时间未知');
+    final startLabel = session.startLabel?.trim().isNotEmpty == true
+        ? session.startLabel!.trim()
+        : '建立会话';
+    final device = [session.deviceLabel?.trim(), session.devicePlatform?.trim()]
+        .whereType<String>()
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .join(' · ');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: UtenRadius.mdAll,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.person_outline_rounded,
+                size: 20,
+                color: theme.colorScheme.onPrimaryContainer,
+              ),
+            ),
+            Text(
+              auditSessionActor(session),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            if (session.actorDepartment?.trim().isNotEmpty == true)
+              Text(
+                session.actorDepartment!.trim(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            _StatusBadge(
+              label: status,
+              status: session.status,
+              color: statusColor,
+            ),
+          ],
+        ),
+        const SizedBox(height: UtenSpacing.s12),
+        Text(
+          logoutAt == null
+              ? '$startLabel $loginAt → 最后活动 $lastAt'
+              : '$startLabel $loginAt → $logoutAt',
+          maxLines: compact && !detailed ? 4 : null,
+          overflow: compact && !detailed ? TextOverflow.ellipsis : null,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontFeatures: const [FontFeature.tabularFigures()],
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s12),
+        Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          children: [
+            _Metric(label: '人工操作', value: session.operationCount),
+            if (session.eventCount != session.operationCount)
+              _Metric(label: '时间线事件', value: session.eventCount),
+            _Metric(label: '成功', value: session.successCount),
+            if (session.failureCount > 0)
+              _Metric(label: '失败', value: session.failureCount, emphasis: true),
+          ],
+        ),
+        if (device.isNotEmpty ||
+            session.refreshCredentialStatusLabel?.trim().isNotEmpty == true ||
+            (detailed && session.lastIp?.trim().isNotEmpty == true)) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          Wrap(
+            spacing: UtenSpacing.s16,
+            runSpacing: UtenSpacing.s8,
+            children: [
+              if (device.isNotEmpty)
+                _Evidence(icon: Icons.devices_outlined, text: '设备 $device'),
+              if (detailed && session.lastIp?.trim().isNotEmpty == true)
+                _Evidence(
+                  icon: Icons.lan_outlined,
+                  text: '最近网络地址 ${session.lastIp!.trim()}',
+                ),
+              if (session.refreshCredentialStatusLabel?.trim().isNotEmpty ==
+                  true)
+                _Evidence(
+                  icon: Icons.key_outlined,
+                  text: '会话凭证 ${session.refreshCredentialStatusLabel!.trim()}',
+                ),
+            ],
+          ),
+        ],
+        if (session.postLogoutCount > 0 || session.timelinePartial) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.errorContainer,
+              borderRadius: UtenRadius.mdAll,
+            ),
+            child: Text(
+              session.postLogoutCount > 0
+                  ? '退出后仍记录 ${session.postLogoutCount} 项操作，需重点核查。'
+                  : '部分旧事件缺少会话标识，当前时间线可能不完整。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onErrorContainer,
+                fontWeight: FontWeight.w700,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// 会话详情页的可分页时间线。首次显示即加载，不依赖列表卡展开。
+class AuditSessionTimeline extends StatefulWidget {
+  const AuditSessionTimeline({
+    required this.sessionId,
+    required this.loadEvents,
+    required this.onOpenEvent,
+    this.snapshotAuditId,
+    super.key,
+  });
+
+  final String sessionId;
+  final int? snapshotAuditId;
   final AuditSessionEventLoader loadEvents;
   final ValueChanged<AuditLogEntry> onOpenEvent;
 
   @override
-  State<AuditSessionCard> createState() => _AuditSessionCardState();
+  State<AuditSessionTimeline> createState() => _AuditSessionTimelineState();
 }
 
-class _AuditSessionCardState extends State<AuditSessionCard> {
+class _AuditSessionTimelineState extends State<AuditSessionTimeline> {
   List<AuditLogEntry> _events = const [];
   String? _nextCursorAt;
   int? _nextCursorId;
   int? _eventSnapshotAuditId;
   bool _hasMore = false;
-  bool _expanded = false;
-  bool _loaded = false;
-  bool _loading = false;
+  bool _loading = true;
   String? _error;
   int _generation = 0;
 
   @override
-  void didUpdateWidget(covariant AuditSessionCard oldWidget) {
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loading = false;
+      _load(reset: true);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant AuditSessionTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.session.sessionId != widget.session.sessionId ||
+    if (oldWidget.sessionId != widget.sessionId ||
         oldWidget.snapshotAuditId != widget.snapshotAuditId) {
       _generation++;
       _events = const [];
@@ -56,10 +322,10 @@ class _AuditSessionCardState extends State<AuditSessionCard> {
       _nextCursorId = null;
       _eventSnapshotAuditId = null;
       _hasMore = false;
-      _expanded = false;
-      _loaded = false;
-      _loading = false;
       _error = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load(reset: true);
+      });
     }
   }
 
@@ -72,8 +338,6 @@ class _AuditSessionCardState extends State<AuditSessionCard> {
   Future<void> _load({required bool reset}) async {
     if (_loading) return;
     final generation = ++_generation;
-    final requestedCursorAt = reset ? null : _nextCursorAt;
-    final requestedCursorId = reset ? null : _nextCursorId;
     final requestedSnapshot = reset
         ? widget.snapshotAuditId
         : _eventSnapshotAuditId ?? widget.snapshotAuditId;
@@ -89,16 +353,16 @@ class _AuditSessionCardState extends State<AuditSessionCard> {
     });
     try {
       final page = await widget.loadEvents(
-        cursorAt: requestedCursorAt,
-        cursorId: requestedCursorId,
+        cursorAt: reset ? null : _nextCursorAt,
+        cursorId: reset ? null : _nextCursorId,
         snapshotAuditId: requestedSnapshot,
       );
       if (!mounted || generation != _generation) return;
-      final existingIds = reset
+      final knownIds = reset
           ? <int>{}
           : _events.map((event) => event.id).toSet();
       final appended = page.items
-          .where((event) => existingIds.add(event.id))
+          .where((event) => knownIds.add(event.id))
           .toList(growable: false);
       setState(() {
         _events = reset ? appended : [..._events, ...appended];
@@ -109,9 +373,7 @@ class _AuditSessionCardState extends State<AuditSessionCard> {
             page.hasMore &&
             page.nextCursorAt != null &&
             page.nextCursorId != null;
-        _loaded = true;
         _loading = false;
-        _error = null;
       });
     } catch (_) {
       if (!mounted || generation != _generation) return;
@@ -122,145 +384,48 @@ class _AuditSessionCardState extends State<AuditSessionCard> {
     }
   }
 
-  void _onExpansionChanged(bool expanded) {
-    setState(() => _expanded = expanded);
-    if (expanded && !_loaded && !_loading) {
-      _load(reset: true);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final session = widget.session;
-    final actor = AuditEventPresentation.actorLabel(
-      actorDisplay: session.actorDisplay,
-      actorAccount: session.actorAccount,
-    );
-    final startLabel = session.startLabel?.trim().isNotEmpty == true
-        ? session.startLabel!.trim()
-        : '建立会话';
-    final loginAt = _beijing(session.loginAt, fallback: '开始时间未知');
-    final lastActivityAt = _beijing(
-      session.lastActivityAt ?? session.firstActivityAt,
-      fallback: '暂无活动时间',
-    );
-    final logoutAt = session.logoutAt == null
-        ? null
-        : _beijing(session.logoutAt, fallback: '退出时间未知');
-    final status = _statusLabel(session);
-    final semanticsLabel = [
-      '用户会话',
-      actor,
-      '开始方式 $startLabel',
-      '状态 $status',
-      '开始时间 $loginAt',
-      if (logoutAt != null) '退出 $logoutAt' else '最后活动 $lastActivityAt',
-      '操作 ${session.operationCount} 项',
-      if (session.failureCount > 0) '失败 ${session.failureCount} 项',
-      if (session.postLogoutCount > 0) '退出后操作 ${session.postLogoutCount} 项',
-      _expanded ? '已展开' : '已折叠',
-    ].join('，');
-
-    return Semantics(
-      container: true,
-      label: semanticsLabel,
-      child: UtenCard(
-        padding: EdgeInsets.zero,
-        child: ExpansionTile(
-          key: ValueKey('audit-session-${session.sessionId}'),
-          onExpansionChanged: _onExpansionChanged,
-          tilePadding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s16,
-            vertical: UtenSpacing.s8,
-          ),
-          childrenPadding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s16,
-            0,
-            UtenSpacing.s16,
-            UtenSpacing.s16,
-          ),
-          title: _AuditSessionHeader(
-            session: session,
-            actor: actor,
-            startLabel: startLabel,
-            loginAt: loginAt,
-            lastActivityAt: lastActivityAt,
-            logoutAt: logoutAt,
-            status: status,
-          ),
-          children: [
-            const Divider(height: 1),
-            const SizedBox(height: UtenSpacing.s12),
-            _buildTimelineBody(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimelineBody() {
-    if (_loading && _events.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: UtenSpacing.s20),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: UtenSpacing.s8),
-            Text('正在加载会话时间线...'),
-          ],
-        ),
-      );
-    }
+    if (_loading && _events.isEmpty) return const _TimelineLoading();
     if (_error != null && _events.isEmpty) {
-      return _AuditSessionLoadError(
+      return AuditSessionLoadError(
         message: _error!,
         onRetry: () => _load(reset: true),
       );
     }
-    if (_loaded && _events.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-        child: Text('该会话暂无可展示的人工操作。', textAlign: TextAlign.center),
-      );
-    }
+    if (!_loading && _events.isEmpty) return const _TimelineEmpty();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (var index = 0; index < _events.length; index++)
-          _AuditSessionTimelineEvent(
+          AuditSessionTimelineEvent(
             entry: _events[index],
             first: index == 0,
             last: index == _events.length - 1 && !_hasMore,
             onTap: () => widget.onOpenEvent(_events[index]),
           ),
         if (_error != null) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          _AuditSessionLoadError(
+          AuditSessionLoadError(
             message: _error!,
             onRetry: () => _load(reset: false),
           ),
         ] else if (_hasMore) ...[
           const SizedBox(height: UtenSpacing.s8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              key: ValueKey(
-                'audit-session-load-more-${widget.session.sessionId}',
+          Align(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 220, minHeight: 48),
+              child: FilledButton.tonalIcon(
+                key: ValueKey('audit-session-load-more-${widget.sessionId}'),
+                onPressed: _loading ? null : () => _load(reset: false),
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.expand_more_rounded),
+                label: Text(_loading ? '正在加载...' : '加载更早的操作'),
               ),
-              onPressed: _loading ? null : () => _load(reset: false),
-              icon: _loading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.expand_more_rounded),
-              label: Text(_loading ? '加载中...' : '加载更多事件'),
             ),
           ),
         ],
@@ -269,180 +434,13 @@ class _AuditSessionCardState extends State<AuditSessionCard> {
   }
 }
 
-class _AuditSessionHeader extends StatelessWidget {
-  const _AuditSessionHeader({
-    required this.session,
-    required this.actor,
-    required this.startLabel,
-    required this.loginAt,
-    required this.lastActivityAt,
-    required this.logoutAt,
-    required this.status,
-  });
-
-  final AuditSessionSummary session;
-  final String actor;
-  final String startLabel;
-  final String loginAt;
-  final String lastActivityAt;
-  final String? logoutAt;
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final statusColor = _statusColor(theme.colorScheme, session.status);
-    final device = [session.deviceLabel?.trim(), session.devicePlatform?.trim()]
-        .whereType<String>()
-        .where((value) => value.isNotEmpty)
-        .toSet()
-        .join(' · ');
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  actor,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                if (session.actorDepartment?.trim().isNotEmpty == true)
-                  Text(
-                    session.actorDepartment!.trim(),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s8,
-                    vertical: UtenSpacing.s4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.12),
-                    borderRadius: UtenRadius.smAll,
-                    border: Border.all(
-                      color: statusColor.withValues(alpha: 0.35),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _statusIcon(session.status),
-                        size: 15,
-                        color: statusColor,
-                      ),
-                      const SizedBox(width: UtenSpacing.s4),
-                      Text(
-                        status,
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: statusColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              logoutAt == null
-                  ? '$startLabel $loginAt → 最后活动 $lastActivityAt'
-                  : '$startLabel $loginAt → $logoutAt',
-              maxLines: constraints.maxWidth < 420 ? 3 : 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontFeatures: const [FontFeature.tabularFigures()],
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Wrap(
-              spacing: UtenSpacing.s12,
-              runSpacing: UtenSpacing.s4,
-              children: [
-                _SessionMetric(label: '操作', value: session.operationCount),
-                if (session.eventCount != session.operationCount)
-                  _SessionMetric(label: '时间线', value: session.eventCount),
-                if (session.failureCount > 0)
-                  _SessionMetric(label: '失败', value: session.failureCount),
-              ],
-            ),
-            if (device.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '设备 $device',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            if (session.refreshCredentialStatusLabel?.trim().isNotEmpty ==
-                true) ...[
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '会话凭证 ${session.refreshCredentialStatusLabel!.trim()}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            if (session.postLogoutCount > 0 || session.timelinePartial) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                session.postLogoutCount > 0
-                    ? '退出后仍记录 ${session.postLogoutCount} 项操作，需核查。'
-                    : '部分旧事件缺少会话标识，时间线可能不完整。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _SessionMetric extends StatelessWidget {
-  const _SessionMetric({required this.label, required this.value});
-
-  final String label;
-  final int value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Text(
-      '$label $value',
-      style: theme.textTheme.labelMedium?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-        fontWeight: FontWeight.w600,
-        fontFeatures: const [FontFeature.tabularFigures()],
-      ),
-    );
-  }
-}
-
-class _AuditSessionTimelineEvent extends StatelessWidget {
-  const _AuditSessionTimelineEvent({
+class AuditSessionTimelineEvent extends StatelessWidget {
+  const AuditSessionTimelineEvent({
     required this.entry,
     required this.first,
     required this.last,
     required this.onTap,
+    super.key,
   });
 
   final AuditLogEntry entry;
@@ -453,24 +451,12 @@ class _AuditSessionTimelineEvent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final time = _beijing(entry.createdAt, fallback: '时间未知');
-    final summary =
-        AuditEventPresentation.salesViewNarrative(
-          action: entry.action,
-          targetName: entry.targetName,
-        ) ??
-        (entry.summary?.trim().isNotEmpty == true
-            ? entry.summary!.trim()
-            : entry.actionLabel?.trim().isNotEmpty == true
-            ? entry.actionLabel!.trim()
-            : '已记录操作');
-    final failed =
-        (entry.statusCode != null && entry.statusCode! >= 400) ||
-        const {
-          'failure',
-          'failed',
-          'denied',
-        }.contains(entry.result?.trim().toLowerCase());
+    final time = auditBeijingTime(entry.createdAt, fallback: '时间未知');
+    final action = entry.actionLabel?.trim().isNotEmpty == true
+        ? entry.actionLabel!.trim()
+        : '人员操作';
+    final summary = auditEventNarrative(entry);
+    final failed = auditEventFailed(entry);
     final outcome = entry.resultLabel?.trim().isNotEmpty == true
         ? entry.resultLabel!.trim()
         : failed
@@ -481,9 +467,20 @@ class _AuditSessionTimelineEvent extends StatelessWidget {
         : entry.riskLevel == 'low'
         ? theme.colorScheme.primary
         : theme.colorScheme.tertiary;
+    final objectEvidence = auditEventObjectEvidence(entry);
+    final page = entry.pageLabel?.trim();
     return Semantics(
       button: true,
-      label: '$time，$summary，$outcome，点击查看审计详情',
+      excludeSemantics: true,
+      label: [
+        time,
+        '具体操作 $action',
+        summary,
+        ?objectEvidence,
+        '结果 $outcome',
+        if (entry.riskLevel != 'low') '风险 ${auditRiskLabel(entry.riskLevel)}',
+        '点击查看完整审计详情',
+      ].join('，'),
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -500,7 +497,7 @@ class _AuditSessionTimelineEvent extends StatelessWidget {
             const SizedBox(width: UtenSpacing.s8),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
                 child: Material(
                   color: theme.colorScheme.surfaceContainerLowest,
                   shape: RoundedRectangleBorder(
@@ -512,43 +509,96 @@ class _AuditSessionTimelineEvent extends StatelessWidget {
                     key: ValueKey('audit-session-event-${entry.id}'),
                     onTap: onTap,
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 48),
+                      constraints: const BoxConstraints(minHeight: 88),
                       child: Padding(
                         padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: Column(
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              time,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w700,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures(),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Wrap(
+                                    spacing: UtenSpacing.s8,
+                                    runSpacing: UtenSpacing.s4,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      Text(
+                                        time,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme.colorScheme.primary,
+                                              fontWeight: FontWeight.w700,
+                                              fontFeatures: const [
+                                                FontFeature.tabularFigures(),
+                                              ],
+                                            ),
+                                      ),
+                                      _TinyLabel(
+                                        label: outcome,
+                                        color: failed
+                                            ? theme.colorScheme.error
+                                            : theme.colorScheme.tertiary,
+                                      ),
+                                      if (entry.riskLevel != 'low')
+                                        _TinyLabel(
+                                          label: auditRiskLabel(
+                                            entry.riskLevel,
+                                          ),
+                                          color: theme.colorScheme.error,
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: UtenSpacing.s8),
+                                  Text(
+                                    action,
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.45,
+                                    ),
+                                  ),
+                                  if (summary != action) ...[
+                                    const SizedBox(height: UtenSpacing.s4),
+                                    Text(
+                                      summary,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(height: 1.45),
+                                    ),
+                                  ],
+                                  if (objectEvidence != null) ...[
+                                    const SizedBox(height: UtenSpacing.s4),
+                                    Text(
+                                      objectEvidence,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                            height: 1.45,
+                                          ),
+                                    ),
+                                  ],
+                                  if (page?.isNotEmpty == true) ...[
+                                    const SizedBox(height: UtenSpacing.s4),
+                                    Text(
+                                      '操作页面 $page',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
-                            const SizedBox(height: UtenSpacing.s4),
-                            Text(
-                              summary,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                height: 1.45,
-                              ),
-                            ),
-                            const SizedBox(height: UtenSpacing.s4),
-                            Text(
-                              [
-                                outcome,
-                                if (entry.riskLevel != 'low') '需关注',
-                              ].join(' · '),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: failed
-                                    ? theme.colorScheme.error
-                                    : theme.colorScheme.onSurfaceVariant,
-                              ),
+                            const SizedBox(width: UtenSpacing.s8),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ],
                         ),
@@ -556,6 +606,292 @@ class _AuditSessionTimelineEvent extends StatelessWidget {
                     ),
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AuditSessionLoadError extends StatelessWidget {
+  const AuditSessionLoadError({
+    required this.message,
+    required this.onRetry,
+    super.key,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      liveRegion: true,
+      label: '$message，可以重新加载',
+      child: Container(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.errorContainer,
+          borderRadius: UtenRadius.mdAll,
+        ),
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: UtenSpacing.s12,
+          runSpacing: UtenSpacing.s12,
+          children: [
+            Text(
+              message,
+              style: TextStyle(color: theme.colorScheme.onErrorContainer),
+            ),
+            OutlinedButton.icon(
+              key: const ValueKey('audit-session-retry'),
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('重新加载'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OpenTimelineHint extends StatelessWidget {
+  const _OpenTimelineHint({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisAlignment: compact
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
+      children: [
+        Text(
+          '查看会话时间线',
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(width: UtenSpacing.s4),
+        Icon(
+          Icons.arrow_forward_rounded,
+          size: 20,
+          color: theme.colorScheme.primary,
+        ),
+      ],
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({
+    required this.label,
+    required this.status,
+    required this.color,
+  });
+
+  final String label;
+  final String status;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s4,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: UtenRadius.smAll,
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(auditSessionStatusIcon(status), size: 15, color: color),
+          const SizedBox(width: UtenSpacing.s4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Metric extends StatelessWidget {
+  const _Metric({
+    required this.label,
+    required this.value,
+    this.emphasis = false,
+  });
+
+  final String label;
+  final int value;
+  final bool emphasis;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = emphasis
+        ? theme.colorScheme.error
+        : theme.colorScheme.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s4,
+      ),
+      decoration: BoxDecoration(
+        color: emphasis
+            ? theme.colorScheme.errorContainer.withValues(alpha: 0.55)
+            : theme.colorScheme.surfaceContainerHigh,
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Text(
+        '$label $value',
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+}
+
+class _Evidence extends StatelessWidget {
+  const _Evidence({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text.rich(
+      TextSpan(
+        children: [
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: const EdgeInsets.only(right: UtenSpacing.s4),
+              child: Icon(
+                icon,
+                size: 17,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          TextSpan(text: text),
+        ],
+      ),
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+class _TinyLabel extends StatelessWidget {
+  const _TinyLabel({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _TimelineLoading extends StatelessWidget {
+  const _TimelineLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: '正在加载会话时间线',
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: UtenSpacing.s32),
+        child: Column(
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(height: UtenSpacing.s12),
+            Text('正在加载会话时间线...'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TimelineEmpty extends StatelessWidget {
+  const _TimelineEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      label: '该会话暂无可展示的人工操作',
+      child: Container(
+        padding: const EdgeInsets.all(UtenSpacing.s24),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: UtenRadius.mdAll,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.fact_check_outlined,
+              size: 32,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              '该会话暂无可展示的人工操作',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              '系统自动任务不会混入人员操作时间线。',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -580,7 +916,7 @@ class _TimelineRailPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const nodeY = 18.0;
+    const nodeY = 20.0;
     final x = size.width / 2;
     final linePaint = Paint()
       ..color = lineColor
@@ -589,7 +925,7 @@ class _TimelineRailPainter extends CustomPainter {
     if (!last) {
       canvas.drawLine(Offset(x, nodeY), Offset(x, size.height), linePaint);
     }
-    canvas.drawCircle(Offset(x, nodeY), 6, Paint()..color = color);
+    canvas.drawCircle(Offset(x, nodeY), 7, Paint()..color = color);
     canvas.drawCircle(Offset(x, nodeY), 3, Paint()..color = Colors.white);
   }
 
@@ -601,50 +937,19 @@ class _TimelineRailPainter extends CustomPainter {
       last != oldDelegate.last;
 }
 
-class _AuditSessionLoadError extends StatelessWidget {
-  const _AuditSessionLoadError({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer,
-        borderRadius: UtenRadius.mdAll,
-      ),
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        children: [
-          Text(
-            message,
-            style: TextStyle(color: theme.colorScheme.onErrorContainer),
-          ),
-          OutlinedButton.icon(
-            key: const ValueKey('audit-session-retry'),
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('重试'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-String _beijing(String? value, {required String fallback}) =>
+String auditBeijingTime(String? value, {required String fallback}) =>
     DisplayDateTime.beijing(
       value,
       fallback: fallback,
     ).replaceFirst('(北京)', '(北京时间)');
 
-String _statusLabel(AuditSessionSummary session) {
+String auditSessionActor(AuditSessionSummary session) =>
+    AuditEventPresentation.actorLabel(
+      actorDisplay: session.actorDisplay,
+      actorAccount: session.actorAccount,
+    );
+
+String auditSessionStatusLabel(AuditSessionSummary session) {
   final provided = session.statusLabel?.trim();
   if (provided?.isNotEmpty == true) return provided!;
   return switch (session.status.trim().toLowerCase()) {
@@ -660,30 +965,79 @@ String _statusLabel(AuditSessionSummary session) {
   };
 }
 
-Color _statusColor(ColorScheme colors, String status) => switch (status
-    .trim()
-    .toLowerCase()) {
-  'active' || 'online' => colors.primary,
-  'logged_out' || 'logout' => colors.tertiary,
-  'normal_logout' => colors.tertiary,
-  'expired' => colors.onSurfaceVariant,
-  'no_logout_record' => colors.onSurfaceVariant,
-  'security_terminated' || 'activity_after_logout' => colors.error,
-  'revoked' || 'interrupted' || 'abnormal' || 'reuse_detected' => colors.error,
-  _ => colors.onSurfaceVariant,
-};
+Color auditSessionStatusColor(ColorScheme colors, String status) =>
+    switch (status.trim().toLowerCase()) {
+      'active' || 'online' => colors.primary,
+      'logged_out' || 'logout' || 'normal_logout' => colors.tertiary,
+      'expired' || 'no_logout_record' => colors.onSurfaceVariant,
+      'security_terminated' ||
+      'activity_after_logout' ||
+      'revoked' ||
+      'interrupted' ||
+      'abnormal' ||
+      'reuse_detected' => colors.error,
+      _ => colors.onSurfaceVariant,
+    };
 
-IconData _statusIcon(String status) => switch (status.trim().toLowerCase()) {
-  'active' || 'online' => Icons.wifi_rounded,
-  'logged_out' || 'logout' => Icons.logout_rounded,
-  'normal_logout' => Icons.logout_rounded,
-  'expired' => Icons.schedule_rounded,
-  'no_logout_record' => Icons.help_outline_rounded,
-  'security_terminated' ||
-  'activity_after_logout' => Icons.warning_amber_rounded,
-  'revoked' ||
-  'interrupted' ||
-  'abnormal' ||
-  'reuse_detected' => Icons.warning_amber_rounded,
-  _ => Icons.help_outline_rounded,
+IconData auditSessionStatusIcon(String status) =>
+    switch (status.trim().toLowerCase()) {
+      'active' || 'online' => Icons.wifi_rounded,
+      'logged_out' || 'logout' || 'normal_logout' => Icons.logout_rounded,
+      'expired' => Icons.schedule_rounded,
+      'no_logout_record' => Icons.help_outline_rounded,
+      'security_terminated' ||
+      'activity_after_logout' ||
+      'revoked' ||
+      'interrupted' ||
+      'abnormal' ||
+      'reuse_detected' => Icons.warning_amber_rounded,
+      _ => Icons.help_outline_rounded,
+    };
+
+String auditEventNarrative(AuditLogEntry entry) =>
+    AuditEventPresentation.salesViewNarrative(
+      action: entry.action,
+      targetName: entry.targetName,
+    ) ??
+    (entry.summary?.trim().isNotEmpty == true
+        ? entry.summary!.trim()
+        : entry.actionLabel?.trim().isNotEmpty == true
+        ? [
+            entry.actionLabel!.trim(),
+            if (entry.targetName?.trim().isNotEmpty == true)
+              entry.targetName!.trim(),
+          ].join(' · ')
+        : '已记录人员操作');
+
+String? auditEventObjectEvidence(AuditLogEntry entry) {
+  final rawObject = entry.objectLabel?.trim();
+  final object = rawObject?.isNotEmpty == true && rawObject != '其他业务对象'
+      ? rawObject
+      : null;
+  final targetName = entry.targetName?.trim();
+  final targetId = entry.targetId?.trim();
+  if (object != null && targetName?.isNotEmpty == true) {
+    return '业务对象 $object · 名称或单据编号 $targetName';
+  }
+  if (object != null && targetId?.isNotEmpty == true) {
+    return '业务对象 $object · 业务编号未记录 · 系统标识 $targetId';
+  }
+  if (targetName?.isNotEmpty == true) return '名称或单据编号 $targetName';
+  if (targetId?.isNotEmpty == true) return '系统标识 $targetId';
+  return object == null ? null : '业务对象 $object · 未记录可读编号';
+}
+
+bool auditEventFailed(AuditLogEntry entry) =>
+    (entry.statusCode != null && entry.statusCode! >= 400) ||
+    const {
+      'failure',
+      'failed',
+      'denied',
+    }.contains(entry.result?.trim().toLowerCase());
+
+String auditRiskLabel(String risk) => switch (risk.trim().toLowerCase()) {
+  'critical' => '严重风险',
+  'high' => '高风险',
+  'medium' => '中风险',
+  _ => '低风险',
 };

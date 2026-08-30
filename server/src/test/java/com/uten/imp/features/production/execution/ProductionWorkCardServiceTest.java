@@ -2,8 +2,11 @@ package com.uten.imp.features.production.execution;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.fulfillment.ProductionPlanningPackage;
 import com.uten.imp.features.production.fulfillment.ProductionPlanningPackageRepository;
+import com.uten.imp.features.production.plan.ProductionPlan;
+import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +20,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -27,20 +32,114 @@ class ProductionWorkCardServiceTest {
     void rejectsMissingOrNonConfirmedPackageBeforeReadingPrintRows() {
         UUID planId = UUID.randomUUID();
         UUID packageId = UUID.randomUUID();
+        UUID makerId = UUID.randomUUID();
         ProductionPlanningPackageRepository repository =
                 mock(ProductionPlanningPackageRepository.class);
+        ProductionPlanRepository planRepository =
+                mock(ProductionPlanRepository.class);
+        ProductionDocumentAccessPolicy access =
+                mock(ProductionDocumentAccessPolicy.class);
         EntityManager em = mock(EntityManager.class);
+        ProductionPlan plan = new ProductionPlan();
+        plan.setId(planId);
+        plan.setMakerId(makerId);
+        plan.setStatus((short) 1);
+        when(planRepository.lockForWorkCard(planId))
+                .thenReturn(Optional.of(plan));
         when(repository.lockConfirmedExecutionPackage(planId, packageId))
                 .thenReturn(Optional.empty());
 
         ProductionWorkCardService service =
-                new ProductionWorkCardService(repository, em);
+                new ProductionWorkCardService(
+                        repository, planRepository, access, em);
 
         assertThatThrownBy(() -> service.view(planId, packageId))
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getCode())
                         .isEqualTo(ErrorCode.NOT_FOUND));
+        verify(access).requireReadable(
+                makerId, "生产计划不存在", "production_plan:approve");
         verifyNoInteractions(em);
+    }
+
+    @Test
+    void enforcesPlanObjectScopeBeforeReadingPrintRows() {
+        UUID planId = UUID.randomUUID();
+        UUID packageId = UUID.randomUUID();
+        UUID makerId = UUID.randomUUID();
+        ProductionPlanningPackageRepository packageRepository =
+                mock(ProductionPlanningPackageRepository.class);
+        ProductionPlanRepository planRepository =
+                mock(ProductionPlanRepository.class);
+        ProductionDocumentAccessPolicy access =
+                mock(ProductionDocumentAccessPolicy.class);
+        EntityManager em = mock(EntityManager.class);
+        ProductionPlan plan = new ProductionPlan();
+        plan.setId(planId);
+        plan.setMakerId(makerId);
+        plan.setStatus((short) 1);
+        when(planRepository.lockForWorkCard(planId))
+                .thenReturn(Optional.of(plan));
+        doThrow(new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在"))
+                .when(access)
+                .requireReadable(
+                        makerId,
+                        "生产计划不存在",
+                        "production_plan:approve");
+
+        ProductionWorkCardService service =
+                new ProductionWorkCardService(
+                        packageRepository, planRepository, access, em);
+
+        assertThatThrownBy(() -> service.view(planId, packageId))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getCode())
+                        .isEqualTo(ErrorCode.NOT_FOUND));
+        verify(access).requireReadable(
+                makerId, "生产计划不存在", "production_plan:approve");
+        verifyNoInteractions(packageRepository, em);
+    }
+
+    @Test
+    void rejectsNonApprovedStoppedOrCancelledPlansBeforeReadingPackage() {
+        assertPlanLifecycleRejected((short) 0, false, false);
+        assertPlanLifecycleRejected((short) -1, false, false);
+        assertPlanLifecycleRejected((short) 1, true, false);
+        assertPlanLifecycleRejected((short) 1, false, true);
+    }
+
+    private static void assertPlanLifecycleRejected(
+            short status, boolean stopped, boolean cancelled) {
+        UUID planId = UUID.randomUUID();
+        UUID packageId = UUID.randomUUID();
+        UUID makerId = UUID.randomUUID();
+        ProductionPlanningPackageRepository packageRepository =
+                mock(ProductionPlanningPackageRepository.class);
+        ProductionPlanRepository planRepository =
+                mock(ProductionPlanRepository.class);
+        ProductionDocumentAccessPolicy access =
+                mock(ProductionDocumentAccessPolicy.class);
+        EntityManager em = mock(EntityManager.class);
+        ProductionPlan plan = new ProductionPlan();
+        plan.setId(planId);
+        plan.setMakerId(makerId);
+        plan.setStatus(status);
+        plan.setStopped(stopped);
+        plan.setCanceled(cancelled);
+        when(planRepository.lockForWorkCard(planId))
+                .thenReturn(Optional.of(plan));
+
+        ProductionWorkCardService service =
+                new ProductionWorkCardService(
+                        packageRepository, planRepository, access, em);
+
+        assertThatThrownBy(() -> service.view(planId, packageId))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+        verify(access).requireReadable(
+                makerId, "生产计划不存在", "production_plan:approve");
+        verifyNoInteractions(packageRepository, em);
     }
 
     @Test

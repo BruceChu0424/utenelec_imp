@@ -2,23 +2,32 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/payables/models/subcontract_loss_claim.dart';
 import 'package:uten_imp/features/finance/payables/pages/finance_payables_page.dart';
 import 'package:uten_imp/features/finance/payables/repositories/subcontract_loss_claim_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
   testWidgets('claim-only user opens the embedded excess-loss workspace', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _ClaimListApi();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           subcontractLossClaimRepositoryProvider.overrideWithValue(
-            SubcontractLossClaimRepository(_ClaimListApi()),
+            SubcontractLossClaimRepository(api),
           ),
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          settlementMethodOptionsProvider.overrideWith((_) async => const []),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.subcontractLossClaimView,
           }),

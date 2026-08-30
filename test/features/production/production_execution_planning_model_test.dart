@@ -103,6 +103,33 @@ void main() {
     );
   });
 
+  test(
+    'decodes unresolved zero-material lineage with legacy field fallback',
+    () {
+      Map<String, dynamic> payload(String key) => {
+        'planId': 'plan-1',
+        'warehouseId': 'warehouse-1',
+        'fingerprint': 'a' * 64,
+        'balancedKitCoverage': false,
+        'executionSegmentationReady': false,
+        key: ['legacy-plan-item'],
+      };
+
+      expect(
+        ProductionPlanningPreview.fromJson(
+          payload('unresolvedZeroMaterialLineageIds'),
+        ).unresolvedZeroMaterialLineageIds,
+        ['legacy-plan-item'],
+      );
+      expect(
+        ProductionPlanningPreview.fromJson(
+          payload('noBomPlanItemIds'),
+        ).hasUnresolvedZeroMaterialLineage,
+        isTrue,
+      );
+    },
+  );
+
   test('encodes exact V155 planning confirmation request', () {
     const request = ProductionPlanningConfirmRequest(
       warehouseId: 'warehouse-1',
@@ -487,7 +514,7 @@ void main() {
     expect(reviewMaterials.single.goodsId, 'direct-make');
     expect(reviewMaterials.single.gross, 5);
     expect(reviewMaterials.single.timelyShortage, 5);
-    expect(preview.hasBlockingBomGaps, isFalse);
+    expect(preview.hasUnresolvedZeroMaterialLineage, isFalse);
   });
 
   test('MAKE leaf without lower BOM does not block planning', () {
@@ -527,15 +554,21 @@ void main() {
       ],
     );
 
-    expect(preview.hasBlockingBomGaps, isFalse);
-    expect(unknownMake.hasBlockingBomGaps, isFalse);
+    expect(preview.hasUnresolvedZeroMaterialLineage, isFalse);
+    expect(unknownMake.hasUnresolvedZeroMaterialLineage, isFalse);
+    expect(
+      _preview(
+        unresolvedZeroMaterialLineageIds: const ['legacy-plan-item'],
+      ).hasUnresolvedZeroMaterialLineage,
+      isTrue,
+    );
   });
 }
 
 ProductionPlanningPreview _preview({
   List<ProductionPlanningMaterial> recursiveMaterials = const [],
   List<ProductionExecutionMaterialPreview> directMaterials = const [],
-  List<String> noBomPlanItemIds = const [],
+  List<String> unresolvedZeroMaterialLineageIds = const [],
 }) {
   return ProductionPlanningPreview(
     planId: 'plan-1',
@@ -544,7 +577,7 @@ ProductionPlanningPreview _preview({
     balancedKitCoverage: false,
     executionSegmentationReady: true,
     materials: recursiveMaterials,
-    noBomPlanItemIds: noBomPlanItemIds,
+    unresolvedZeroMaterialLineageIds: unresolvedZeroMaterialLineageIds,
     executionSegments: [
       ProductionExecutionSegmentPreview(
         clientSegmentKey: 'segment-preview-1',

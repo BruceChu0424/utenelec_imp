@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -37,12 +38,12 @@ public class TaskClaimService {
     /** 认领（幂等：自己已认领=续租；他人在租约内=409；过期=惰性释放后重建）。 */
     @Transactional
     public TaskClaimView claim(String targetType, String targetKey) {
-        TaskClaimView view = claimInternal(targetType, targetKey);
-        auditExplicit("task_claim", targetType, targetKey);
-        return view;
+        ClaimOutcome outcome = claimInternal(targetType, targetKey);
+        auditExplicit(outcome.action(), targetType, targetKey);
+        return outcome.view();
     }
 
-    private TaskClaimView claimInternal(String targetType, String targetKey) {
+    private ClaimOutcome claimInternal(String targetType, String targetKey) {
         TaskClaimPolicy policy = TaskClaimPolicy.of(targetType);
         UUID me = requireEmployeeWithPermission(policy.claimPermission());
         TaskClaim existing = claimRepo
@@ -52,7 +53,9 @@ public class TaskClaimService {
             if (existing.getClaimedBy().equals(me)) {
                 existing.setLeaseUntil(nowPlusLease(policy));
                 existing.setLastHeartbeat(OffsetDateTime.now());
-                return toView(claimRepo.save(existing), me);
+                return new ClaimOutcome(
+                        toView(claimRepo.save(existing), me),
+                        "task_renew");
             }
             throw new ApiException(ErrorCode.CONFLICT,
                     "该事项正由 " + claimantName(existing.getClaimedBy()) + " 处理中");
@@ -70,7 +73,9 @@ public class TaskClaimService {
         c.setClaimedAt(OffsetDateTime.now());
         c.setLeaseUntil(nowPlusLease(policy));
         c.setLastHeartbeat(OffsetDateTime.now());
-        return toView(claimRepo.save(c), me);
+        return new ClaimOutcome(
+                toView(claimRepo.save(c), me),
+                "task_claim");
     }
 
     /** 释放（本人或持 manage 权限者；无有效认领时幂等成功）。 */
@@ -101,18 +106,29 @@ public class TaskClaimService {
     public TaskClaimView takeover(String targetType, String targetKey) {
         TaskClaimPolicy policy = TaskClaimPolicy.of(targetType);
         UUID me = requireEmployeeWithPermission(policy.managePermission());
-        claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
-                .filter(c -> !c.getClaimedBy().equals(me))
-                .ifPresent(c -> {
-                    c.setReleasedAt(OffsetDateTime.now());
-                    c.setReleasedBy(me);
-                    c.setReleaseReason("takeover");
-                    c.setRemark("被接管");
-                    claimRepo.save(c);
-                });
-        TaskClaimView view = claimInternal(targetType, targetKey);
-        auditExplicit("task_takeover", targetType, targetKey);
-        return view;
+        TaskClaim previous = claimRepo
+                .findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
+                .orElse(null);
+        boolean replacedOther = previous != null
+                && previous.isActive()
+                && !previous.getClaimedBy().equals(me);
+        boolean renewedSelf = previous != null
+                && previous.isActive()
+                && previous.getClaimedBy().equals(me);
+        if (replacedOther) {
+            previous.setReleasedAt(OffsetDateTime.now());
+            previous.setReleasedBy(me);
+            previous.setReleaseReason("takeover");
+            previous.setRemark("被接管");
+            claimRepo.save(previous);
+        }
+        ClaimOutcome claimed = claimInternal(targetType, targetKey);
+        auditExplicit(
+                replacedOther ? "task_takeover"
+                        : renewedSelf ? "task_renew" : claimed.action(),
+                targetType,
+                targetKey);
+        return claimed.view();
     }
 
     /** 强制释放（manage 权限）：管理者只想解锁、不接管。 */
@@ -143,9 +159,18 @@ public class TaskClaimService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "该事项正由 " + claimantName(c.getClaimedBy()) + " 处理中");
         }
-        c.setLeaseUntil(nowPlusLease(policy));
-        c.setLastHeartbeat(OffsetDateTime.now());
-        return toView(claimRepo.save(c), me);
+        OffsetDateTime now = OffsetDateTime.now();
+        long renewWhenRemainingSeconds = Math.max(
+                60L, policy.leaseMinutes() * 30L);
+        long remainingSeconds = Duration.between(now, c.getLeaseUntil()).getSeconds();
+        if (remainingSeconds <= renewWhenRemainingSeconds) {
+            c.setLeaseUntil(now.plusMinutes(policy.leaseMinutes()));
+            c.setLastHeartbeat(now);
+            return toView(claimRepo.save(c), me);
+        }
+        // The client pings every 30s. Returning the current lease without
+        // touching the entity avoids a database UPDATE and trigger audit row.
+        return toView(c, me);
     }
 
     /**
@@ -193,7 +218,7 @@ public class TaskClaimService {
 
     /** 通用任务认领用户操作显式审计：targetId = targetType/targetKey。 */
     private void auditExplicit(String action, String targetType, String targetKey) {
-        currentUser.get().ifPresent(u -> audit.logExplicit(
+        currentUser.get().ifPresent(u -> audit.logCommitted(
                 u.getId(), u.getLoginAccount(), action, "task_claims",
                 targetType + "/" + targetKey, "success"));
     }
@@ -236,4 +261,6 @@ public class TaskClaimService {
             String targetType, String targetKey,
             UUID claimedBy, String claimedByName, boolean claimedByMe,
             OffsetDateTime claimedAt, OffsetDateTime leaseUntil) {}
+
+    private record ClaimOutcome(TaskClaimView view, String action) {}
 }

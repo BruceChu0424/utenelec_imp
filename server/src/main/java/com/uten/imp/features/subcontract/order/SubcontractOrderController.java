@@ -1,6 +1,7 @@
 package com.uten.imp.features.subcontract.order;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.RequestUuidSets;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalDecisionRequest;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.RejectionDecisionRequest;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
@@ -91,6 +92,19 @@ public class SubcontractOrderController {
     @PreAuthorize("hasAuthority('subcontract_order:create')")
     public java.util.Map<String, Object> createBatch(@Valid @RequestBody OrderSaveRequest req) {
         return java.util.Map.of("items", service.createBatch(req));
+    }
+
+    /**
+     * 货品 → 最近一次委外订货供应商（订货编辑页行级委外商「学习预填」：选货品后自动
+     * 带出上次该货品的委外供应商）。goodsIds 为逗号分隔的货品 UUID，返回 {goodsId: supplierId}。
+     */
+    @GetMapping("/last-suppliers")
+    @PreAuthorize("hasAuthority('subcontract_order:view')")
+    public java.util.Map<String, UUID> lastSuppliers(@RequestParam String goodsIds) {
+        java.util.Set<UUID> ids = RequestUuidSets.commaSeparated(goodsIds, "货品 ID");
+        java.util.Map<String, UUID> result = new java.util.LinkedHashMap<>();
+        service.lastSuppliersPerGoods(ids).forEach((k, v) -> result.put(k.toString(), v));
+        return result;
     }
 
     @PutMapping("/{id}")

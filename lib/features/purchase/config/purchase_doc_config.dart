@@ -19,6 +19,8 @@ class PurchaseDocConfig {
     this.hasSettlement = false,
     this.settlementRequired = false,
     this.supplierRequired = false,
+    // 订货单：表头不录供应商，明细逐行必选（保存按供应商拆单归集）
+    this.supplierOnRowOnly = false,
     this.warehouseRequired = false,
     this.hasWarehouse = true,
     this.hasDepartment = false,
@@ -61,6 +63,10 @@ class PurchaseDocConfig {
   /// 结账方式是否必填（仅采购订货单；收货/退货沿用来源快照兼容）。
   final bool settlementRequired;
   final bool supplierRequired;
+
+  /// 供应商只在明细行录入（订货单）：表头不显示供应商字段，每行必选供应商，
+  /// 保存时按行供应商自动拆单（一单一商）。收货/退货仍走表头单一供应商。
+  final bool supplierOnRowOnly;
 
   /// 仓库是否必填（现仅收货/退货强制；订货/申请可空）。
   final bool warehouseRequired;
@@ -120,6 +126,8 @@ class PurchaseDocConfig {
     hasSettlement: true,
     settlementRequired: true,
     supplierRequired: true,
+    // 表头不录供应商：明细逐行必选（按行供应商拆单归集），减轻表头填写。
+    supplierOnRowOnly: true,
     hasPurchaser: true,
     hasDeliverDate: true,
     // 订货不选仓库：入库仓库在收货登记（到货）时填写。

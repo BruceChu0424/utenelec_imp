@@ -224,31 +224,32 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('task center lists pending receipts as cards', (tester) async {
+  testWidgets('task center lists pending receipts as table rows', (
+    tester,
+  ) async {
     await _pumpTaskCenter(tester, _twoTypeDispositionRepository());
 
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsOneWidget);
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-2')), findsOneWidget);
-    expect(find.byKey(const Key('iqc-open-detail-receipt-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('row:receipt-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('row:receipt-2')), findsOneWidget);
     expect(find.text('CJ20260822000001'), findsOneWidget);
     expect(find.text('WT20260823000002'), findsOneWidget);
   });
 
-  testWidgets('metric cards filter the queue by receipt type', (tester) async {
+  testWidgets('type segments filter the queue by receipt type', (tester) async {
     await _pumpTaskCenter(tester, _twoTypeDispositionRepository());
 
-    await tester.tap(find.text('委外回厂待检'));
+    await tester.tap(find.text('委外回厂 1'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsNothing);
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-2')), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsNothing);
+    expect(find.text('WT20260823000002'), findsOneWidget);
 
-    // 再点已选卡取消筛选，回到全部。
-    await tester.tap(find.text('委外回厂待检'));
+    // 点「全部待检单」回到全部。
+    await tester.tap(find.text('全部待检单 2'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsOneWidget);
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-2')), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsOneWidget);
+    expect(find.text('WT20260823000002'), findsOneWidget);
   });
 
   testWidgets('search narrows the queue by bill number', (tester) async {
@@ -258,11 +259,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsNothing);
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-2')), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsNothing);
+    expect(find.text('WT20260823000002'), findsOneWidget);
   });
 
-  testWidgets('card opens the inspection detail page and back returns', (
+  testWidgets('double-tap opens the inspection detail page and back returns', (
     tester,
   ) async {
     final repository = _twoItemDispositionRepository();
@@ -274,8 +275,7 @@ void main() {
           builder: (_, _) => const ProcurementInspectionPage(),
         ),
         GoRoute(
-          path:
-              '${RouteName.warehouseInspections}/:receiptType/:receiptId',
+          path: '${RouteName.warehouseInspections}/:receiptType/:receiptId',
           builder: (_, s) => ProcurementInspectionDetailPage(
             receiptType: s.pathParameters['receiptType']!,
             receiptId: s.pathParameters['receiptId']!,
@@ -294,25 +294,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(
-      find.byKey(const Key('iqc-open-detail-receipt-1')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('iqc-open-detail-receipt-1')));
+    // 任务中心表格：双击行进入本单处置页。
+    await _doubleTapRow(tester, find.text('CJ20260822000001'));
     await tester.pumpAndSettle();
 
     // go_router 的 push 在测试环境不同步 routeInformationProvider，
-    // 以页面内容断言导航结果：明细表打开、任务卡退场。
+    // 以页面内容断言导航结果：明细表打开、任务表格退场。
     expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
     expect(find.text('测试物料A(G0001)'), findsOneWidget);
     expect(find.text('CJ20260822000001'), findsOneWidget);
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsNothing);
+    expect(find.byKey(const ValueKey('row:receipt-1')), findsNothing);
 
     await tester.tap(find.byTooltip('返回'));
     await tester.pumpAndSettle();
 
-    // 返回任务中心后队列重载，卡片重新可见。
-    expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsOneWidget);
+    // 返回任务中心后队列重载，表格行重新可见。
+    expect(find.byKey(const ValueKey('row:receipt-1')), findsOneWidget);
     expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsNothing);
   });
 
@@ -443,10 +440,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await _pumpInspectionDetailPage(
-        tester,
-        _twoItemDispositionRepository(),
-      );
+      await _pumpInspectionDetailPage(tester, _twoItemDispositionRepository());
 
       expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
       expect(find.byKey(const Key('iqc-batch-pass')), findsOneWidget);
@@ -454,21 +448,20 @@ void main() {
     },
   );
 
-  testWidgets(
-    '375px keeps the task center cards operable without overflow',
-    (tester) async {
-      tester.view.physicalSize = const Size(375, 812);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('375px keeps the task center table operable without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      await _pumpTaskCenter(tester, _twoItemDispositionRepository());
+    await _pumpTaskCenter(tester, _twoItemDispositionRepository());
 
-      expect(find.byKey(const Key('iqc-receipt-card-receipt-1')), findsOneWidget);
-      expect(find.byKey(const Key('iqc-open-detail-receipt-1')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    expect(find.byKey(const Key('iqc-receipt-table')), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   test('global badge refresh includes the quality pending provider', () {
     final source = File(
@@ -480,6 +473,15 @@ void main() {
       contains('ref.invalidate(procurementInspectionPendingCountProvider);'),
     );
   });
+}
+
+/// 双击指定表格行（两次点按间隔 50ms，落在 350ms 手动双击判定窗内）——
+/// 任务中心表格行双击 = 进入本单处置页。
+Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
+  await tester.tap(finder);
+  await tester.pump(const Duration(milliseconds: 50));
+  await tester.tap(finder);
+  await tester.pump();
 }
 
 Future<void> _pumpWorkbenchBadge(
@@ -549,7 +551,9 @@ Future<void> _pumpInspectionDetailPage(
         home: ProcurementInspectionDetailPage(
           receiptType: 'PURCHASE',
           receiptId: 'receipt-1',
-          extra: repository.receipts.isNotEmpty ? repository.receipts.first : null,
+          extra: repository.receipts.isNotEmpty
+              ? repository.receipts.first
+              : null,
         ),
       ),
     ),

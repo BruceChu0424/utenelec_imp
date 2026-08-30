@@ -113,7 +113,7 @@ public class PasswordService {
         refreshTokenRepo.revokeAllByUserId(userId);
         UserAccount refreshedUser = userRepo.findById(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-        audit.logExplicit(
+        audit.logCommitted(
                 userId,
                 refreshedUser.getLoginAccount(),
                 "change_password",

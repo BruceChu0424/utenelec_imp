@@ -10,26 +10,26 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/widgets/metric_filter_cards.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/procurement_inbound_count_providers.dart';
 import '../repositories/procurement_inspection_repository.dart';
 
 /// 采购/委外收货 IQC 待检处置任务中心 + 单据处置页（与仓库「预计到货任务中心」
-/// 同款两级结构）：
+/// 同款两级结构、同款表格工作台）：
 ///
-/// - 任务中心：搜索 + 指标筛选卡（全部/采购/委外）+ 待检收货单卡片列表，
-///   点「检验本单」进入独立处置页；
+/// - 任务中心：搜索 + 类型分段（全部/采购/委外，表头可筛）+ 待检收货单表格——
+///   列表只放单据级概要（单号/供应商/待检行数与数量），双击行进入处置页；
 /// - 处置页：本单待检明细多选表格——常规合格勾选多行一次放行，部分合格或
 ///   不合格保留单行质量依据；本单处理完成后显示完成态，返回任务中心继续下一单。
 class ProcurementInspectionPage extends ConsumerStatefulWidget {
@@ -106,10 +106,11 @@ class _ProcurementInspectionPageState
     });
   }
 
-  /// 再点已选的类型卡取消筛选，回到全部。
-  void _applyTypeFilter(String type) {
+  /// 类型筛选（分段按钮与表头筛选共用这一个口径）：null = 全部待检。
+  void _selectType(String? type) {
+    if (_typeFilter == type) return;
     setState(() {
-      _typeFilter = _typeFilter == type ? null : type;
+      _typeFilter = type;
       _page = 1;
     });
   }
@@ -141,9 +142,13 @@ class _ProcurementInspectionPageState
     return _filtered.sublist(start, end);
   }
 
+  /// 双击行 / 右键「检验本单」：进入本单处置页（明细多选表格在处置页里）。
   Future<void> _openDetail(PendingInspectionReceipt receipt) async {
     await context.push(
-      RouteName.warehouseInspectionDetail(receipt.receiptType, receipt.receiptId),
+      RouteName.warehouseInspectionDetail(
+        receipt.receiptType,
+        receipt.receiptId,
+      ),
       extra: receipt,
     );
     if (!mounted) return;
@@ -190,217 +195,234 @@ class _ProcurementInspectionPageState
 
   Widget _buildList() {
     final pageItems = _pageItems;
-    return UtenContentContainer.narrow(
-      child: RefreshIndicator(
-        onRefresh: () => _load(),
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+    // 待检队列无分页接口、整队一次拉全；计数直接取全量列表口径（不是当前页
+    // 推算），与后端 pendingCount 同源。表头筛选与分段按钮共用 _typeFilter。
+    final purchaseCount = _receipts
+        ?.where((receipt) => !receipt.isSubcontract)
+        .length;
+    final subcontractCount = _receipts
+        ?.where((receipt) => receipt.isSubcontract)
+        .length;
+    return UtenContentContainer.wide(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            UtenSearchBar(
-              key: const Key('iqc-search'),
-              hint: '搜索收货单号 / 供应商',
-              initialValue: _keyword,
-              onChanged: _applySearch,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            // 指标卡 = 类型筛选器。待检队列无分页接口、整队一次拉全，
-            // 计数直接取全量列表口径（不是当前页推算），与后端 pendingCount 同源。
-            Semantics(
-              header: true,
-              label: '共有 ${_receipts?.length ?? 0} 张待检收货单',
-              child: MetricFilterCards(
-                key: const Key('iqc-metric-cards'),
-                items: [
-                  MetricFilterCardItem(
-                    key: 'all',
-                    label: '全部待检单',
-                    value: _receipts?.length,
-                    icon: Icons.fact_check_outlined,
-                    selected: _typeFilter == null,
-                    onTap: _typeFilter == null
-                        ? null
-                        : () => setState(() {
-                            _typeFilter = null;
-                            _page = 1;
-                          }),
-                  ),
-                  MetricFilterCardItem(
-                    key: 'purchase',
-                    label: '采购收货待检',
-                    value: _receipts
-                        ?.where((receipt) => !receipt.isSubcontract)
-                        .length,
-                    icon: Icons.local_shipping_outlined,
-                    selected: _typeFilter == 'PURCHASE',
-                    onTap: () => _applyTypeFilter('PURCHASE'),
-                  ),
-                  MetricFilterCardItem(
-                    key: 'subcontract',
-                    label: '委外回厂待检',
-                    value: _receipts
-                        ?.where((receipt) => receipt.isSubcontract)
-                        .length,
-                    tone: 'accent',
-                    icon: Icons.precision_manufacturing_outlined,
-                    selected: _typeFilter == 'SUBCONTRACT',
-                    onTap: () => _applyTypeFilter('SUBCONTRACT'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            _ScopeHintBanner(
-              message: _canHandle
-                  ? '采购/委外收货送检后出现在这里：点「检验本单」进入处置页，'
-                        '常规合格可勾选多行一次放行；部分合格或不合格逐行登记。'
-                  : '当前为只读查看；品质处置需要 procurement_inspection:handle 权限。',
-            ),
+            _buildToolbar(purchaseCount, subcontractCount),
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s12),
-              Text(
-                '刷新失败：$_error',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
+              _InlineWorkbenchError(message: _error!, onRetry: _load),
             ],
-            const SizedBox(height: UtenSpacing.s16),
-            if (pageItems.isEmpty)
-              SizedBox(
-                height: 380,
-                child: UtenEmpty(
-                  icon: Icons.verified_outlined,
-                  message: _emptyMessage,
-                  description: _emptyDescription,
-                ),
-              )
-            else
-              for (var i = 0; i < pageItems.length; i++) ...[
-                _PendingReceiptCard(
-                  key: Key('iqc-receipt-card-${pageItems[i].receiptId}'),
-                  receipt: pageItems[i],
-                  canHandle: _canHandle,
-                  onOpen: () => _openDetail(pageItems[i]),
-                ),
-                if (i != pageItems.length - 1)
-                  const SizedBox(height: UtenSpacing.s12),
-              ],
-            if (_totalPages > 1) ...[
-              const SizedBox(height: UtenSpacing.s20),
-              _Pager(
-                page: _page,
+            const SizedBox(height: UtenSpacing.s12),
+            Expanded(
+              child: MasterDataTableView<PendingInspectionReceipt>(
+                key: const Key('iqc-receipt-table'),
+                columns: _columns,
+                items: pageItems,
+                facets: {
+                  'receiptType': [
+                    MasterFacetBucket(
+                      value: 'PURCHASE',
+                      count: purchaseCount ?? 0,
+                      label: '采购收货',
+                    ),
+                    MasterFacetBucket(
+                      value: 'SUBCONTRACT',
+                      count: subcontractCount ?? 0,
+                      label: '委外回厂',
+                    ),
+                  ],
+                },
+                nullCounts: const {},
+                filters: {'receiptType': _typeFilter},
+                onFilterChanged: (key, value) {
+                  if (key != 'receiptType') return;
+                  _selectType(value);
+                },
+                idOf: (receipt) => receipt.receiptId,
+                onRowTap: _openDetail,
+                rowMenuBuilder: (receipt) => [
+                  UtenMenuItem(
+                    label: _canHandle
+                        ? '检验本单(${receipt.itemCount} 行待检)'
+                        : '查看待检明细',
+                    icon: Icons.fact_check_outlined,
+                    onTap: () => _openDetail(receipt),
+                  ),
+                ],
+                isLoading: _loading,
+                error: pageItems.isEmpty ? _error : null,
+                onRetry: _load,
+                emptyMessage: _emptyMessage,
+                currentPage: _page,
                 totalPages: _totalPages,
-                loading: _loading,
-                onPage: (next) => setState(() => _page = next),
+                onPageChange: (next) => setState(() => _page = next),
               ),
-            ],
-            const SizedBox(height: UtenSpacing.s24),
+            ),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildToolbar(int? purchaseCount, int? subcontractCount) {
+    final selected = _typeFilter == null
+        ? 'all'
+        : _typeFilter == 'PURCHASE'
+        ? 'purchase'
+        : 'subcontract';
+    final segments = SegmentedButton<String>(
+      key: const Key('iqc-type-segments'),
+      segments: [
+        ButtonSegment(
+          value: 'all',
+          label: Text(_typeLabel('全部待检单', _receipts?.length)),
+        ),
+        ButtonSegment(
+          value: 'purchase',
+          label: Text(_typeLabel('采购收货', purchaseCount)),
+        ),
+        ButtonSegment(
+          value: 'subcontract',
+          label: Text(_typeLabel('委外回厂', subcontractCount)),
+        ),
+      ],
+      selected: {selected},
+      onSelectionChanged: (selection) {
+        _selectType(switch (selection.first) {
+          'purchase' => 'PURCHASE',
+          'subcontract' => 'SUBCONTRACT',
+          _ => null,
+        });
+      },
+    );
+    final search = UtenSearchBar(
+      key: const Key('iqc-search'),
+      hint: '搜索收货单号 / 供应商',
+      initialValue: _keyword,
+      onChanged: _applySearch,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          header: true,
+          label: '共有 ${_receipts?.length ?? 0} 张待检收货单',
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 840) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: segments,
+                    ),
+                    const SizedBox(height: UtenSpacing.s8),
+                    search,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  segments,
+                  const SizedBox(width: UtenSpacing.s12),
+                  SizedBox(width: 360, child: search),
+                  const Spacer(),
+                  Text(
+                    '共 ${_filtered.length} 张 · 单击选中，双击检验',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              size: 18,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                _canHandle
+                    ? '采购/委外收货送检后出现在这里：双击单据进入处置页，'
+                          '常规合格可勾选多行一次放行；部分合格或不合格逐行登记。'
+                    : '当前为只读查看；品质处置需要 procurement_inspection:handle 权限。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _typeLabel(String label, int? count) =>
+      count == null ? '$label —' : '$label $count';
+
+  List<MasterColumnDef<PendingInspectionReceipt>> get _columns => [
+    MasterColumnDef(
+      key: 'receiptType',
+      label: '单据类型',
+      width: 110,
+      value: (receipt) => receipt.isSubcontract ? '委外回厂' : '采购收货',
+    ),
+    MasterColumnDef(
+      key: 'billNo',
+      label: '收货单号',
+      width: 170,
+      value: (receipt) => receipt.billNo ?? receipt.receiptId,
+    ),
+    MasterColumnDef(
+      key: 'supplierName',
+      label: '供应商 / 委外商',
+      width: 210,
+      value: (receipt) => receipt.supplierName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'billDate',
+      label: '单据日期',
+      width: 120,
+      type: 'date',
+      value: (receipt) => receipt.billDate ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'lastReceivedAt',
+      label: '最近到检',
+      width: 160,
+      type: 'date',
+      value: (receipt) => _fmtDateTime(receipt.lastReceivedAt) ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'itemCount',
+      label: '待检行数',
+      width: 100,
+      type: 'number',
+      value: (receipt) => receipt.itemCount.toString(),
+    ),
+    MasterColumnDef(
+      key: 'pendingBaseQty',
+      label: '待检量',
+      width: 110,
+      type: 'number',
+      value: (receipt) => _fmt(receipt.pendingBaseQty ?? 0),
+    ),
+  ];
 
   String get _emptyMessage {
     if (_keyword.trim().isNotEmpty) return '没有匹配「$_keyword」的待检单';
     if (_typeFilter == 'PURCHASE') return '暂无采购收货待检单';
     if (_typeFilter == 'SUBCONTRACT') return '暂无委外回厂待检单';
     return '暂无待检单';
-  }
-
-  String get _emptyDescription {
-    if (_keyword.trim().isNotEmpty) return '换个关键字试试，或清除搜索查看全部。';
-    if (_typeFilter != null) return '切换上方指标卡可查看另一类型的待检单。';
-    return '采购/委外收货送检后会出现在这里。';
-  }
-}
-
-/// 待检收货单任务卡：类型徽章 + 单号 + 供应商/日期/待检量信息行 + 进入处置按钮。
-class _PendingReceiptCard extends StatelessWidget {
-  const _PendingReceiptCard({
-    super.key,
-    required this.receipt,
-    required this.canHandle,
-    required this.onOpen,
-  });
-
-  final PendingInspectionReceipt receipt;
-  final bool canHandle;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                UtenStatusBadge(
-                  label: receipt.isSubcontract ? '委外回厂' : '采购收货',
-                  type: receipt.isSubcontract
-                      ? UtenStatusBadgeType.accent
-                      : UtenStatusBadgeType.info,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    receipt.billNo ?? receipt.receiptId,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            _InfoLine(
-              icon: Icons.storefront_outlined,
-              label: '供应商',
-              value: receipt.supplierName ?? '—',
-            ),
-            _InfoLine(
-              icon: Icons.event_outlined,
-              label: '单据日期',
-              value: receipt.billDate ?? '—',
-            ),
-            _InfoLine(
-              icon: Icons.schedule_outlined,
-              label: '最近到检',
-              value: _fmtDateTime(receipt.lastReceivedAt) ?? '—',
-            ),
-            _InfoLine(
-              icon: Icons.inventory_outlined,
-              label: '待检',
-              value:
-                  '${receipt.itemCount} 行明细 · 待检量 ${_fmt(receipt.pendingBaseQty ?? 0)}',
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            SizedBox(
-              width: double.infinity,
-              child: UtenButton(
-                key: Key('iqc-open-detail-${receipt.receiptId}'),
-                size: UtenButtonSize.large,
-                icon: Icons.fact_check_outlined,
-                onPressed: onOpen,
-                child: Text('检验本单(${receipt.itemCount} 行待检)'),
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              canHandle ? '进入后勾选多行可一次合格放行。' : '当前为只读查看，不能提交检验决定。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -447,8 +469,8 @@ class _ProcurementInspectionDetailPageState
 
   PendingInspectionReceipt? get _snapshot =>
       widget.extra is PendingInspectionReceipt
-          ? widget.extra! as PendingInspectionReceipt
-          : null;
+      ? widget.extra! as PendingInspectionReceipt
+      : null;
 
   @override
   void initState() {
@@ -516,10 +538,8 @@ class _ProcurementInspectionDetailPageState
       if (_selectedItemIds.contains(item.id)) item,
   ];
 
-  double get _pendingBaseQty => _items.fold(
-    0,
-    (sum, item) => sum + (item.remainingBaseQty ?? 0),
-  );
+  double get _pendingBaseQty =>
+      _items.fold(0, (sum, item) => sum + (item.remainingBaseQty ?? 0));
 
   String _idempotencyKeyFor(
     ProcurementInspectionItem item,
@@ -568,10 +588,7 @@ class _ProcurementInspectionDetailPageState
       await _load();
       ref.invalidate(procurementInspectionPendingCountProvider);
       if (mounted) {
-        UtenNotify.success(
-          context,
-          action == 'PASS' ? '合格决定已保存' : '不合格决定已保存',
-        );
+        UtenNotify.success(context, action == 'PASS' ? '合格决定已保存' : '不合格决定已保存');
       }
       return null;
     } catch (error) {
@@ -770,9 +787,7 @@ class _ProcurementInspectionDetailPageState
           ],
           if (_busyDecision) ...[
             const SizedBox(height: UtenSpacing.s8),
-            const LinearProgressIndicator(
-              key: Key('iqc-decision-progress'),
-            ),
+            const LinearProgressIndicator(key: Key('iqc-decision-progress')),
           ],
           const SizedBox(height: UtenSpacing.s8),
           Expanded(child: _buildItemTable()),
@@ -874,8 +889,7 @@ class _ProcurementInspectionDetailPageState
         selectable: _canHandle,
         idOf: (item) => _isOpenItem(item) ? item.id : null,
         selectedIds: _selectedItemIds,
-        onSelectedIdsChanged: (next) =>
-            setState(() => _selectedItemIds = next),
+        onSelectedIdsChanged: (next) => setState(() => _selectedItemIds = next),
         batchActionsBuilder: _canHandle ? _batchActions : null,
         onRowTap: _canHandle ? _openItemDecision : null,
         canOpenRow: _isOpenItem,
@@ -889,14 +903,12 @@ class _ProcurementInspectionDetailPageState
                 UtenMenuItem(
                   label: '部分合格',
                   icon: Icons.rule_rounded,
-                  onTap: () =>
-                      _openItemDecision(item, requireQuantity: true),
+                  onTap: () => _openItemDecision(item, requireQuantity: true),
                 ),
                 UtenMenuItem(
                   label: '登记不合格',
                   icon: Icons.block_rounded,
-                  onTap: () =>
-                      _openItemDecision(item, initialAction: 'FAIL'),
+                  onTap: () => _openItemDecision(item, initialAction: 'FAIL'),
                 ),
               ]
             : null,
@@ -1121,10 +1133,13 @@ class _InspectionDecisionDialogState extends State<_InspectionDecisionDialog> {
                 ),
                 decoration: InputDecoration(
                   labelText: pass ? '合格数量' : '不合格数量',
-                  helperText: widget.requireQuantity
-                      ? '必填；部分处置后本行继续保留'
-                      : '留空 = 全部剩余待检量',
-                  errorText: _qtyError,
+                  helper: UtenFieldMessage.helper(
+                    widget.requireQuantity ? '必填；部分处置后本行继续保留' : '留空 = 全部剩余待检量',
+                    maxLines: 2,
+                  ),
+                  error: _qtyError == null
+                      ? null
+                      : UtenFieldMessage.error(_qtyError!),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
@@ -1135,7 +1150,9 @@ class _InspectionDecisionDialogState extends State<_InspectionDecisionDialog> {
                 maxLength: 500,
                 decoration: InputDecoration(
                   labelText: pass ? '放行说明(选填)' : '不合格原因(必填)',
-                  errorText: _reasonError,
+                  error: _reasonError == null
+                      ? null
+                      : UtenFieldMessage.error(_reasonError!),
                 ),
               ),
               if (_submitError != null) ...[
@@ -1355,95 +1372,6 @@ class _InfoLine extends StatelessWidget {
           SizedBox(width: 80, child: Text('$label：')),
           Expanded(child: Text(value)),
         ],
-      ),
-    );
-  }
-}
-
-class _Pager extends StatelessWidget {
-  const _Pager({
-    required this.page,
-    required this.totalPages,
-    required this.loading,
-    required this.onPage,
-  });
-
-  final int page;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPage;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        UtenButton(
-          size: UtenButtonSize.large,
-          type: UtenButtonType.tonal,
-          icon: Icons.chevron_left_rounded,
-          onPressed: !loading && page > 1 ? () => onPage(page - 1) : null,
-          child: const Text('上一页'),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-          child: Text('第 $page / $totalPages 页'),
-        ),
-        UtenButton(
-          size: UtenButtonSize.large,
-          type: UtenButtonType.tonal,
-          icon: Icons.chevron_right_rounded,
-          onPressed: !loading && page < totalPages
-              ? () => onPage(page + 1)
-              : null,
-          child: const Text('下一页'),
-        ),
-      ],
-    );
-  }
-}
-
-/// 口径提示条：指标卡下方整行说明（与预计到货任务中心同款布局），
-/// 浅蓝 info 容器色（灰底 + hover 会被误读成「灰色面板」）。
-class _ScopeHintBanner extends StatelessWidget {
-  const _ScopeHintBanner({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final background = isDark
-        ? UtenColors.infoContainerDark
-        : UtenColors.infoContainer;
-    final foreground = isDark
-        ? UtenColors.onInfoContainerDark
-        : UtenColors.onInfoContainer;
-    return Semantics(
-      container: true,
-      label: '筛选口径：$message',
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: foreground.withValues(alpha: 0.25)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.info_outline_rounded, color: foreground),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Text(
-                message,
-                style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

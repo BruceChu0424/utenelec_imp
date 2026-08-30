@@ -107,6 +107,8 @@ class AuditEventInterpreterTest {
                 Map.entry("finance_asset_accounting_periods", "资产会计期间"),
                 Map.entry("finance_asset_posting_runs", "折旧摊销过账批次"),
                 Map.entry("finance_asset_posting_lines", "折旧摊销过账明细"),
+                Map.entry("production_fqc_replenishment_cycle_cancellations",
+                        "FQC补产周期取消记录"),
                 Map.entry("deferred_expenses", "待摊费用"));
 
         expected.forEach((targetType, label) -> {
@@ -121,6 +123,23 @@ class AuditEventInterpreterTest {
             assertEquals(label, event.objectLabel(), targetType);
             assertEquals("新增" + label, event.summary(), targetType);
         });
+    }
+
+    @Test
+    void labelsFqcCancellationAuthorityFieldsInChinese() {
+        AuditLog log = new AuditLog();
+        log.setAction("update");
+        log.setTargetType("production_fqc_replenishment_cycle_cancellations");
+        log.setBefore("{\"cycle_id\":\"C1\",\"authorization_id\":\"A1\",\"reason_code\":\"OLD\"}");
+        log.setAfter("{\"cycle_id\":\"C2\",\"authorization_id\":\"A2\",\"reason_code\":\"NEW\"}");
+        log.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+
+        assertEquals("FQC补产周期取消记录", event.objectLabel());
+        assertTrue(event.changeSummary().contains("补产周期：C1 → C2"));
+        assertTrue(event.changeSummary().contains("补产授权：A1 → A2"));
+        assertTrue(event.changeSummary().contains("原因代码：OLD → NEW"));
     }
 
     @Test
@@ -190,7 +209,7 @@ class AuditEventInterpreterTest {
 
         AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
 
-        assertTrue(event.changeSummary().contains("f1：1 → 101"), event.changeSummary());
+        assertTrue(event.changeSummary().contains("其他字段：1 → 101"), event.changeSummary());
         assertTrue(event.changeSummary().contains("另有 2 项变更见「数据变更」标签页"),
                 event.changeSummary());
     }
@@ -244,6 +263,33 @@ class AuditEventInterpreterTest {
     }
 
     @Test
+    void formatsSnapshotTimestampsAsBeijingTimeInChangeEntries() {
+        AuditLog log = new AuditLog();
+        log.setAction("update");
+        log.setTargetType("expense_claims");
+        log.setTargetId(UUID.randomUUID().toString());
+        log.setBefore("""
+                {"doc_no":"BX-001","approved_at":"2026-08-28T09:00:00Z","due_at":null}
+                """);
+        log.setAfter("""
+                {"doc_no":"BX-001","approved_at":"2026-08-29T03:17:00.123456+08:00",
+                 "due_at":"2026-09-01"}
+                """);
+        log.setResult("success");
+        log.setEventSource("database");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+
+        assertTrue(event.changeSummary().contains(
+                "审批时间：2026-08-28 17:00(北京时间) → "
+                        + "2026-08-29 03:17(北京时间)"),
+                event.changeSummary());
+        // 日期-only 值不是时间戳，保持原样
+        assertTrue(event.changeSummary().contains("交期：空 → 2026-09-01"),
+                event.changeSummary());
+    }
+
+    @Test
     void labelsNoticeAndTaskClaimUserActionsInChinese() {
         AuditLog publish = new AuditLog();
         publish.setAction("notice_publish");
@@ -268,7 +314,7 @@ class AuditEventInterpreterTest {
 
         AuditEventInterpreter.InterpretedEvent claimEvent = interpreter.interpret(claim);
         assertEquals("认领HR任务", claimEvent.actionLabel());
-        assertEquals("认领HR任务 confirm · 张三", claimEvent.summary());
+        assertEquals("认领HR任务 转正任务 · 张三", claimEvent.summary());
         assertEquals("人事 · HR任务中心", claimEvent.pageLabel());
 
         // 认领端点的请求覆盖行也要显示成具体动作，而不是泛化的"新增"
@@ -276,6 +322,29 @@ class AuditEventInterpreterTest {
                 request("http_post", "/api/org/hr-tasks/claims"));
         assertEquals("认领任务", httpEvent.actionLabel());
         assertEquals("认领任务 · HR任务中心", httpEvent.summary());
+
+        Map<String, String> noticeActions = Map.of(
+                "notice_bless_withdraw", "撤回庆典祝福",
+                "view_notice", "查看通知",
+                "notice_read_all", "将全部通知标为已读",
+                "notice_popup_ack", "确认关闭通知提醒",
+                "notice_celebration_batch_publish", "批量发布庆典祝福");
+        noticeActions.forEach((action, label) -> {
+            AuditLog value = new AuditLog();
+            value.setAction(action);
+            value.setTargetType("notices");
+            value.setTargetId("测试通知");
+            value.setEventSource("business");
+            value.setResult("success");
+            assertEquals(label, interpreter.interpret(value).actionLabel());
+        });
+
+        AuditLog renew = new AuditLog();
+        renew.setAction("task_renew");
+        renew.setTargetType("task_claims");
+        renew.setResult("success");
+        assertEquals("续租任务认领(自动协调)",
+                interpreter.interpret(renew).actionLabel());
     }
 
     @Test
@@ -337,6 +406,53 @@ class AuditEventInterpreterTest {
         assertEquals("删除货品", event.summary());
         assertEquals("high", event.riskLevel());
         assertEquals("data_change", event.category());
+    }
+
+    @Test
+    void unknownInternalCodesNeverLeakIntoMainChineseDescriptions() {
+        AuditLog log = new AuditLog();
+        log.setAction("internal_unmapped_action");
+        log.setTargetType("internal_unmapped_table");
+        log.setResult("internal_result_code");
+        log.setEventSource("business");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+
+        assertEquals("其他操作", event.actionLabel());
+        assertEquals("其他业务对象", event.objectLabel());
+        assertEquals("结果待核查", event.resultLabel());
+        assertTrue(event.summary().startsWith("其他操作 · 其他业务对象"));
+        assertTrue(event.summary().contains("结果待核查"));
+        assertTrue(!event.summary().contains("internal_"), event.summary());
+    }
+
+    @Test
+    void getDetailPathShowsOnlyASafeShortRecordReference() {
+        AuditLog detail = request(
+                "http_get",
+                "/api/sales/orders/3e27d660-5c36-41c8-8ea1-7f777f52a9cc");
+        detail.setTargetType("api/sales/orders");
+        detail.setEventSource("request");
+
+        AuditEventInterpreter.InterpretedEvent detailEvent = interpreter.interpret(detail);
+
+        assertEquals("查看销售订单 · 记录 3e27d660…", detailEvent.summary());
+        assertEquals("记录 3e27d660…", detailEvent.targetName());
+
+        AuditLog count = request("http_get", "/api/notices/unread-count");
+        count.setEventSource("request");
+        assertEquals("", interpreter.interpret(count).targetName());
+
+        AuditLog phone = request("http_get", "/api/visitor/applications/13800138000");
+        phone.setEventSource("request");
+        assertEquals("", interpreter.interpret(phone).targetName(),
+                "pure numeric phone/verification-code segments must never enter summaries");
+
+        AuditLog businessCode = request(
+                "http_get", "/api/sales/orders/SO-2026-001");
+        businessCode.setEventSource("request");
+        assertEquals("记录 SO-2026-001",
+                interpreter.interpret(businessCode).targetName());
     }
 
     private void assertAuditInvestigation(

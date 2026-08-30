@@ -25,6 +25,7 @@ class AuditLogEntry {
     this.actionLabel,
     this.objectLabel,
     this.summary,
+    this.changeSummary,
     this.riskLevel = 'low',
     this.riskReason,
     this.eventCategory = 'business',
@@ -76,6 +77,9 @@ class AuditLogEntry {
   final String? actionLabel;
   final String? objectLabel;
   final String? summary;
+
+  /// 活动关联行的脱敏中文字段变化摘要；列表按需展示，不包含 before/after 原始快照。
+  final String? changeSummary;
   final String riskLevel;
   final String? riskReason;
   final String eventCategory;
@@ -110,6 +114,7 @@ class AuditLogEntry {
     actionLabel: json['actionLabel'] as String?,
     objectLabel: json['objectLabel'] as String?,
     summary: json['summary'] as String?,
+    changeSummary: json['changeSummary'] as String?,
     riskLevel: json['riskLevel'] as String? ?? 'low',
     riskReason: json['riskReason'] as String?,
     eventCategory: json['eventCategory'] as String? ?? 'business',
@@ -159,6 +164,75 @@ class AuditLogPage extends PagedResult<AuditLogEntry> {
       total: page.total,
       totalPages: page.totalPages,
       snapshotId: AuditLogEntry._parseInt(json['snapshotId']) ?? 0,
+    );
+  }
+}
+
+/// 可在审计中心选择的真实操作人员。
+///
+/// 候选来自全人员目录，可包含尚无日志的员工和真实访客；系统任务和迁移账号不会出现。
+/// 查询时以不可变的 [actorId] 为准，账号、姓名和组织信息只用于展示。
+class AuditActorOption {
+  const AuditActorOption({
+    required this.actorId,
+    this.account,
+    this.actorType,
+    this.displayName,
+    this.name,
+    this.department,
+    this.position,
+    this.lastActivityAt,
+  });
+
+  final String actorId;
+  final String? account;
+  final String? actorType;
+  final String? displayName;
+  final String? name;
+  final String? department;
+  final String? position;
+  final String? lastActivityAt;
+
+  String get primaryLabel {
+    final display = displayName?.trim();
+    if (display?.isNotEmpty == true) return display!;
+    final actorName = name?.trim();
+    if (actorName?.isNotEmpty == true) return actorName!;
+    final actorAccount = account?.trim();
+    if (actorAccount?.isNotEmpty == true) return actorAccount!;
+    return '未知人员';
+  }
+
+  factory AuditActorOption.fromJson(Map<String, dynamic> json) =>
+      AuditActorOption(
+        actorId: json['actorId'] as String? ?? '',
+        account: json['account'] as String?,
+        actorType: json['actorType'] as String?,
+        displayName: json['displayName'] as String?,
+        name: json['name'] as String?,
+        department: json['department'] as String?,
+        position: json['position'] as String?,
+        lastActivityAt: json['lastActivityAt'] as String?,
+      );
+}
+
+class AuditActorPage extends PagedResult<AuditActorOption> {
+  const AuditActorPage({
+    required super.items,
+    required super.page,
+    required super.size,
+    required super.total,
+    required super.totalPages,
+  });
+
+  factory AuditActorPage.fromJson(Map<String, dynamic> json) {
+    final page = PagedResult.fromJson(json, AuditActorOption.fromJson);
+    return AuditActorPage(
+      items: page.items.where((actor) => actor.actorId.isNotEmpty).toList(),
+      page: page.page,
+      size: page.size,
+      total: page.total,
+      totalPages: page.totalPages,
     );
   }
 }

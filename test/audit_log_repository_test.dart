@@ -36,6 +36,7 @@ void main() {
         page: 3,
         size: 40,
         action: 'http_',
+        actorId: '123e4567-e89b-42d3-a456-426614174099',
         actorAccount: 'admin',
         keyword: ' goods/123 ',
         targetType: ' goods ',
@@ -58,6 +59,7 @@ void main() {
         'page': '3',
         'size': '40',
         'action': 'http_',
+        'actorId': '123e4567-e89b-42d3-a456-426614174099',
         'actorAccount': 'admin',
         'keyword': 'goods/123',
         'targetType': 'goods',
@@ -66,6 +68,7 @@ void main() {
         'requestId': '123e4567-e89b-42d3-a456-426614174012',
         'operationKind': 'update',
         'actorScope': 'user',
+        'activityOnly': 'true',
         'snapshotId': '0',
         'riskLevel': 'high',
         'eventCategory': 'data_change',
@@ -109,6 +112,7 @@ void main() {
       final repository = DioAuditLogRepository(ApiClient(dio));
       await repository.summary(
         action: 'login',
+        actorId: '123e4567-e89b-42d3-a456-426614174099',
         actorAccount: 'admin',
         keyword: 'client',
         targetType: 'clients',
@@ -127,6 +131,7 @@ void main() {
       expect(captured.uri.path, '/api/admin/audit-logs/summary');
       expect(captured.uri.queryParameters, const {
         'action': 'login',
+        'actorId': '123e4567-e89b-42d3-a456-426614174099',
         'actorAccount': 'admin',
         'keyword': 'client',
         'targetType': 'clients',
@@ -135,6 +140,7 @@ void main() {
         'requestId': '123e4567-e89b-42d3-a456-426614174012',
         'operationKind': 'read',
         'actorScope': 'system',
+        'activityOnly': 'true',
         'snapshotId': '9001',
         'eventCategory': 'authentication',
         'dateFrom': '2026-07-26',

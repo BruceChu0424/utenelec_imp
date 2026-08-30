@@ -106,9 +106,9 @@ public class WebsiteInquiryService {
             inquiry.setAssigneeEmployeeId(currentUser.requireEmployeeId());
         }
         repository.save(inquiry);
-        audit.logExplicit(currentUser.requireId(), currentAccount(),
+        audit.logCommitted(currentUser.requireId(), currentAccount(),
                 "webinquiry_status", "website_inquiry",
-                inquiry.getId() + "→" + request.status(), "success");
+                "询价=" + inquiry.getId() + "；状态已更新", "success");
         return toDetail(inquiry);
     }
 
@@ -136,9 +136,9 @@ public class WebsiteInquiryService {
             inquiry.setAssigneeEmployeeId(currentUser.employeeId().orElse(null));
         }
         repository.save(inquiry);
-        audit.logExplicit(currentUser.requireId(), currentAccount(),
+        audit.logCommitted(currentUser.requireId(), currentAccount(),
                 "webinquiry_convert", "website_inquiry",
-                inquiry.getId() + "→client:" + client.id(), "success");
+                "询价=" + inquiry.getId() + "；客户=" + client.id(), "success");
         return toDetail(inquiry);
     }
 

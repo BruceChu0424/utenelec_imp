@@ -45,7 +45,12 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
   String? unitId;
 
   /// 明细级供应商（订货单可逐行选不同供应商，保存时按供应商自动拆单；为空回落表头）。
-  String? supplierId;
+  /// ValueNotifier：多选统一设供应商/记忆预填后单元格与必填红框即时刷新。
+  final ValueNotifier<String?> supplierIdNotifier = ValueNotifier<String?>(
+    null,
+  );
+  String? get supplierId => supplierIdNotifier.value;
+  set supplierId(String? v) => supplierIdNotifier.value = v;
 
   /// 预计到货登记模式（[purchaseGridColumns] arrivalMode）：该行财务批准剩余量，
   /// 只读对照列展示；不实设 maxQty，仓库须能如实登记超量实到数。
@@ -74,6 +79,7 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
     qty.dispose();
     price.dispose();
     stockPlaceNotifier.dispose();
+    supplierIdNotifier.dispose();
     super.dispose();
   }
 }
@@ -82,16 +88,19 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 /// [arrivalMode]=true（预计到货「登记实际到货」预填场景）：列改为
 /// 货品 / 批准剩余（只读对照）/ 实到数量——不显示单价/金额，仓库只关心到货数量。
-/// [supplierEntries]+[onSupplierChanged]：订货单显示「供应商」明细列（逐行选不同供应商，
-/// 保存时按供应商自动拆单）；收货/退货不传，沿用表头单一供应商。
+/// [supplierEntries]+[onPickSupplier]：订货单显示「供应商」明细列（逐行选不同供应商，
+/// 保存时按供应商自动拆单）；收货/退货不传，沿用表头单一供应商。点击单元格由
+/// [onPickSupplier] 打开供应商滑入面板，页面按多选范围落值（联动填写）。
+/// [supplierRequired]：订货单行级供应商必填（表头不再录入）→ 列头红 * + 空值红字提示。
 /// [showStockPlace]（收货/退货实物单据）：货品列后加「库位号」只读列（主档带出，上架/拣货指引）。
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   Future<void> Function(PurchaseGridRow row) onPickGoods, {
   bool arrivalMode = false,
   bool showStockPlace = false,
   Map<String, String> supplierEntries = const {},
+  bool supplierRequired = false,
   String? headerSupplierId,
-  ValueChanged<String?>? onSupplierChanged,
+  Future<void> Function(PurchaseGridRow row)? onPickSupplier,
 }) {
   final showSupplier = !arrivalMode && supplierEntries.isNotEmpty;
   return [
@@ -159,14 +168,18 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         key: 'supplier',
         label: '供应商',
         width: 150,
-        cellBuilder: (context, row) => ProcurementSupplierCell(
-          value: row.supplierId,
-          fallback: headerSupplierId,
-          entries: supplierEntries,
-          onChanged: (v) {
-            row.supplierId = v;
-            onSupplierChanged?.call(v);
-          },
+        required: supplierRequired,
+        textOf: (r) => supplierEntries[r.supplierId] ?? '',
+        listenableOf: (r) => r.supplierIdNotifier,
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.supplierIdNotifier,
+          builder: (_, v, _) => ProcurementSupplierCell(
+            value: v,
+            fallback: headerSupplierId,
+            entries: supplierEntries,
+            requiredEmpty: supplierRequired && v == null,
+            onPick: onPickSupplier == null ? null : () => onPickSupplier(row),
+          ),
         ),
       ),
     // 批准剩余：只读对照（财务批准还能收多少），超量实到不拦截，由服务端审核隔离。

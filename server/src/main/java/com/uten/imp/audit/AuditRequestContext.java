@@ -25,6 +25,8 @@ public final class AuditRequestContext {
             "uten.audit.operationStartNanos";
     static final String OPERATION_RECORDED_ATTRIBUTE =
             "uten.audit.operationRecorded";
+    static final String MEANINGFUL_EVENT_RECORDED_ATTRIBUTE =
+            "uten.audit.meaningfulEventRecorded";
     private static final Set<String> AUDITED_METHODS =
             Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD");
 
@@ -82,6 +84,52 @@ public final class AuditRequestContext {
         }
         String path = request.getRequestURI();
         return path != null && path.startsWith("/api/");
+    }
+
+    /**
+     * Suppresses only reviewed automatic endpoints after a successful response.
+     * Failures are always retained, and ordinary business writes never enter
+     * this allowlist.
+     */
+    static boolean shouldRecordOperation(
+            HttpServletRequest request,
+            int statusCode,
+            boolean requestFailed) {
+        if (!shouldAuditOperation(request)) {
+            return false;
+        }
+        if (requestFailed || statusCode >= 400) {
+            return true;
+        }
+        if (Boolean.TRUE.equals(request.getAttribute(
+                MEANINGFUL_EVENT_RECORDED_ATTRIBUTE))) {
+            return false;
+        }
+        String method = request.getMethod().toUpperCase(Locale.ROOT);
+        String path = normalizedPath(request.getRequestURI());
+        if (path.startsWith("/api/admin/audit-logs")) {
+            return false;
+        }
+        if (AuditNoisePolicy.isAutomaticOperation(method, path)) {
+            return false;
+        }
+        return true;
+    }
+
+    static void markMeaningfulEventRecorded(HttpServletRequest request) {
+        if (request != null) {
+            request.setAttribute(MEANINGFUL_EVENT_RECORDED_ATTRIBUTE, Boolean.TRUE);
+        }
+    }
+
+    private static String normalizedPath(String path) {
+        if (path == null) {
+            return "";
+        }
+        String value = path.trim().toLowerCase(Locale.ROOT);
+        return value.length() > 1 && value.endsWith("/")
+                ? value.substring(0, value.length() - 1)
+                : value;
     }
 
     static String routeGroup(String path) {

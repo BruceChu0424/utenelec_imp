@@ -1,9 +1,38 @@
-# 11 - Git 提交与合并规范
+# 11 - 单维护者 Git 上传与合并规范
 
 > 本文规定 Uten IMP 的日常代码提交、远端推送、Pull Request（PR）和合并流程。
 > 核心原则是：**Git 负责版本与推送，PR 负责合并前门禁；`gh` 只是可选工具，不是提交代码的前提。**
+> 公司当前只有 1 名维护者：不虚构第二位 reviewer、不要求自己批准自己，也不为普通内部开发购买
+> Enterprise；但秘密扫描、自动测试、`main` 稳定性和服务器发布隔离继续保留。
 
 本文命令中的 `{scope}`、`{description}`、`{task}` 等内容是占位符，执行前必须替换为本次任务的实际值。
+
+---
+
+## 零、单维护者最简流程
+
+| 要做的事 | 最少步骤 | 不需要做的事 |
+|---|---|---|
+| 日常上传 GitHub | 定向测试 → 精确暂存 → Commit → push 功能分支 → SHA 回读 | 不需要 `gh`、PR 已合并、签名、OSS、服务器操作 |
+| 合并 `main` | 一个成型 PR → 自审最终 diff → 当前 CI 全绿 → merge | 不需要虚构第二审批人 |
+| internal-test/生产发版 | 只从明确的 `main` SHA 进入现有签名、迁移和激活流程 | 不由普通功能分支 push 自动触发 |
+
+上传功能分支只证明代码已在 GitHub；不等于已合并 `main`，更不等于已部署服务器。
+
+日常只有一个任务时，连续使用同一短期功能分支即可，不必为每个小 Commit 新建 worktree。只有确有并行写入、
+工作区混入别的任务时才使用独立 worktree。
+
+推荐在完成本次定向测试后运行一条命令：
+
+```powershell
+pwsh -File scripts/publish_feature_branch.ps1 `
+  -CommitMessage "feat(scope): 简述" `
+  -Paths @("path/to/file1", "path/to/file2", "path/to/test")
+```
+
+脚本负责暂存明确路径、检查敏感/生成文件、执行 `git diff --cached --check`、Commit、push 和远端 SHA
+核对；它拒绝直接推送 `main` / `master`，并在 Commit 前复核暂存树未被改变。脚本运行期间必须停止
+其它 Git 暂存/Commit 进程，独占当前 worktree 的 index。
 
 ---
 
@@ -116,7 +145,10 @@ git add”当成提交范围正确的证据。
 每次小改动先运行最接近变更的定向测试。跨模块业务链必须验证 UI → API → 事务 → 持久化/
 审计事实 → 可见结果，不能只验证按钮或单个 Service。
 
-### 4.2 推送 PR 前的完整门禁
+### 4.2 PR 合并前的完整门禁
+
+普通功能分支上传只要求范围检查和本次变更的定向测试；不必先完成目标库迁移、UAT、签名或服务器
+门禁。准备合并 `main` 时，才要求下面与改动范围相关的完整本地检查和当前 PR 远端门禁。
 
 远端真实门禁定义在：
 
@@ -220,6 +252,33 @@ if ($localSha -ne $remoteSha) {
 ```
 
 终端没有明确的 push 成功输出，或远端 SHA 不一致时，不得声称“已上传”。
+
+### 5.3 单维护者安全上传脚本
+
+日常使用显式路径：
+
+```powershell
+pwsh -File scripts/publish_feature_branch.ps1 `
+  -CommitMessage "fix(scope): 简述" `
+  -Paths @("lib/path.dart", "test/path_test.dart")
+```
+
+脚本不会创建 PR、合并 `main`、打 tag 或部署服务器。本机 Git 代理失效、且已确认可直连 GitHub 时，
+可仅对本次网络调用增加 `-DisableProxyForThisRun`，不会修改全局 Git 配置。
+
+用户明确要求“完整上传当前现场”时，使用独立快照分支和双重确认：
+
+```powershell
+git switch -c uimp/solo-maintainer-full-upload-YYYYMMDD
+pwsh -File scripts/publish_feature_branch.ps1 `
+  -CommitMessage "chore(snapshot): 完整上传已审查工作区" `
+  -All `
+  -ConfirmFullSnapshot UPLOAD_ALL_REVIEWED
+```
+
+完整上传只用于保存已经逐项审查的现场。它要求停止并行写入、基于最终冻结字节重跑验证，并自动拒绝
+真实 `.env`、私钥、业务 Excel/CSV、备份、构建目录和运行时媒体。包含多个业务目标的快照分支不能
+未经整理和完整 CI 直接合并 `main`。
 
 ---
 
@@ -327,12 +386,14 @@ git log -1 --oneline origin/main
   → 只改一个业务目标
   → 定向测试
   → 精确暂存 + diff/敏感内容检查
-  → 完整 Flutter/后端门禁
   → Conventional Commit
   → git push 功能分支
   → 本地/远端 SHA 对比
-  → 网页或可选 gh 创建 PR
+  → 已上传（到这里不要求发版门禁）
+  → 准备合并时运行完整 Flutter/后端/Website 门禁
+  → 网页或可选 gh 创建一个成型 PR
   → 远端三类检查全绿
   → PR 合并 main
   → 验证 origin/main 包含功能提交
+  → 只有明确发版时才进入签名、迁移和服务器激活
 ```

@@ -142,7 +142,8 @@ public class LoginService {
         user.setLastLoginAt(OffsetDateTime.now());
         userRepo.save(user);
         TokenResponse response = tokenIssuer.issueTokens(user);
-        audit.logExplicit(user.getId(), user.getLoginAccount(), "login", "users", user.getId().toString(), "success");
+        audit.logCommitted(user.getId(), user.getLoginAccount(),
+                "login", "users", user.getId().toString(), "success");
 
         return response;
     }

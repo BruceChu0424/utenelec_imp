@@ -15,6 +15,9 @@ abstract interface class ProcurementInboundRepository {
 
   Future<int> expectationCount();
 
+  /// 预计到货按订货类型计数（PURCHASE/SUBCONTRACT → 全量张数；类型筛选卡用）。
+  Future<Map<String, int>> expectationTypeCounts();
+
   Future<PagedResult<ProcurementArrivalException>> warehouseExceptions({
     int page = 1,
     int size = 20,
@@ -105,6 +108,17 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   @override
   Future<int> expectationCount() =>
       _count(ApiEndpoints.warehouseInboundExpectationCount);
+
+  @override
+  Future<Map<String, int>> expectationTypeCounts() async {
+    final json = await api.get(
+      ApiEndpoints.warehouseInboundExpectationTypeCounts,
+    );
+    return {
+      for (final entry in (json as Map).entries)
+        entry.key.toString(): (entry.value as num).toInt(),
+    };
+  }
 
   @override
   Future<PagedResult<ProcurementArrivalException>> warehouseExceptions({

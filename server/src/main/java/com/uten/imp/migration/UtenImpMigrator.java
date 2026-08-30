@@ -99,7 +99,9 @@ public final class UtenImpMigrator {
                 // fails against a database containing newer applied history.
                 .ignoreMigrationPatterns("*:pending")
                 .validateMigrationNaming(true)
-                .callbacks(new AppliedMigrationCompatibilityCallback())
+                .callbacks(
+                        new AppliedMigrationCompatibilityCallback(),
+                        new AuditFreshStartGuardCallback())
                 // The explicit validate() call gives operators a distinct gate;
                 // keep Flyway's in-migrate validation too so a classpath/history
                 // change between both phases still fails closed.

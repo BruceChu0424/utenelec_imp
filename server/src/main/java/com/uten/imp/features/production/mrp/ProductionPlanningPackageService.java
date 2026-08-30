@@ -77,7 +77,7 @@ public class ProductionPlanningPackageService {
                 isBalancedKitCoverage(rows, targetWarehouseAvailable),
                 true,
                 executionPlanning.toPreview(proposal),
-                snapshot.noBomPlanItemIds());
+                snapshot.unresolvedZeroMaterialLineageIds());
     }
 
     @Transactional

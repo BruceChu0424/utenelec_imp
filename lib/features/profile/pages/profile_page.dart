@@ -236,16 +236,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   );
 
   /// medium 收敛居中 720；compact 顶满。
-  Widget _centerIfMedium(UtenBreakpoint bp, {required Widget child}) => bp ==
-          UtenBreakpoint.medium
-      ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 720), child: child))
+  Widget _centerIfMedium(UtenBreakpoint bp, {required Widget child}) =>
+      bp == UtenBreakpoint.medium
+      ? Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: child,
+          ),
+        )
       : child;
 
   /// 吸顶/常驻 Tab 栏：补不透明底色，避免正文滚动时从 Tab 间隙透出。
-  Widget _pinnedTabBar(ThemeData theme, TabBar tabBar) => Container(
-    color: theme.scaffoldBackgroundColor,
-    child: tabBar,
-  );
+  Widget _pinnedTabBar(ThemeData theme, TabBar tabBar) =>
+      Container(color: theme.scaffoldBackgroundColor, child: tabBar);
 
   TabBar _buildTabBar(ThemeData theme, AppLocalizations l10n) {
     return TabBar(
@@ -317,9 +320,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
               _profileField(
                 label:
                     [
-                      p.emergencyContacts[index].relationship,
-                      p.emergencyContacts[index].name,
-                    ]
+                          p.emergencyContacts[index].relationship,
+                          p.emergencyContacts[index].name,
+                        ]
                         .where((value) => value?.trim().isNotEmpty == true)
                         .join(' · '),
                 value: p.emergencyContacts[index].phone,
@@ -403,10 +406,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
           label: l10n.employeeFieldDepartment,
           value: p.departmentName,
         ),
-        _profileField(
-          label: l10n.employeeFieldPosition,
-          value: p.positionName,
-        ),
+        _profileField(label: l10n.employeeFieldPosition, value: p.positionName),
         _profileField(
           label: l10n.employeeFieldSupervisor,
           value: p.supervisorName,
@@ -588,9 +588,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
 
   // Tab 5：我的文件（只读档案附件）
   Widget _documentsTab(EmployeeProfile p, double bottomPadding) {
-    return _tabBody([
-      MyDocumentsSection(profile: p),
-    ], bottomPadding);
+    return _tabBody([MyDocumentsSection(profile: p)], bottomPadding);
   }
 
   Widget _profileField({

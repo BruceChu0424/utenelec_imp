@@ -81,6 +81,7 @@ public class SupplierController {
             @RequestParam(required = false) String website,
             @RequestParam(name = "shipVia", required = false) String shipVia,
             @RequestParam(name = "shipAddress", required = false) String shipAddress,
+            @RequestParam(defaultValue = "false") boolean selectableOnly,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
@@ -88,7 +89,7 @@ public class SupplierController {
         return service.list(new SupplierQueryFilter(categoryId, keyword, nullFields,
                 name, description, tday, place, empId, legalPerson, linkman, mobile,
                 phone, phone2, fax, postcode, address, bank, bankAccount, taxId,
-                website, shipVia, shipAddress), page, size, sort, order);
+                website, shipVia, shipAddress, selectableOnly), page, size, sort, order);
     }
 
     @GetMapping("/facets")

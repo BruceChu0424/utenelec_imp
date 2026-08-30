@@ -90,9 +90,9 @@ Widget _app({
     subcontractWriteAllDocumentScope(),
     // Settlement terms are part of the commercial detail surface and are
     // intentionally protected by the existing price-view permission.
-    currentPermissionsProvider.overrideWithValue(
-      const <String>{Perm.subcontractReceiptPriceView},
-    ),
+    currentPermissionsProvider.overrideWithValue(const <String>{
+      Perm.subcontractReceiptPriceView,
+    }),
     subcontractRepositoryProvider(
       SubcontractDocType.order,
     ).overrideWithValue(repository),

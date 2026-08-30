@@ -104,7 +104,8 @@ class AuditRequestContextFilterTest {
     }
 
     @Test
-    void skipsFallbackAfterMvcInterceptorSuccessfullyRecordsOperation() throws Exception {
+    void auditCenterSuccessUsesExplicitControllerEventWithoutGenericHttpDuplicate()
+            throws Exception {
         UUID userId = UUID.randomUUID();
         AuthUser user = mock(AuthUser.class);
         when(user.getId()).thenReturn(userId);
@@ -122,14 +123,35 @@ class AuditRequestContextFilterTest {
 
         filter.doFilter(request, response, chain);
 
-        verify(auditService, times(1)).logHttpOperation(
-                eq(userId),
-                eq("auditor"),
-                eq("GET"),
-                eq("/api/admin/audit-logs"),
-                eq("api/admin/audit-logs"),
-                eq(200),
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void successfulHeartbeatIsNoiseButHeartbeatFailureIsRetained() throws Exception {
+        MockHttpServletRequest success = new MockHttpServletRequest(
+                "POST", "/api/task-claims/EXPENSE_APPROVE/abc/heartbeat");
+        MockHttpServletResponse successResponse = new MockHttpServletResponse();
+        filter.doFilter(success, successResponse, (req, resp) -> { });
+        verifyNoInteractions(auditService);
+
+        MockHttpServletRequest failed = new MockHttpServletRequest(
+                "POST", "/api/task-claims/EXPENSE_APPROVE/abc/heartbeat");
+        MockHttpServletResponse failedResponse = new MockHttpServletResponse();
+        filter.doFilter(failed, failedResponse, (req, resp) -> failedResponse.setStatus(409));
+        verify(auditService).logHttpOperation(
+                isNull(), isNull(), eq("POST"),
+                eq("/api/task-claims/EXPENSE_APPROVE/abc/heartbeat"),
+                eq("api/task-claims/EXPENSE_APPROVE"), eq(409),
                 longThat(value -> value >= 0));
+    }
+
+    @Test
+    void reviewedStageCountsAreSuppressedOnlyOnSuccess() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/sales/orders/progress/stage-counts");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        filter.doFilter(request, response, (req, resp) -> { });
+        verifyNoInteractions(auditService);
     }
 
     @Test

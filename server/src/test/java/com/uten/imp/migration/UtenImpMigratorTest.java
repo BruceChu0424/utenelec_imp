@@ -37,8 +37,9 @@ class UtenImpMigratorTest {
                 .containsExactly("*:pending");
         assertThat(configuration.isValidateMigrationNaming()).isTrue();
         assertThat(configuration.getCallbacks())
-                .hasSize(1)
-                .allMatch(AppliedMigrationCompatibilityCallback.class::isInstance);
+                .hasSize(2)
+                .anyMatch(AppliedMigrationCompatibilityCallback.class::isInstance)
+                .anyMatch(AuditFreshStartGuardCallback.class::isInstance);
         assertThat(configuration.isValidateOnMigrate()).isTrue();
         assertThat(configuration.isFailOnMissingLocations()).isTrue();
         assertThat(configuration.getConnectRetries()).isEqualTo(3);

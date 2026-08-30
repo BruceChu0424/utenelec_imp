@@ -256,7 +256,7 @@ public class UserAccountAdminService {
         invalidateAllSessions(id);
         // 显式审计：管理员重置他人密码是安全敏感事件。绝不记录明文，只记模式与目标。
         var actor = support.requireCurrentUser();
-        auditService.logExplicit(
+        auditService.logCommitted(
                 actor.getId(),
                 actor.getLoginAccount(),
                 "password_temporary_reset",
@@ -360,7 +360,7 @@ public class UserAccountAdminService {
         // 显式审计：权限升降级是安全敏感事件，单独记一条带方向的业务事件
         // （拦截器层只记 HTTP 调用、不分授/收）。
         var actor = support.requireCurrentUser();
-        auditService.logExplicit(
+        auditService.logCommitted(
                 actor.getId(),
                 actor.getLoginAccount(),
                 superAdmin ? "super_admin_grant" : "super_admin_revoke",
@@ -393,7 +393,7 @@ public class UserAccountAdminService {
         // It invalidates access JWTs; refresh tokens require explicit family revocation.
         refreshTokenRepo.revokeAllByUserId(id);
         var actor = support.requireCurrentUser();
-        auditService.logExplicit(
+        auditService.logCommitted(
                 actor.getId(),
                 actor.getLoginAccount(),
                 remoteAccess ? "remote_access_grant" : "remote_access_revoke",

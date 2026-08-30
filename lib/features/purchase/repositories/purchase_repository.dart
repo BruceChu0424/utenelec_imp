@@ -89,6 +89,20 @@ class PurchaseRepository {
     ];
   }
 
+  /// 货品 → 最近一次订货供应商（订货编辑页行级供应商「学习预填」用）。
+  /// 仅订货单仓库有此端点；无历史货品不在返回 Map 中。
+  Future<Map<String, String>> lastSuppliersByGoods(Set<String> goodsIds) async {
+    if (goodsIds.isEmpty) return const {};
+    final json = await api.get(
+      '$_base/last-suppliers',
+      query: {'goodsIds': goodsIds.join(',')},
+    );
+    return {
+      for (final entry in json.entries)
+        if (entry.value != null) entry.key: entry.value as String,
+    };
+  }
+
   Future<PurchaseDocDetail> update(String id, Map<String, dynamic> body) async {
     final json = await api.put(
       ApiEndpoints.purchaseDoc(type.pathSegment, id),

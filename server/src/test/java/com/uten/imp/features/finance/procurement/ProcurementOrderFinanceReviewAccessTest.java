@@ -306,7 +306,8 @@ class ProcurementOrderFinanceReviewAccessTest {
                 mock(PurchaseLineUnitPolicy.class),
                 projection,
                 mock(ProcurementArrivalControlPort.class),
-                access);
+                access,
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
         return new PurchaseFixture(
                 orderId, ownerId, service, orders, items, projection, access);
     }
@@ -365,7 +366,8 @@ class ProcurementOrderFinanceReviewAccessTest {
                 projection,
                 mock(ProcurementArrivalControlPort.class),
                 access,
-                mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class));
+                mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
         return new SubcontractFixture(
                 orderId, ownerId, service, orders, items, projection, access);
     }

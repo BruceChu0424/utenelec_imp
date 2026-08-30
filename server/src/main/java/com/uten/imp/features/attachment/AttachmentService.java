@@ -250,7 +250,8 @@ public class AttachmentService implements AttachmentAccessPort {
         StorageService.PresignedDownload grant = storage.presignDownload(
                 attachment.getStorageKey(), attachment.getStorageVersion());
         audit.logExplicit(user.getId(), user.getLoginAccount(),
-                "attachment_download_grant", "attachments", id.toString(), storage.backend());
+                "attachment_download_grant", "attachments",
+                "附件=" + id + "；存储=" + storage.backend(), "success");
         return new AttachmentDownloadResponse(grant.url(), grant.expiresAt());
     }
 
@@ -343,7 +344,8 @@ public class AttachmentService implements AttachmentAccessPort {
                 ? metadata.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
         // 与 downloadGrant（OSS/通用入口）对等的业务级下载审计：谁在何时取走了哪个附件。
         audit.logExplicit(user.getId(), user.getLoginAccount(),
-                "attachment_download_raw", "attachments", metadata.getId().toString(), storage.backend());
+                "attachment_download_raw", "attachments",
+                "附件=" + metadata.getId() + "；存储=" + storage.backend(), "success");
         return new RawDownload(input, contentType, fileName);
     }
 

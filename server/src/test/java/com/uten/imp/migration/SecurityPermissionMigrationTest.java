@@ -351,7 +351,14 @@ class SecurityPermissionMigrationTest {
                           'category_master_code_sequences', 'business_document_sequences',
                           'production_product_no_sequences',
                           'report_materialized_view_refresh_state', 'password_history',
-                          'refresh_tokens', 'visitor_refresh_tokens', 'visitor_sms_codes'
+                          'refresh_tokens', 'visitor_refresh_tokens', 'visitor_sms_codes',
+                          'notices', 'notice_user_states', 'notice_acknowledgments',
+                          'notice_blessings', 'business_outbox',
+                          'attachment_object_outbox', 'account_flow_monthly_summaries',
+                          'production_daily_report_commands',
+                          'production_fqc_release_commands',
+                          'warehouse_arrival_registration_commands',
+                          'production_material_analysis_commands'
                       )
                       and c.relname not like 'legacy_migration_%'
                       and not exists (

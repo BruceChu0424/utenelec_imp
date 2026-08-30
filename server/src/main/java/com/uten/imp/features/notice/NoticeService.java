@@ -369,7 +369,7 @@ public class NoticeService {
                     .toList());
         }
         // 人工发布公告：V424 起 notices 表不再走触发器审计，这里补显式用户操作记录
-        audit.logExplicit(u.getId(), u.getLoginAccount(),
+        audit.logCommitted(u.getId(), u.getLoginAccount(),
                 "notice_publish", "notices", n.getTitle(), "success");
         return toDto(n, null, u.getId());
     }
@@ -450,8 +450,11 @@ public class NoticeService {
         if (!"bless".equals(effectiveInteractionMode(n))) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "该通知不支持祝福");
         }
-        blessRepo.deleteByNoticeIdAndUserId(id, userId);
+        long deleted = blessRepo.deleteByNoticeIdAndUserId(id, userId);
         blessRepo.flush();
+        if (deleted > 0) {
+            auditExplicit("notice_bless_withdraw", n.getTitle());
+        }
         return blessRepo.countByNoticeId(id);
     }
 
@@ -634,6 +637,11 @@ public class NoticeService {
                     type, e.getId(), e.getFullName(), eventLabelFor(type, years), publisher);
             published++;
         }
+        if (published > 0) {
+            auditExplicit(
+                    "notice_celebration_batch_publish",
+                    "庆典批量发布：成功 " + published + " 条，跳过 " + skipped + " 条");
+        }
         return new CelebrationBatchResult(published, skipped);
     }
 
@@ -717,6 +725,7 @@ public class NoticeService {
         if (changed) {
             stateRepo.save(st);
         }
+        auditExplicit("view_notice", n.getTitle());
     }
 
     /**
@@ -739,6 +748,7 @@ public class NoticeService {
         if (st.getPopupAcknowledgedAt() == null) {
             st.setPopupAcknowledgedAt(Instant.now());
             stateRepo.save(st);
+            auditExplicit("notice_popup_ack", n.getTitle());
         }
     }
 
@@ -778,7 +788,10 @@ public class NoticeService {
     public void markAllRead() {
         UUID userId = requireStaffId();
         tx.bind();
-        stateRepo.markAllVisibleRead(userId);
+        int changed = stateRepo.markAllVisibleRead(userId);
+        if (changed > 0) {
+            auditExplicit("notice_read_all", "全部可见通知，共 " + changed + " 条");
+        }
     }
 
     /** 按业务事件来源统计当前用户未读通知数（如销售订单完工提醒徽章）。 */
@@ -1197,7 +1210,7 @@ public class NoticeService {
         if (u == null || u.isVisitor()) {
             return;
         }
-        audit.logExplicit(u.getId(), u.getLoginAccount(),
+        audit.logCommitted(u.getId(), u.getLoginAccount(),
                 action, "notices", targetId, "success");
     }
 

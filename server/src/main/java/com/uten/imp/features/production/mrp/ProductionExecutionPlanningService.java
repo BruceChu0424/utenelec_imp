@@ -431,17 +431,19 @@ public class ProductionExecutionPlanningService {
                                     basisOutputQty,
                                     allowPartialPackage))));
         }
-        // 收集所有未维护 BOM 的正数量成品行；即使全部缺 BOM，也返回快照供前端精确提示。
-        // 正式保存草案/审核下达由共享校验器 fail-closed，禁止形成不完整排产方案。
-        List<UUID> rawNoBomPlanItemIds = allSourceItemIds.stream()
+        // 先收集没有直接生产物料子项的正数量成品行。有精确物料分析谱系的行
+        // 是合法零料直制；只有无法证明分析来源的历史/手工行才保留为未解决谱系。
+        List<UUID> zeroMaterialCandidatePlanItemIds = allSourceItemIds.stream()
                 .filter(id -> !lines.containsKey(id))
                 .toList();
         List<CompleteKitAllocator.ProductLine> zeroMaterialLines =
-                authorizedZeroMaterialLines(planId, rawNoBomPlanItemIds, lock);
+                analysisBackedZeroMaterialLines(
+                        planId, zeroMaterialCandidatePlanItemIds, lock);
         Set<UUID> authorizedZeroIds = zeroMaterialLines.stream()
                 .map(CompleteKitAllocator.ProductLine::sourcePlanItemId)
                 .collect(java.util.stream.Collectors.toSet());
-        List<UUID> noBomPlanItemIds = rawNoBomPlanItemIds.stream()
+        List<UUID> unresolvedZeroMaterialLineageIds =
+                zeroMaterialCandidatePlanItemIds.stream()
                 .filter(id -> !authorizedZeroIds.contains(id)).toList();
         List<CompleteKitAllocator.ProductLine> productLines = new ArrayList<>();
         lines.values().stream().map(LineAccumulator::toProductLine)
@@ -479,12 +481,14 @@ public class ProductionExecutionPlanningService {
                 PlanningPackageFingerprint.sha256(fingerprintParts),
                 List.copyOf(productLines),
                 Map.copyOf(availability),
-                List.copyOf(noBomPlanItemIds));
+                List.copyOf(unresolvedZeroMaterialLineageIds));
     }
 
-    private List<CompleteKitAllocator.ProductLine> authorizedZeroMaterialLines(
-            UUID planId, List<UUID> noBomPlanItemIds, boolean lock) {
-        if (noBomPlanItemIds.isEmpty()) return List.of();
+    private List<CompleteKitAllocator.ProductLine> analysisBackedZeroMaterialLines(
+            UUID planId,
+            List<UUID> zeroMaterialCandidatePlanItemIds,
+            boolean lock) {
+        if (zeroMaterialCandidatePlanItemIds.isEmpty()) return List.of();
         String lockClause = lock ? " FOR UPDATE OF i" : "";
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT i.id, COALESCE(i.line_no,0), i.goods_id, i.color_id,
@@ -502,11 +506,11 @@ public class ProductionExecutionPlanningService {
                          COALESCE(i.line_no,0), i.id
                 """ + lockClause)
                 .setParameter("planId", planId)
-                .setParameter("ids", noBomPlanItemIds));
+                .setParameter("ids", zeroMaterialCandidatePlanItemIds));
         List<CompleteKitAllocator.ProductLine> result = new ArrayList<>();
         for (Object[] row : rows) {
             if (row[13] == null) {
-                continue; // legacy/history remains visible as unresolved no-BOM.
+                continue; // Legacy/manual row remains unresolved without analysis lineage.
             }
             UUID itemId = (UUID) row[0];
             BigDecimal unitRate = decimal(row[5]);
@@ -746,7 +750,7 @@ public class ProductionExecutionPlanningService {
             String fingerprint,
             List<CompleteKitAllocator.ProductLine> productLines,
             Map<CompleteKitAllocator.MaterialKey, BigDecimal> availability,
-            List<UUID> noBomPlanItemIds) {
+            List<UUID> unresolvedZeroMaterialLineageIds) {
     }
 
     private static final class LineAccumulator {

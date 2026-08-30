@@ -24,6 +24,7 @@ public record AuditLogDetail(
         String actorDepartment,
         String actorPosition,
         String actorDisplay,
+        String actorType,
         String action,
         String targetType,
         String targetId,
@@ -63,6 +64,7 @@ public record AuditLogDetail(
             AuditEventInterpreter interpreter,
             AuditActorDirectory.ActorProfile profile) {
         AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(value);
+        AuditActorPresentation.View actor = AuditActorPresentation.of(value, profile);
         return new AuditLogDetail(
                 value.getId(),
                 value.getActorId(),
@@ -70,9 +72,8 @@ public record AuditLogDetail(
                 profile == null ? null : profile.name(),
                 profile == null ? null : profile.departmentName(),
                 profile == null ? null : profile.positionName(),
-                profile == null || profile.displayName().isBlank()
-                        ? value.getActorAccount()
-                        : profile.displayName(),
+                actor.displayName(),
+                actor.actorType(),
                 value.getAction(),
                 value.getTargetType(),
                 value.getTargetId(),

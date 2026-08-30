@@ -188,8 +188,15 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // 顶层产品无 BOM（原材料/叶子件，不能再细分）合法，按计划行直接投产。
-    final leafProductCount = widget.preview.noBomPlanItemIds.length;
+    // 服务端已冻结为 DIRECT_MAKE 的零料段才是“无下层物料直接自制”；
+    // unresolvedZeroMaterialLineageIds 是旧计划缺分析谱系，不能拿来冒充叶子件。
+    final directMakeCount = widget.preview.executionSegments
+        .where(
+          (segment) =>
+              segment.materialRequirementMode == 'ZERO_MATERIAL' &&
+              segment.zeroMaterialReason == 'DIRECT_MAKE',
+        )
+        .length;
     final hasShortage =
         _buckets.buyShortage.isNotEmpty ||
         _buckets.makeShortage.isNotEmpty ||
@@ -286,7 +293,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                   materials: _buckets.subcontractShortage,
                   hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
                 ),
-              if (leafProductCount > 0)
+              if (directMakeCount > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: UtenSpacing.s8),
                   child: _notice(
@@ -294,8 +301,8 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                     color: theme.colorScheme.primary,
                     icon: Icons.info_outline_rounded,
                     text:
-                        '另有 $leafProductCount 个产品为原材料/叶子件(无组成 BOM，不能再细分)，'
-                        '将按计划行直接投产报工。',
+                        '另有 $directMakeCount 个产品没有下层领用物料，将按直接自制投产；'
+                        '审核下达后不生成空领料单。',
                   ),
                 ),
             ],

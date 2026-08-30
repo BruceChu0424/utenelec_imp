@@ -24,6 +24,8 @@ public class AuditLogRow {
     private final String actorPosition;
     /** 列表直接展示的"姓名（账号）"。 */
     private final String actorDisplay;
+    /** 中文主体类型：人员 / 未识别访问 / 系统任务。 */
+    private final String actorType;
     private final String action;
     private final String targetType;
     private final String targetId;
@@ -38,6 +40,8 @@ public class AuditLogRow {
     private final String actionLabel;
     private final String objectLabel;
     private final String summary;
+    /** 脱敏后的中文字段变化摘要；列表关联下钻无需逐条请求详情。 */
+    private final String changeSummary;
     private final String riskLevel;
     private final String riskReason;
     private final String eventCategory;
@@ -67,6 +71,7 @@ public class AuditLogRow {
             String actionLabel,
             String objectLabel,
             String summary,
+            String changeSummary,
             String riskLevel,
             String riskReason,
             String eventCategory,
@@ -85,7 +90,15 @@ public class AuditLogRow {
         this.actorName = profile == null ? null : profile.name();
         this.actorDepartment = profile == null ? null : profile.departmentName();
         this.actorPosition = profile == null ? null : profile.positionName();
-        this.actorDisplay = resolveActorDisplay(actorId, actorAccount, profile);
+        AuditActorPresentation.View actor = AuditActorPresentation.of(
+                actorId != null,
+                actorAccount,
+                action,
+                eventCategory,
+                eventSource,
+                profile);
+        this.actorDisplay = actor.displayName();
+        this.actorType = actor.actorType();
         this.action = action;
         this.targetType = targetType;
         this.targetId = targetId;
@@ -97,6 +110,7 @@ public class AuditLogRow {
         this.actionLabel = actionLabel;
         this.objectLabel = objectLabel;
         this.summary = summary;
+        this.changeSummary = changeSummary;
         this.riskLevel = riskLevel;
         this.riskReason = riskReason;
         this.eventCategory = eventCategory;
@@ -136,6 +150,7 @@ public class AuditLogRow {
                 event.actionLabel(),
                 event.objectLabel(),
                 event.summary(),
+                event.changeSummary(),
                 event.riskLevel(),
                 event.riskReason(),
                 event.category(),
@@ -148,19 +163,6 @@ public class AuditLogRow {
                 a.getStatusCode(),
                 a.getDurationMs(),
                 a.getCreatedAt());
-    }
-
-    private static String resolveActorDisplay(
-            UUID actorId,
-            String actorAccount,
-            AuditActorDirectory.ActorProfile profile) {
-        if (profile != null && !profile.displayName().isBlank()) {
-            return profile.displayName();
-        }
-        if (actorAccount != null && !actorAccount.isBlank()) {
-            return actorAccount;
-        }
-        return actorId == null ? "系统任务" : "未知用户";
     }
 
     private static String blankToNull(String value) {

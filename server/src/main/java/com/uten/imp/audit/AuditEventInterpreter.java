@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -35,7 +39,20 @@ public class AuditEventInterpreter {
     private static final Pattern UUID_PATTERN =
             Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
                     + "[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+    /** 快照字段值里的 ISO 时间戳(含可选秒/毫秒/时区偏移；日期-only 不匹配，保持原样)。 */
+    private static final Pattern INSTANT_PATTERN = Pattern.compile(
+            "^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?"
+                    + "(Z|[+-]\\d{2}:?\\d{2})?$");
+    private static final Pattern SAFE_BUSINESS_REFERENCE = Pattern.compile(
+            "^[\\p{L}\\p{N}][\\p{L}\\p{N}._\\-/]{0,63}$");
+    private static final ZoneId BEIJING_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final DateTimeFormatter BEIJING_MINUTES =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final List<String> GENERIC_VERBS = List.of("查看", "新增", "修改", "删除");
+    private static final List<String> NON_OBJECT_PATH_SEGMENTS = List.of(
+            "list", "count", "pending-count", "host-pending-count", "type-counts",
+            "summary", "export", "download", "heartbeat", "capability", "preview",
+            "search", "tree", "subtree", "arrivals", "unread-count");
 
     /**
      * 从 before/after 快照里提取"人看得懂"的对象名时优先尝试的字段。
@@ -87,6 +104,9 @@ public class AuditEventInterpreter {
         String targetName = targetDisplayName(value);
         if (targetName.isBlank()) {
             targetName = businessTargetName(value);
+        }
+        if (targetName.isBlank()) {
+            targetName = requestTargetName(value);
         }
         String pageLabel = pageLabel(path);
         String resultLabel = resultLabel(value.getResult(), value.getStatusCode());
@@ -213,15 +233,23 @@ public class AuditEventInterpreter {
         if ("notice_acknowledge".equals(action)) return "确认收到通知";
         if ("notice_todo_complete".equals(action)) return "完成待办任务";
         if ("notice_bless".equals(action)) return "回复庆典祝福";
+        if ("notice_bless_withdraw".equals(action)) return "撤回庆典祝福";
+        if ("view_notice".equals(action) || "notice_read".equals(action)) return "查看通知";
+        if ("notice_read_all".equals(action)) return "将全部通知标为已读";
+        if ("notice_popup_ack".equals(action)) return "确认关闭通知提醒";
+        if ("notice_celebration_batch_publish".equals(action)) return "批量发布庆典祝福";
         if ("notice_delete".equals(action)) return "移除通知";
         // 任务认领（HR 任务中心 + 通用软认领）
         if ("hr_task_claim".equals(action)) return "认领HR任务";
         if ("hr_task_release".equals(action)) return "释放HR任务";
         if ("hr_task_takeover".equals(action)) return "接管HR任务";
+        if ("hr_task_renew".equals(action)) return "续租HR任务";
         if ("task_claim".equals(action)) return "认领任务";
         if ("task_release".equals(action)) return "释放任务";
         if ("task_takeover".equals(action)) return "接管任务";
+        if ("task_renew".equals(action)) return "续租任务认领(自动协调)";
         if ("task_force_release".equals(action)) return "强制释放任务";
+        if ("audit_retention_failed".equals(action)) return "审计留存任务失败";
         if (path.contains("/approve")) return "审批通过";
         if (path.contains("/reject")) return "驳回";
         if (path.contains("/submit")) return "提交";
@@ -253,7 +281,7 @@ public class AuditEventInterpreter {
             case "insert", "http_post" -> "新增";
             case "update", "http_put", "http_patch" -> "修改";
             case "delete", "http_delete" -> "删除";
-            default -> humanize(action);
+            default -> "其他操作";
         };
     }
 
@@ -271,16 +299,16 @@ public class AuditEventInterpreter {
             if (segments.length > 0) {
                 String first = segments[0];
                 String asTable = first.replace('-', '_');
-                return TARGET_LABELS.getOrDefault(asTable, humanize(first));
+                return TARGET_LABELS.getOrDefault(asTable, "其他业务对象");
             }
         }
-        return humanize(target);
+        return "其他业务对象";
     }
 
     /** export_purchase_report → 导出采购报表。 */
     private String exportLabel(String action) {
         String subject = action.substring("export_".length());
-        return "导出" + EXPORT_SUBJECTS.getOrDefault(subject, humanize(subject));
+        return "导出" + EXPORT_SUBJECTS.getOrDefault(subject, "其他业务数据");
     }
 
     /**
@@ -305,7 +333,8 @@ public class AuditEventInterpreter {
             }
         }
         if (!targetName.isBlank()) {
-            text.append(' ').append(targetName);
+            text.append(targetName.startsWith("记录 ") ? " · " : " ")
+                    .append(targetName);
         }
         boolean dataChange = "update".equals(action) && !changes.isEmpty();
         if (dataChange) {
@@ -425,12 +454,17 @@ public class AuditEventInterpreter {
             main = normalized.substring(0, separator);
             extra = normalized.substring(separator + 1);
         }
-        String label = RESULT_LABELS.getOrDefault(main, main);
+        String label = RESULT_LABELS.get(main);
+        if (label == null) {
+            label = statusCode != null && statusCode >= 400
+                    ? "失败"
+                    : "结果待核查";
+        }
         if (statusCode != null && statusCode >= 400 && "成功".equals(label)) {
             label = "失败";
         }
         if (!extra.isBlank()) {
-            label = label + "；" + RESULT_LABELS.getOrDefault(extra, extra);
+            label = label + "；" + RESULT_LABELS.getOrDefault(extra, "补充信息待核查");
         }
         return label;
     }
@@ -502,11 +536,79 @@ public class AuditEventInterpreter {
             return "";
         }
         String trimmed = id.trim();
-        if (trimmed.startsWith("/") || trimmed.contains(";")
+        if (trimmed.startsWith("/") || trimmed.contains(";") || trimmed.contains("；")
                 || UUID_PATTERN.matcher(trimmed).matches()) {
             return "";
         }
-        return trimmed;
+        return translateBusinessReference(trimmed);
+    }
+
+    /**
+     * GET detail routes may safely expose a short record reference without
+     * retaining query strings or rendering the full internal API path.
+     */
+    private static String requestTargetName(AuditLog value) {
+        if (!"request".equals(value.getEventSource())
+                || !"http_get".equals(normalized(value.getAction()))) {
+            return "";
+        }
+        String path = value.getHttpPath();
+        if (path == null || path.isBlank()) {
+            return "";
+        }
+        String[] segments = path.split("/");
+        String candidate = "";
+        for (int index = segments.length - 1; index >= 0; index--) {
+            if (!segments[index].isBlank()) {
+                candidate = segments[index].trim();
+                break;
+            }
+        }
+        String lowered = candidate.toLowerCase(Locale.ROOT);
+        if (candidate.isBlank() || NON_OBJECT_PATH_SEGMENTS.contains(lowered)) {
+            return "";
+        }
+        if (UUID_PATTERN.matcher(candidate).matches()) {
+            return "记录 " + candidate.substring(0, 8) + "…";
+        }
+        boolean hasDigit = candidate.chars().anyMatch(Character::isDigit);
+        boolean hasLetter = candidate.chars().anyMatch(Character::isLetter);
+        if (SAFE_BUSINESS_REFERENCE.matcher(candidate).matches()
+                && hasDigit
+                && (hasLetter || candidate.contains("-") || candidate.contains("/"))) {
+            return "记录 " + candidate;
+        }
+        return "";
+    }
+
+    private static String translateBusinessReference(String value) {
+        Map<String, String> taskTypes = Map.of(
+                "confirm", "转正任务",
+                "birthday", "生日任务",
+                "anniversary", "入职周年任务",
+                "newhire", "新入职任务",
+                "expense_approve", "费用报销审批",
+                "purchase_decompose", "采购申请分解",
+                "sales_order_approve", "销售订单审核",
+                "fulfillment_task_edit", "库存任务编辑",
+                "fulfillment_task_approve", "库存任务审核");
+        int separator = value.indexOf(" · ");
+        if (separator > 0) {
+            String prefix = value.substring(0, separator).trim().toLowerCase(Locale.ROOT);
+            String translated = taskTypes.get(prefix);
+            return translated == null
+                    ? value
+                    : translated + value.substring(separator);
+        }
+        int slash = value.indexOf('/');
+        if (slash > 0) {
+            String prefix = value.substring(0, slash).trim().toLowerCase(Locale.ROOT);
+            String translated = taskTypes.get(prefix);
+            return translated == null
+                    ? value
+                    : translated + " · " + value.substring(slash + 1);
+        }
+        return value;
     }
 
     private static String firstNameKey(JsonNode node) {
@@ -848,6 +950,7 @@ public class AuditEventInterpreter {
         values.put("production_fqc_recovery_allocation_events", "FQC补产分配事件");
         values.put("production_fqc_recovery_cancellation_events", "FQC补产取消事件");
         values.put("production_fqc_replenishment_cycles", "FQC补产周期");
+        values.put("production_fqc_replenishment_cycle_cancellations", "FQC补产周期取消记录");
         values.put("production_fqc_replenishment_tasks", "FQC补产任务");
         values.put("production_fqc_replenishment_attempts", "FQC补产尝试");
         values.put("production_fqc_replenishment_analysis_links", "FQC补产分析关联");
@@ -1023,6 +1126,7 @@ public class AuditEventInterpreter {
         values.put("expected_date", "预计日期");
         values.put("delivery_date", "交付日期");
         values.put("due_date", "交期");
+        values.put("due_at", "交期");
         values.put("start_date", "开始日期");
         values.put("end_date", "结束日期");
         values.put("approved_at", "审批时间");
@@ -1035,6 +1139,9 @@ public class AuditEventInterpreter {
         values.put("revoke_reason", "撤销原因");
         values.put("source_id", "来源单据");
         values.put("source_type", "来源类型");
+        values.put("cycle_id", "补产周期");
+        values.put("authorization_id", "补产授权");
+        values.put("reason_code", "原因代码");
         // 员工 / 组织
         values.put("full_name", "姓名");
         values.put("gender", "性别");
@@ -1162,10 +1269,10 @@ public class AuditEventInterpreter {
     }
 
     private static String fieldLabel(String field) {
-        return FIELD_LABELS.getOrDefault(field, field);
+        return FIELD_LABELS.getOrDefault(field, "其他字段");
     }
 
-    /** 变更值的可读化：空值/布尔/常见状态翻译，UUID 取前 8 位，长文本截断。 */
+    /** 值可读化：空值/布尔/常见状态翻译，时间戳转"yyyy-MM-dd HH:mm(北京时间)"，UUID 取前 8 位，长文本截断。 */
     private static String valueLabel(JsonNode node) {
         if (node == null || node.isNull() || node.isMissingNode()) {
             return "空";
@@ -1181,6 +1288,9 @@ public class AuditEventInterpreter {
         if (translated != null) {
             return translated;
         }
+        if (INSTANT_PATTERN.matcher(text).matches()) {
+            return beijingLabel(text);
+        }
         if (UUID_PATTERN.matcher(text).matches()) {
             return text.substring(0, 8) + "…";
         }
@@ -1188,6 +1298,24 @@ public class AuditEventInterpreter {
             return text.substring(0, MAX_VALUE_LENGTH) + "…";
         }
         return text;
+    }
+
+    /** 快照里的时间戳(如 approved_at/due_at)转北京时间的可读形式。 */
+    private static String beijingLabel(String text) {
+        String normalized = text.replace(' ', 'T');
+        try {
+            return OffsetDateTime.parse(normalized)
+                    .atZoneSameInstant(BEIJING_ZONE)
+                    .format(BEIJING_MINUTES) + "(北京时间)";
+        } catch (RuntimeException withOffsetFailed) {
+            try {
+                return LocalDateTime.parse(normalized)
+                        .atZone(BEIJING_ZONE)
+                        .format(BEIJING_MINUTES) + "(北京时间)";
+            } catch (RuntimeException alsoFailed) {
+                return text;
+            }
+        }
     }
 
     private static boolean nodesEqual(JsonNode left, JsonNode right) {
@@ -1261,11 +1389,6 @@ public class AuditEventInterpreter {
 
     private static String firstNonBlank(String first, String second) {
         return first != null && !first.isBlank() ? first : second;
-    }
-
-    private static String humanize(String value) {
-        if (value == null || value.isBlank()) return "";
-        return value.replace('_', ' ').replace('-', ' ').trim();
     }
 
     public record InterpretedEvent(

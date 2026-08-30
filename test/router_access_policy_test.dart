@@ -219,13 +219,14 @@ void main() {
     );
 
     test(
-      'purchase order creation deep link requires order create permission',
+      'purchase order create and detail deep links keep distinct authorities',
       () {
         expect(requiredAnyPermFor('/purchase/orders/new'), const [
           Perm.purchaseOrderCreate,
         ]);
         expect(requiredAnyPermFor('/purchase/orders/order-1'), const [
           Perm.purchaseOrderView,
+          Perm.financeOrderApprovalView,
         ]);
       },
     );

@@ -10,6 +10,8 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -76,6 +78,28 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
         }
         if (Boolean.TRUE.equals(row[0]) || !"使用".equals(row[2])) {
             throw conflict("客户已删除或停用，不能用于新业务");
+        }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public void requireSelectableSupplier(UUID supplierId) {
+        if (supplierId == null) throw validation("缺少供应商");
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT is_deleted, status, is_internal_workshop
+                FROM suppliers
+                WHERE id = :id
+                FOR SHARE
+                """).setParameter("id", supplierId));
+        if (rows.size() != 1) {
+            throw notFound("供应商不存在");
+        }
+        Object[] row = rows.getFirst();
+        boolean deleted = Boolean.TRUE.equals(row[0]);
+        boolean disabled = row[1] != null && !"使用".equals(row[1]);
+        boolean internalWorkshop = Boolean.TRUE.equals(row[2]);
+        if (deleted || disabled || internalWorkshop) {
+            throw conflict("供应商已删除、停用或属于内部车间，不能用于新业务");
         }
     }
 

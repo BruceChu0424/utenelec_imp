@@ -5,6 +5,7 @@ import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
@@ -24,11 +25,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -43,7 +46,7 @@ import java.util.UUID;
  * 默认按 created_at DESC（最新在前），单页最多 100 条（由 Pageables 收敛）。
  */
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 public class AuditQueryService {
 
     private static final List<String> FORCED_MEDIUM_RISK_ACTIONS = List.of(
@@ -57,6 +60,20 @@ public class AuditQueryService {
             "verify_local_audit_receipt");
     private static final List<String> DATA_EXPORT_ACTIONS = List.of(
             "download_payroll_slip");
+    private static final List<String> AUTOMATIC_ACTIVITY_ACTIONS = List.of(
+            "refresh_token",
+            "visitor_refresh_token");
+    private static final List<String> SUCCESS_RESULT_CODES = List.of(
+            "success",
+            "succeeded");
+    private static final Set<String> ALLOWED_RISK_LEVELS = Set.of(
+            "critical", "high", "medium", "low", "risky");
+    private static final Set<String> ALLOWED_OUTCOMES = Set.of("success", "failure");
+    private static final Set<String> ALLOWED_EVENT_CATEGORIES = Set.of(
+            "security", "authorization", "authentication", "export",
+            "data_change", "system", "business");
+    private static final Set<String> ALLOWED_EVENT_SOURCES = Set.of(
+            "request", "database", "business", "security");
     private static final Map<String, List<String>> OPERATION_ACTIONS = Map.of(
             "create", List.of("insert", "http_post"),
             "update", List.of("update", "http_put", "http_patch"),
@@ -79,14 +96,13 @@ public class AuditQueryService {
             new ExportColumn("actorName", "操作人姓名", ExportColumn.TEXT),
             new ExportColumn("actorDepartment", "操作人部门", ExportColumn.TEXT),
             new ExportColumn("actorPosition", "操作人职位", ExportColumn.TEXT),
+            new ExportColumn("actorType", "主体类型", ExportColumn.TEXT),
             new ExportColumn("actionLabel", "做了什么", ExportColumn.TEXT),
-            new ExportColumn("actionCode", "动作编码", ExportColumn.TEXT),
             new ExportColumn("objectLabel", "操作对象", ExportColumn.TEXT),
             new ExportColumn("targetName", "对象名称/单号", ExportColumn.TEXT),
             new ExportColumn("pageLabel", "所在页面", ExportColumn.TEXT),
             new ExportColumn("targetId", "对象 ID", ExportColumn.TEXT),
             new ExportColumn("outcome", "操作结果", ExportColumn.TEXT),
-            new ExportColumn("resultCode", "结果编码", ExportColumn.TEXT),
             new ExportColumn("riskLevel", "风险等级", ExportColumn.TEXT),
             new ExportColumn("riskReason", "风险原因", ExportColumn.TEXT),
             new ExportColumn("eventCategory", "事件类型", ExportColumn.TEXT),
@@ -114,16 +130,26 @@ public class AuditQueryService {
             new ExportColumn("httpPath", "HTTP 路径", ExportColumn.TEXT),
             new ExportColumn("statusCode", "HTTP 状态码", ExportColumn.TEXT),
             new ExportColumn("durationMs", "耗时(毫秒)", ExportColumn.TEXT),
-            new ExportColumn("requestId", "Request ID", ExportColumn.TEXT),
+            new ExportColumn("requestId", "操作关联编号", ExportColumn.TEXT),
             new ExportColumn("auditId", "审计日志 ID", ExportColumn.TEXT));
 
     private final AuditLogRepository repo;
     private final AuditEventInterpreter interpreter;
     private final AuditActorDirectory actorDirectory;
+    private final AuditSummaryAggregation summaryAggregation;
+
+    /** Package-local compatibility constructor for focused specification tests. */
+    AuditQueryService(
+            AuditLogRepository repo,
+            AuditEventInterpreter interpreter,
+            AuditActorDirectory actorDirectory) {
+        this(repo, interpreter, actorDirectory, null);
+    }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('audit_log:view')")
     public AuditPageResponse query(AuditSearchCriteria criteria, int page, int size) {
+        validateInvestigationScope(criteria);
         AuditSearchCriteria boundedCriteria = withResolvedSnapshot(criteria);
         long snapshotId = boundedCriteria.snapshotId();
         Specification<AuditLog> spec = specification(boundedCriteria);
@@ -152,24 +178,23 @@ public class AuditQueryService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('audit_log:view')")
     public AuditSummary summary(AuditSearchCriteria criteria) {
-        Specification<AuditLog> base = specification(withResolvedSnapshot(criteria));
-        long total = repo.count(base);
-        long risk = repo.count(base.and(riskSpecification("risky")));
-        long critical = repo.count(base.and(riskSpecification("critical")));
-        long failed = repo.count(base.and(outcomeSpecification("failure")));
-        long dataChanges = repo.count(base.and(categorySpecification("data_change")));
+        validateInvestigationScope(criteria);
+        AuditSearchCriteria bounded = withResolvedSnapshot(criteria);
+        Specification<AuditLog> base = specification(bounded);
+        return summaryAggregation.summarize(
+                base,
+                riskSpecification("risky"),
+                riskSpecification("critical"),
+                outcomeSpecification("failure"),
+                operationSpecification("write"),
+                bounded.dateFrom(),
+                bounded.dateTo());
+    }
 
-        LocalDate today = BusinessTime.today();
-        LocalDate trendStart = today.minusDays(6);
-        List<AuditSummary.DailyPoint> trend = new ArrayList<>();
-        for (int offset = 0; offset < 7; offset++) {
-            LocalDate date = trendStart.plusDays(offset);
-            Specification<AuditLog> day = createdAtDaySpecification(date);
-            long dayTotal = repo.count(base.and(day));
-            long dayRisk = repo.count(base.and(day).and(riskSpecification("risky")));
-            trend.add(new AuditSummary.DailyPoint(date, dayTotal, dayRisk));
-        }
-        return new AuditSummary(total, risk, critical, failed, dataChanges, List.copyOf(trend));
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('audit_log:view')")
+    public PageResponse<AuditActorOption> actors(String keyword, int page, int size) {
+        return actorDirectory.findActors(keyword, page, size);
     }
 
     /**
@@ -183,12 +208,13 @@ public class AuditQueryService {
     @PreAuthorize("hasAuthority('audit_log:view')"
             + " and hasAuthority('audit_log:export')")
     public ExportPayload export(AuditSearchCriteria criteria, int maxRows) {
+        validateInvestigationScope(criteria);
         if (maxRows < 1 || maxRows > 100_000) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
                     "导出行数上限配置异常，请先在系统设置中调整为 1 至 100000");
         }
-        int safeMaxRows = maxRows;
+        int safeMaxRows = Math.min(maxRows, 10_000);
         Specification<AuditLog> spec = specification(withResolvedSnapshot(criteria));
         long total = repo.count(spec);
         if (total > safeMaxRows) {
@@ -223,19 +249,18 @@ public class AuditQueryService {
                 ? ""
                 : row.getCreatedAt()
                         .atZoneSameInstant(BusinessTime.ZONE)
-                        .format(EXPORT_TIME) + "(北京)");
+                        .format(EXPORT_TIME) + "(北京时间)");
         exported.put("actor", row.getActorDisplay());
         exported.put("actorName", firstNonBlank(row.getActorName(), ""));
         exported.put("actorDepartment", firstNonBlank(row.getActorDepartment(), ""));
         exported.put("actorPosition", firstNonBlank(row.getActorPosition(), ""));
+        exported.put("actorType", row.getActorType());
         exported.put("actionLabel", row.getActionLabel());
-        exported.put("actionCode", row.getAction());
         exported.put("objectLabel", row.getObjectLabel());
         exported.put("targetName", firstNonBlank(row.getTargetName(), ""));
         exported.put("pageLabel", firstNonBlank(row.getPageLabel(), ""));
         exported.put("targetId", row.getTargetId());
         exported.put("outcome", failed(row) ? "失败" : "成功");
-        exported.put("resultCode", row.getResult());
         exported.put("riskLevel", riskLabel(row.getRiskLevel()));
         exported.put("riskReason", row.getRiskReason());
         exported.put("eventCategory", categoryLabel(row.getEventCategory()));
@@ -261,7 +286,7 @@ public class AuditQueryService {
                 ? ""
                 : value.getClientEventAt()
                         .atZoneSameInstant(BusinessTime.ZONE)
-                        .format(EXPORT_TIME));
+                        .format(EXPORT_TIME) + "(北京时间)");
         exported.put("deviceCaptureStatus", value.getDeviceCaptureStatus());
         exported.put("deviceProfileHash", value.getDeviceProfileHash());
         exported.put("ip", row.getIp());
@@ -278,8 +303,13 @@ public class AuditQueryService {
         if (row.getStatusCode() != null && row.getStatusCode() >= 400) {
             return true;
         }
-        return row.getResult() != null
-                && !"success".equalsIgnoreCase(row.getResult());
+        if (row.getResult() == null) {
+            return false;
+        }
+        String mainCode = row.getResult().split(";", 2)[0]
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        return !SUCCESS_RESULT_CODES.contains(mainCode);
     }
 
     private String riskLabel(String value) {
@@ -288,7 +318,7 @@ public class AuditQueryService {
             case "high" -> "高";
             case "medium" -> "中";
             case "low" -> "低";
-            default -> firstNonBlank(value, "未知");
+            default -> "未知";
         };
     }
 
@@ -301,7 +331,7 @@ public class AuditQueryService {
             case "data_change" -> "数据变更";
             case "system" -> "系统设置";
             case "business" -> "业务操作";
-            default -> firstNonBlank(value, "其他");
+            default -> "其他事件";
         };
     }
 
@@ -311,7 +341,7 @@ public class AuditQueryService {
             case "database" -> "数据库变更";
             case "security" -> "安全拦截";
             case "business" -> "业务事件";
-            default -> firstNonBlank(value, "其他");
+            default -> "其他记录来源";
         };
     }
 
@@ -320,8 +350,13 @@ public class AuditQueryService {
     }
 
     Specification<AuditLog> specification(AuditSearchCriteria criteria) {
+        validateFilterValues(criteria);
         String actorScope = normalizedActorScope(criteria.actorScope());
         String operationKind = normalizedOperationKind(criteria.operationKind());
+        String riskLevel = normalizedFilter(criteria.riskLevel());
+        String eventCategory = normalizedFilter(criteria.eventCategory());
+        String outcome = normalizedFilter(criteria.outcome());
+        String eventSource = normalizedFilter(criteria.eventSource());
         UUID parsedRequestId = parseRequestId(criteria.requestId());
         if (criteria.snapshotId() != null) {
             validateSnapshotId(criteria.snapshotId());
@@ -332,9 +367,41 @@ public class AuditQueryService {
                 ps.add(cb.like(cb.lower(root.get("action")),
                         criteria.action().trim().toLowerCase(Locale.ROOT) + "%"));
             }
-            if (hasText(criteria.actorAccount())) {
+            if (criteria.actorId() != null) {
+                ps.add(cb.equal(root.get("actorId"), criteria.actorId()));
+            } else if (hasText(criteria.actorAccount())) {
                 ps.add(cb.like(cb.lower(root.get("actorAccount")),
                         "%" + criteria.actorAccount().trim().toLowerCase(Locale.ROOT) + "%"));
+            }
+            if (criteria.activityOnly()) {
+                ps.add(cb.notEqual(cb.lower(root.get("eventSource")), "database"));
+                Expression<String> activityAction = cb.lower(root.get("action"));
+                Expression<String> activityResult = cb.lower(root.get("result"));
+                ps.add(cb.not(cb.and(
+                        activityAction.in(AUTOMATIC_ACTIVITY_ACTIONS),
+                        cb.equal(activityResult, "success"))));
+                Expression<String> requestMethod = cb.upper(root.get("httpMethod"));
+                Expression<String> requestPath = cb.lower(root.get("httpPath"));
+                Predicate automaticRead = cb.and(
+                        requestMethod.in(List.of("GET", "HEAD")),
+                        requestPath.in(AuditNoisePolicy.automaticReadPaths()));
+                Predicate automaticSessionRefresh = cb.and(
+                        cb.equal(requestMethod, "POST"),
+                        requestPath.in(AuditNoisePolicy.automaticSessionWritePaths()));
+                Predicate automaticHeartbeat = cb.and(
+                        cb.equal(requestMethod, "POST"),
+                        cb.like(requestPath, AuditNoisePolicy.heartbeatSqlLikePattern()));
+                Predicate successfulHttp = cb.or(
+                        cb.isNull(root.get("statusCode")),
+                        cb.lessThan(root.get("statusCode"), 400));
+                Predicate successfulResult = mainResultExpression(root, cb)
+                        .in(SUCCESS_RESULT_CODES);
+                Predicate historicalAutomaticSuccess = cb.and(
+                        cb.equal(cb.lower(root.get("eventSource")), "request"),
+                        cb.or(automaticRead, automaticSessionRefresh, automaticHeartbeat),
+                        successfulHttp,
+                        successfulResult);
+                ps.add(cb.not(historicalAutomaticSuccess));
             }
             if (hasText(criteria.targetType())) {
                 String normalizedTarget = criteria.targetType()
@@ -350,9 +417,9 @@ public class AuditQueryService {
                 ps.add(cb.equal(cb.lower(root.get("targetId")),
                         criteria.targetId().trim().toLowerCase(Locale.ROOT)));
             }
-            if (hasText(criteria.eventSource())) {
+            if (eventSource != null) {
                 ps.add(cb.equal(cb.lower(root.get("eventSource")),
-                        criteria.eventSource().trim().toLowerCase(Locale.ROOT)));
+                        eventSource));
             }
             if (parsedRequestId != null) {
                 ps.add(cb.equal(root.get("requestId"), parsedRequestId));
@@ -361,32 +428,21 @@ public class AuditQueryService {
                 ps.add(cb.lessThanOrEqualTo(root.get("id"), criteria.snapshotId()));
             }
             if (operationKind != null) {
-                Expression<String> action = cb.lower(root.<String>get("action"));
-                Predicate mappedAction = action.in(OPERATION_ACTIONS.get(operationKind));
-                if ("read".equals(operationKind)) {
-                    ps.add(cb.or(mappedAction, cb.like(action, "view!_%", '!')));
-                } else if ("delete".equals(operationKind)) {
-                    ps.add(cb.or(mappedAction, softDeletePredicate(root, cb, action)));
-                } else if ("update".equals(operationKind)) {
-                    ps.add(cb.and(mappedAction, cb.not(softDeletePredicate(root, cb, action))));
-                } else {
-                    ps.add(mappedAction);
-                }
+                ps.add(operationPredicate(root, cb, operationKind));
             }
             if (actorScope != null) {
                 var actorId = root.get("actorId");
-                var actorAccount = root.<String>get("actorAccount");
-                Predicate accountPresent = cb.and(
-                        cb.isNotNull(actorAccount),
-                        cb.notEqual(cb.trim(actorAccount), ""));
-                Predicate userActor = cb.or(
-                        cb.isNotNull(actorId), accountPresent);
+                Predicate anonymousEvidence = anonymousEvidencePredicate(root, cb);
+                Predicate userActor = cb.isNotNull(actorId);
                 Predicate systemActor = cb.and(
                         cb.isNull(actorId),
-                        cb.or(
-                                cb.isNull(actorAccount),
-                                cb.equal(cb.trim(actorAccount), "")));
-                ps.add("user".equals(actorScope) ? userActor : systemActor);
+                        cb.not(anonymousEvidence),
+                        failurePredicate(root, cb));
+                ps.add(switch (actorScope) {
+                    case "user" -> userActor;
+                    case "anonymous" -> anonymousEvidence;
+                    default -> systemActor;
+                });
             }
             if (hasText(criteria.keyword())) {
                 String pattern = "%" + escapeLike(
@@ -419,16 +475,47 @@ public class AuditQueryService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        if (hasText(criteria.riskLevel())) {
-            base = base.and(riskSpecification(criteria.riskLevel()));
+        if (riskLevel != null) {
+            base = base.and(riskSpecification(riskLevel));
         }
-        if (hasText(criteria.eventCategory())) {
-            base = base.and(categorySpecification(criteria.eventCategory()));
+        if (eventCategory != null) {
+            base = base.and(categorySpecification(eventCategory));
         }
-        if (hasText(criteria.outcome())) {
-            base = base.and(outcomeSpecification(criteria.outcome()));
+        if (outcome != null) {
+            base = base.and(outcomeSpecification(outcome));
         }
         return base;
+    }
+
+    static void validateFilterValues(AuditSearchCriteria criteria) {
+        validateAllowed(
+                criteria.riskLevel(), ALLOWED_RISK_LEVELS,
+                "风险等级仅支持严重、高、中、低、有风险");
+        validateAllowed(
+                criteria.outcome(), ALLOWED_OUTCOMES,
+                "结果仅支持成功、失败");
+        validateAllowed(
+                criteria.eventCategory(), ALLOWED_EVENT_CATEGORIES,
+                "事件类型仅支持安全事件、权限变更、登录认证、数据导出、数据变化、系统设置、业务操作");
+        validateAllowed(
+                criteria.eventSource(), ALLOWED_EVENT_SOURCES,
+                "记录来源仅支持页面操作、数据变化明细、业务事件、安全拦截");
+    }
+
+    private static void validateAllowed(
+            String value,
+            Set<String> allowed,
+            String message) {
+        String normalized = normalizedFilter(value);
+        if (normalized != null && !allowed.contains(normalized)) {
+            throw new ApiException(ErrorCode.MALFORMED_REQUEST, message);
+        }
+    }
+
+    private static String normalizedFilter(String value) {
+        return value == null || value.isBlank()
+                ? null
+                : value.trim().toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -476,7 +563,7 @@ public class AuditQueryService {
     private long validateSnapshotId(long snapshotId) {
         if (snapshotId < 0) {
             throw new ApiException(
-                    ErrorCode.MALFORMED_REQUEST, "snapshotId 不能小于 0");
+                    ErrorCode.MALFORMED_REQUEST, "查询快照编号不能小于 0");
         }
         return snapshotId;
     }
@@ -496,7 +583,7 @@ public class AuditQueryService {
         if (!OPERATION_ACTIONS.containsKey(normalized)) {
             throw new ApiException(
                     ErrorCode.MALFORMED_REQUEST,
-                    "operationKind 仅支持 create、update、delete、write、read");
+                    "操作类型仅支持新增、修改、删除、写操作、查看");
         }
         return normalized;
     }
@@ -506,10 +593,10 @@ public class AuditQueryService {
             return null;
         }
         String normalized = value.trim().toLowerCase(Locale.ROOT);
-        if (!List.of("user", "system").contains(normalized)) {
+        if (!List.of("user", "system", "anonymous").contains(normalized)) {
             throw new ApiException(
                     ErrorCode.MALFORMED_REQUEST,
-                    "actorScope 仅支持 user、system");
+                    "人员范围仅支持人员、匿名访问、系统任务");
         }
         return normalized;
     }
@@ -527,16 +614,143 @@ public class AuditQueryService {
         } catch (IllegalArgumentException exception) {
             throw new ApiException(
                     ErrorCode.MALFORMED_REQUEST,
-                    "requestId 必须为标准 UUID");
+                    "操作关联编号必须为标准 UUID");
         }
     }
 
-    private Specification<AuditLog> createdAtDaySpecification(LocalDate date) {
-        OffsetDateTime from = BusinessTime.startOfDay(date);
-        OffsetDateTime toExclusive = BusinessTime.startOfDay(date.plusDays(1));
-        return (root, q, cb) -> cb.and(
-                cb.greaterThanOrEqualTo(root.get("createdAt"), from),
-                cb.lessThan(root.get("createdAt"), toExclusive));
+    void validateInvestigationScope(AuditSearchCriteria criteria) {
+        if (hasText(criteria.requestId())) {
+            parseRequestId(criteria.requestId());
+            validateOptionalDateWindow(criteria.dateFrom(), criteria.dateTo());
+            return;
+        }
+        if ("anonymous".equals(normalizedActorScope(criteria.actorScope()))) {
+            if (criteria.dateFrom() == null || criteria.dateTo() == null) {
+                throw new ApiException(
+                        ErrorCode.MALFORMED_REQUEST,
+                        "查询匿名安全事件必须选择完整日期区间(北京时间)");
+            }
+            validateDateWindow(criteria.dateFrom(), criteria.dateTo());
+            return;
+        }
+        if ("system".equals(normalizedActorScope(criteria.actorScope()))) {
+            if (!criteria.activityOnly()) {
+                throw new ApiException(
+                        ErrorCode.MALFORMED_REQUEST,
+                        "系统异常只支持人员活动视图");
+            }
+            if (criteria.dateFrom() == null || criteria.dateTo() == null) {
+                throw new ApiException(
+                        ErrorCode.MALFORMED_REQUEST,
+                        "查询系统异常必须选择完整日期区间(北京时间)");
+            }
+            validateDateWindow(criteria.dateFrom(), criteria.dateTo());
+            return;
+        }
+        if (criteria.actorId() == null) {
+            throw new ApiException(
+                    ErrorCode.MALFORMED_REQUEST,
+                    "请先选择操作人员，再查询审计日志");
+        }
+        if (criteria.dateFrom() == null || criteria.dateTo() == null) {
+            throw new ApiException(
+                    ErrorCode.MALFORMED_REQUEST,
+                    "请选择完整的开始日期和结束日期(北京时间)");
+        }
+        validateDateWindow(criteria.dateFrom(), criteria.dateTo());
+    }
+
+    private void validateOptionalDateWindow(LocalDate dateFrom, LocalDate dateTo) {
+        if (dateFrom == null && dateTo == null) {
+            return;
+        }
+        if (dateFrom == null || dateTo == null) {
+            throw new ApiException(
+                    ErrorCode.MALFORMED_REQUEST,
+                    "开始日期和结束日期必须同时填写(北京时间)");
+        }
+        validateDateWindow(dateFrom, dateTo);
+    }
+
+    private void validateDateWindow(LocalDate dateFrom, LocalDate dateTo) {
+        if (dateFrom.isAfter(dateTo)) {
+            throw new ApiException(
+                    ErrorCode.MALFORMED_REQUEST,
+                    "开始日期不能晚于结束日期");
+        }
+        long inclusiveDays = ChronoUnit.DAYS.between(dateFrom, dateTo) + 1;
+        if (inclusiveDays > 31) {
+            throw new ApiException(
+                    ErrorCode.MALFORMED_REQUEST,
+                    "单次最多查询连续 31 天的审计日志，请缩小日期区间");
+        }
+    }
+
+    Specification<AuditLog> operationSpecification(String operationKind) {
+        String normalized = normalizedOperationKind(operationKind);
+        return (root, q, cb) -> operationPredicate(root, cb, normalized);
+    }
+
+    private Predicate operationPredicate(
+            Root<AuditLog> root,
+            CriteriaBuilder cb,
+            String operationKind) {
+        Expression<String> action = cb.lower(root.get("action"));
+        Expression<String> method = cb.upper(root.get("httpMethod"));
+        Expression<String> category = cb.lower(root.get("eventCategory"));
+        Predicate directDataAction = switch (operationKind) {
+            case "create" -> cb.equal(action, "insert");
+            case "update" -> cb.equal(action, "update");
+            case "delete" -> cb.equal(action, "delete");
+            case "write" -> action.in(List.of("insert", "update", "delete"));
+            case "read" -> cb.equal(action, "http_get");
+            default -> cb.disjunction();
+        };
+        Predicate methodMatch = switch (operationKind) {
+            case "create" -> cb.equal(method, "POST");
+            case "update" -> method.in(List.of("PUT", "PATCH"));
+            case "delete" -> cb.equal(method, "DELETE");
+            case "write" -> method.in(List.of("POST", "PUT", "PATCH", "DELETE"));
+            case "read" -> cb.equal(method, "GET");
+            default -> cb.disjunction();
+        };
+        Predicate userBusinessMethod = "read".equals(operationKind)
+                ? methodMatch
+                : cb.and(
+                        methodMatch,
+                        cb.not(category.in(List.of(
+                                "authentication", "security", "export"))),
+                        cb.not(cb.like(action, "view!_%", '!')));
+        Predicate effective = cb.or(directDataAction, userBusinessMethod);
+        if ("read".equals(operationKind)) {
+            return cb.or(effective, cb.like(action, "view!_%", '!'));
+        }
+        if ("delete".equals(operationKind)) {
+            return cb.or(effective, softDeletePredicate(root, cb, action));
+        }
+        if ("update".equals(operationKind)) {
+            return cb.and(effective, cb.not(softDeletePredicate(root, cb, action)));
+        }
+        return effective;
+    }
+
+    private Predicate anonymousEvidencePredicate(
+            Root<AuditLog> root,
+            CriteriaBuilder cb) {
+        var actorId = root.get("actorId");
+        Expression<String> account = cb.lower(cb.trim(root.get("actorAccount")));
+        Expression<String> action = cb.lower(root.get("action"));
+        Expression<String> eventSource = cb.lower(root.get("eventSource"));
+        Expression<String> category = cb.lower(root.get("eventCategory"));
+        Predicate notSystemAccount = cb.or(
+                cb.isNull(root.get("actorAccount")),
+                cb.not(account.in(List.of("system", "ops"))));
+        Predicate securityOrLogin = cb.or(
+                cb.equal(eventSource, "security"),
+                category.in(List.of("security", "authentication")),
+                cb.like(action, "%login%"),
+                cb.like(action, "%access_denied%"));
+        return cb.and(cb.isNull(actorId), notSystemAccount, securityOrLogin);
     }
 
     private boolean hasText(String value) {
@@ -611,17 +825,74 @@ public class AuditQueryService {
         };
     }
 
-    private Specification<AuditLog> outcomeSpecification(String outcome) {
+    Specification<AuditLog> outcomeSpecification(String outcome) {
         return (root, q, cb) -> {
             String normalized = outcome.trim().toLowerCase(Locale.ROOT);
-            var result = cb.lower(root.get("result"));
-            var failed = cb.or(
-                    cb.and(
-                            cb.isNotNull(root.get("statusCode")),
-                            cb.greaterThanOrEqualTo(root.get("statusCode"), 400)),
-                    cb.and(cb.isNotNull(root.get("result")), cb.notEqual(result, "success")));
+            Predicate failed = failurePredicate(root, cb);
             return "success".equals(normalized) ? cb.not(failed) : failed;
         };
+    }
+
+    private Predicate failurePredicate(
+            Root<AuditLog> root,
+            CriteriaBuilder cb) {
+        Predicate successfulResult = mainResultExpression(root, cb)
+                .in(SUCCESS_RESULT_CODES);
+        return cb.or(
+                cb.and(
+                        cb.isNotNull(root.get("statusCode")),
+                        cb.greaterThanOrEqualTo(root.get("statusCode"), 400)),
+                cb.and(
+                        cb.isNotNull(root.get("result")),
+                        cb.not(successfulResult)));
+    }
+
+    static boolean isSystemExceptionRecord(AuditLog value) {
+        if (value == null || value.getActorId() != null) {
+            return false;
+        }
+        String account = value.getActorAccount() == null
+                ? ""
+                : value.getActorAccount().trim().toLowerCase(Locale.ROOT);
+        if (!account.isBlank() && !List.of("system", "ops").contains(account)) {
+            return false;
+        }
+        String action = value.getAction() == null
+                ? ""
+                : value.getAction().trim().toLowerCase(Locale.ROOT);
+        String source = value.getEventSource() == null
+                ? ""
+                : value.getEventSource().trim().toLowerCase(Locale.ROOT);
+        String category = value.getEventCategory() == null
+                ? ""
+                : value.getEventCategory().trim().toLowerCase(Locale.ROOT);
+        if (account.isBlank()
+                && ("security".equals(source)
+                || List.of("security", "authentication").contains(category)
+                || action.contains("login")
+                || action.contains("access_denied"))) {
+            return false;
+        }
+        if (value.getStatusCode() != null && value.getStatusCode() >= 400) {
+            return true;
+        }
+        if (value.getResult() == null) {
+            return false;
+        }
+        String main = value.getResult().split(";", 2)[0]
+                .trim().toLowerCase(Locale.ROOT);
+        return !SUCCESS_RESULT_CODES.contains(main);
+    }
+
+    private Expression<String> mainResultExpression(
+            Root<AuditLog> root,
+            CriteriaBuilder cb) {
+        return cb.lower(cb.trim(cb.function(
+                "split_part",
+                String.class,
+                root.get("result"),
+                cb.literal(";"),
+                cb.literal(1))));
     }
 
     @Transactional(readOnly = true)

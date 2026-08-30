@@ -57,6 +57,8 @@ MIGRATOR_APPLICATION_CLASSES = frozenset(
         "com/uten/imp/migration/UtenImpMigrator$1.class",
         "com/uten/imp/migration/UtenImpMigrator$MigrationActions.class",
         "com/uten/imp/migration/UtenImpMigrator$MigrationActionsFactory.class",
+        "com/uten/imp/migration/AppliedMigrationCompatibilityCallback.class",
+        "com/uten/imp/migration/AuditFreshStartGuardCallback.class",
     }
 )
 MIGRATOR_FORBIDDEN_CLASS_PREFIXES = (

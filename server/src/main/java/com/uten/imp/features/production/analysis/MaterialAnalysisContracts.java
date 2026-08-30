@@ -313,6 +313,7 @@ public final class MaterialAnalysisContracts {
             BigDecimal readyFinishQty,
             BigDecimal readyShipQty,
             BigDecimal readinessRatio,
+            boolean hasProductionMaterialChildren,
             UUID parentAnalysisLineId,
             String parentGoodsName,
             String planExecutionStatus,

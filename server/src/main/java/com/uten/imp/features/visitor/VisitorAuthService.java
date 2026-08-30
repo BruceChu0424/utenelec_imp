@@ -135,7 +135,7 @@ public class VisitorAuthService {
         String access = jwtService.issueVisitorAccess(
                 account.getId(), account.getVisitorNo(), account.getAvatarSeed(), VISITOR_PERMS);
         String refresh = refreshService.issue(account.getId(), deviceInfo);
-        audit.logExplicit(account.getId(), maskPhone(phone), "visitor_login",
+        audit.logCommitted(account.getId(), maskPhone(phone), "visitor_login",
                 "visitor_account", account.getId().toString(), "success");
 
         return new VisitorAuthDto.VisitorTokenResponse(
@@ -172,9 +172,6 @@ public class VisitorAuthService {
                 account.getVisitorNo(),
                 account.getAvatarSeed(),
                 VISITOR_PERMS);
-        audit.logExplicit(account.getId(), account.getVisitorNo(),
-                "visitor_refresh_token", "visitor_refresh_tokens",
-                outcome.tokenId().toString(), "success");
         return new VisitorAuthDto.VisitorTokenResponse(
                 access,
                 outcome.newRefreshToken(),
@@ -198,7 +195,7 @@ public class VisitorAuthService {
             return;
         }
         refreshService.revoke(token.get(), null);
-        audit.logExplicit(token.get().getVisitorAccountId(), null,
+        audit.logCommitted(token.get().getVisitorAccountId(), null,
                 "visitor_logout", "visitor_refresh_tokens",
                 token.get().getId().toString(), "success");
     }

@@ -41,8 +41,8 @@ public class ProductionPlanningRequestValidator {
             ProductionExecutionPlanningService.Snapshot snapshot) {
         Map<CompleteKitAllocator.MaterialKey, String> routes =
                 authoritativeRoutes(request, snapshot);
-        if (!snapshot.noBomPlanItemIds().isEmpty()) {
-            throw conflict("生产计划存在缺少物料分析事实的无 BOM 行，请从物料分析准备页重新生成计划");
+        if (!snapshot.unresolvedZeroMaterialLineageIds().isEmpty()) {
+            throw conflict("旧/手工计划行缺少物料分析来源谱系，请从物料分析准备页重新生成");
         }
         CompleteKitAllocator.Allocation allocation =
                 planning.applyRequested(snapshot, request.getSegments());

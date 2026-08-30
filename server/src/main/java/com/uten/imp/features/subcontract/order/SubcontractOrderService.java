@@ -5,6 +5,7 @@ import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
+import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -93,6 +94,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private final ProcurementArrivalControlPort arrivalControl;
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlanService;
+    private final MasterReferenceValidationPort references;
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
@@ -178,6 +180,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public OrderDetail create(OrderSaveRequest req) {
         requireDecompositionAuthorityIfNeeded(req);
         tx.bind();
+        requireRowsMatchHeaderSupplier(req);
         SubcontractOrder r = new SubcontractOrder();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -232,6 +235,23 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         return created;
     }
 
+    /**
+     * 货品 → 最近一次委外订货供应商（订货编辑页行级委外商「学习预填」用）。
+     * 明细不落供应商（拆单后归集到单头 supplier_id），取每个货品最新一张未删订货单
+     * 的单头供应商；批量一次查询，无历史返回空 Map。
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, UUID> lastSuppliersPerGoods(java.util.Collection<UUID> goodsIds) {
+        if (goodsIds == null || goodsIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, UUID> result = new LinkedHashMap<>();
+        for (Object[] row : itemRepo.findLastSupplierPerGoods(goodsIds)) {
+            result.put((UUID) row[0], (UUID) row[1]);
+        }
+        return result;
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
@@ -242,6 +262,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
         approvalProjection.requireMutable(orderType(), id);
+        requireRowsMatchHeaderSupplier(req);
         applyHeader(req, r);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -308,6 +329,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
         }
+        references.requireSelectableSupplier(order.getSupplierId());
         List<SubcontractOrderItem> items =
                 itemRepo.findByOrderIdOrderByLineNoAsc(id);
         captureGoodsSnapshots(
@@ -688,6 +710,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private void applyHeader(OrderSaveRequest req, SubcontractOrder r) {
+        if (r.getSupplierId() == null
+                || !java.util.Objects.equals(r.getSupplierId(), req.getSupplierId())) {
+            references.requireSelectableSupplier(req.getSupplierId());
+        }
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SUB_ORDER));
@@ -708,6 +734,19 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         r.setPurchaserId(req.getPurchaserId());
         r.setDeliverDate(req.getDeliverDate());
         r.setRemark(req.getRemark());
+    }
+
+    static void requireRowsMatchHeaderSupplier(OrderSaveRequest req) {
+        UUID header = req.getSupplierId();
+        if (req.getItems() == null) return;
+        for (OrderItemLine line : req.getItems()) {
+            if (line.getSupplierId() != null
+                    && !java.util.Objects.equals(line.getSupplierId(), header)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "既有委外订货单必须保持一单一商；多委外商新单请使用批量拆单接口");
+            }
+        }
     }
 
     private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines) {

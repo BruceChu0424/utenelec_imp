@@ -1160,6 +1160,136 @@ class FullChainEndToEndTest {
     }
 
     @Test
+    void materialAnalysis_directMakeLeafRunsFromAnalysisThroughFqcAndFinishedInbound() {
+        World w = seedWorld("sMADirectMake");
+        assertEquals(0, count(
+                "select count(*) from goods_bom_items where goods_id = ? and is_deleted = false",
+                w.goodsC()), "C 是没有下层物料的自制叶子件");
+        UUID orderId = createApprovedOrder(w, w.goodsC(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        UUID planner = createUserWithPerms(w, "planner-ma-direct",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:generate", "production_plan:approve");
+        loginAs(planner);
+
+        AnalysisView view = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(),
+                "idem-ma-direct-" + orderItemId,
+                List.of(new PreviewItem(
+                        "SALES_ORDER_ITEM", orderItemId, null, null, null,
+                        null, null, LocalDate.of(2026, 9, 1),
+                        new BigDecimal("10")))));
+        UUID analysisId = view.analysisId();
+        UUID productLineId = view.products().getFirst().analysisLineId();
+        assertTrue(view.flatMaterials().isEmpty(), "无子层级 → 没有物料需求行");
+        assertFalse(view.products().getFirst().hasProductionMaterialChildren(),
+                "服务端明确投影为无生产子层级");
+        assertEquals(0, new BigDecimal("10").compareTo(
+                view.products().getFirst().readyNowQty()),
+                "无子层级 → 剩余需求全额可直接自制");
+
+        AnalysisView refreshed = analysisService.detail(analysisId);
+        PlanPreview preview = analysisService.planPreview(
+                analysisId,
+                new PlanPreviewRequest(
+                        refreshed.version(), refreshed.fingerprint(),
+                        w.warehouseId(),
+                        List.of(new PlanQuantity(
+                                productLineId, new BigDecimal("10"))),
+                        null));
+        assertTrue(preview.allReady(), "直接自制计划预览可下达");
+        AnalysisView preGenerate = analysisService.detail(analysisId);
+        GenerateResult generated = analysisCommandService.generatePlan(
+                analysisId,
+                new GeneratePlanRequest(
+                        preGenerate.version(), preGenerate.fingerprint(),
+                        preview.previewFingerprint(),
+                        "gen-ma-direct-" + analysisId,
+                        w.warehouseId(), LocalDate.of(2026, 8, 29),
+                        null, null, null, null, true,
+                        List.of(new PlanQuantity(
+                                productLineId, new BigDecimal("10"))),
+                        null));
+
+        GeneratedPlan plan = generated.plans().getFirst();
+        assertEquals("APPROVED", plan.status());
+        assertEquals(1, plan.segmentIds().size());
+        assertTrue(plan.drawIds().isEmpty(), "无下层物料不得生成空 DRAW");
+        UUID segmentId = plan.segmentIds().getFirst();
+        assertEquals(
+                "READY|ZERO_MATERIAL|DIRECT_MAKE",
+                strFor("""
+                        select concat_ws(
+                            '|', status, material_requirement_mode,
+                            zero_material_reason)
+                        from production_execution_segments
+                        where id = ?
+                        """, segmentId));
+        assertEquals(0, count("""
+                select count(*) from production_material_demands
+                where execution_segment_id = ? and is_deleted = false
+                """, segmentId));
+        assertEquals(0, count("""
+                select count(*)
+                from stock_reservations reservation
+                join production_material_demands demand
+                  on demand.id = reservation.demand_id
+                where demand.execution_segment_id = ?
+                  and reservation.is_deleted = false
+                """, segmentId));
+        assertEquals(0, count("""
+                select count(*)
+                from production_planning_package_documents
+                where package_id = ? and document_type = 'DRAW'
+                """, plan.packageId()));
+
+        loginAs(w.superAdminUserId());
+        UUID planItemId = planItemIdFor(plan.planId(), w.goodsC());
+        UUID salesAllocationId = jdbc.queryForObject("""
+                select id from execution_segment_sales_allocations
+                where execution_segment_id = ? and sales_order_item_id = ?
+                """, UUID.class, segmentId, orderItemId);
+        ProductionAssignment assignment = productionAssignment("sMADirectMake");
+        ExecutionSegmentView current = executionSegmentService.list(plan.planId())
+                .stream()
+                .filter(segment -> segment.id().equals(segmentId))
+                .findFirst()
+                .orElseThrow();
+        ExecutionSegmentView assigned = executionSegmentService.assign(
+                plan.planId(), segmentId,
+                new SegmentAssignmentRequest(
+                        current.lockVersion(),
+                        "idem-ma-direct-assign-" + segmentId,
+                        assignment.workshopId(), null, assignment.workerId(),
+                        LocalDate.of(2026, 8, 29),
+                        LocalDate.of(2026, 8, 30)));
+        ExecutionSegmentView dispatched = executionSegmentService.dispatch(
+                plan.planId(), segmentId,
+                new SegmentTransitionRequest(
+                        assigned.lockVersion(),
+                        "idem-ma-direct-dispatch-" + segmentId));
+        executionSegmentService.start(
+                plan.planId(), segmentId,
+                new SegmentTransitionRequest(
+                        dispatched.lockVersion(),
+                        "idem-ma-direct-start-" + segmentId));
+
+        UUID reportId = reportAndApproveExecutionSegment(
+                w, planItemId, orderItemId, w.goodsC(),
+                segmentId, salesAllocationId, "10");
+        confirmFinishedInboundFully(finishedInDocForReport(reportId));
+
+        assertEquals(0, new BigDecimal("10").compareTo(
+                jdbc.queryForObject(
+                        "select iqty from production_plan_items where id = ?",
+                        BigDecimal.class, planItemId)),
+                "仓库点收后计划入库数量为 10");
+        assertEquals(0, new BigDecimal("10").compareTo(
+                stockBalance(w.warehouseId(), w.goodsC())),
+                "仓库点收后直接自制成品库存增加 10");
+    }
+
+    @Test
     void materialAnalysis_draftGenerateReplayKeepsOneDraftAndNoExecutionFacts() {
         World w = seedWorld("sMADraftReplay");
         jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",

@@ -55,6 +55,7 @@ class _ProductionExecutionSegmentsCardState
   String? _selectedId;
   String? _handledInitialSegmentId;
   String? _error;
+  bool _loading = false;
   bool _busy = false;
   bool _detailOpening = false;
 
@@ -71,6 +72,7 @@ class _ProductionExecutionSegmentsCardState
     if (oldWidget.planId != widget.planId) {
       _segments = null;
       _error = null;
+      _loading = false;
       _selectedId = widget.initialSegmentId;
       _handledInitialSegmentId = null;
       WidgetsBinding.instance.addPostFrameCallback((_) => _load());
@@ -86,8 +88,9 @@ class _ProductionExecutionSegmentsCardState
   }
 
   Future<void> _load() async {
-    if (!mounted) return;
+    if (!mounted || _loading) return;
     final planId = widget.planId;
+    setState(() => _loading = true);
     try {
       final result = await ref
           .read(productionPlanRepositoryProvider)
@@ -111,6 +114,10 @@ class _ProductionExecutionSegmentsCardState
     } catch (_) {
       if (mounted && widget.planId == planId) {
         setState(() => _error = '执行子计划加载失败');
+      }
+    } finally {
+      if (mounted && widget.planId == planId) {
+        setState(() => _loading = false);
       }
     }
   }
@@ -561,6 +568,7 @@ class _ProductionExecutionSegmentsCardState
   @override
   Widget build(BuildContext context) {
     final segments = _segments;
+    final theme = Theme.of(context);
     if (segments == null && _error == null) {
       return const Card(
         child: Padding(
@@ -578,7 +586,7 @@ class _ProductionExecutionSegmentsCardState
               Expanded(
                 child: Text(
                   _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  style: TextStyle(color: theme.colorScheme.error),
                 ),
               ),
               TextButton(onPressed: _load, child: const Text('重试')),
@@ -587,9 +595,64 @@ class _ProductionExecutionSegmentsCardState
         ),
       );
     }
-    if (segments!.isEmpty) return const SizedBox.shrink();
+    if (segments!.isEmpty) {
+      return Card(
+        key: const Key('production-execution-segments-empty'),
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.account_tree_outlined,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '执行子计划',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s4),
+                        Text(
+                          '当前尚未形成执行子计划。若计划刚审核，请先刷新；仍为空时请回到“物料分析准备”核对来源，'
+                          '或联系系统管理员。',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: UtenButton(
+                  key: const Key('production-execution-segments-empty-refresh'),
+                  type: UtenButtonType.tonal,
+                  icon: Icons.refresh_rounded,
+                  isLoading: _loading,
+                  onPressed: _loading || _busy ? null : _load,
+                  child: const Text('刷新执行状态'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-    final theme = Theme.of(context);
     final ready = segments.where((item) => item.status == 'READY').length;
     final waiting = segments
         .where((item) => item.status == 'WAITING' && item.autoPromoteWhenReady)
@@ -642,7 +705,7 @@ class _ProductionExecutionSegmentsCardState
                 ),
                 IconButton(
                   tooltip: '刷新执行状态',
-                  onPressed: _busy ? null : _load,
+                  onPressed: _busy || _loading ? null : _load,
                   icon: const Icon(Icons.refresh_rounded),
                 ),
               ],

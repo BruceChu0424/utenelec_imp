@@ -78,6 +78,13 @@ public class UserOperationAuditInterceptor implements HandlerInterceptor {
         if (requestFailed && status < 400) {
             status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         }
+        if (!AuditRequestContext.shouldRecordOperation(
+                request, status, requestFailed)) {
+            request.setAttribute(
+                    AuditRequestContext.OPERATION_RECORDED_ATTRIBUTE,
+                    Boolean.TRUE);
+            return;
+        }
         long durationMillis = Math.max(
                 0,
                 TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos));

@@ -501,10 +501,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
               ? '一致(0.00)'
               : _money(detail.balanceDifferenceText),
         ),
-        MasterDetailStat(
-          '有效流水',
-          detail.activeFlowCount?.toString() ?? '未核验',
-        ),
+        MasterDetailStat('有效流水', detail.activeFlowCount?.toString() ?? '未核验'),
         MasterDetailStat('余额警戒线', _money(detail.balanceFloorText)),
       ]);
     }

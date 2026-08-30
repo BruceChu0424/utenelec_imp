@@ -3,6 +3,7 @@ package com.uten.imp.audit;
 import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.config.WebMvcConfig;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.ExportRateLimitInterceptor;
@@ -35,6 +36,8 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -77,6 +80,10 @@ class AuditControllerSecurityTest {
     private static final UUID EMPLOYEE_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final UUID CLIENT_EVENT_ID =
             UUID.fromString("33333333-3333-3333-3333-333333333333");
+    private static final String DEFAULT_FILTER_SCOPE =
+            "；动作=全部；操作类型=全部；人员范围=全部；业务对象=全部；风险=全部；结果=全部"
+                    + "；事件类型=全部；记录来源=全部；关键字=未使用；对象编号=未使用"
+                    + "；操作关联编号=未使用；查询快照=全部；视图=仅人员活动";
 
     @Autowired
     private MockMvc mvc;
@@ -103,10 +110,13 @@ class AuditControllerSecurityTest {
                 .thenReturn(new AuditPageResponse(List.of(), 1, 20, 0, 0, 0));
         when(auditQuery.summary(any(AuditSearchCriteria.class)))
                 .thenReturn(new AuditSummary(0, 0, 0, 0, 0, List.of()));
+        when(auditQuery.actors(any(), anyInt(), anyInt()))
+                .thenReturn(new PageResponse<>(List.of(), 1, 20, 0, 0));
         when(auditQuery.export(
                 any(AuditSearchCriteria.class),
                 anyInt()))
                 .thenReturn(new ExportPayload(List.of(), List.of(), 0));
+        when(auditQuery.detail(42L)).thenReturn(org.mockito.Mockito.mock(AuditLogDetail.class));
         when(runtimeSettings.exportMaxRows()).thenReturn(1_000);
         when(xlsxExport.build(anyList(), anyList())).thenReturn(new byte[]{1});
         when(workbookDownload.protect(any(byte[].class), anyString())).thenReturn(new byte[]{9});
@@ -131,7 +141,11 @@ class AuditControllerSecurityTest {
 
     @Test
     void viewPermissionCanReadButCannotExport() throws Exception {
-        mvc.perform(get("/api/admin/audit-logs").with(viewUser()))
+        mvc.perform(get("/api/admin/audit-logs")
+                        .with(viewUser())
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-01"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(0));
         verify(audit).logExplicit(
@@ -139,7 +153,10 @@ class AuditControllerSecurityTest {
                 "investigator",
                 "view_audit_log_list",
                 "audit_log",
-                "returned=0; total=0",
+                "人员=" + ACTOR_ID
+                        + "；开始日期=2026-08-01；结束日期=2026-08-01"
+                        + "；页码=1；本页条数=0；总条数=0"
+                        + DEFAULT_FILTER_SCOPE,
                 "success");
 
         clearInvocations(auditQuery, audit);
@@ -161,6 +178,7 @@ class AuditControllerSecurityTest {
                         .with(viewUser())
                         .param("action", "update")
                         .param("actorAccount", "alice")
+                        .param("actorId", ACTOR_ID.toString())
                         .param("actorScope", "user")
                         .param("riskLevel", "high")
                         .param("eventCategory", "data_change")
@@ -183,6 +201,8 @@ class AuditControllerSecurityTest {
         AuditSearchCriteria filters = captor.getValue();
         assertEquals("update", filters.action());
         assertEquals("alice", filters.actorAccount());
+        assertEquals(ACTOR_ID, filters.actorId());
+        assertEquals(true, filters.activityOnly());
         assertEquals("user", filters.actorScope());
         assertEquals("high", filters.riskLevel());
         assertEquals("data_change", filters.eventCategory());
@@ -196,6 +216,16 @@ class AuditControllerSecurityTest {
         assertEquals(123L, filters.snapshotId());
         assertEquals(LocalDate.parse("2026-07-01"), filters.dateFrom());
         assertEquals(LocalDate.parse("2026-07-31"), filters.dateTo());
+        ArgumentCaptor<String> scope = ArgumentCaptor.forClass(String.class);
+        verify(audit).logExplicit(
+                eq(ACTOR_ID), eq("investigator"), eq("view_audit_log_list"),
+                eq("audit_log"), scope.capture(), eq("success"));
+        assertTrue(scope.getValue().contains("操作类型=写操作"));
+        assertTrue(scope.getValue().contains("业务对象=已筛选"));
+        assertTrue(scope.getValue().contains("关键字=已使用"));
+        assertTrue(scope.getValue().contains("操作关联编号=已使用"));
+        assertFalse(scope.getValue().contains("HP0001"));
+        assertFalse(scope.getValue().contains(requestId));
     }
 
     @Test
@@ -203,6 +233,9 @@ class AuditControllerSecurityTest {
         mvc.perform(get("/api/admin/audit-logs/summary")
                         .with(viewUser())
                         .param("actorScope", "system")
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-07-01")
+                        .param("dateTo", "2026-07-31")
                         .param("keyword", "goods")
                         .param("operationKind", "write")
                         .param("snapshotId", "321"))
@@ -223,6 +256,9 @@ class AuditControllerSecurityTest {
                         .with(viewAndExportUser())
                         .with(csrf())
                         .param("actorScope", "user")
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-07-01")
+                        .param("dateTo", "2026-07-31")
                         .param("targetType", "goods")
                         .param("eventSource", "database")
                         .param("snapshotId", "321")
@@ -245,6 +281,9 @@ class AuditControllerSecurityTest {
         mvc.perform(post("/api/admin/audit-logs/export")
                         .with(viewAndExportUser())
                         .with(csrf())
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-01")
                         .contentType(APPLICATION_JSON)
                         .content("""
                                 {"password":"secret12"}
@@ -260,7 +299,9 @@ class AuditControllerSecurityTest {
                 "investigator",
                 "export_audit_log",
                 "audit_log",
-                "rows=0; dateFrom=all; dateTo=all; risk=all",
+                "导出条数=0；人员=" + ACTOR_ID
+                        + "；开始日期=2026-08-01；结束日期=2026-08-01；风险=全部"
+                        + DEFAULT_FILTER_SCOPE,
                 "success");
     }
 
@@ -300,14 +341,21 @@ class AuditControllerSecurityTest {
 
     @Test
     void summaryAndDetailReadsAreExplicitlyAudited() throws Exception {
-        mvc.perform(get("/api/admin/audit-logs/summary").with(viewUser()))
+        mvc.perform(get("/api/admin/audit-logs/summary")
+                        .with(viewUser())
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-01"))
                 .andExpect(status().isOk());
         verify(audit).logExplicit(
                 ACTOR_ID,
                 "investigator",
                 "view_audit_log_summary",
                 "audit_log",
-                "total=0; risk=0",
+                "人员=" + ACTOR_ID
+                        + "；开始日期=2026-08-01；结束日期=2026-08-01"
+                        + "；总条数=0；风险条数=0"
+                        + DEFAULT_FILTER_SCOPE,
                 "success");
 
         clearInvocations(audit);
@@ -318,7 +366,7 @@ class AuditControllerSecurityTest {
                 "investigator",
                 "view_audit_log_detail",
                 "audit_log",
-                "42",
+                "审计日志编号=42；原操作关联编号=全部；原操作人编号=全部",
                 "success");
     }
 
@@ -331,17 +379,115 @@ class AuditControllerSecurityTest {
                         "investigator",
                         "view_audit_log_list",
                         "audit_log",
-                        "returned=0; total=0",
+                        "人员=" + ACTOR_ID
+                                + "；开始日期=2026-08-01；结束日期=2026-08-01"
+                                + "；页码=1；本页条数=0；总条数=0"
+                                + DEFAULT_FILTER_SCOPE,
                         "success");
 
-        mvc.perform(get("/api/admin/audit-logs").with(viewUser()))
+        mvc.perform(get("/api/admin/audit-logs")
+                        .with(viewUser())
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-01"))
                 .andExpect(status().isInternalServerError());
+    }
+
+    @Test
+    void actorsPickerRequiresViewPermissionAndDoesNotWriteTypingAudit() throws Exception {
+        mvc.perform(get("/api/admin/audit-logs/actors")
+                        .with(user("ordinary")))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(auditQuery, audit);
+
+        mvc.perform(get("/api/admin/audit-logs/actors")
+                        .with(viewUser())
+                        .param("keyword", "张")
+                        .param("page", "2")
+                        .param("size", "10"))
+                .andExpect(status().isOk());
+        verify(auditQuery).actors("张", 2, 10);
+        verifyNoInteractions(audit);
+    }
+
+    @Test
+    void malformedActorIdReturnsChineseBadRequestBeforeQuerying() throws Exception {
+        mvc.perform(get("/api/admin/audit-logs")
+                        .with(viewUser())
+                        .param("actorId", "not-a-uuid")
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-01"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("人员编号 必须为标准 UUID"));
+        verifyNoInteractions(auditQuery, audit);
+    }
+
+    @Test
+    void anonymousInvestigationAuditNamesTheUnidentifiedAccessScope() throws Exception {
+        mvc.perform(get("/api/admin/audit-logs/summary")
+                        .with(viewUser())
+                        .param("actorScope", "anonymous")
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-31"))
+                .andExpect(status().isOk());
+
+        verify(audit).logExplicit(
+                eq(ACTOR_ID),
+                eq("investigator"),
+                eq("view_audit_log_summary"),
+                eq("audit_log"),
+                org.mockito.ArgumentMatchers.argThat(value ->
+                        value.contains("人员=全部")
+                                && value.contains("人员范围=未识别访问")),
+                eq("success"));
+    }
+
+    @Test
+    void invalidFilterEnumsReturnChineseBadRequestAcrossReadSummaryAndExport()
+            throws Exception {
+        mvc.perform(get("/api/admin/audit-logs")
+                        .with(viewUser())
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-01")
+                        .param("riskLevel", "urgent"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("风险等级仅支持严重、高、中、低、有风险"));
+
+        mvc.perform(get("/api/admin/audit-logs/summary")
+                        .with(viewUser())
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-01")
+                        .param("eventCategory", "unknown"))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(post("/api/admin/audit-logs/export")
+                        .with(viewAndExportUser())
+                        .with(csrf())
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-01")
+                        .param("outcome", "maybe")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"password\":\"secret12\"}"))
+                .andExpect(status().isBadRequest());
+
+        mvc.perform(get("/api/admin/audit-logs")
+                        .with(viewUser())
+                        .param("actorId", ACTOR_ID.toString())
+                        .param("dateFrom", "2026-08-01")
+                        .param("dateTo", "2026-08-01")
+                        .param("eventSource", "scheduler"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void controllerAndServiceKeepTheSameDefenseInDepthExpressions() {
         assertAuthorization(AuditController.class, "list", "hasAuthority('audit_log:view')");
         assertAuthorization(AuditController.class, "summary", "hasAuthority('audit_log:view')");
+        assertAuthorization(AuditController.class, "actors", "hasAuthority('audit_log:view')");
         assertAuthorization(AuditController.class, "detail", "hasAuthority('audit_log:view')");
         assertAuthorization(
                 AuditController.class,
@@ -354,6 +500,7 @@ class AuditControllerSecurityTest {
 
         assertAuthorization(AuditQueryService.class, "query", "hasAuthority('audit_log:view')");
         assertAuthorization(AuditQueryService.class, "summary", "hasAuthority('audit_log:view')");
+        assertAuthorization(AuditQueryService.class, "actors", "hasAuthority('audit_log:view')");
         assertAuthorization(AuditQueryService.class, "detail", "hasAuthority('audit_log:view')");
         assertAuthorization(
                 AuditQueryService.class,

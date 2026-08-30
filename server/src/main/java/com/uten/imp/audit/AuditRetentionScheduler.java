@@ -185,13 +185,12 @@ public class AuditRetentionScheduler {
                     + "; onlineRemoved=" + result.removedFromHot()
                     + "; permanentlyDeleted=" + result.deletedFromArchive()
                     + "; durationMs=" + durationMillis;
-            auditSafely(detail, "success");
             log.info("Audit retention completed: {}", detail);
         } catch (Exception exception) {
             String detail = "hotMonths=" + hotMonths
                     + "; archiveMonths=" + archiveMonths
                     + "; error=" + truncate(exception.getMessage(), 400);
-            auditSafely(detail, "failure");
+            auditFailureSafely(detail);
             log.error("Audit retention failed; no unarchived hot row is deleted", exception);
         }
     }
@@ -316,17 +315,15 @@ public class AuditRetentionScheduler {
         }
     }
 
-    private void auditSafely(String detail, String result) {
+    private void auditFailureSafely(String detail) {
         try {
-            // action=delete makes this irreversible operation high risk under
-            // the stored risk rules. targetType keeps it identifiable.
             audit.logExplicit(
                     null,
                     "system",
-                    "delete",
+                    "audit_retention_failed",
                     "audit_retention",
                     truncate(detail, 1_000),
-                    result);
+                    "failure");
         } catch (RuntimeException auditFailure) {
             log.error("Failed to write the audit-retention summary event", auditFailure);
         }

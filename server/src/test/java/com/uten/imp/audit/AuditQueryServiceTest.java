@@ -17,6 +17,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,6 +39,9 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 
 class AuditQueryServiceTest {
+
+    private static final UUID SELECTED_ACTOR =
+            UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     private static AuditActorDirectory emptyActorDirectory() {
         AuditActorDirectory directory = mock(AuditActorDirectory.class);
@@ -64,7 +68,7 @@ class AuditQueryServiceTest {
         log.setAfter("{\"status\":\"DISPATCHED\"}");
         log.setIp("127.0.0.1");
         log.setUserAgent("test");
-        log.setResult("success");
+        log.setResult("success;mode=custom");
         log.setCreatedAt(OffsetDateTime.parse("2026-07-31T06:00:00+08:00"));
         when(repository.findById(42L)).thenReturn(Optional.of(log));
 
@@ -77,6 +81,20 @@ class AuditQueryServiceTest {
         assertEquals("{\"status\":\"READY\"}", detail.before());
         assertEquals("{\"status\":\"DISPATCHED\"}", detail.after());
         assertEquals("test", detail.userAgent());
+    }
+
+    @Test
+    void listRowCarriesRedactedChineseChangeSummaryWithoutRawSnapshots() {
+        AuditLog log = new AuditLog();
+        log.setAction("update");
+        log.setTargetType("sales_orders");
+        log.setBefore("{\"status\":\"draft\"}");
+        log.setAfter("{\"status\":\"approved\"}");
+        log.setResult("success");
+
+        AuditLogRow row = AuditLogRow.of(log, new AuditEventInterpreter());
+
+        assertEquals("状态：草稿 → 已审核", row.getChangeSummary());
     }
 
     @Test
@@ -220,6 +238,10 @@ class AuditQueryServiceTest {
         assertMalformed(service, criteriaWith("employee", null, null, null));
         assertMalformed(service, criteriaWith(null, "not-a-uuid", null, null));
         assertMalformed(service, criteriaWith(null, null, null, -1L));
+        assertMalformed(service, criteriaWithFilters("urgent", null, null, null));
+        assertMalformed(service, criteriaWithFilters(null, "unknown", null, null));
+        assertMalformed(service, criteriaWithFilters(null, null, "maybe", null));
+        assertMalformed(service, criteriaWithFilters(null, null, null, "scheduler"));
     }
 
     @Test
@@ -227,15 +249,13 @@ class AuditQueryServiceTest {
     void mutationOperationKindsCoverDatabaseAndHttpActions() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Map<String, List<String>> expected = Map.of(
-                "create", List.of("insert", "http_post"),
-                "update", List.of("update", "http_put", "http_patch"),
-                "delete", List.of("delete", "http_delete"),
-                "write", List.of(
-                        "insert", "update", "delete",
-                        "http_post", "http_put", "http_patch", "http_delete"));
+        Map<String, String> expected = Map.of(
+                "create", "insert",
+                "update", "update",
+                "delete", "delete",
+                "write", "insert/update/delete");
 
-        expected.forEach((operationKind, actions) -> {
+        expected.forEach((operationKind, directAction) -> {
             Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
             CriteriaBuilder criteriaBuilder = mock(
                     CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
@@ -243,12 +263,17 @@ class AuditQueryServiceTest {
             Expression<String> action = mock(Expression.class);
             when(root.<String>get("action")).thenReturn(storedAction);
             when(criteriaBuilder.lower(storedAction)).thenReturn(action);
-            when(action.in(actions)).thenReturn(mock(Predicate.class));
 
             service.specification(criteriaWith(null, null, operationKind, null))
                     .toPredicate(root, null, criteriaBuilder);
 
-            verify(action).in(actions);
+            if ("write".equals(operationKind)) {
+                verify(action).in(List.of("insert", "update", "delete"));
+            } else {
+                verify(criteriaBuilder, atLeastOnce()).equal(action, directAction);
+            }
+            verify(root, atLeastOnce()).get("httpMethod");
+            verify(root).get("eventCategory");
         });
     }
 
@@ -283,24 +308,19 @@ class AuditQueryServiceTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void systemActorScopeRequiresBothActorIdentityFieldsToBeEmpty() {
+    void systemActorScopeUsesNullUuidButExcludesAnonymousSecurityEvidence() {
         AuditQueryService service = new AuditQueryService(
                 mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
-        Root<AuditLog> root = mock(Root.class);
-        CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
-        Path<UUID> actorId = mock(Path.class);
-        Path<String> actorAccount = mock(Path.class);
-        Expression<String> trimmedAccount = mock(Expression.class);
-        when(root.<UUID>get("actorId")).thenReturn(actorId);
-        when(root.<String>get("actorAccount")).thenReturn(actorAccount);
-        when(criteriaBuilder.trim(actorAccount)).thenReturn(trimmedAccount);
+        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder criteriaBuilder = mock(
+                CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
 
         service.specification(criteriaWith("system", null, null, null))
                 .toPredicate(root, null, criteriaBuilder);
 
-        verify(criteriaBuilder).isNull(actorId);
-        verify(criteriaBuilder).isNull(actorAccount);
-        verify(criteriaBuilder).equal(trimmedAccount, "");
+        verify(root, atLeastOnce()).get("actorId");
+        verify(root, atLeastOnce()).get("eventSource");
+        verify(root, atLeastOnce()).get("eventCategory");
     }
 
     @Test
@@ -317,10 +337,9 @@ class AuditQueryServiceTest {
         when(criteriaBuilder.lower(storedAction)).thenReturn(action);
         when(action.in(List.of("http_get"))).thenReturn(httpGet);
 
-        service.specification(criteriaWith(null, null, "read", null))
-                .toPredicate(root, null, criteriaBuilder);
+        service.operationSpecification("read").toPredicate(root, null, criteriaBuilder);
 
-        verify(action).in(List.of("http_get"));
+        verify(criteriaBuilder).equal(action, "http_get");
         verify(criteriaBuilder).like(action, "view!_%", '!');
     }
 
@@ -333,6 +352,7 @@ class AuditQueryServiceTest {
         when(repository.findMaxId()).thenReturn(73L);
         AuditLog log = new AuditLog();
         log.setId(7L);
+        log.setActorId(UUID.randomUUID());
         log.setActorAccount("admin");
         log.setAction("download_payroll_slip");
         log.setTargetType("payroll_slips");
@@ -356,10 +376,15 @@ class AuditQueryServiceTest {
         ExportPayload payload = service.export(criteria(null), 100);
 
         assertEquals(1, payload.total());
-        assertEquals("admin", payload.rows().getFirst().get("actor"));
+        assertEquals("admin(档案不可用)", payload.rows().getFirst().get("actor"));
         assertEquals("下载工资条 PDF", payload.rows().getFirst().get("actionLabel"));
         assertEquals("中", payload.rows().getFirst().get("riskLevel"));
         assertEquals("数据导出", payload.rows().getFirst().get("eventCategory"));
+        assertEquals("成功", payload.rows().getFirst().get("outcome"));
+        assertEquals("2026-07-31 14:00:00(北京时间)",
+                payload.rows().getFirst().get("createdAt"));
+        assertFalse(payload.rows().getFirst().containsKey("actionCode"));
+        assertFalse(payload.rows().getFirst().containsKey("resultCode"));
         assertFalse(payload.rows().getFirst().containsKey("before"));
         assertFalse(payload.rows().getFirst().containsKey("after"));
         verify(repository).findMaxId();
@@ -372,6 +397,95 @@ class AuditQueryServiceTest {
                 CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         specificationCaptor.getValue().toPredicate(root, null, criteriaBuilder);
         verify(criteriaBuilder).lessThanOrEqualTo(root.get("id"), 73L);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void outcomeFilterUsesCompositeMainCodeAndKeepsHttpFailureAuthoritative() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+
+        service.outcomeSpecification("success").toPredicate(root, null, cb);
+
+        verify(cb).function(
+                eq("split_part"),
+                eq(String.class),
+                any(Expression.class),
+                any(Expression.class),
+                any(Expression.class));
+        verify(cb).greaterThanOrEqualTo(root.get("statusCode"), 400);
+        verify(cb, atLeastOnce()).not(any(Predicate.class));
+    }
+
+    @Test
+    void exportAcceptsSucceededCompositeCodeButHttpErrorStillWins() {
+        AuditLogRepository repository = mock(AuditLogRepository.class);
+        AuditQueryService service = new AuditQueryService(
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
+        when(repository.findMaxId()).thenReturn(80L);
+        AuditLog succeeded = exportRow("succeeded;mode=generated", 200);
+        AuditLog httpFailed = exportRow("success;mode=custom", 500);
+        when(repository.count(any(Specification.class))).thenReturn(2L);
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(succeeded, httpFailed)));
+
+        ExportPayload payload = service.export(criteria(null), 100);
+
+        assertEquals("成功", payload.rows().get(0).get("outcome"));
+        assertEquals("失败", payload.rows().get(1).get("outcome"));
+    }
+
+    @Test
+    void anonymousAndSystemActorPresentationIsConsistentAcrossDtosAndExport() {
+        AuditLog anonymous = new AuditLog();
+        anonymous.setAction("login_failed");
+        anonymous.setEventSource("security");
+        anonymous.setEventCategory("authentication");
+        anonymous.setResult("failure");
+        anonymous.setStatusCode(401);
+        anonymous.setCreatedAt(OffsetDateTime.parse("2026-08-01T00:00:00Z"));
+
+        AuditLogRow listRow = AuditLogRow.of(anonymous, new AuditEventInterpreter());
+        AuditLogDetail detail = AuditLogDetail.of(anonymous, new AuditEventInterpreter());
+        assertEquals("未识别访问", listRow.getActorDisplay());
+        assertEquals("未识别访问", listRow.getActorType());
+        assertEquals("未识别访问", detail.actorDisplay());
+        assertEquals("未识别访问", detail.actorType());
+
+        AuditLog system = new AuditLog();
+        system.setActorAccount("system");
+        system.setAction("audit_retention_failed");
+        system.setEventSource("business");
+        system.setEventCategory("system");
+        assertEquals("系统任务",
+                AuditLogRow.of(system, new AuditEventInterpreter()).getActorDisplay());
+
+        AuditLogRepository repository = mock(AuditLogRepository.class);
+        AuditQueryService service = new AuditQueryService(
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
+        when(repository.findMaxId()).thenReturn(90L);
+        when(repository.count(any(Specification.class))).thenReturn(1L);
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(anonymous)));
+
+        ExportPayload payload = service.export(criteria(null), 100);
+
+        assertEquals("未识别访问", payload.rows().getFirst().get("actor"));
+        assertEquals("未识别访问", payload.rows().getFirst().get("actorType"));
+    }
+
+    private AuditLog exportRow(String result, int statusCode) {
+        AuditLog log = new AuditLog();
+        log.setAction("notice_publish");
+        log.setTargetType("notices");
+        log.setTargetId("测试通知");
+        log.setResult(result);
+        log.setEventSource("business");
+        log.setStatusCode(statusCode);
+        log.setCreatedAt(OffsetDateTime.parse("2026-08-01T00:00:00Z"));
+        return log;
     }
 
     @Test
@@ -528,26 +642,248 @@ class AuditQueryServiceTest {
     @SuppressWarnings("unchecked")
     void summaryReturnsEffectiveRiskCountsAndBuildsTrendFromTheSameSpecification() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
+        AuditSummaryAggregation aggregation = mock(AuditSummaryAggregation.class);
         AuditQueryService service = new AuditQueryService(
-                repository, new AuditEventInterpreter(), emptyActorDirectory());
+                repository, new AuditEventInterpreter(), emptyActorDirectory(), aggregation);
         when(repository.findMaxId()).thenReturn(91L);
-        when(repository.count(any(Specification.class)))
-                .thenReturn(10L, 2L, 1L, 3L, 4L);
+        AuditSummary expected = new AuditSummary(
+                10, 2, 1, 3, 4,
+                List.of(
+                        new AuditSummary.DailyPoint(
+                                LocalDate.parse("2026-08-01"), 4, 1),
+                        new AuditSummary.DailyPoint(
+                                LocalDate.parse("2026-08-02"), 6, 1)));
+        when(aggregation.summarize(
+                any(Specification.class),
+                any(Specification.class),
+                any(Specification.class),
+                any(Specification.class),
+                any(Specification.class),
+                eq(LocalDate.parse("2026-08-01")),
+                eq(LocalDate.parse("2026-08-02"))))
+                .thenReturn(expected);
 
         AuditSummary summary = service.summary(criteria(null));
 
         assertEquals(10, summary.total());
         assertEquals(2, summary.riskCount());
         assertEquals(1, summary.criticalCount());
-        assertEquals(7, summary.dailyTrend().size());
+        assertEquals(2, summary.dailyTrend().size());
         verify(repository).findMaxId();
+        verify(repository, never()).count(any(Specification.class));
+        verify(aggregation).summarize(
+                any(Specification.class),
+                any(Specification.class),
+                any(Specification.class),
+                any(Specification.class),
+                any(Specification.class),
+                eq(LocalDate.parse("2026-08-01")),
+                eq(LocalDate.parse("2026-08-02")));
+    }
+
+    @Test
+    void investigationScopeRequiresUuidActorAndAtMostThirtyOneBeijingDays() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+
+        assertThrows(ApiException.class, () -> service.validateInvestigationScope(
+                new AuditSearchCriteria(
+                        null, null, null, null, null, null,
+                        null, null, null, null, null, null,
+                        LocalDate.parse("2026-08-01"), LocalDate.parse("2026-08-02"),
+                        null, null, true)));
+        assertThrows(ApiException.class, () -> service.validateInvestigationScope(
+                new AuditSearchCriteria(
+                        null, null, null, null, null, null,
+                        null, null, null, null, null, null,
+                        LocalDate.parse("2026-08-01"), LocalDate.parse("2026-09-01"),
+                        null, SELECTED_ACTOR, true)));
+        service.validateInvestigationScope(criteria(null));
+    }
+
+    @Test
+    void canonicalRequestIdCanReplaceActorAndDateForFocusedInvestigation() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        service.validateInvestigationScope(new AuditSearchCriteria(
+                null, null, null, null, null, null,
+                null, null, null, null,
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", null,
+                null, null, null, null, false));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void activityViewUsesExactActorAndExcludesDatabaseDerivedRows() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+
+        service.specification(criteria(null)).toPredicate(root, null, cb);
+
+        verify(cb).equal(root.get("actorId"), SELECTED_ACTOR);
+        verify(cb).notEqual(any(Expression.class), eq("database"));
+        verify(root, atLeastOnce()).get("httpMethod");
+        verify(root, atLeastOnce()).get("httpPath");
+        verify(root, atLeastOnce()).get("statusCode");
+        verify(cb).lessThan(root.get("statusCode"), 400);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void anonymousScopeIsLimitedToIdentityFreeSecurityOrLoginEvidence() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        AuditSearchCriteria anonymous = new AuditSearchCriteria(
+                null, null, "anonymous", null, null, null,
+                null, null, null, null, null, null,
+                LocalDate.parse("2026-08-01"), LocalDate.parse("2026-08-31"),
+                null, null, true);
+        service.validateInvestigationScope(anonymous);
+        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+
+        service.specification(anonymous).toPredicate(root, null, cb);
+
+        verify(root, atLeastOnce()).get("eventSource");
+        verify(root, atLeastOnce()).get("eventCategory");
+        verify(root, atLeastOnce()).get("actorId");
+    }
+
+    @Test
+    void systemScopeAllowsOnlyDatedActivityFailuresAndHidesSuccess() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        AuditSearchCriteria system = new AuditSearchCriteria(
+                null, null, "system", null, null, null,
+                null, null, null, null, null, null,
+                LocalDate.parse("2026-08-01"), LocalDate.parse("2026-08-31"),
+                null, null, true);
+        service.validateInvestigationScope(system);
+
+        AuditLog failure = new AuditLog();
+        failure.setActorAccount("system");
+        failure.setAction("audit_retention_failed");
+        failure.setResult("failure");
+        AuditLog success = new AuditLog();
+        success.setActorAccount("system");
+        success.setAction("maintenance_completed");
+        success.setResult("success");
+        AuditLog anonymousFailure = new AuditLog();
+        anonymousFailure.setAction("login_failed");
+        anonymousFailure.setEventSource("security");
+        anonymousFailure.setEventCategory("authentication");
+        anonymousFailure.setResult("failure");
+        assertTrue(AuditQueryService.isSystemExceptionRecord(failure));
+        assertFalse(AuditQueryService.isSystemExceptionRecord(success));
+        assertFalse(AuditQueryService.isSystemExceptionRecord(anonymousFailure));
+
+        AuditSearchCriteria unsafe = new AuditSearchCriteria(
+                null, null, "system", null, null, null,
+                null, null, null, null, null, null,
+                LocalDate.parse("2026-08-01"), LocalDate.parse("2026-08-31"),
+                null, null, false);
+        assertThrows(ApiException.class, () -> service.validateInvestigationScope(unsafe));
+    }
+
+    @Test
+    void datedSystemExceptionScopeIsAcceptedByListSummaryAndExport() {
+        AuditLogRepository repository = mock(AuditLogRepository.class);
+        AuditSummaryAggregation aggregation = mock(AuditSummaryAggregation.class);
+        AuditQueryService service = new AuditQueryService(
+                repository, new AuditEventInterpreter(), emptyActorDirectory(), aggregation);
+        AuditSearchCriteria system = new AuditSearchCriteria(
+                null, null, "system", null, null, null,
+                null, null, null, null, null, null,
+                LocalDate.parse("2026-08-01"), LocalDate.parse("2026-08-31"),
+                null, null, true);
+        when(repository.findMaxId()).thenReturn(100L);
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        when(repository.count(any(Specification.class))).thenReturn(0L);
+        when(aggregation.summarize(
+                any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new AuditSummary(0, 0, 0, 0, 0, List.of()));
+
+        assertEquals(0, service.query(system, 1, 20).getTotal());
+        assertEquals(0, service.summary(system).total());
+        assertEquals(0, service.export(system, 100).total());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void writeOperationIncludesExplicitBusinessEventsByHttpMethod() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+
+        service.operationSpecification("write").toPredicate(root, null, cb);
+
+            verify(root, atLeastOnce()).get("httpMethod");
+        verify(root).get("eventCategory");
+        verify(cb).upper(any(Expression.class));
+        verify(cb, atLeastOnce()).not(any(Predicate.class));
+    }
+
+    @Test
+    void authenticationAndExportPostsAreExcludedFromEffectiveWriteCount() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        Root<AuditLog> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+
+        service.operationSpecification("write").toPredicate(root, null, cb);
+
+        verify(root).get("eventCategory");
+        verify(cb, atLeastOnce()).not(any(Predicate.class));
+        // Direct insert/update/delete remains an independent OR branch; custom
+        // notice/task/approval events enter through the HTTP-method branch.
+        verify(root).get("action");
+        verify(root).get("httpMethod");
+        verify(cb).like(any(Expression.class), eq("view!_%"), eq('!'));
+    }
+
+    @Test
+    void explicitViewNoticeIsClassifiedAsReadAndExcludedFromWriteMethodBranch() {
+        AuditQueryService service = new AuditQueryService(
+                mock(AuditLogRepository.class), new AuditEventInterpreter(), emptyActorDirectory());
+        Root<AuditLog> readRoot = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder readBuilder = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+        service.operationSpecification("read").toPredicate(readRoot, null, readBuilder);
+        verify(readBuilder).like(any(Expression.class), eq("view!_%"), eq('!'));
+
+        Root<AuditLog> writeRoot = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder writeBuilder = mock(
+                CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+        service.operationSpecification("write").toPredicate(writeRoot, null, writeBuilder);
+        verify(writeBuilder, atLeastOnce()).not(any(Predicate.class));
+        verify(writeBuilder).like(any(Expression.class), eq("view!_%"), eq('!'));
+    }
+
+    @Test
+    void exportHardCapsConfiguredLimitAtTenThousandRows() {
+        AuditLogRepository repository = mock(AuditLogRepository.class);
+        AuditQueryService service = new AuditQueryService(
+                repository, new AuditEventInterpreter(), emptyActorDirectory());
+        when(repository.findMaxId()).thenReturn(9L);
+        when(repository.count(any(Specification.class))).thenReturn(10_001L);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.export(criteria(null), 100_000));
+
+        assertTrue(error.getMessage().contains("单次导出上限 10000 条"));
+        verify(repository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
 
     private static AuditSearchCriteria criteria(String riskLevel) {
         return new AuditSearchCriteria(
                 null, null, null, riskLevel, null, null,
                 null, null, null, null, null, null,
-                null, null, null);
+                LocalDate.parse("2026-08-01"), LocalDate.parse("2026-08-02"),
+                null, SELECTED_ACTOR, true);
     }
 
     private static AuditSearchCriteria criteriaWith(
@@ -559,6 +895,18 @@ class AuditQueryServiceTest {
                 null, null, actorScope, null, null, null,
                 null, null, null, null, requestId, operationKind,
                 null, null, snapshotId);
+    }
+
+    private static AuditSearchCriteria criteriaWithFilters(
+            String riskLevel,
+            String eventCategory,
+            String outcome,
+            String eventSource) {
+        return new AuditSearchCriteria(
+                null, null, null, riskLevel, eventCategory, outcome,
+                null, null, null, eventSource, null, null,
+                LocalDate.parse("2026-08-01"), LocalDate.parse("2026-08-01"),
+                null, SELECTED_ACTOR, true);
     }
 
     private static void assertMalformed(

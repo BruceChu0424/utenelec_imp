@@ -30,6 +30,7 @@ void main() {
           'readyShipQty': 8,
           'readyByDateQty': 40,
           'readinessRatio': 25,
+          'hasProductionMaterialChildren': true,
           'allocationPriority': 2,
           'planExecutionStatus': 'IN_PROGRESS',
           'latestPlanId': 'plan-1',
@@ -110,6 +111,7 @@ void main() {
 
     expect(view.allowedActions, contains('GENERATE_AND_APPROVE'));
     expect(view.products.single.readinessRatio, 0.25);
+    expect(view.products.single.hasProductionMaterialChildren, isTrue);
     expect(view.products.single.readyStartQty, 20);
     expect(view.products.single.readyFinishQty, 10);
     expect(view.products.single.readyShipQty, 8);

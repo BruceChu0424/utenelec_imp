@@ -47,12 +47,12 @@ public class HrTaskClaimService {
     @PreAuthorize("hasAuthority('employee:view')")
     @Transactional
     public HrTaskClaimView claim(String taskType, UUID employeeId) {
-        HrTaskClaimView view = claimInternal(taskType, employeeId);
-        auditExplicit("hr_task_claim", taskType, claimantName(employeeId));
-        return view;
+        ClaimOutcome outcome = claimInternal(taskType, employeeId);
+        auditExplicit(outcome.action(), taskType, claimantName(employeeId));
+        return outcome.view();
     }
 
-    private HrTaskClaimView claimInternal(String taskType, UUID employeeId) {
+    private ClaimOutcome claimInternal(String taskType, UUID employeeId) {
         requireTaskType(taskType);
         UUID me = currentUser.requireEmployeeId();
         HrTaskClaim existing = claimRepo
@@ -61,7 +61,9 @@ public class HrTaskClaimService {
         if (existing != null && existing.isActive()) {
             if (existing.getClaimedBy().equals(me)) {
                 existing.setLeaseUntil(OffsetDateTime.now().plusHours(LEASE_HOURS)); // 续租
-                return toView(claimRepo.save(existing), me);
+                return new ClaimOutcome(
+                        toView(claimRepo.save(existing), me),
+                        "hr_task_renew");
             }
             throw new ApiException(ErrorCode.CONFLICT,
                     "该事项正由 " + claimantName(existing.getClaimedBy()) + " 处理中");
@@ -77,7 +79,9 @@ public class HrTaskClaimService {
         claim.setClaimedBy(me);
         claim.setClaimedAt(OffsetDateTime.now());
         claim.setLeaseUntil(OffsetDateTime.now().plusHours(LEASE_HOURS));
-        return toView(claimRepo.save(claim), me);
+        return new ClaimOutcome(
+                toView(claimRepo.save(claim), me),
+                "hr_task_claim");
     }
 
     /** 释放（本人或持 employee:edit 的管理者；无有效认领时幂等成功）。 */
@@ -108,21 +112,32 @@ public class HrTaskClaimService {
     public HrTaskClaimView takeover(String taskType, UUID employeeId) {
         requireTaskType(taskType);
         UUID me = currentUser.requireEmployeeId();
-        claimRepo.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(taskType, employeeId)
-                .filter(c -> !c.getClaimedBy().equals(me))
-                .ifPresent(c -> {
-                    c.setReleasedAt(OffsetDateTime.now());
-                    c.setRemark("被接管");
-                    claimRepo.save(c);
-                });
-        HrTaskClaimView view = claimInternal(taskType, employeeId);
-        auditExplicit("hr_task_takeover", taskType, claimantName(employeeId));
-        return view;
+        HrTaskClaim previous = claimRepo
+                .findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(taskType, employeeId)
+                .orElse(null);
+        boolean replacedOther = previous != null
+                && previous.isActive()
+                && !previous.getClaimedBy().equals(me);
+        boolean renewedSelf = previous != null
+                && previous.isActive()
+                && previous.getClaimedBy().equals(me);
+        if (replacedOther) {
+            previous.setReleasedAt(OffsetDateTime.now());
+            previous.setRemark("被接管");
+            claimRepo.save(previous);
+        }
+        ClaimOutcome claimed = claimInternal(taskType, employeeId);
+        auditExplicit(
+                replacedOther ? "hr_task_takeover"
+                        : renewedSelf ? "hr_task_renew" : claimed.action(),
+                taskType,
+                claimantName(employeeId));
+        return claimed.view();
     }
 
     /** HR 任务认领用户操作显式审计：targetId = 任务类型 · 员工姓名。 */
     private void auditExplicit(String action, String taskType, String employeeName) {
-        currentUser.get().ifPresent(u -> audit.logExplicit(
+        currentUser.get().ifPresent(u -> audit.logCommitted(
                 u.getId(), u.getLoginAccount(), action, "hr_task_claims",
                 taskType + " · " + employeeName, "success"));
     }
@@ -163,4 +178,6 @@ public class HrTaskClaimService {
             String taskType, UUID employeeId,
             UUID claimedBy, String claimedByName, boolean claimedByMe,
             OffsetDateTime claimedAt, OffsetDateTime leaseUntil) {}
+
+    private record ClaimOutcome(HrTaskClaimView view, String action) {}
 }

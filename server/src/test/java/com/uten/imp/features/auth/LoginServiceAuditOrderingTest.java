@@ -86,7 +86,7 @@ class LoginServiceAuditOrderingTest {
         order.verify(tx).bindActor(user.getId(), user.getLoginAccount());
         order.verify(userRepo).save(user);
         order.verify(tokenIssuer).issueTokens(user);
-        order.verify(audit).logExplicit(
+        order.verify(audit).logCommitted(
                 user.getId(),
                 user.getLoginAccount(),
                 "login",
@@ -104,7 +104,7 @@ class LoginServiceAuditOrderingTest {
                 IllegalStateException.class,
                 () -> service.login(request, "203.0.113.9"));
 
-        verify(audit, never()).logExplicit(
+        verify(audit, never()).logCommitted(
                 user.getId(),
                 user.getLoginAccount(),
                 "login",

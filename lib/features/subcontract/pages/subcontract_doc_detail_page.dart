@@ -21,6 +21,7 @@ import '../../../core/router/route_names.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/procurement_finance_approval.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -162,6 +163,134 @@ class _SubcontractDocDetailPageState
     (repo) => repo.submitFinance(widget.id),
     '已提交财务审核组，等待财务审核',
   );
+
+  /// 当前登录人可办理的待审财务审批投影。
+  ///
+  /// allowedActions 由服务端按当前审核员权限计算（APPROVE/REJECT 各自绑定
+  /// finance_order_approval:approve|reject + 审核组资格），前端不再叠加权限判断。
+  ProcurementFinanceApproval? get _pendingFinanceApproval {
+    final approval = _detail?.financeApproval;
+    if (approval == null || !approval.isPending || approval.version < 1) {
+      return null;
+    }
+    return approval.canApprove || approval.canReject ? approval : null;
+  }
+
+  /// 财务审核组单笔通过（页内审批，与任务中心共用同一端点和审核责任留痕）。
+  Future<void> _approveFinanceApproval() async {
+    final approval = _pendingFinanceApproval;
+    if (approval == null || _busy) return;
+    final confirmed = await showUtenReviewerConfirmDialog(
+      context,
+      title: '审批通过委外订货单',
+      confirmLabel: '确认通过',
+      actionLabel: '订货财务审核',
+      responsibilityDescription: '确认后，系统将以此登录员工记录订货财务审核责任。',
+      message: '通过后委外订货单立即生效，仓库会收到未来入库提醒。',
+    );
+    if (!confirmed || !mounted) return;
+    await _runFinanceDecision(
+      () => ref
+          .read(subcontractRepositoryProvider(widget.docType))
+          .approveFinance(widget.id, expectedVersion: approval.version),
+      '已通过该委外订货单的财务审批',
+    );
+  }
+
+  /// 财务审核组单笔驳回：退回原因必填（与任务中心批量驳回同一约束）。
+  Future<void> _rejectFinanceApproval() async {
+    final approval = _pendingFinanceApproval;
+    if (approval == null || _busy) return;
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        var value = '';
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Text('驳回委外订货单'),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const UtenReviewerResponsibilityNotice(
+                    actionLabel: '驳回订货财务审核',
+                    description: '确认后，系统将以此登录员工记录退回责任。',
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Text('${_detail?.billNo ?? '该委外订货单'}将退回给制单人，修改后可重新提交财务审核。'),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    autofocus: true,
+                    minLines: 3,
+                    maxLines: 5,
+                    maxLength: 1000,
+                    onChanged: (v) => setDialogState(() => value = v.trim()),
+                    decoration: const InputDecoration(
+                      labelText: '退回原因(必填)',
+                      hintText: '请写清需要制单人修改的内容',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                  foregroundColor: Theme.of(ctx).colorScheme.onError,
+                ),
+                onPressed: value.isEmpty
+                    ? null
+                    : () => Navigator.pop(ctx, value),
+                child: const Text('确认驳回'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (reason == null || reason.isEmpty || !mounted) return;
+    await _runFinanceDecision(
+      () => ref
+          .read(subcontractRepositoryProvider(widget.docType))
+          .rejectFinance(
+            widget.id,
+            expectedVersion: approval.version,
+            reason: reason,
+          ),
+      '已驳回该委外订货单，等待委外修改后重新提交',
+    );
+  }
+
+  Future<void> _runFinanceDecision(
+    Future<void> Function() action,
+    String ok,
+  ) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+      if (!mounted) return;
+      context.appSuccess(ok);
+      bumpListRefresh(ref, _cfg.refreshKey);
+      await _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appError(e.message);
+      // 版本冲突或已被他人办理时刷新投影，避免失效按钮滞留。
+      await _load();
+    } catch (_) {
+      if (mounted) context.appError('操作失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
@@ -858,6 +987,31 @@ class _SubcontractDocDetailPageState
           icon: Icons.undo_outlined,
           onPressed: _reverse,
           child: const Text('红冲'),
+        ),
+      );
+    }
+
+    // 待审且当前登录人为持权财务审核员：页内直接通过/驳回（任务中心之外的单据级入口）。
+    final pendingApproval = _pendingFinanceApproval;
+    if (pendingApproval?.canReject == true) {
+      addAction(
+        UtenButton(
+          key: const Key('subcontract-order-finance-reject'),
+          type: UtenButtonType.danger,
+          icon: Icons.reply_rounded,
+          onPressed: _rejectFinanceApproval,
+          child: const Text('驳回'),
+        ),
+      );
+    }
+    if (pendingApproval?.canApprove == true) {
+      addAction(
+        UtenButton(
+          key: const Key('subcontract-order-finance-approve'),
+          type: UtenButtonType.success,
+          icon: Icons.check_circle_outline_rounded,
+          onPressed: _approveFinanceApproval,
+          child: const Text('审批通过'),
         ),
       );
     }

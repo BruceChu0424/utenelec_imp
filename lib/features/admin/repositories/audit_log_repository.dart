@@ -9,6 +9,9 @@ import '../../../core/network/api_endpoints.dart';
 import '../models/audit_log_entry.dart';
 
 abstract interface class AuditLogRepository {
+  /// 分页搜索审计操作人员。候选不含系统任务，以 actorId 作为选择权威。
+  Future<AuditActorPage> actors({int page = 1, int size = 20, String? keyword});
+
   /// 审计日志分页查询（按 createdAt DESC）。
   ///
   /// [action] 动作前缀模糊（'export' → 所有 export_*_report）；null = 不筛。
@@ -18,6 +21,7 @@ abstract interface class AuditLogRepository {
     int page = 1,
     int size = 20,
     String? action,
+    String? actorId,
     String? actorAccount,
     String? keyword,
     String? targetType,
@@ -26,6 +30,7 @@ abstract interface class AuditLogRepository {
     String? requestId,
     String? operationKind,
     String? actorScope,
+    bool activityOnly = true,
     int? snapshotId,
     String? riskLevel,
     String? eventCategory,
@@ -36,6 +41,7 @@ abstract interface class AuditLogRepository {
 
   Future<AuditSummary> summary({
     String? action,
+    String? actorId,
     String? actorAccount,
     String? keyword,
     String? targetType,
@@ -44,6 +50,7 @@ abstract interface class AuditLogRepository {
     String? requestId,
     String? operationKind,
     String? actorScope,
+    bool activityOnly = true,
     int? snapshotId,
     String? eventCategory,
     String? dateFrom,
@@ -59,10 +66,29 @@ class DioAuditLogRepository implements AuditLogRepository {
   final ApiClient api;
 
   @override
+  Future<AuditActorPage> actors({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+  }) async {
+    final json = await api.get(
+      '${ApiEndpoints.adminAuditLogs}/actors',
+      query: <String, dynamic>{
+        'page': page,
+        'size': size,
+        if (keyword != null && keyword.trim().isNotEmpty)
+          'keyword': keyword.trim(),
+      },
+    );
+    return AuditActorPage.fromJson(Map<String, dynamic>.from(json as Map));
+  }
+
+  @override
   Future<AuditLogPage> list({
     int page = 1,
     int size = 20,
     String? action,
+    String? actorId,
     String? actorAccount,
     String? keyword,
     String? targetType,
@@ -71,6 +97,7 @@ class DioAuditLogRepository implements AuditLogRepository {
     String? requestId,
     String? operationKind,
     String? actorScope,
+    bool activityOnly = true,
     int? snapshotId,
     String? riskLevel,
     String? eventCategory,
@@ -84,6 +111,7 @@ class DioAuditLogRepository implements AuditLogRepository {
         'page': page,
         'size': size,
         if (action != null && action.isNotEmpty) 'action': action,
+        if (actorId != null && actorId.isNotEmpty) 'actorId': actorId,
         if (actorAccount != null && actorAccount.isNotEmpty)
           'actorAccount': actorAccount,
         if (keyword != null && keyword.trim().isNotEmpty)
@@ -100,6 +128,7 @@ class DioAuditLogRepository implements AuditLogRepository {
           'operationKind': operationKind.trim(),
         if (actorScope != null && actorScope.trim().isNotEmpty)
           'actorScope': actorScope.trim(),
+        'activityOnly': activityOnly,
         'snapshotId': ?snapshotId,
         if (riskLevel != null && riskLevel.isNotEmpty) 'riskLevel': riskLevel,
         if (eventCategory != null && eventCategory.isNotEmpty)
@@ -115,6 +144,7 @@ class DioAuditLogRepository implements AuditLogRepository {
   @override
   Future<AuditSummary> summary({
     String? action,
+    String? actorId,
     String? actorAccount,
     String? keyword,
     String? targetType,
@@ -123,6 +153,7 @@ class DioAuditLogRepository implements AuditLogRepository {
     String? requestId,
     String? operationKind,
     String? actorScope,
+    bool activityOnly = true,
     int? snapshotId,
     String? eventCategory,
     String? dateFrom,
@@ -132,6 +163,7 @@ class DioAuditLogRepository implements AuditLogRepository {
       '${ApiEndpoints.adminAuditLogs}/summary',
       query: <String, dynamic>{
         if (action != null && action.isNotEmpty) 'action': action,
+        if (actorId != null && actorId.isNotEmpty) 'actorId': actorId,
         if (actorAccount != null && actorAccount.isNotEmpty)
           'actorAccount': actorAccount,
         if (keyword != null && keyword.trim().isNotEmpty)
@@ -148,6 +180,7 @@ class DioAuditLogRepository implements AuditLogRepository {
           'operationKind': operationKind.trim(),
         if (actorScope != null && actorScope.trim().isNotEmpty)
           'actorScope': actorScope.trim(),
+        'activityOnly': activityOnly,
         'snapshotId': ?snapshotId,
         if (eventCategory != null && eventCategory.isNotEmpty)
           'eventCategory': eventCategory,

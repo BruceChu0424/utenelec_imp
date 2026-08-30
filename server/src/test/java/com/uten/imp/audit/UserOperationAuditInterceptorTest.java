@@ -14,6 +14,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class UserOperationAuditInterceptorTest {
@@ -99,7 +100,7 @@ class UserOperationAuditInterceptorTest {
     }
 
     @Test
-    void recordsAuthenticatedAuthReadThatHasNoDedicatedBusinessEvent() {
+    void skipsSuccessfulReviewedAutomaticAuthRead() {
         MockHttpServletRequest request =
                 new MockHttpServletRequest("GET", "/api/auth/me");
         request.setQueryString("include=private-query-value");
@@ -108,13 +109,41 @@ class UserOperationAuditInterceptorTest {
         interceptor.preHandle(request, response, new Object());
         interceptor.afterCompletion(request, response, new Object(), null);
 
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void skipsSuccessfulReviewedBadgePollButRetainsItsFailure() {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/production/schedule/pending-count");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        interceptor.preHandle(request, response, new Object());
+        interceptor.afterCompletion(request, response, new Object(), null);
+        verifyNoInteractions(auditService);
+
+        response.setStatus(503);
+        interceptor.preHandle(request, response, new Object());
+        interceptor.afterCompletion(request, response, new Object(), null);
         verify(auditService).logHttpOperation(
-                eq(userId),
-                eq("auditor"),
-                eq("GET"),
-                eq("/api/auth/me"),
-                eq("api/auth/me"),
-                eq(200),
+                eq(userId), eq("auditor"), eq("GET"),
+                eq("/api/production/schedule/pending-count"),
+                eq("api/production/schedule"), eq(503),
+                org.mockito.ArgumentMatchers.longThat(value -> value >= 0));
+    }
+
+    @Test
+    void ordinaryBusinessWriteCannotBeSuppressedAsBackgroundNoise() {
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("POST", "/api/sales/orders");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        interceptor.preHandle(request, response, new Object());
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        verify(auditService).logHttpOperation(
+                eq(userId), eq("auditor"), eq("POST"),
+                eq("/api/sales/orders"), eq("api/sales/orders"), eq(200),
                 org.mockito.ArgumentMatchers.longThat(value -> value >= 0));
     }
 

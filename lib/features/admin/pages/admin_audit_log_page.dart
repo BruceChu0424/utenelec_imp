@@ -31,11 +31,11 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
-import '../../../shared/providers/time_display_provider.dart';
 import '../../../shared/repositories/public_settings_repository.dart';
 import '../models/audit_field_labels.dart';
 import '../models/audit_log_entry.dart';
 import '../repositories/audit_log_repository.dart';
+import '../widgets/audit_query_scope.dart';
 
 class AdminAuditLogPage extends ConsumerStatefulWidget {
   const AdminAuditLogPage({super.key});
@@ -55,10 +55,14 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   String? _targetTypeFilter;
   String? _eventSourceFilter;
   String _requestId = '';
-  String? _operationKindFilter = 'write';
+  String? _operationKindFilter;
   String? _actorScopeFilter = 'user';
   int? _snapshotId;
 
+  AuditActorOption? _selectedActor;
+  bool _anonymousMode = false;
+  bool _systemAnomalyMode = false;
+  bool _scopeApplied = false;
   String? _riskFilter;
   String? _categoryFilter;
   String? _outcomeFilter;
@@ -72,6 +76,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   final _loadRequests = LatestRequestGuard();
   final _searchController = TextEditingController();
   final _requestIdController = TextEditingController();
+  final _scrollController = ScrollController();
 
   /// 动作 chip 定义：(label, 前缀|null)。null 表示"全部"。
   static const _actionChips = <(String, String?)>[
@@ -91,12 +96,6 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     ('读取', 'read'),
   ];
 
-  static const _actorScopeChips = <(String, String?)>[
-    ('用户操作', 'user'),
-    ('全部记录', null),
-    ('系统/迁移', 'system'),
-  ];
-
   static const _targetTypeChips = <(String, String?)>[
     ('全部对象', null),
     ('货品', 'goods'),
@@ -108,7 +107,6 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   static const _eventSourceOptions = <(String, String?)>[
     ('全部来源', null),
     ('请求', 'request'),
-    ('数据库变更', 'database'),
     ('业务事件', 'business'),
     ('安全拦截', 'security'),
   ];
@@ -123,7 +121,6 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     ('权限变更', 'authorization'),
     ('登录认证', 'authentication'),
     ('数据导出', 'export'),
-    ('数据变更', 'data_change'),
     ('业务操作', 'business'),
     ('系统设置', 'system'),
   ];
@@ -131,15 +128,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   @override
   void initState() {
     super.initState();
-    final today = ChinaDateTime.today();
-    _dateRange = DateTimeRange(
-      start: today.subtract(const Duration(days: 6)),
-      end: today,
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
   Future<void> _load(int page, {bool silent = false}) async {
+    if (!_canLoad) return;
     final generation = _loadRequests.begin();
     final requestedSnapshotId = _snapshotId;
     _pageNum = page;
@@ -155,12 +147,16 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       final pageResult = await repository.list(
         page: page,
         action: _actionFilter,
+        actorId: _requestId.isEmpty && !_anonymousMode && !_systemAnomalyMode
+            ? _selectedActor?.actorId
+            : null,
         keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
         targetType: _targetTypeFilter,
         eventSource: _eventSourceFilter,
         requestId: _requestId.trim().isEmpty ? null : _requestId.trim(),
         operationKind: _operationKindFilter,
         actorScope: _actorScopeFilter,
+        activityOnly: !_isRequestInvestigation,
         snapshotId: requestedSnapshotId,
         riskLevel: _riskFilter,
         eventCategory: _categoryFilter,
@@ -173,24 +169,31 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             : ChinaDateTime.formatDate(_dateRange!.end),
       );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      final summary = await repository.summary(
-        action: _actionFilter,
-        keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-        targetType: _targetTypeFilter,
-        eventSource: _eventSourceFilter,
-        requestId: _requestId.trim().isEmpty ? null : _requestId.trim(),
-        operationKind: _operationKindFilter,
-        actorScope: _actorScopeFilter,
-        snapshotId: pageResult.snapshotId,
-        eventCategory: _categoryFilter,
-        dateFrom: _dateRange == null
-            ? null
-            : ChinaDateTime.formatDate(_dateRange!.start),
-        dateTo: _dateRange == null
-            ? null
-            : ChinaDateTime.formatDate(_dateRange!.end),
-      );
-      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      var summary = _summary;
+      if (requestedSnapshotId == null || summary == null) {
+        summary = await repository.summary(
+          action: _actionFilter,
+          actorId: _requestId.isEmpty && !_anonymousMode && !_systemAnomalyMode
+              ? _selectedActor?.actorId
+              : null,
+          keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+          targetType: _targetTypeFilter,
+          eventSource: _eventSourceFilter,
+          requestId: _requestId.trim().isEmpty ? null : _requestId.trim(),
+          operationKind: _operationKindFilter,
+          actorScope: _actorScopeFilter,
+          activityOnly: !_isRequestInvestigation,
+          snapshotId: pageResult.snapshotId,
+          eventCategory: _categoryFilter,
+          dateFrom: _dateRange == null
+              ? null
+              : ChinaDateTime.formatDate(_dateRange!.start),
+          dateTo: _dateRange == null
+              ? null
+              : ChinaDateTime.formatDate(_dateRange!.end),
+        );
+        if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      }
       setState(() {
         _page = pageResult;
         _summary = summary;
@@ -213,6 +216,41 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         _loading = false;
       });
     }
+  }
+
+  bool get _isRequestInvestigation =>
+      _requestIdPattern.hasMatch(_requestId.trim());
+
+  bool get _canLoad =>
+      _isRequestInvestigation ||
+      (_scopeApplied &&
+          (_selectedActor != null || _anonymousMode || _systemAnomalyMode) &&
+          _dateRange != null);
+
+  String get _dateRangeLabel {
+    final range = _dateRange;
+    if (range == null) return '尚未选择日期';
+    final start = ChinaDateTime.formatDate(range.start);
+    final end = ChinaDateTime.formatDate(range.end);
+    return start == end ? '$start(单日)' : '$start 至 $end';
+  }
+
+  String get _queryScopeLabel {
+    if (_isRequestInvestigation) return '同一操作';
+    if (_systemAnomalyMode) return '系统异常 · $_dateRangeLabel';
+    if (_anonymousMode) return '未识别访问 · $_dateRangeLabel';
+    return '${_selectedActor?.primaryLabel ?? '未知人员'} · $_dateRangeLabel';
+  }
+
+  void _invalidateScopeResults() {
+    _loadRequests.begin();
+    _scopeApplied = false;
+    _snapshotId = null;
+    _page = null;
+    _summary = null;
+    _error = null;
+    _loading = false;
+    _pageNum = 1;
   }
 
   void _onSearchChanged(String v) {
@@ -242,13 +280,17 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       return;
     }
     if (t == _requestId) return;
-    _requestId = t;
-    _reloadFromFirstPage();
+    _locateRequest(t);
   }
 
   void _locateRequest(String requestId) {
     if (!_requestIdPattern.hasMatch(requestId)) return;
     setState(() {
+      _selectedActor = null;
+      _anonymousMode = false;
+      _systemAnomalyMode = false;
+      _dateRange = null;
+      _scopeApplied = false;
       _requestId = requestId;
       _requestIdController.text = requestId;
       _keyword = '';
@@ -270,12 +312,13 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   void dispose() {
     _searchController.dispose();
     _requestIdController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _reloadFromFirstPage() {
     setState(() => _snapshotId = null);
-    _load(1);
+    if (_canLoad) _load(1);
   }
 
   void _onChipTap(String? prefix) {
@@ -285,7 +328,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       if (prefix != null) {
         _operationKindFilter = null;
       }
-      if (prefix == 'login') {
+      if (!_anonymousMode && !_systemAnomalyMode && prefix == 'login') {
         _actorScopeFilter = null;
       }
       _snapshotId = null;
@@ -297,15 +340,6 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     if (_operationKindFilter == value) return;
     setState(() {
       _operationKindFilter = value;
-      _snapshotId = null;
-    });
-    _load(1);
-  }
-
-  void _onActorScopeChanged(String? value) {
-    if (_actorScopeFilter == value) return;
-    setState(() {
-      _actorScopeFilter = value;
       _snapshotId = null;
     });
     _load(1);
@@ -327,7 +361,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       if (value != null && value != 'database') {
         _operationKindFilter = null;
       }
-      if (value == 'security') {
+      if (!_anonymousMode && !_systemAnomalyMode && value == 'security') {
         _actorScopeFilter = null;
       }
       _snapshotId = null;
@@ -342,7 +376,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       if (value != null && value != 'data_change') {
         _operationKindFilter = null;
       }
-      if (value == 'security' || value == 'authentication') {
+      if (!_anonymousMode &&
+          !_systemAnomalyMode &&
+          (value == 'security' || value == 'authentication')) {
         _actorScopeFilter = null;
       }
       _snapshotId = null;
@@ -372,6 +408,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 
   Future<void> _pickDateRange() async {
+    if (_selectedActor == null && !_anonymousMode && !_systemAnomalyMode) {
+      context.appWarning('请先选择要查看的人员。');
+      return;
+    }
     final today = ChinaDateTime.today();
     final picked = await showDateRangePicker(
       context: context,
@@ -382,15 +422,134 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       saveText: '应用',
     );
     if (picked == null || !mounted) return;
+    if (picked.duration.inDays > 30) {
+      context.appWarning('一次最多查看连续 31 天，请缩短日期区间。');
+      return;
+    }
     setState(() {
       _dateRange = picked;
+      _invalidateScopeResults();
+    });
+  }
+
+  void _setDatePreset(int dayCount) {
+    if (_selectedActor == null && !_anonymousMode && !_systemAnomalyMode) {
+      context.appWarning('请先选择要查看的人员。');
+      return;
+    }
+    final today = ChinaDateTime.today();
+    setState(() {
+      _dateRange = DateTimeRange(
+        start: today.subtract(Duration(days: dayCount - 1)),
+        end: today,
+      );
+      _invalidateScopeResults();
+    });
+  }
+
+  Future<void> _pickActor() async {
+    final width = MediaQuery.sizeOf(context).width;
+    final AuditActorOption? picked;
+    if (width < 720) {
+      picked = await showModalBottomSheet<AuditActorOption>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (_) => const FractionallySizedBox(
+          heightFactor: 0.9,
+          child: AuditActorPicker(),
+        ),
+      );
+    } else {
+      picked = await showDialog<AuditActorOption>(
+        context: context,
+        builder: (_) => const Dialog(
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(width: 640, height: 640, child: AuditActorPicker()),
+        ),
+      );
+    }
+    if (picked == null || !mounted) return;
+    setState(() {
+      _selectedActor = picked;
+      _anonymousMode = false;
+      _systemAnomalyMode = false;
+      _requestId = '';
+      _requestIdController.clear();
+      _actorScopeFilter = 'user';
+      _invalidateScopeResults();
+    });
+  }
+
+  void _applyScopeQuery() {
+    if (_selectedActor == null && !_anonymousMode && !_systemAnomalyMode) {
+      context.appWarning('请先选择要查看的人员。');
+      return;
+    }
+    if (_dateRange == null) {
+      context.appWarning('请选择单日或最长 31 天的日期区间。');
+      return;
+    }
+    setState(() {
+      _scopeApplied = true;
+      _requestId = '';
+      _requestIdController.clear();
+      _actorScopeFilter = _systemAnomalyMode
+          ? 'system'
+          : _anonymousMode
+          ? 'anonymous'
+          : 'user';
       _snapshotId = null;
+      _page = null;
+      _summary = null;
+      _error = null;
     });
     _load(1);
   }
 
-  void _resetFilters({bool showAll = false}) {
-    final today = ChinaDateTime.today();
+  void _clearScope() {
+    _loadRequests.begin();
+    setState(() {
+      _selectedActor = null;
+      _anonymousMode = false;
+      _systemAnomalyMode = false;
+      _dateRange = null;
+      _scopeApplied = false;
+      _requestId = '';
+      _requestIdController.clear();
+      _snapshotId = null;
+      _page = null;
+      _summary = null;
+      _error = null;
+      _loading = false;
+    });
+  }
+
+  void _selectAnonymousScope() {
+    setState(() {
+      _selectedActor = null;
+      _anonymousMode = true;
+      _systemAnomalyMode = false;
+      _actorScopeFilter = 'anonymous';
+      _requestId = '';
+      _requestIdController.clear();
+      _invalidateScopeResults();
+    });
+  }
+
+  void _selectSystemAnomalyScope() {
+    setState(() {
+      _selectedActor = null;
+      _anonymousMode = false;
+      _systemAnomalyMode = true;
+      _actorScopeFilter = 'system';
+      _requestId = '';
+      _requestIdController.clear();
+      _invalidateScopeResults();
+    });
+  }
+
+  void _resetFilters() {
     setState(() {
       _actionFilter = null;
       _keyword = '';
@@ -399,25 +558,27 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       _eventSourceFilter = null;
       _requestId = '';
       _requestIdController.clear();
-      _operationKindFilter = showAll ? null : 'write';
-      _actorScopeFilter = showAll ? null : 'user';
+      _operationKindFilter = null;
+      _actorScopeFilter = _systemAnomalyMode
+          ? 'system'
+          : _anonymousMode
+          ? 'anonymous'
+          : _selectedActor == null
+          ? null
+          : 'user';
       _categoryFilter = null;
       _riskFilter = null;
       _outcomeFilter = null;
-      _dateRange = DateTimeRange(
-        start: today.subtract(const Duration(days: 6)),
-        end: today,
-      );
       _snapshotId = null;
     });
-    _load(1);
+    if (_canLoad) _load(1);
   }
 
-  /// createdAt ISO → 展示时间。默认 'yyyy-MM-dd HH:mm（北京）'；
-  /// local=true 时按设备时区换算并标注当地时区。
-  static String _fmtTime(String? iso, {bool local = false}) {
-    return DisplayDateTime.format(iso, local: local, fallback: iso ?? '');
-  }
+  /// createdAt ISO → 统一展示为北京时间。
+  static String _fmtTime(String? iso) => DisplayDateTime.beijing(
+    iso,
+    fallback: '时间未知',
+  ).replaceFirst('(北京)', '(北京时间)');
 
   /// 动作 → 友好标签（导出动作归一为"导出 xxx 报表"）。
   static String _actionLabel(String action) {
@@ -433,7 +594,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         'finance_report': '钱流报表',
         'warehouse_report': '仓库报表',
       };
-      cn = map[seg] ?? seg;
+      cn = map[seg] ?? '业务报表';
       return '导出 · $cn';
     }
     return switch (action) {
@@ -446,7 +607,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       'update' => '修改',
       'delete' => '删除',
       'refresh_reuse' => '令牌重用',
-      _ => action,
+      _ => '其他操作',
     };
   }
 
@@ -465,23 +626,30 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       'invalid' => '凭证无效',
       'not_found' => '对象不存在',
       'denied' => '被拒绝',
-      _ => r,
+      _ => '未知结果',
     };
   }
 
   Future<void> _refresh() async {
+    if (!_canLoad) return;
     setState(() => _snapshotId = null);
     await _load(1);
   }
 
   Map<String, dynamic> get _exportQueryParams => <String, dynamic>{
     if (_actionFilter != null) 'action': _actionFilter,
+    if (_requestId.isEmpty &&
+        !_anonymousMode &&
+        !_systemAnomalyMode &&
+        _selectedActor != null)
+      'actorId': _selectedActor!.actorId,
     if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
     if (_targetTypeFilter != null) 'targetType': _targetTypeFilter,
     if (_eventSourceFilter != null) 'eventSource': _eventSourceFilter,
     if (_requestId.trim().isNotEmpty) 'requestId': _requestId.trim(),
     if (_operationKindFilter != null) 'operationKind': _operationKindFilter,
     if (_actorScopeFilter != null) 'actorScope': _actorScopeFilter,
+    'activityOnly': !_isRequestInvestigation,
     if (_snapshotId != null) 'snapshotId': _snapshotId,
     if (_riskFilter != null) 'riskLevel': _riskFilter,
     if (_categoryFilter != null) 'eventCategory': _categoryFilter,
@@ -498,8 +666,39 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         '${ChinaDateTime.formatDate(range.end)}';
   }
 
+  Future<_AuditDetailBundle> _loadDetailBundle(AuditLogEntry entry) async {
+    final repository = ref.read(auditLogRepositoryProvider);
+    final detail = await repository.detail(entry.id);
+    final requestId = detail.requestId?.trim();
+    if (requestId == null || !_requestIdPattern.hasMatch(requestId)) {
+      return _AuditDetailBundle(detail: detail);
+    }
+    try {
+      final relatedPage = await repository.list(
+        size: 100,
+        requestId: requestId,
+        activityOnly: false,
+      );
+      final databaseRows = relatedPage.items
+          .where((row) => row.eventSource == 'database' && row.id != detail.id)
+          .toList(growable: false);
+      const detailLimit = 24;
+      return _AuditDetailBundle(
+        detail: detail,
+        relatedChanges: databaseRows.take(detailLimit).toList(growable: false),
+        relatedChangesTruncated:
+            databaseRows.length > detailLimit ||
+            relatedPage.total > relatedPage.items.length,
+      );
+    } catch (_) {
+      return _AuditDetailBundle(
+        detail: detail,
+        relatedChangesError: '关联业务变化加载失败，可稍后重试打开详情。',
+      );
+    }
+  }
+
   Future<void> _openDetail(AuditLogEntry entry) async {
-    final future = ref.read(auditLogRepositoryProvider).detail(entry.id);
     final width = MediaQuery.sizeOf(context).width;
     if (width < 720) {
       await showModalBottomSheet<void>(
@@ -509,7 +708,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         builder: (sheetContext) => FractionallySizedBox(
           heightFactor: 0.92,
           child: _AuditDetailPanel(
-            future: future,
+            loader: () => _loadDetailBundle(entry),
             onClose: () => Navigator.pop(sheetContext),
             onLocateRequest: (requestId) {
               Navigator.pop(sheetContext);
@@ -520,22 +719,31 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       );
       return;
     }
-    final panelWidth = (width * 0.68).clamp(680.0, 920.0).toDouble();
+    final panelWidth = (width * 0.56).clamp(640.0, 900.0).toDouble();
     await showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
       barrierLabel: '关闭审计详情',
       barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 280),
+      transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (dialogContext, _, _) => Align(
         alignment: Alignment.centerRight,
         child: Material(
-          // 无阴影：滑窗与内容区以 1px 边线分隔，保持整页无投影风格
+          color: Theme.of(context).colorScheme.surface,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: const BorderRadius.horizontal(
+              left: Radius.circular(20),
+            ),
+            side: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
           child: SizedBox(
             width: panelWidth,
             height: double.infinity,
             child: _AuditDetailPanel(
-              future: future,
+              loader: () => _loadDetailBundle(entry),
               onClose: () => Navigator.pop(dialogContext),
               onLocateRequest: (requestId) {
                 Navigator.pop(dialogContext);
@@ -559,10 +767,11 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   Widget build(BuildContext context) {
     // 返回即刷新：从其它页面回到审计中心时重拉当前页（保留筛选/页码），
     // 保证看到最新审计记录。本页路由为静态路径，直接用 RouteName 常量。
-    ref.onPageResume(
-      RouteName.adminAuditLogs,
-      () => _load(_pageNum, silent: true),
-    );
+    ref.onPageResume(RouteName.adminAuditLogs, () {
+      if (!_canLoad) return;
+      _snapshotId = null;
+      _load(1, silent: true);
+    });
     final items = _page?.items ?? const <AuditLogEntry>[];
     final hasDrillDown =
         _riskFilter != null ||
@@ -581,166 +790,233 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             queryParams: _exportQueryParams,
             filename: _exportFilename,
             requiredPermission: Perm.auditLogExport,
-            enabled: _snapshotId != null,
+            enabled: _canLoad && _snapshotId != null,
             label: '导出当前结果',
           ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: _refresh,
+            onPressed: _canLoad ? _refresh : null,
           ),
         ],
       ),
       body: SafeArea(
         child: UtenContentContainer(
-          child: RefreshIndicator(
-            onRefresh: _refresh,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: UtenSpacing.s8),
-                    child: _AuditHero(),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: UtenSpacing.s16),
-                    child: _AuditMetricGrid(
-                      summary: _summary,
-                      selectedRisk: _riskFilter,
-                      selectedOutcome: _outcomeFilter,
-                      selectedCategory: _categoryFilter,
-                      onAll: () => _applyDrillDown(clear: true),
-                      onRisk: () => _applyDrillDown(risk: 'risky'),
-                      onCritical: () => _applyDrillDown(risk: 'critical'),
-                      onFailure: () => _applyDrillDown(outcome: 'failure'),
-                      onDataChange: () =>
-                          _applyDrillDown(category: 'data_change'),
-                    ),
-                  ),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: UtenSpacing.s16),
-                    child: _AuditFilterPanel(
-                      searchController: _searchController,
-                      requestIdController: _requestIdController,
-                      actionFilter: _actionFilter,
-                      operationKindFilter: _operationKindFilter,
-                      actorScopeFilter: _actorScopeFilter,
-                      targetTypeFilter: _targetTypeFilter,
-                      eventSourceFilter: _eventSourceFilter,
-                      categoryFilter: _categoryFilter,
-                      riskFilter: _riskFilter,
-                      outcomeFilter: _outcomeFilter,
-                      dateRange: _dateRange,
-                      actionChips: _actionChips,
-                      operationChips: _operationChips,
-                      actorScopeChips: _actorScopeChips,
-                      targetTypeChips: _targetTypeChips,
-                      eventSourceOptions: _eventSourceOptions,
-                      categoryChips: _categoryChips,
-                      onSearchChanged: _onSearchChanged,
-                      onRequestIdChanged: _onRequestIdDraftChanged,
-                      onRequestIdSubmitted: _onRequestIdSubmitted,
-                      onActionChanged: _onChipTap,
-                      onOperationKindChanged: _onOperationKindChanged,
-                      onActorScopeChanged: _onActorScopeChanged,
-                      onTargetTypeChanged: _onTargetTypeChanged,
-                      onEventSourceChanged: _onEventSourceChanged,
-                      onCategoryChanged: _onCategoryChanged,
-                      onRiskChanged: (value) {
-                        setState(() {
-                          _riskFilter = value;
-                          _snapshotId = null;
-                        });
-                        _load(1);
-                      },
-                      onOutcomeChanged: (value) {
-                        setState(() {
-                          _outcomeFilter = value;
-                          _snapshotId = null;
-                        });
-                        _load(1);
-                      },
-                      onPickDate: _pickDateRange,
-                      onClear: _resetFilters,
-                    ),
-                  ),
-                ),
-                if (_summary != null)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: UtenSpacing.s16),
-                      child: _AuditTrendCard(points: _summary!.dailyTrend),
-                    ),
-                  ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(
-                      top: UtenSpacing.s24,
-                      bottom: UtenSpacing.s8,
-                    ),
-                    child: _AuditListHeader(
-                      total: _page?.total ?? 0,
-                      hasDrillDown: hasDrillDown,
-                      onClearDrillDown: () => _applyDrillDown(clear: true),
-                    ),
-                  ),
-                ),
-                if (_loading)
-                  const SliverToBoxAdapter(child: LinearProgressIndicator()),
-                if (_error != null)
-                  SliverToBoxAdapter(
-                    child: _AuditErrorCard(
-                      message: _error!,
-                      onRetry: () => _load(_pageNum),
-                    ),
-                  )
-                else if (!_loading && items.isEmpty)
-                  SliverToBoxAdapter(
-                    child: _AuditEmptyCard(
-                      onShowAll: () => _resetFilters(showAll: true),
-                    ),
-                  )
-                else
-                  SliverList.separated(
-                    itemCount: items.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(height: UtenSpacing.s8),
-                    itemBuilder: (context, index) => _AuditEventTile(
-                      entry: items[index],
-                      onTap: () => _openDetail(items[index]),
-                    ),
-                  ),
-                if (_page != null && _error == null)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: UtenSpacing.s20,
-                      ),
-                      child: _AuditPagination(
-                        currentPage: _page!.page,
-                        totalPages: _page!.totalPages,
-                        loading: _loading,
-                        onPageChanged: _load,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final scrollView = RefreshIndicator(
+                onRefresh: _refresh,
+                child: CustomScrollView(
+                  controller: _scrollController,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                        child: AuditQueryScopeComposer(
+                          selectedActor: _selectedActor,
+                          anonymousMode: _anonymousMode,
+                          systemAnomalyMode: _systemAnomalyMode,
+                          dateRange: _dateRange,
+                          requestIdController: _requestIdController,
+                          requestInvestigation: _isRequestInvestigation,
+                          loading: _loading,
+                          scopeApplied: _scopeApplied,
+                          onPickActor: _pickActor,
+                          onSelectAnonymous: _selectAnonymousScope,
+                          onSelectSystemAnomaly: _selectSystemAnomalyScope,
+                          onToday: () => _setDatePreset(1),
+                          onYesterday: () {
+                            if (_selectedActor == null &&
+                                !_anonymousMode &&
+                                !_systemAnomalyMode) {
+                              context.appWarning('请先选择要查看的人员。');
+                              return;
+                            }
+                            final today = ChinaDateTime.today();
+                            final yesterday = today.subtract(
+                              const Duration(days: 1),
+                            );
+                            setState(() {
+                              _dateRange = DateTimeRange(
+                                start: yesterday,
+                                end: yesterday,
+                              );
+                              _invalidateScopeResults();
+                            });
+                          },
+                          onSevenDays: () => _setDatePreset(7),
+                          onThirtyDays: () => _setDatePreset(30),
+                          onCustomDate: _pickDateRange,
+                          onRunQuery: _applyScopeQuery,
+                          onRequestIdChanged: _onRequestIdDraftChanged,
+                          onRequestIdSubmitted: _onRequestIdSubmitted,
+                          onClear: _clearScope,
+                        ),
                       ),
                     ),
-                  ),
-                if (_error == null)
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: UtenSpacing.s8),
-                      child: _AuditRetentionHint(),
+                    if (!_canLoad)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.only(top: UtenSpacing.s16),
+                          child: _AuditStartGuide(),
+                        ),
+                      ),
+                    if (_canLoad)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                          child: _AuditMetricGrid(
+                            summary: _summary,
+                            scopeLabel: _isRequestInvestigation
+                                ? '同一操作的完整证据'
+                                : _queryScopeLabel,
+                            selectedOperation: _operationKindFilter,
+                            selectedRisk: _riskFilter,
+                            selectedOutcome: _outcomeFilter,
+                            selectedCategory: _categoryFilter,
+                            onAll: () => _applyDrillDown(clear: true),
+                            onRisk: () => _applyDrillDown(risk: 'risky'),
+                            onCritical: () => _applyDrillDown(risk: 'critical'),
+                            onFailure: () =>
+                                _applyDrillDown(outcome: 'failure'),
+                            onDataChange: () =>
+                                _onOperationKindChanged('write'),
+                          ),
+                        ),
+                      ),
+                    if (_canLoad)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                          child: _AuditFilterPanel(
+                            searchController: _searchController,
+                            actionFilter: _actionFilter,
+                            operationKindFilter: _operationKindFilter,
+                            targetTypeFilter: _targetTypeFilter,
+                            eventSourceFilter: _eventSourceFilter,
+                            categoryFilter: _categoryFilter,
+                            riskFilter: _riskFilter,
+                            outcomeFilter: _outcomeFilter,
+                            actionChips: _actionChips,
+                            operationChips: _operationChips,
+                            targetTypeChips: _targetTypeChips,
+                            eventSourceOptions: _eventSourceOptions,
+                            categoryChips: _categoryChips,
+                            onSearchChanged: _onSearchChanged,
+                            onActionChanged: _onChipTap,
+                            onOperationKindChanged: _onOperationKindChanged,
+                            onTargetTypeChanged: _onTargetTypeChanged,
+                            onEventSourceChanged: _onEventSourceChanged,
+                            onCategoryChanged: _onCategoryChanged,
+                            onRiskChanged: (value) {
+                              setState(() {
+                                _riskFilter = value;
+                                _snapshotId = null;
+                              });
+                              _load(1);
+                            },
+                            onOutcomeChanged: (value) {
+                              setState(() {
+                                _outcomeFilter = value;
+                                _snapshotId = null;
+                              });
+                              _load(1);
+                            },
+                            onClear: _resetFilters,
+                          ),
+                        ),
+                      ),
+                    if (_canLoad && _summary?.dailyTrend.isNotEmpty == true)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                          child: _AuditTrendCard(
+                            points: _summary!.dailyTrend,
+                            rangeLabel: _isRequestInvestigation
+                                ? '同一操作'
+                                : _dateRangeLabel,
+                          ),
+                        ),
+                      ),
+                    if (_canLoad)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                            top: UtenSpacing.s24,
+                            bottom: UtenSpacing.s8,
+                          ),
+                          child: _AuditListHeader(
+                            total: _page?.total ?? 0,
+                            scopeLabel: _isRequestInvestigation
+                                ? '同一操作'
+                                : _queryScopeLabel,
+                            hasDrillDown: hasDrillDown,
+                            onClearDrillDown: () =>
+                                _applyDrillDown(clear: true),
+                          ),
+                        ),
+                      ),
+                    if (_canLoad && _loading)
+                      const SliverToBoxAdapter(
+                        child: LinearProgressIndicator(),
+                      ),
+                    if (_canLoad && _error != null)
+                      SliverToBoxAdapter(
+                        child: _AuditErrorCard(
+                          message: _error!,
+                          onRetry: () => _load(_pageNum),
+                        ),
+                      )
+                    else if (_canLoad && !_loading && items.isEmpty)
+                      SliverToBoxAdapter(
+                        child: _AuditEmptyCard(onAdjustScope: _clearScope),
+                      )
+                    else if (_canLoad)
+                      SliverList.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(height: UtenSpacing.s8),
+                        itemBuilder: (context, index) => _AuditEventTile(
+                          entry: items[index],
+                          onTap: () => _openDetail(items[index]),
+                        ),
+                      ),
+                    if (_canLoad && _page != null && _error == null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: UtenSpacing.s20,
+                          ),
+                          child: _AuditPagination(
+                            currentPage: _page!.page,
+                            totalPages: _page!.totalPages,
+                            loading: _loading,
+                            onPageChanged: _load,
+                          ),
+                        ),
+                      ),
+                    if (_error == null)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: UtenSpacing.s8),
+                          child: _AuditRetentionHint(),
+                        ),
+                      ),
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: UtenSpacing.s32),
                     ),
-                  ),
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: UtenSpacing.s32),
+                  ],
                 ),
-              ],
-            ),
+              );
+              if (constraints.maxWidth < 720) return scrollView;
+              return Scrollbar(
+                controller: _scrollController,
+                thumbVisibility: true,
+                interactive: true,
+                child: scrollView,
+              );
+            },
           ),
         ),
       ),
@@ -754,12 +1030,11 @@ final _auditRetentionHintProvider = FutureProvider.autoDispose<String>((
 ) async {
   try {
     final settings = await ref.watch(publicSettingsRepositoryProvider).fetch();
-    return '日志保留策略：每天凌晨自动清理——超过在线保留期的记录转入归档，'
-        '归档再到期后彻底删除；当前最长保留 ${settings.auditReceiptRetentionMonths} 个月'
-        '（可在系统设置调整），删除后无法再查询。';
+    return '日志分为在线与冷归档两段保留；本页面只查询在线记录。超过在线期后需走受控调查/恢复流程查询归档；'
+        '总保留期最长 ${settings.auditReceiptRetentionMonths} 个月，在线与归档分段以系统设置为准。';
   } catch (_) {
-    return '日志保留策略：每天凌晨自动清理——超过保留期的记录会归档并最终删除，'
-        '删除后无法再查询。';
+    return '本页面只查询在线审计记录；超过在线期的记录进入冷归档，'
+        '需要通过受控调查/恢复流程查询。';
   }
 });
 
@@ -797,8 +1072,8 @@ class _AuditRetentionHint extends ConsumerWidget {
   }
 }
 
-class _AuditHero extends StatelessWidget {
-  const _AuditHero();
+class _AuditStartGuide extends StatelessWidget {
+  const _AuditStartGuide();
 
   @override
   Widget build(BuildContext context) {
@@ -811,14 +1086,14 @@ class _AuditHero extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '谁，在什么时候，做了什么',
+                '先确定调查对象和时间',
                 style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
               Text(
-                '按用户、动作、对象、结果和风险原因查看每一次操作；点击任意记录可追溯请求与脱敏数据变更。',
+                '页面不会预先加载全部日志。完成上方两步后，只查询所选调查范围在北京时间区间内的记录。',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                   height: 1.5,
@@ -830,17 +1105,17 @@ class _AuditHero extends StatelessWidget {
                 runSpacing: UtenSpacing.s8,
                 children: [
                   UtenStatusBadge(
-                    label: '写操作全量留痕',
+                    label: '按范围精确查询',
                     type: UtenStatusBadgeType.success,
                     icon: Icons.fact_check_outlined,
                   ),
                   UtenStatusBadge(
-                    label: '风险规则可解释',
+                    label: '单次最多 31 天',
                     type: UtenStatusBadgeType.warning,
                     icon: Icons.policy_outlined,
                   ),
                   UtenStatusBadge(
-                    label: '详情自动脱敏',
+                    label: '每页仅 20 条',
                     type: UtenStatusBadgeType.info,
                     icon: Icons.visibility_off_outlined,
                   ),
@@ -887,6 +1162,8 @@ class _AuditHero extends StatelessWidget {
 class _AuditMetricGrid extends StatelessWidget {
   const _AuditMetricGrid({
     required this.summary,
+    required this.scopeLabel,
+    required this.selectedOperation,
     required this.selectedRisk,
     required this.selectedOutcome,
     required this.selectedCategory,
@@ -898,6 +1175,8 @@ class _AuditMetricGrid extends StatelessWidget {
   });
 
   final AuditSummary? summary;
+  final String scopeLabel;
+  final String? selectedOperation;
   final String? selectedRisk;
   final String? selectedOutcome;
   final String? selectedCategory;
@@ -918,6 +1197,7 @@ class _AuditMetricGrid extends StatelessWidget {
         theme.colorScheme.primary,
         selectedRisk == null &&
             selectedOutcome == null &&
+            selectedOperation == null &&
             selectedCategory == null,
         onAll,
       ),
@@ -946,11 +1226,11 @@ class _AuditMetricGrid extends StatelessWidget {
         onFailure,
       ),
       _MetricSpec(
-        '数据变更',
+        '写操作',
         summary?.dataChangeCount,
         Icons.data_object_rounded,
         theme.colorScheme.secondary,
-        selectedCategory == 'data_change',
+        selectedOperation == 'write',
         onDataChange,
       ),
     ];
@@ -965,15 +1245,34 @@ class _AuditMetricGrid extends StatelessWidget {
             : 1;
         const gap = UtenSpacing.s8;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final card in cards)
-              SizedBox(
-                width: width,
-                child: _AuditMetricCard(spec: card),
+            Text(
+              '当前调查范围概览',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
               ),
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              scopeLabel,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                for (final card in cards)
+                  SizedBox(
+                    width: width,
+                    child: _AuditMetricCard(spec: card),
+                  ),
+              ],
+            ),
           ],
         );
       },
@@ -1071,75 +1370,55 @@ class _MetricSpec {
 class _AuditFilterPanel extends StatelessWidget {
   const _AuditFilterPanel({
     required this.searchController,
-    required this.requestIdController,
     required this.actionFilter,
     required this.operationKindFilter,
-    required this.actorScopeFilter,
     required this.targetTypeFilter,
     required this.eventSourceFilter,
     required this.categoryFilter,
     required this.riskFilter,
     required this.outcomeFilter,
-    required this.dateRange,
     required this.actionChips,
     required this.operationChips,
-    required this.actorScopeChips,
     required this.targetTypeChips,
     required this.eventSourceOptions,
     required this.categoryChips,
     required this.onSearchChanged,
-    required this.onRequestIdChanged,
-    required this.onRequestIdSubmitted,
     required this.onActionChanged,
     required this.onOperationKindChanged,
-    required this.onActorScopeChanged,
     required this.onTargetTypeChanged,
     required this.onEventSourceChanged,
     required this.onCategoryChanged,
     required this.onRiskChanged,
     required this.onOutcomeChanged,
-    required this.onPickDate,
     required this.onClear,
   });
 
   final TextEditingController searchController;
-  final TextEditingController requestIdController;
   final String? actionFilter;
   final String? operationKindFilter;
-  final String? actorScopeFilter;
   final String? targetTypeFilter;
   final String? eventSourceFilter;
   final String? categoryFilter;
   final String? riskFilter;
   final String? outcomeFilter;
-  final DateTimeRange? dateRange;
   final List<(String, String?)> actionChips;
   final List<(String, String?)> operationChips;
-  final List<(String, String?)> actorScopeChips;
   final List<(String, String?)> targetTypeChips;
   final List<(String, String?)> eventSourceOptions;
   final List<(String, String?)> categoryChips;
   final ValueChanged<String> onSearchChanged;
-  final ValueChanged<String> onRequestIdChanged;
-  final ValueChanged<String> onRequestIdSubmitted;
   final ValueChanged<String?> onActionChanged;
   final ValueChanged<String?> onOperationKindChanged;
-  final ValueChanged<String?> onActorScopeChanged;
   final ValueChanged<String?> onTargetTypeChanged;
   final ValueChanged<String?> onEventSourceChanged;
   final ValueChanged<String?> onCategoryChanged;
   final ValueChanged<String?> onRiskChanged;
   final ValueChanged<String?> onOutcomeChanged;
-  final VoidCallback onPickDate;
   final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dateLabel = dateRange == null
-        ? '全部时间'
-        : '${ChinaDateTime.formatDate(dateRange!.start)} 至 '
-              '${ChinaDateTime.formatDate(dateRange!.end)}';
     return UtenCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1149,7 +1428,7 @@ class _AuditFilterPanel extends StatelessWidget {
               Icon(Icons.filter_alt_outlined, color: theme.colorScheme.primary),
               const SizedBox(width: UtenSpacing.s8),
               Text(
-                '筛选与检索',
+                '进一步筛选',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -1163,60 +1442,19 @@ class _AuditFilterPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: UtenSpacing.s12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final searchField = Semantics(
-                key: const ValueKey('audit-keyword-field'),
-                textField: true,
-                label: '审计通用搜索',
-                child: UtenSearchBar(
-                  hint: '搜索操作人姓名/账号、对象、对象 ID 或 API',
-                  controller: searchController,
-                  onChanged: onSearchChanged,
-                ),
-              );
-              final requestField = Semantics(
-                key: const ValueKey('audit-request-id-field'),
-                textField: true,
-                label: '按 Request ID 定位',
-                child: UtenSearchBar(
-                  hint: '精确定位 Request ID',
-                  controller: requestIdController,
-                  onChanged: onRequestIdChanged,
-                  onSubmitted: onRequestIdSubmitted,
-                ),
-              );
-              final dateButton = OutlinedButton.icon(
-                onPressed: onPickDate,
-                icon: const Icon(Icons.date_range_outlined),
-                label: Text(dateLabel),
-              );
-              if (constraints.maxWidth < 680) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    searchField,
-                    const SizedBox(height: UtenSpacing.s8),
-                    requestField,
-                    const SizedBox(height: UtenSpacing.s8),
-                    dateButton,
-                  ],
-                );
-              }
-              return Row(
-                children: [
-                  Expanded(flex: 2, child: searchField),
-                  const SizedBox(width: UtenSpacing.s12),
-                  Expanded(child: requestField),
-                  const SizedBox(width: UtenSpacing.s12),
-                  dateButton,
-                ],
-              );
-            },
+          Semantics(
+            key: const ValueKey('audit-keyword-field'),
+            textField: true,
+            label: '在当前人员和日期内搜索',
+            child: UtenSearchBar(
+              hint: '搜索业务编号、对象编号或操作关联编号',
+              controller: searchController,
+              onChanged: onSearchChanged,
+            ),
           ),
           const SizedBox(height: UtenSpacing.s8),
           Text(
-            '可搜索操作人姓名/账号、对象、对象 ID、API 或 Request ID；货品名称不在搜索范围。',
+            '搜索只在当前人员和所选日期内生效，不会扩大查询范围。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -1229,15 +1467,6 @@ class _AuditFilterPanel extends StatelessWidget {
             value: operationKindFilter,
             options: operationChips,
             onChanged: onOperationKindChanged,
-          ),
-          const SizedBox(height: UtenSpacing.s16),
-          _AuditFilterChoiceGroup(
-            title: '记录范围',
-            semanticPrefix: '记录范围',
-            keyPrefix: 'audit-scope',
-            value: actorScopeFilter,
-            options: actorScopeChips,
-            onChanged: onActorScopeChanged,
           ),
           const SizedBox(height: UtenSpacing.s16),
           _AuditFilterChoiceGroup(
@@ -1277,7 +1506,7 @@ class _AuditFilterPanel extends StatelessWidget {
                 onChanged: onEventSourceChanged,
               ),
               _AuditFilterMenu(
-                label: '原始动作',
+                label: '动作分类',
                 value: actionFilter,
                 options: actionChips,
                 onChanged: onActionChanged,
@@ -1410,9 +1639,10 @@ class _AuditFilterMenu extends StatelessWidget {
 }
 
 class _AuditTrendCard extends StatelessWidget {
-  const _AuditTrendCard({required this.points});
+  const _AuditTrendCard({required this.points, required this.rangeLabel});
 
   final List<AuditDailyPoint> points;
+  final String rangeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -1427,7 +1657,7 @@ class _AuditTrendCard extends StatelessWidget {
       (value, point) => value + point.riskCount,
     );
     return Semantics(
-      label: '近七天操作趋势，共 $total 次操作，其中 $risks 次风险行为',
+      label: '$rangeLabel 操作趋势，共 $total 次操作，其中 $risks 次风险行为',
       child: UtenCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1438,7 +1668,7 @@ class _AuditTrendCard extends StatelessWidget {
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(
                   child: Text(
-                    '近 7 天操作趋势',
+                    '$rangeLabel 操作趋势',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -1531,46 +1761,41 @@ class _AuditTrendCard extends StatelessWidget {
   }
 }
 
-class _AuditListHeader extends ConsumerWidget {
+class _AuditListHeader extends StatelessWidget {
   const _AuditListHeader({
     required this.total,
+    required this.scopeLabel,
     required this.hasDrillDown,
     required this.onClearDrillDown,
   });
 
   final int total;
+  final String scopeLabel;
   final bool hasDrillDown;
   final VoidCallback onClearDrillDown;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(timeDisplayModeProvider);
-    final localLabel = DisplayDateTime.localZoneLabel();
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Row(
       children: [
         Expanded(
-          child: Text(
-            '操作记录 · $total 条',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-        ),
-        Tooltip(
-          message: mode == TimeDisplayMode.beijing
-              ? '当前显示北京时间，点击切换为设备当地时间($localLabel)'
-              : '当前显示当地时间($localLabel)，点击切换回北京时间',
-          child: ActionChip(
-            key: const ValueKey('audit-time-mode-toggle'),
-            avatar: Icon(
-              mode == TimeDisplayMode.beijing
-                  ? Icons.public_rounded
-                  : Icons.place_outlined,
-              size: 18,
-            ),
-            label: Text(mode == TimeDisplayMode.beijing ? '时间：北京' : '时间：当地'),
-            onPressed: () =>
-                ref.read(timeDisplayModeProvider.notifier).toggle(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '操作记录 · $total 条',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                '$scopeLabel · 全部为北京时间',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
         ),
         if (hasDrillDown)
@@ -1584,49 +1809,70 @@ class _AuditListHeader extends ConsumerWidget {
   }
 }
 
-class _AuditEventTile extends ConsumerWidget {
+class _AuditEventTile extends StatelessWidget {
   const _AuditEventTile({required this.entry, required this.onTap});
 
   final AuditLogEntry entry;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
+    final action = entry.actionLabel?.trim().isNotEmpty == true
+        ? entry.actionLabel!.trim()
+        : _AdminAuditLogPageState._actionLabel(entry.action);
+    final object = entry.objectLabel?.trim().isNotEmpty == true
+        ? entry.objectLabel!.trim()
+        : _objectTypeLabel(entry.targetType);
     final summary = entry.summary?.trim().isNotEmpty == true
         ? entry.summary!
-        : '${_AdminAuditLogPageState._actionLabel(entry.action)} · '
-              '${entry.targetType ?? '系统'}';
-    // 操作人：优先"姓名（账号）"，其次账号，再其次占位；部门/职位跟在名字后，
-    // 让核查人员一眼知道"这是谁"。
-    final actor = entry.actorDisplay?.trim().isNotEmpty == true
-        ? entry.actorDisplay!
-        : entry.actorAccount?.trim().isNotEmpty == true
-        ? entry.actorAccount!
-        : entry.actorId?.trim().isNotEmpty == true
-        ? '用户 ${entry.actorId!.substring(0, math.min(8, entry.actorId!.length))}'
-        : '系统任务';
-    final orgBits = <String>[
-      if (entry.actorDepartment?.trim().isNotEmpty == true)
-        entry.actorDepartment!,
-      if (entry.actorPosition?.trim().isNotEmpty == true) entry.actorPosition!,
-    ];
+        : '$action · $object';
     final detailBits = <String>[
-      if (entry.targetName?.trim().isNotEmpty == true)
-        '对象 ${entry.targetName}'
-      else if (entry.targetId?.trim().isNotEmpty == true)
-        '对象ID ${_shortId(entry.targetId!)}',
-      if (entry.pageLabel?.trim().isNotEmpty == true) '页面 ${entry.pageLabel}',
+      if (entry.targetName?.trim().isNotEmpty == true) '对象 ${entry.targetName}',
+      if (entry.pageLabel?.trim().isNotEmpty == true) '位置 ${entry.pageLabel}',
       if (entry.deviceLabel?.trim().isNotEmpty == true &&
           entry.deviceLabel != '未提供设备信息')
         '设备 ${entry.deviceLabel}',
-      if (entry.ip?.trim().isNotEmpty == true) 'IP ${entry.ip}',
-      if (entry.statusCode != null) 'HTTP ${entry.statusCode}',
     ];
+    final failed = _isAuditFailure(entry.result, entry.statusCode);
+    final showRisk = entry.riskLevel != 'low';
+
+    Widget outcomeIndicator() {
+      if (failed) {
+        return _AuditResultBadge(
+          result: entry.result,
+          resultLabel: entry.resultLabel,
+          statusCode: entry.statusCode,
+        );
+      }
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.check_circle_outline_rounded,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: UtenSpacing.s4),
+          Text(
+            _auditOutcomeLabel(
+              entry.result,
+              entry.resultLabel,
+              entry.statusCode,
+            ),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      );
+    }
+
     return Semantics(
       button: true,
-      label: '$actor，$summary，${_riskLabel(entry.riskLevel)}，点击查看详情',
+      label:
+          '${_AdminAuditLogPageState._fmtTime(entry.createdAt)}，$summary，'
+          '${_auditOutcomeLabel(entry.result, entry.resultLabel, entry.statusCode)}，点击查看详情',
       child: UtenCard(
         onTap: onTap,
         child: LayoutBuilder(
@@ -1635,36 +1881,13 @@ class _AuditEventTile extends ConsumerWidget {
             final content = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.person_outline_rounded,
-                      size: 17,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s4),
-                    Flexible(
-                      child: Text(
-                        actor,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    if (orgBits.isNotEmpty) ...[
-                      const SizedBox(width: UtenSpacing.s8),
-                      Flexible(
-                        child: Text(
-                          orgBits.join(' · '),
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+                Text(
+                  _AdminAuditLogPageState._fmtTime(entry.createdAt),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
                 const SizedBox(height: UtenSpacing.s4),
                 Text(
@@ -1692,23 +1915,9 @@ class _AuditEventTile extends ConsumerWidget {
             final trailing = Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _AuditRiskBadge(level: entry.riskLevel),
-                const SizedBox(height: UtenSpacing.s8),
-                _AuditResultBadge(
-                  result: entry.result,
-                  statusCode: entry.statusCode,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  _AdminAuditLogPageState._fmtTime(
-                    entry.createdAt,
-                    local: local,
-                  ),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
+                if (showRisk) _AuditRiskBadge(level: entry.riskLevel),
+                if (showRisk) const SizedBox(height: UtenSpacing.s8),
+                outcomeIndicator(),
               ],
             );
             if (constraints.maxWidth < 660) {
@@ -1726,24 +1935,10 @@ class _AuditEventTile extends ConsumerWidget {
                   const SizedBox(height: UtenSpacing.s12),
                   Row(
                     children: [
-                      _AuditRiskBadge(level: entry.riskLevel),
-                      const SizedBox(width: UtenSpacing.s8),
-                      _AuditResultBadge(
-                        result: entry.result,
-                        statusCode: entry.statusCode,
-                      ),
+                      if (showRisk) _AuditRiskBadge(level: entry.riskLevel),
+                      if (showRisk) const SizedBox(width: UtenSpacing.s8),
+                      outcomeIndicator(),
                       const Spacer(),
-                      Flexible(
-                        child: Text(
-                          _AdminAuditLogPageState._fmtTime(
-                            entry.createdAt,
-                            local: local,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s4),
                       const Icon(Icons.chevron_right_rounded),
                     ],
                   ),
@@ -1771,6 +1966,71 @@ class _AuditEventTile extends ConsumerWidget {
 String _shortId(String value) => value.length <= 13
     ? value
     : '${value.substring(0, 8)}…${value.substring(value.length - 4)}';
+
+String _objectTypeLabel(String? value) => switch (value?.trim()) {
+  'goods' => '货品',
+  'material_categories' => '货品分类',
+  'clients' => '客户',
+  'suppliers' => '供应商',
+  'purchase_orders' => '采购订单',
+  'sales_orders' => '销售订单',
+  'subcontract_orders' => '委外订单',
+  'production_plans' => '生产计划',
+  'production_execution_segments' => '生产执行分段',
+  'employees' => '员工档案',
+  'departments' => '部门',
+  'users' || 'user_accounts' => '用户账号',
+  'system_settings' => '系统设置',
+  _ => '其他业务对象',
+};
+
+bool _isAuditFailure(String? result, int? statusCode) {
+  if (statusCode != null && statusCode >= 400) return true;
+  final primaryCode = _auditPrimaryResultCode(result);
+  if (primaryCode == null) return false;
+  return primaryCode != 'success' && primaryCode != 'succeeded';
+}
+
+String? _auditPrimaryResultCode(String? result) {
+  final normalized = result?.trim().toLowerCase();
+  if (normalized == null || normalized.isEmpty) return null;
+  final separator = normalized.indexOf(';');
+  final primary = separator < 0
+      ? normalized
+      : normalized.substring(0, separator).trim();
+  return primary.isEmpty ? null : primary;
+}
+
+bool _isAuditSuccess(String? result, int? statusCode) {
+  if (statusCode != null && statusCode >= 400) return false;
+  final primaryCode = _auditPrimaryResultCode(result);
+  return primaryCode == 'success' || primaryCode == 'succeeded';
+}
+
+String _auditOutcomeLabel(
+  String? result,
+  String? resultLabel,
+  int? statusCode,
+) {
+  final translated = resultLabel?.trim();
+  if (_isAuditFailure(result, statusCode)) {
+    if (translated?.isNotEmpty == true && !translated!.contains('成功')) {
+      return translated;
+    }
+    final fallback = _AdminAuditLogPageState._resultLabel(
+      _auditPrimaryResultCode(result),
+    );
+    return fallback.isNotEmpty && fallback != '成功' && fallback != '未知结果'
+        ? fallback
+        : '失败';
+  }
+  if (translated?.isNotEmpty == true) return translated!;
+  if ((statusCode != null && statusCode >= 200 && statusCode < 400) ||
+      _isAuditSuccess(result, statusCode)) {
+    return '成功';
+  }
+  return '未知结果';
+}
 
 class _AuditRiskIcon extends StatelessWidget {
   const _AuditRiskIcon({required this.level});
@@ -1821,19 +2081,29 @@ class _AuditRiskBadge extends StatelessWidget {
 }
 
 class _AuditResultBadge extends StatelessWidget {
-  const _AuditResultBadge({required this.result, required this.statusCode});
+  const _AuditResultBadge({
+    required this.result,
+    required this.statusCode,
+    this.resultLabel,
+  });
 
   final String? result;
+  final String? resultLabel;
   final int? statusCode;
 
   @override
   Widget build(BuildContext context) {
-    final failed =
-        (statusCode != null && statusCode! >= 400) ||
-        (result != null && result != 'success' && result != '');
+    final failed = _isAuditFailure(result, statusCode);
+    final label = _auditOutcomeLabel(result, resultLabel, statusCode);
+    final succeeded =
+        !failed && (_isAuditSuccess(result, statusCode) || label == '成功');
     return UtenStatusBadge(
-      label: failed ? '失败' : '成功',
-      type: failed ? UtenStatusBadgeType.danger : UtenStatusBadgeType.success,
+      label: label,
+      type: failed
+          ? UtenStatusBadgeType.danger
+          : succeeded
+          ? UtenStatusBadgeType.success
+          : UtenStatusBadgeType.info,
       size: UtenStatusBadgeSize.small,
     );
   }
@@ -1881,9 +2151,9 @@ class _AuditErrorCard extends StatelessWidget {
 }
 
 class _AuditEmptyCard extends StatelessWidget {
-  const _AuditEmptyCard({required this.onShowAll});
+  const _AuditEmptyCard({required this.onAdjustScope});
 
-  final VoidCallback onShowAll;
+  final VoidCallback onAdjustScope;
 
   @override
   Widget build(BuildContext context) {
@@ -1902,7 +2172,7 @@ class _AuditEmptyCard extends StatelessWidget {
           Text('没有符合条件的操作记录', style: theme.textTheme.titleMedium),
           const SizedBox(height: UtenSpacing.s4),
           Text(
-            '可清除操作类型、记录范围或业务对象；如需更早记录，请调整日期。',
+            '可重置进一步筛选，或重新选择人员和日期区间。',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
@@ -1910,9 +2180,9 @@ class _AuditEmptyCard extends StatelessWidget {
           ),
           const SizedBox(height: UtenSpacing.s16),
           OutlinedButton.icon(
-            onPressed: onShowAll,
-            icon: const Icon(Icons.filter_alt_off_outlined),
-            label: const Text('清除业务筛选(保留最近 7 天)'),
+            onPressed: onAdjustScope,
+            icon: const Icon(Icons.manage_search_outlined),
+            label: const Text('重新选择人员和日期'),
           ),
         ],
       ),
@@ -2026,21 +2296,52 @@ class _AuditPaginationState extends State<_AuditPagination> {
   }
 }
 
-class _AuditDetailPanel extends StatelessWidget {
+class _AuditDetailBundle {
+  const _AuditDetailBundle({
+    required this.detail,
+    this.relatedChanges = const [],
+    this.relatedChangesError,
+    this.relatedChangesTruncated = false,
+  });
+
+  final AuditLogDetail detail;
+  final List<AuditLogEntry> relatedChanges;
+  final String? relatedChangesError;
+  final bool relatedChangesTruncated;
+}
+
+class _AuditDetailPanel extends StatefulWidget {
   const _AuditDetailPanel({
-    required this.future,
+    required this.loader,
     required this.onClose,
     required this.onLocateRequest,
   });
 
-  final Future<AuditLogDetail> future;
+  final Future<_AuditDetailBundle> Function() loader;
   final VoidCallback onClose;
   final ValueChanged<String> onLocateRequest;
 
   @override
+  State<_AuditDetailPanel> createState() => _AuditDetailPanelState();
+}
+
+class _AuditDetailPanelState extends State<_AuditDetailPanel> {
+  late Future<_AuditDetailBundle> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.loader();
+  }
+
+  void _reload() {
+    setState(() => _future = widget.loader());
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return FutureBuilder<AuditLogDetail>(
-      future: future,
+    return FutureBuilder<_AuditDetailBundle>(
+      future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(
@@ -2053,14 +2354,25 @@ class _AuditDetailPanel extends StatelessWidget {
               : '审计详情加载失败';
           return Column(
             children: [
-              _AuditDetailHeader(title: '审计详情', onClose: onClose),
+              _AuditDetailHeader(title: '审计详情', onClose: widget.onClose),
               Expanded(
                 child: Center(
-                  child: Text(
-                    message,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        message,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      OutlinedButton.icon(
+                        onPressed: _reload,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('重试'),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2068,9 +2380,13 @@ class _AuditDetailPanel extends StatelessWidget {
           );
         }
         return _AuditDetailContent(
-          detail: snapshot.data!,
-          onClose: onClose,
-          onLocateRequest: onLocateRequest,
+          detail: snapshot.data!.detail,
+          relatedChanges: snapshot.data!.relatedChanges,
+          relatedChangesError: snapshot.data!.relatedChangesError,
+          relatedChangesTruncated: snapshot.data!.relatedChangesTruncated,
+          onRetryRelatedChanges: _reload,
+          onClose: widget.onClose,
+          onLocateRequest: widget.onLocateRequest,
         );
       },
     );
@@ -2080,11 +2396,19 @@ class _AuditDetailPanel extends StatelessWidget {
 class _AuditDetailContent extends StatelessWidget {
   const _AuditDetailContent({
     required this.detail,
+    required this.relatedChanges,
+    required this.relatedChangesTruncated,
+    required this.onRetryRelatedChanges,
     required this.onClose,
     required this.onLocateRequest,
+    this.relatedChangesError,
   });
 
   final AuditLogDetail detail;
+  final List<AuditLogEntry> relatedChanges;
+  final String? relatedChangesError;
+  final bool relatedChangesTruncated;
+  final VoidCallback onRetryRelatedChanges;
   final VoidCallback onClose;
   final ValueChanged<String> onLocateRequest;
 
@@ -2115,7 +2439,7 @@ class _AuditDetailContent extends StatelessWidget {
                   Tab(icon: Icon(Icons.subject_outlined), text: '概览'),
                   Tab(icon: Icon(Icons.compare_arrows_rounded), text: '数据变更'),
                   Tab(icon: Icon(Icons.devices_other_rounded), text: '设备证据'),
-                  Tab(icon: Icon(Icons.code_rounded), text: '技术信息'),
+                  Tab(icon: Icon(Icons.troubleshoot_rounded), text: '排查信息'),
                 ],
               ),
               const SizedBox(height: UtenSpacing.s12),
@@ -2123,7 +2447,13 @@ class _AuditDetailContent extends StatelessWidget {
                 child: TabBarView(
                   children: [
                     _AuditOverviewTab(detail: detail),
-                    _AuditChangeTab(detail: detail),
+                    _AuditChangeTab(
+                      detail: detail,
+                      relatedChanges: relatedChanges,
+                      relatedChangesError: relatedChangesError,
+                      relatedChangesTruncated: relatedChangesTruncated,
+                      onRetryRelatedChanges: onRetryRelatedChanges,
+                    ),
                     _AuditDeviceTab(detail: detail),
                     _AuditTechnicalTab(detail: detail),
                   ],
@@ -2139,7 +2469,7 @@ class _AuditDetailContent extends StatelessWidget {
 
 /// 概览页：一张"操作叙事卡"按 谁 → 何时/在哪 → 做了什么 → 改了什么 的顺序讲完整事件，
 /// 再配风险说明与排查线索。信息按"读故事"的顺序组织，而不是按数据库字段罗列。
-class _AuditOverviewTab extends ConsumerWidget {
+class _AuditOverviewTab extends StatelessWidget {
   const _AuditOverviewTab({required this.detail});
 
   final AuditLogDetail detail;
@@ -2154,14 +2484,16 @@ class _AuditOverviewTab extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
+  Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
       children: [
-        _AuditStoryCard(detail: detail, local: local),
+        _AuditStoryCard(detail: detail),
         const SizedBox(height: UtenSpacing.s12),
-        _AuditRiskCard(riskLevel: detail.riskLevel, riskReason: detail.riskReason),
+        _AuditRiskCard(
+          riskLevel: detail.riskLevel,
+          riskReason: detail.riskReason,
+        ),
         const SizedBox(height: UtenSpacing.s12),
         _AuditEnvironmentCard(detail: detail),
       ],
@@ -2171,25 +2503,22 @@ class _AuditOverviewTab extends ConsumerWidget {
 
 /// 操作叙事卡：回答"谁、在几点、在哪个页面、做了什么、对象是哪张单据、具体改了什么"。
 class _AuditStoryCard extends StatelessWidget {
-  const _AuditStoryCard({required this.detail, required this.local});
+  const _AuditStoryCard({required this.detail});
 
   final AuditLogDetail detail;
-  final bool local;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isSystem =
-        detail.actorId == null &&
-        (detail.actorAccount == null || detail.actorAccount!.trim().isEmpty);
     final displayName = detail.actorName?.trim().isNotEmpty == true
         ? detail.actorName!
-        : isSystem
-        ? '系统任务'
-        : (detail.actorAccount ?? '未知用户');
+        : detail.actorDisplay?.trim().isNotEmpty == true
+        ? detail.actorDisplay!
+        : detail.actorAccount?.trim().isNotEmpty == true
+        ? detail.actorAccount!
+        : '未知操作人';
     final initial = displayName.isNotEmpty ? displayName.characters.first : '?';
-    final headline =
-        detail.summary?.trim().isNotEmpty == true
+    final headline = detail.summary?.trim().isNotEmpty == true
         ? detail.summary!
         : detail.actionLabel?.trim().isNotEmpty == true
         ? detail.actionLabel!
@@ -2212,10 +2541,6 @@ class _AuditStoryCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-              ),
-              _AuditResultBadge(
-                result: detail.result,
-                statusCode: detail.statusCode,
               ),
             ],
           ),
@@ -2259,6 +2584,7 @@ class _AuditStoryCard extends StatelessWidget {
               ),
               _AuditResultBadge(
                 result: detail.result,
+                resultLabel: detail.resultLabel,
                 statusCode: detail.statusCode,
               ),
             ],
@@ -2293,10 +2619,7 @@ class _AuditStoryCard extends StatelessWidget {
             children: [
               _AuditContextChip(
                 icon: Icons.schedule_rounded,
-                text: _AdminAuditLogPageState._fmtTime(
-                  detail.createdAt,
-                  local: local,
-                ),
+                text: _AdminAuditLogPageState._fmtTime(detail.createdAt),
               ),
               if (detail.pageLabel?.trim().isNotEmpty == true)
                 _AuditContextChip(
@@ -2379,9 +2702,9 @@ class _AuditStoryCard extends StatelessWidget {
   static String? _objectText(AuditLogDetail detail) {
     final label = detail.objectLabel?.trim().isNotEmpty == true
         ? detail.objectLabel!
-        : detail.targetType?.trim();
+        : _objectTypeLabel(detail.targetType);
     final name = detail.targetName?.trim();
-    if (label == null || label.isEmpty) {
+    if (label.isEmpty) {
       return name?.isNotEmpty == true ? name : null;
     }
     return name?.isNotEmpty == true ? '$label · $name' : label;
@@ -2440,7 +2763,7 @@ class _AuditRiskCard extends StatelessWidget {
   }
 }
 
-/// 排查线索卡：概览读完故事后，需要进一步追查时用到的技术定位信息。
+/// 业务语义卡：概览只保留普通核查人员需要的中文信息。
 class _AuditEnvironmentCard extends StatelessWidget {
   const _AuditEnvironmentCard({required this.detail});
 
@@ -2455,10 +2778,13 @@ class _AuditEnvironmentCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.travel_explore_rounded, color: theme.colorScheme.primary),
+              Icon(
+                Icons.travel_explore_rounded,
+                color: theme.colorScheme.primary,
+              ),
               const SizedBox(width: UtenSpacing.s8),
               Text(
-                '排查线索',
+                '操作说明',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -2476,31 +2802,25 @@ class _AuditEnvironmentCard extends StatelessWidget {
                     detail.actionLabel ??
                     _AdminAuditLogPageState._actionLabel(detail.action),
               ),
-              _AuditFact(label: '来源 IP', value: detail.ip ?? '—'),
-              _AuditFact(label: '结果', value: _AuditOverviewTab._outcomeText(detail)),
-              if (detail.durationMs != null)
-                _AuditFact(
-                  label: '接口耗时',
-                  value: '${detail.durationMs} 毫秒',
-                ),
-              if (detail.httpMethod != null && detail.httpPath != null)
-                _AuditFact(
-                  label: '接口',
-                  value: '${detail.httpMethod} ${detail.httpPath}',
-                ),
+              _AuditFact(
+                label: '结果',
+                value: _AuditOverviewTab._outcomeText(detail),
+              ),
               _AuditFact(
                 label: '事件类型',
                 value: _categoryLabel(detail.eventCategory),
               ),
+              if (detail.pageLabel?.trim().isNotEmpty == true)
+                _AuditFact(label: '操作位置', value: detail.pageLabel!),
             ],
           ),
-          if (detail.targetId?.trim().isNotEmpty == true) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _CopyableAuditFact(
-              label: '对象数据库 ID(排查用)',
-              value: detail.targetId!,
+          const SizedBox(height: UtenSpacing.s12),
+          Text(
+            '操作关联编号、网络地址、请求路径和原始编码统一收在“排查信息”中。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -2646,7 +2966,8 @@ class _AuditValueChip extends StatelessWidget {
         borderRadius: UtenRadius.smAll,
       ),
       child: Text(
-        value,
+        // 时间戳等原始值统一经字段字典可读化(ISO → yyyy-MM-dd HH:mm(北京时间))
+        AuditFieldLabels.valueOf(value),
         overflow: TextOverflow.ellipsis,
         maxLines: 1,
         style: theme.textTheme.bodySmall?.copyWith(
@@ -2668,8 +2989,11 @@ class _AuditChangeEntry {
     this.info,
   });
 
-  const _AuditChangeEntry.ofField(String field, String oldValue, String newValue)
-    : this._(field: field, oldValue: oldValue, newValue: newValue);
+  const _AuditChangeEntry.ofField(
+    String field,
+    String oldValue,
+    String newValue,
+  ) : this._(field: field, oldValue: oldValue, newValue: newValue);
 
   const _AuditChangeEntry.ofNote(String info) : this._(info: info);
 
@@ -2681,7 +3005,11 @@ class _AuditChangeEntry {
 }
 
 List<_AuditChangeEntry> _parseChangeEntries(AuditLogDetail detail) {
-  final raw = detail.changeSummary?.trim();
+  return _parseChangeSummary(detail.changeSummary);
+}
+
+List<_AuditChangeEntry> _parseChangeSummary(String? value) {
+  final raw = value?.trim();
   if (raw == null || raw.isEmpty) return const [];
   return raw
       .split('；')
@@ -2746,9 +3074,19 @@ class _OrgChip extends StatelessWidget {
 }
 
 class _AuditChangeTab extends ConsumerStatefulWidget {
-  const _AuditChangeTab({required this.detail});
+  const _AuditChangeTab({
+    required this.detail,
+    required this.relatedChanges,
+    required this.relatedChangesTruncated,
+    required this.onRetryRelatedChanges,
+    this.relatedChangesError,
+  });
 
   final AuditLogDetail detail;
+  final List<AuditLogEntry> relatedChanges;
+  final String? relatedChangesError;
+  final bool relatedChangesTruncated;
+  final VoidCallback onRetryRelatedChanges;
 
   @override
   ConsumerState<_AuditChangeTab> createState() => _AuditChangeTabState();
@@ -2812,6 +3150,7 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
       );
     }
     final service = ref.watch(masterNameServiceProvider);
+    final related = widget.relatedChanges;
     return ListView(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
       children: [
@@ -2819,7 +3158,11 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
           children: [
             Expanded(
               child: Text(
-                changed.isEmpty ? '没有字段级快照' : '共 ${changed.length} 个字段发生变化',
+                related.isNotEmpty
+                    ? '本次操作产生 ${related.length} 组业务变化'
+                    : changed.isEmpty
+                    ? '没有字段级快照'
+                    : '共 ${changed.length} 个字段发生变化',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -2833,14 +3176,42 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
           ],
         ),
         const SizedBox(height: UtenSpacing.s12),
-        if (changed.isEmpty)
+        if (widget.relatedChangesError != null) ...[
+          _AuditErrorCard(
+            message: widget.relatedChangesError!,
+            onRetry: widget.onRetryRelatedChanges,
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        if (related.isNotEmpty) ...[
+          for (final change in related) ...[
+            _AuditRelatedChangeCard(entry: change),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
+          if (widget.relatedChangesTruncated)
+            Text(
+              '关联变化较多，本页仅展示前 24 组；可按操作关联编号进一步排查。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        if (changed.isEmpty && related.isEmpty)
           UtenCard(
             child: Text(
-              '这条记录可能是请求级事件，或相关表没有字段快照。可在技术信息中查看请求路径与状态码。',
+              '这条记录可能是读取或安全事件，也可能没有产生字段变化。可在“排查信息”中查看关联线索。',
               style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
             ),
           )
-        else
+        else if (changed.isNotEmpty) ...[
+          Text(
+            related.isEmpty ? '字段变化' : '当前记录的字段快照',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
           UtenCard(
             padding: EdgeInsets.zero,
             child: Column(
@@ -2848,7 +3219,6 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
                 for (var index = 0; index < changed.length; index++) ...[
                   _AuditDiffRow(
                     field: AuditFieldLabels.labelOf(changed[index]),
-                    rawField: changed[index],
                     before: _displayValue(
                       service,
                       changed[index],
@@ -2865,16 +3235,20 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
               ],
             ),
           ),
-        const SizedBox(height: UtenSpacing.s12),
-        _AuditJsonExpansion(
-          label: '查看变更前原始 JSON',
-          rawJson: widget.detail.beforeJson,
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        _AuditJsonExpansion(
-          label: '查看变更后原始 JSON',
-          rawJson: widget.detail.afterJson,
-        ),
+        ],
+        if (widget.detail.beforeJson?.trim().isNotEmpty == true ||
+            widget.detail.afterJson?.trim().isNotEmpty == true) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          _AuditJsonExpansion(
+            label: '查看变更前原始数据',
+            rawJson: widget.detail.beforeJson,
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          _AuditJsonExpansion(
+            label: '查看变更后原始数据',
+            rawJson: widget.detail.afterJson,
+          ),
+        ],
       ],
     );
   }
@@ -2935,6 +3309,169 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
   }
 }
 
+class _AuditRelatedChangeCard extends ConsumerStatefulWidget {
+  const _AuditRelatedChangeCard({required this.entry});
+
+  final AuditLogEntry entry;
+
+  @override
+  ConsumerState<_AuditRelatedChangeCard> createState() =>
+      _AuditRelatedChangeCardState();
+}
+
+class _AuditRelatedChangeCardState
+    extends ConsumerState<_AuditRelatedChangeCard> {
+  Future<AuditLogDetail>? _detailFuture;
+
+  void _loadDetail() {
+    setState(() {
+      _detailFuture = ref
+          .read(auditLogRepositoryProvider)
+          .detail(widget.entry.id);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final entry = widget.entry;
+    final previewEntries = _parseChangeSummary(entry.changeSummary);
+    final object = entry.objectLabel?.trim().isNotEmpty == true
+        ? entry.objectLabel!.trim()
+        : _objectTypeLabel(entry.targetType);
+    final name = entry.targetName?.trim();
+    return UtenCard(
+      padding: EdgeInsets.zero,
+      child: ExpansionTile(
+        key: ValueKey('audit-related-change-${entry.id}'),
+        onExpansionChanged: (expanded) {
+          if (expanded && _detailFuture == null) _loadDetail();
+        },
+        title: Text(
+          name?.isNotEmpty == true ? '$object · $name' : object,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: entry.summary?.trim().isNotEmpty == true
+            ? Text(entry.summary!, maxLines: 2, overflow: TextOverflow.ellipsis)
+            : const Text('已记录脱敏业务变化'),
+        children: [
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (previewEntries.isNotEmpty) ...[
+                  Text(
+                    '变化摘要',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                  for (final preview in previewEntries)
+                    _AuditChangeRow(entry: preview),
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
+                FutureBuilder<AuditLogDetail>(
+                  future: _detailFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LinearProgressIndicator(minHeight: 2),
+                          SizedBox(height: UtenSpacing.s8),
+                          Text('正在加载这一组的完整字段详情…'),
+                        ],
+                      );
+                    }
+                    if (snapshot.hasError || snapshot.data == null) {
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '这组字段详情加载失败，可单独重试。',
+                              style: TextStyle(color: theme.colorScheme.error),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _loadDetail,
+                            child: const Text('重试'),
+                          ),
+                        ],
+                      );
+                    }
+                    final fullEntries = _relatedDetailEntries(snapshot.data!);
+                    if (fullEntries.isEmpty) {
+                      return Text(
+                        previewEntries.isEmpty
+                            ? '该关联记录没有可展示的字段变化。'
+                            : '没有更多字段详情。',
+                        style: theme.textTheme.bodyMedium,
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '完整字段详情',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s4),
+                        for (final fullEntry in fullEntries)
+                          _AuditChangeRow(entry: fullEntry),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+List<_AuditChangeEntry> _relatedDetailEntries(AuditLogDetail detail) {
+  Map<String, dynamic> decode(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return const {};
+    try {
+      final value = jsonDecode(raw);
+      return value is Map<String, dynamic> ? value : const {};
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  String safeValue(dynamic value) {
+    if (AuditFieldLabels.looksLikeUuid(value)) return '关联对象';
+    if (value is Map || value is List) return '结构化内容';
+    return AuditFieldLabels.valueOf(value);
+  }
+
+  final before = decode(detail.beforeJson);
+  final after = decode(detail.afterJson);
+  final keys = {...before.keys, ...after.keys}.toList()..sort();
+  final snapshotEntries = keys
+      .where((key) => jsonEncode(before[key]) != jsonEncode(after[key]))
+      .take(20)
+      .map(
+        (key) => _AuditChangeEntry.ofField(
+          AuditFieldLabels.labelOf(key),
+          safeValue(before[key]),
+          safeValue(after[key]),
+        ),
+      )
+      .toList(growable: false);
+  return snapshotEntries.isNotEmpty
+      ? snapshotEntries
+      : _parseChangeEntries(detail);
+}
+
 enum _RefKind {
   warehouse,
   currency,
@@ -2948,18 +3485,10 @@ enum _RefKind {
 }
 
 class _AuditDiffRow extends StatelessWidget {
-  const _AuditDiffRow({
-    required this.field,
-    this.rawField,
-    this.before,
-    this.after,
-  });
+  const _AuditDiffRow({required this.field, this.before, this.after});
 
   /// 已中文化的字段标签
   final String field;
-
-  /// 原始数据库列名（小字展示，排查用）
-  final String? rawField;
   final dynamic before;
   final dynamic after;
 
@@ -2991,19 +3520,6 @@ class _AuditDiffRow extends StatelessWidget {
                   ),
                 ),
               ),
-              if (rawField != null && rawField != field) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                Flexible(
-                  child: Text(
-                    rawField!,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
@@ -3168,15 +3684,15 @@ class _AuditDeviceTabState extends ConsumerState<_AuditDeviceTab> {
       children: [
         _DeviceEvidenceBanner(assessment: assessment),
         const SizedBox(height: UtenSpacing.s12),
-        _ServerDeviceCard(detail: widget.detail),
-        const SizedBox(height: UtenSpacing.s12),
-        _CorrelationCard(detail: widget.detail, receipt: null),
-        const SizedBox(height: UtenSpacing.s12),
         _LocalReceiptAuthorizationCard(
           eventId: eventId,
           state: _authorization,
           onAuthorize: _authorizeLocalReceiptRead,
         ),
+        const SizedBox(height: UtenSpacing.s12),
+        _ServerDeviceCard(detail: widget.detail),
+        const SizedBox(height: UtenSpacing.s12),
+        _CorrelationCard(detail: widget.detail, receipt: null),
         const SizedBox(height: UtenSpacing.s12),
         _DeviceTrustNotice(captureStatus: widget.detail.device?.captureStatus),
       ],
@@ -3665,15 +4181,14 @@ class _ServerDeviceCard extends StatelessWidget {
   }
 }
 
-class _CorrelationCard extends ConsumerWidget {
+class _CorrelationCard extends StatelessWidget {
   const _CorrelationCard({required this.detail, required this.receipt});
 
   final AuditLogDetail detail;
   final LocalAuditReceipt? receipt;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
+  Widget build(BuildContext context) {
     final eventId = detail.clientEventId ?? detail.device?.clientEventId;
     final localReceipt = receipt;
     final matchedAttempt = localReceipt?.attemptForRequest(detail.requestId);
@@ -3698,16 +4213,12 @@ class _CorrelationCard extends ConsumerWidget {
               _CopyableAuditFact(label: '本地操作 ID', value: eventId ?? '—'),
               _AuditFact(
                 label: '服务器记录时间',
-                value: _AdminAuditLogPageState._fmtTime(
-                  detail.createdAt,
-                  local: local,
-                ),
+                value: _AdminAuditLogPageState._fmtTime(detail.createdAt),
               ),
               _AuditFact(
                 label: '客户端发起时间',
                 value: _AdminAuditLogPageState._fmtTime(
                   detail.device?.clientEventAt,
-                  local: local,
                 ),
               ),
               if (matchedAttempt != null)
@@ -3715,7 +4226,6 @@ class _CorrelationCard extends ConsumerWidget {
                   label: '本机回执完成时间',
                   value: _AdminAuditLogPageState._fmtTime(
                     matchedAttempt.completedAt,
-                    local: local,
                   ),
                 ),
               if (localReceipt != null)
@@ -3731,15 +4241,14 @@ class _CorrelationCard extends ConsumerWidget {
   }
 }
 
-class _LocalReceiptCard extends ConsumerWidget {
+class _LocalReceiptCard extends StatelessWidget {
   const _LocalReceiptCard({required this.detail, required this.receipt});
 
   final AuditLogDetail detail;
   final LocalAuditReceipt receipt;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
+  Widget build(BuildContext context) {
     final server = detail.device;
     final attempt =
         receipt.attemptForRequest(detail.requestId) ?? receipt.latestAttempt;
@@ -3844,8 +4353,8 @@ class _LocalReceiptCard extends ConsumerWidget {
                   title: Text('${entry.$2.method} ${entry.$2.path}'),
                   subtitle: SelectableText(
                     'Request ID：${entry.$2.serverRequestId ?? '—'}\n'
-                    '开始：${_AdminAuditLogPageState._fmtTime(entry.$2.startedAt, local: local)} · '
-                    '完成：${_AdminAuditLogPageState._fmtTime(entry.$2.completedAt, local: local)}',
+                    '开始：${_AdminAuditLogPageState._fmtTime(entry.$2.startedAt)} · '
+                    '完成：${_AdminAuditLogPageState._fmtTime(entry.$2.completedAt)}',
                   ),
                   trailing: Text(
                     '${entry.$2.statusCode ?? '—'} · ${entry.$2.outcome}',
@@ -4142,46 +4651,90 @@ class _AuditTechnicalTab extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
       children: [
         UtenCard(
-          child: Wrap(
-            spacing: UtenSpacing.s24,
-            runSpacing: UtenSpacing.s16,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _AuditFact(label: '原始动作', value: detail.action),
-              _AuditFact(label: '原始对象类型', value: detail.targetType ?? '—'),
-              _AuditFact(
-                label: '事件来源',
-                value: _sourceLabel(detail.eventSource),
+              Icon(
+                Icons.info_outline_rounded,
+                color: theme.colorScheme.primary,
               ),
-              _AuditFact(label: '请求关联 ID', value: detail.requestId ?? '—'),
-              _AuditFact(label: 'HTTP 方法', value: detail.httpMethod ?? '—'),
-              _AuditFact(
-                label: 'HTTP 状态码',
-                value: detail.statusCode?.toString() ?? '—',
-              ),
-              _AuditFact(
-                label: '处理耗时',
-                value: detail.durationMs == null
-                    ? '—'
-                    : '${detail.durationMs} ms',
+              const SizedBox(width: UtenSpacing.s12),
+              Expanded(
+                child: Text(
+                  '以下内容仅用于技术排查。普通核查请优先阅读概览、业务变化和设备证据。',
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+                ),
               ),
             ],
           ),
         ),
-        if (detail.httpPath?.trim().isNotEmpty == true) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          UtenCard(
-            child: _AuditFact(label: '请求路径', value: detail.httpPath!),
+        const SizedBox(height: UtenSpacing.s12),
+        UtenCard(
+          padding: EdgeInsets.zero,
+          child: ExpansionTile(
+            key: const ValueKey('audit-technical-expansion'),
+            title: const Text('展开技术排查数据'),
+            subtitle: const Text('包含操作关联编号、请求路径、原始编码和客户端标识'),
+            children: [
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Wrap(
+                      spacing: UtenSpacing.s24,
+                      runSpacing: UtenSpacing.s16,
+                      children: [
+                        _AuditFact(label: '原始动作编码', value: detail.action),
+                        _AuditFact(
+                          label: '原始对象编码',
+                          value: detail.targetType ?? '—',
+                        ),
+                        _AuditFact(
+                          label: '记录来源',
+                          value: _sourceLabel(detail.eventSource),
+                        ),
+                        _CopyableAuditFact(
+                          label: '操作关联编号',
+                          value: detail.requestId ?? '—',
+                        ),
+                        _AuditFact(label: '网络来源地址', value: detail.ip ?? '—'),
+                        _AuditFact(
+                          label: '请求方法',
+                          value: detail.httpMethod ?? '—',
+                        ),
+                        _AuditFact(
+                          label: '请求状态码',
+                          value: detail.statusCode?.toString() ?? '—',
+                        ),
+                        _AuditFact(
+                          label: '处理耗时',
+                          value: detail.durationMs == null
+                              ? '—'
+                              : '${detail.durationMs} 毫秒',
+                        ),
+                        if (detail.targetId?.trim().isNotEmpty == true)
+                          _CopyableAuditFact(
+                            label: '业务对象内部编号',
+                            value: detail.targetId!,
+                          ),
+                      ],
+                    ),
+                    if (detail.httpPath?.trim().isNotEmpty == true) ...[
+                      const SizedBox(height: UtenSpacing.s16),
+                      _AuditFact(label: '请求路径', value: detail.httpPath!),
+                    ],
+                    if (detail.userAgent?.trim().isNotEmpty == true) ...[
+                      const SizedBox(height: UtenSpacing.s16),
+                      _AuditFact(label: '客户端标识', value: detail.userAgent!),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-        if (detail.userAgent?.trim().isNotEmpty == true) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          UtenCard(
-            child: _AuditFact(
-              label: '客户端 User-Agent',
-              value: detail.userAgent!,
-            ),
-          ),
-        ],
+        ),
         const SizedBox(height: UtenSpacing.s12),
         Text(
           '请求正文、密码、令牌、手机号、地址、银行账号和自由文本不会复制进审计详情。',

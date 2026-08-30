@@ -173,7 +173,7 @@ abstract final class RouteName {
   static const String operationsSubcontractWorkbench =
       '/operations/workbench/subcontract';
 
-  // 工程研发部任务中心（BOM 缺失转发 / 设计 / 打样 / 试产 / ECN）。
+  // 工程研发部任务中心（设计 / 打样 / 试产 / ECN 及历史任务）。
   static const String rdTaskCenter = '/rd/tasks';
 
   // 采购管理（PMC 运营部）：hub + 4 单据列表。

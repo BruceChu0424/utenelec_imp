@@ -32,7 +32,10 @@ class MyVehiclesManageCard extends ConsumerWidget {
               Icons.directions_car_outlined,
               color: theme.colorScheme.primary,
             ),
-            title: const Text('我的车辆', style: TextStyle(fontWeight: FontWeight.w700)),
+            title: const Text(
+              '我的车辆',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
             subtitle: const Text('登记常用车辆，方便行政/门岗按车牌找到你'),
             trailing: TextButton.icon(
               icon: const Icon(Icons.edit_outlined, size: 16),
@@ -80,9 +83,7 @@ class MyVehiclesManageCard extends ConsumerWidget {
     await _replaceSelf(
       context,
       ref,
-      () => ref
-          .read(myVehiclePhoneRepositoryProvider)
-          .replaceVehicles(result),
+      () => ref.read(myVehiclePhoneRepositoryProvider).replaceVehicles(result),
       '车辆信息已更新',
     );
   }
@@ -104,7 +105,10 @@ class MyPhonesManageCard extends ConsumerWidget {
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.add_call, color: theme.colorScheme.primary),
-            title: const Text('备用手机号', style: TextStyle(fontWeight: FontWeight.w700)),
+            title: const Text(
+              '备用手机号',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
             subtitle: const Text('主手机号用于登录；此处登记额外联系号码'),
             trailing: TextButton.icon(
               icon: const Icon(Icons.edit_outlined, size: 16),

@@ -10,6 +10,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -2478,6 +2479,20 @@ class _ProductionMaterialAnalysisPageState
     );
   }
 
+  bool _hasProductionMaterialChildren(
+    ProductionMaterialAnalysisProduct product,
+  ) {
+    final authoritative = product.hasProductionMaterialChildren;
+    if (authoritative != null) return authoritative;
+    final analysis = _analysis;
+    if (analysis == null) return true;
+    return (_analysisIndexes(
+              analysis,
+            ).materialsByProduct[product.analysisLineId] ??
+            const [])
+        .isNotEmpty;
+  }
+
   bool _canSelectProduct(ProductionMaterialAnalysisProduct product) {
     return product.readyNowQty > 0;
   }
@@ -2855,7 +2870,8 @@ class _ProductionMaterialAnalysisPageState
                     const SizedBox(height: UtenSpacing.s8),
                     Text(
                       approved
-                          ? '本计划无 BOM 物料可领，未生成提货单。'
+                          ? '本批没有下层领用物料，不生成领料单；'
+                                '计划审核后直接进入派工、报工、FQC 与完工入库。'
                           : '计划审核并正式下达后，系统自动生成物料提货单(领料单)，'
                                 '仓库按单发料；可在「生产计划详情」查看进度。',
                       style: Theme.of(dialogContext).textTheme.bodyMedium
@@ -6848,19 +6864,14 @@ class _ProductionMaterialAnalysisPageState
           _priorityEditor(theme, byId),
         ],
         const SizedBox(height: UtenSpacing.s8),
-        LayoutBuilder(
-          builder: (_, constraints) {
-            final compact = constraints.maxWidth < UtenBreakpoints.mediumStart;
-            final width = compact ? constraints.maxWidth : 360.0;
-            return Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              children: [
-                for (final product in visibleProducts)
-                  SizedBox(width: width, child: _productCard(theme, product)),
-              ],
-            );
-          },
+        // 卡片高度随缺料摘要、计划入口、选中态输入框变化：Wrap 按行对齐会让
+        // 矮卡片下方留白，瀑布流按列独立堆叠，各列高度互不影响。
+        UtenResponsiveGrid(
+          itemCount: visibleProducts.length,
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          itemBuilder: (context, index, itemWidth) =>
+              _productCard(theme, visibleProducts[index]),
         ),
         if (remainingProducts > 0) ...[
           const SizedBox(height: UtenSpacing.s8),
@@ -7341,6 +7352,7 @@ class _ProductionMaterialAnalysisPageState
     }
     final maxQty = product.readyNowQty;
     final producible = maxQty > 0;
+    final directMake = producible && !_hasProductionMaterialChildren(product);
     final ratio = product.readinessRatio.clamp(0.0, 1.0);
     final onSurface = selected ? Colors.white : theme.colorScheme.onSurface;
     final accent = selected
@@ -7383,7 +7395,11 @@ class _ProductionMaterialAnalysisPageState
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: Text(
-                  producible ? '最多可生产 ${_qty(maxQty)} 个' : '整套物料未齐，暂不可生产',
+                  directMake
+                      ? '无下层物料，可直接自制 ${_qty(maxQty)} 个'
+                      : producible
+                      ? '最多可生产 ${_qty(maxQty)} 个'
+                      : '整套物料未齐，暂不可生产',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: onSurface,
                     fontWeight: FontWeight.w800,
@@ -7391,7 +7407,7 @@ class _ProductionMaterialAnalysisPageState
                 ),
               ),
               Text(
-                '齐套 ${(ratio * 100).toStringAsFixed(0)}%',
+                directMake ? '无需领料' : '齐套 ${(ratio * 100).toStringAsFixed(0)}%',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: accent,
                   fontWeight: FontWeight.w700,
@@ -7400,36 +7416,50 @@ class _ProductionMaterialAnalysisPageState
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
-          if (!producible) ...[
+          if (directMake)
             Text(
-              '“最多可生产”是整套齐套量；单项合格到货会在下方物料卡显示。',
+              key: ValueKey(
+                'material-analysis-direct-make-${product.analysisLineId}',
+              ),
+              '无需备料齐套，可直接填写生产计划；审核下达后不会生成空领料单。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: selected
                     ? Colors.white70
-                    : theme.colorScheme.onErrorContainer,
+                    : theme.colorScheme.onPrimaryContainer,
               ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-          ],
-          // 齐套进度条：与右侧「齐套 X%」同源（服务端 readinessRatio），
-          // 大字 + 条形双通道表达，不只靠颜色，方便现场一眼看出还差多少。
-          Semantics(
-            label: '齐套进度 ${(ratio * 100).toStringAsFixed(0)}%',
-            child: ClipRRect(
-              borderRadius: UtenRadius.smAll,
-              child: LinearProgressIndicator(
-                key: ValueKey(
-                  'material-analysis-product-progress-${product.analysisLineId}',
+            )
+          else ...[
+            if (!producible) ...[
+              Text(
+                '“最多可生产”是整套齐套量；单项合格到货会在下方物料卡显示。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: selected
+                      ? Colors.white70
+                      : theme.colorScheme.onErrorContainer,
                 ),
-                value: ratio,
-                minHeight: 10,
-                backgroundColor: selected
-                    ? Colors.white24
-                    : theme.colorScheme.surfaceContainerHighest,
-                valueColor: AlwaysStoppedAnimation<Color>(accent),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
+            // 齐套进度条：与右侧「齐套 X%」同源（服务端 readinessRatio），
+            // 大字 + 条形双通道表达，不只靠颜色，方便现场一眼看出还差多少。
+            Semantics(
+              label: '齐套进度 ${(ratio * 100).toStringAsFixed(0)}%',
+              child: ClipRRect(
+                borderRadius: UtenRadius.smAll,
+                child: LinearProgressIndicator(
+                  key: ValueKey(
+                    'material-analysis-product-progress-${product.analysisLineId}',
+                  ),
+                  value: ratio,
+                  minHeight: 10,
+                  backgroundColor: selected
+                      ? Colors.white24
+                      : theme.colorScheme.surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation<Color>(accent),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -8118,7 +8148,7 @@ class _ProductionMaterialAnalysisPageState
         if (_canNotify && _selectedExecutableCount(route) > 0)
           UtenButton(
             key: Key('material-analysis-notify-${route.wireName}'),
-            type: UtenButtonType.danger,
+            type: UtenButtonType.tonal,
             size: UtenButtonSize.large,
             icon: Icons.notifications_active_outlined,
             isLoading: _notifyingRoute == route,

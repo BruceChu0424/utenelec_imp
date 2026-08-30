@@ -192,6 +192,8 @@ class ReleaseFixture(unittest.TestCase):
                 "com/uten/imp/migration/UtenImpMigrator$1.class",
                 "com/uten/imp/migration/UtenImpMigrator$MigrationActions.class",
                 "com/uten/imp/migration/UtenImpMigrator$MigrationActionsFactory.class",
+                "com/uten/imp/migration/AppliedMigrationCompatibilityCallback.class",
+                "com/uten/imp/migration/AuditFreshStartGuardCallback.class",
             ):
                 jar.writestr(application_class, b"fixture-bytecode")
         release_tools.write_checksums(self.payload, self.payload / "SHA256SUMS")

@@ -3244,6 +3244,9 @@ public class MaterialAnalysisService {
                 warehouseBreakdown(analysisId, materialRows);
         Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
         Map<UUID, ProductPlanState> productPlanStates = productPlanStates(analysisId);
+        Set<UUID> productIdsWithMaterialChildren = materialRows.stream()
+                .map(MaterialRow::analysisItemId)
+                .collect(Collectors.toSet());
         Map<UUID, List<BorrowRef>> borrowRefs = activeBorrowRefsByMaterial(analysisId);
         Map<UUID, CrossProjection> crossProjections =
                 crossReallocationProjections(analysisId);
@@ -3283,6 +3286,7 @@ public class MaterialAnalysisService {
                         .min(BigDecimal.ONE);
             return source.toView(
                     ratio,
+                    productIdsWithMaterialChildren.contains(source.analysisItemId()),
                     productPlanStates.getOrDefault(
                             source.analysisItemId(), ProductPlanState.NONE));
         }).toList();
@@ -3802,8 +3806,6 @@ public class MaterialAnalysisService {
                        ai.color_id, col.name, ai.unit_id, u.name,
                        COALESCE(soi.unit_rate,1), ai.requested_qty,
                        ai.submitted_qty, ai.approved_qty,
-                       EXISTS (SELECT 1 FROM goods_bom_items b
-                               WHERE b.goods_id = ai.goods_id AND b.is_deleted = FALSE),
                        COALESCE(soi.qty, ai.requested_qty),
                        COALESCE(soi.shipped_qty,0), COALESCE(soi.returned_qty,0),
                        COALESCE(soi.flag_qty,0), COALESCE(soi.reserved_qty,0),
@@ -4323,9 +4325,6 @@ public class MaterialAnalysisService {
                        m.safety_stock_qty, m.inbound_qty,
                        m.shortage_qty, m.expected_ready_date, m.source_suggestion,
                        m.confirmed_route, m.route_reason,
-                       EXISTS (SELECT 1 FROM goods_bom_items child
-                               WHERE child.goods_id = m.goods_id
-                                 AND child.is_deleted = FALSE),
                        m.lower_level_pending
                 FROM production_material_analysis_materials m
                 JOIN goods g ON g.id = m.goods_id
@@ -5304,7 +5303,7 @@ public class MaterialAnalysisService {
             UUID goodsId, String goodsCode, String goodsName, String spec,
             UUID colorId, String colorName, UUID unitId, String unitName,
             BigDecimal unitRate, BigDecimal requestedQty, BigDecimal submittedQty,
-            BigDecimal approvedQty, boolean hasBom,
+            BigDecimal approvedQty,
             BigDecimal salesQty, BigDecimal shippedQty, BigDecimal returnedQty,
             BigDecimal flagQty, BigDecimal reservedQty, BigDecimal plannedQty,
             BigDecimal producedQty, BigDecimal activeDraftQty,
@@ -5322,17 +5321,16 @@ public class MaterialAnalysisService {
                     uuid(row[8]), string(row[9]), string(row[10]), string(row[11]),
                     uuid(row[12]), string(row[13]), uuid(row[14]), string(row[15]),
                     decimal(row[16]), decimal(row[17]), decimal(row[18]), decimal(row[19]),
-                    Boolean.TRUE.equals(row[20]), decimal(row[21]),
-                    decimal(row[22]), decimal(row[23]), decimal(row[24]), decimal(row[25]),
-                    decimal(row[26]), decimal(row[27]), decimal(row[28]),
-                    row[29] == null ? null : ((Number) row[29]).shortValue(),
-                    Boolean.TRUE.equals(row[30]), Boolean.TRUE.equals(row[31]),
-                    Boolean.TRUE.equals(row[32]), Boolean.TRUE.equals(row[33]),
-                    string(row[34]), string(row[35]), integer(row[36]),
-                    decimal(row[37]), decimal(row[38]), decimal(row[39]),
-                    decimal(row[40]), decimal(row[41]),
-                    uuid(row[42]), string(row[43]),
-                    Boolean.TRUE.equals(row[44]));
+                    decimal(row[20]), decimal(row[21]), decimal(row[22]), decimal(row[23]),
+                    decimal(row[24]), decimal(row[25]), decimal(row[26]), decimal(row[27]),
+                    row[28] == null ? null : ((Number) row[28]).shortValue(),
+                    Boolean.TRUE.equals(row[29]), Boolean.TRUE.equals(row[30]),
+                    Boolean.TRUE.equals(row[31]), Boolean.TRUE.equals(row[32]),
+                    string(row[33]), string(row[34]), integer(row[35]),
+                    decimal(row[36]), decimal(row[37]), decimal(row[38]),
+                    decimal(row[39]), decimal(row[40]),
+                    uuid(row[41]), string(row[42]),
+                    Boolean.TRUE.equals(row[43]));
         }
 
         BigDecimal remainingAnalysisQty() {
@@ -5340,7 +5338,10 @@ public class MaterialAnalysisService {
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
         }
 
-        ProductView toView(BigDecimal ratio, ProductPlanState planState) {
+        ProductView toView(
+                BigDecimal ratio,
+                boolean hasProductionMaterialChildren,
+                ProductPlanState planState) {
             return new ProductView(analysisItemId, sourceType, sourceRef, sourceReason,
                     salesOrderItemId,
                     salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName,
@@ -5349,6 +5350,7 @@ public class MaterialAnalysisService {
                     remainingAnalysisQty(), allocationPriority,
                     readyNowQty, readyByDateQty,
                     readyStartQty, readyFinishQty, readyShipQty, ratio,
+                    hasProductionMaterialChildren,
                     parentAnalysisLineId, parentGoodsName,
                     planState.status(), planState.planId(), planState.planNo());
         }
@@ -5446,7 +5448,7 @@ public class MaterialAnalysisService {
             BigDecimal safetyStockQty, BigDecimal inboundQty, BigDecimal shortageQty,
             LocalDate expectedReadyDate, String suggestion, String confirmedRoute,
             String routeReason,
-            boolean hasActiveBom, boolean lowerLevelPending) {
+            boolean lowerLevelPending) {
         static MaterialRow from(Object[] row) {
             return new MaterialRow(uuid(row[0]), uuid(row[1]), uuid(row[2]), string(row[3]),
                     string(row[4]), string(row[5]), uuid(row[6]), string(row[7]),
@@ -5457,8 +5459,7 @@ public class MaterialAnalysisService {
                     decimal(row[21]), decimal(row[22]), decimal(row[23]), decimal(row[24]),
                     decimal(row[25]), decimal(row[26]), decimal(row[27]), decimal(row[28]),
                     date(row[29]), string(row[30]), string(row[31]), string(row[32]),
-                    Boolean.TRUE.equals(row[33]),
-                    Boolean.TRUE.equals(row[34]));
+                    Boolean.TRUE.equals(row[33]));
         }
         MaterialDimension dimension() {
             return new MaterialDimension(goodsId, colorId, unitId);

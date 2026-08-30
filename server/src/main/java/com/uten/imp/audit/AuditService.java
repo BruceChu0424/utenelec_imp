@@ -38,6 +38,28 @@ public class AuditService {
         a.setEventSource("business");
         fillRequest(a);
         repo.save(a);
+        AuditRequestContext.markMeaningfulEventRecorded(currentRequest());
+    }
+
+    /**
+     * Writes a success event inside the caller's business transaction. Use for
+     * state-changing actions whose audit event must disappear if the business
+     * transaction rolls back.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void logCommitted(UUID actorId, String actorAccount, String action,
+                             String targetType, String targetId, String result) {
+        AuditLog a = base(
+                truncate(action, 120),
+                truncate(targetType, 200),
+                truncate(targetId, 1000),
+                truncate(result, 500));
+        a.setActorId(actorId);
+        a.setActorAccount(truncate(actorAccount, 200));
+        a.setEventSource("business");
+        fillRequest(a);
+        repo.save(a);
+        AuditRequestContext.markMeaningfulEventRecorded(currentRequest());
     }
 
     /** One readable coverage row for every user-facing API request. */

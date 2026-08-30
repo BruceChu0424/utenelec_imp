@@ -520,12 +520,12 @@ class _ExecutionPlanningSheetState
   }
 
   void _confirm() {
-    if (widget.preview.hasBlockingBomGaps) {
-      context.appError('仍有成品或自制组件缺少 BOM，补齐前不能保存或下达排产方案');
+    if (widget.preview.hasUnresolvedZeroMaterialLineage) {
+      context.appError('旧计划行缺少物料分析来源谱系，请回到“物料分析准备”重新生成计划');
       return;
     }
     if (!widget.preview.executionSegmentationReady) {
-      context.appError('服务端未能形成可追溯执行分段，请刷新物料或补齐 BOM 后重试');
+      context.appError('服务端未能形成可追溯执行分段，请回到物料分析刷新并核对子层级结构');
       return;
     }
     if (_grid.isEmpty) {
@@ -1022,7 +1022,7 @@ class _ExecutionPlanningSheetState
               rowColor: (row) => row.shortageQty > _epsilon
                   ? theme.colorScheme.error.withValues(alpha: 0.06)
                   : Colors.green.withValues(alpha: 0.04),
-              emptyMessage: zeroMaterialText ?? '该产品没有可用 BOM 物料，不能排产',
+              emptyMessage: zeroMaterialText ?? '该产品没有已冻结的下层领用物料',
             ),
             const SizedBox(height: UtenSpacing.s4),
             Text(
@@ -1433,11 +1433,11 @@ class _ExecutionPlanningSheetState
               icon: Icons.account_tree_outlined,
               onPressed:
                   widget.preview.executionSegmentationReady &&
-                      !widget.preview.hasBlockingBomGaps
+                      !widget.preview.hasUnresolvedZeroMaterialLineage
                   ? _confirm
                   : null,
-              onDisabledTap: widget.preview.hasBlockingBomGaps
-                  ? () => context.appWarning('请先补齐全部成品及自制组件 BOM，再保存或下达排产方案')
+              onDisabledTap: widget.preview.hasUnresolvedZeroMaterialLineage
+                  ? () => context.appWarning('旧计划缺少物料分析来源，请回到“物料分析准备”重新生成')
                   : null,
               child: Text(
                 widget.mode == ProductionPlanningSheetMode.draft

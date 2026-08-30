@@ -84,6 +84,13 @@ public class AuditRequestContextFilter extends OncePerRequestFilter {
         if (chainFailed && status < 400) {
             status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         }
+        if (!AuditRequestContext.shouldRecordOperation(
+                request, status, chainFailed)) {
+            request.setAttribute(
+                    AuditRequestContext.OPERATION_RECORDED_ATTRIBUTE,
+                    Boolean.TRUE);
+            return;
+        }
         String method = request.getMethod().toUpperCase(Locale.ROOT);
         String path = request.getRequestURI();
         try {

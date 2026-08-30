@@ -1,7 +1,9 @@
-// 采购/委外订货单明细「供应商」单元格：紧凑下拉。
-// 用于逐行选不同供应商（保存时由后端按供应商自动拆单）。供应商字典可能数百条，
-// 下拉可滚动；孤儿值（不在字典）回退为空，避免 DropdownButtonFormField 断言。
-// 行未覆盖(value 空)时显示表头 fallback；DropdownButtonFormField 自管选中态。
+// 采购/委外订货单明细「供应商」单元格：outlined 只读选择格（与表头 UtenDropdownField
+// 同款描边风格），点击打开供应商滑入面板（UtenSupplierPicker：分类树+搜索+可内联新建）。
+// 用于逐行选不同供应商（保存时由后端按供应商自动拆单）。多选联动由页面 onPick 回调
+// 决定写入范围（勾选多行时任一选中行选的供应商填到所有选中行）。
+// [value] 行级供应商 id；[entries] id→名称（显示用，通常含「已禁用」补显项）；
+// [fallback] 表头默认供应商（行未覆盖时显示它）；[requiredEmpty] 必填未选时提示标红。
 import 'package:flutter/material.dart';
 
 class ProcurementSupplierCell extends StatelessWidget {
@@ -10,7 +12,8 @@ class ProcurementSupplierCell extends StatelessWidget {
     required this.value,
     required this.entries,
     this.fallback,
-    this.onChanged,
+    this.onPick,
+    this.requiredEmpty = false,
   });
 
   /// 行级覆盖值（用户逐行改过才非空）。
@@ -19,36 +22,51 @@ class ProcurementSupplierCell extends StatelessWidget {
   /// 表头默认供应商：行未覆盖时显示它（保存时后端也会按表头回落）。
   final String? fallback;
   final Map<String, String> entries;
-  final ValueChanged<String?>? onChanged;
+
+  /// 点击单元格打开供应商选择面板（页面实现：面板返回 id 后按多选范围落值）。
+  final Future<void> Function()? onPick;
+
+  /// 必填且未选：hint「必选供应商」标红（行级必填口径）。
+  final bool requiredEmpty;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    String? resolve(String? candidate) =>
-        (candidate != null && entries.containsKey(candidate))
-        ? candidate
-        : null;
-    final initial = resolve(value) ?? resolve(fallback);
-    return DropdownButtonFormField<String?>(
-      initialValue: initial,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        border: InputBorder.none,
-        contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-      ),
-      hint: Text('选供应商', style: theme.textTheme.bodySmall),
-      items: [
-        for (final entry in entries.entries)
-          DropdownMenuItem<String?>(
-            value: entry.key,
-            child: Text(
-              entry.value,
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
+    final displayId = value ?? fallback;
+    final hasName =
+        displayId != null && (entries[displayId]?.isNotEmpty ?? false);
+    final hasValue = displayId != null && displayId.isNotEmpty;
+    return InkWell(
+      onTap: onPick,
+      borderRadius: BorderRadius.circular(6),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          isDense: true,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 8,
           ),
-      ],
-      onChanged: onChanged,
+          suffixIcon: Icon(
+            hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
+            size: 16,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          suffixIconConstraints: const BoxConstraints(minWidth: 20),
+        ),
+        child: Text(
+          hasName ? entries[displayId]! : (requiredEmpty ? '必选供应商' : '点击选择供应商'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: hasName
+                ? theme.colorScheme.onSurface
+                : (requiredEmpty
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.onSurfaceVariant),
+          ),
+        ),
+      ),
     );
   }
 }

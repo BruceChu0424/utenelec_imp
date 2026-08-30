@@ -1,9 +1,14 @@
 package com.uten.imp.audit;
 
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.time.BusinessTime;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Component;
 
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -58,11 +63,12 @@ public class AuditActorDirectory {
         }
 
         public ActorProfile forActor(UUID actorId, String actorAccount) {
-            ActorProfile profile = actorId == null ? null : byId.get(actorId);
-            if (profile == null && actorAccount != null && !actorAccount.isBlank()) {
-                profile = byAccount.get(actorAccount.trim().toLowerCase());
+            if (actorId != null) {
+                return byId.get(actorId);
             }
-            return profile;
+            return actorAccount == null || actorAccount.isBlank()
+                    ? null
+                    : byAccount.get(actorAccount.trim().toLowerCase());
         }
     }
 
@@ -124,6 +130,37 @@ public class AuditActorDirectory {
                 byAccount.put(account.trim().toLowerCase(), profile);
             }
         }
+        StringBuilder visitorSql = new StringBuilder("""
+                SELECT visitor.id, visitor.visitor_no, visitor.name
+                FROM visitor_accounts visitor
+                WHERE 1 = 0
+                """);
+        if (!ids.isEmpty()) {
+            visitorSql.append(" OR visitor.id IN (:ids)");
+        }
+        if (!normalizedAccounts.isEmpty()) {
+            visitorSql.append(" OR LOWER(visitor.visitor_no) IN (:accounts)");
+        }
+        var visitorQuery = entityManager.createNativeQuery(visitorSql.toString());
+        if (!ids.isEmpty()) {
+            visitorQuery.setParameter("ids", new ArrayList<>(ids));
+        }
+        if (!normalizedAccounts.isEmpty()) {
+            visitorQuery.setParameter("accounts", new ArrayList<>(normalizedAccounts));
+        }
+        for (Object row : visitorQuery.getResultList()) {
+            Object[] cols = (Object[]) row;
+            UUID id = toUuid(cols[0]);
+            String account = toText(cols[1]);
+            ActorProfile profile = new ActorProfile(
+                    account, toText(cols[2]), "外部访客", "访客");
+            if (id != null) {
+                byId.putIfAbsent(id, profile);
+            }
+            if (account != null && !account.isBlank()) {
+                byAccount.putIfAbsent(account.trim().toLowerCase(), profile);
+            }
+        }
         return new Resolution(byId, byAccount);
     }
 
@@ -140,9 +177,18 @@ public class AuditActorDirectory {
                 .replace("%", "!%")
                 .replace("_", "!_");
         var query = entityManager.createNativeQuery("""
-                SELECT u.id FROM users u
-                JOIN employees e ON e.id = u.employee_id
-                WHERE LOWER(e.full_name) LIKE :kw ESCAPE '!'
+                SELECT matched.id
+                FROM (
+                    SELECT u.id
+                    FROM users u
+                    JOIN employees e ON e.id = u.employee_id
+                    WHERE LOWER(e.full_name) LIKE :kw ESCAPE '!'
+                    UNION
+                    SELECT visitor.id
+                    FROM visitor_accounts visitor
+                    WHERE LOWER(visitor.name) LIKE :kw ESCAPE '!'
+                       OR LOWER(visitor.visitor_no) LIKE :kw ESCAPE '!'
+                ) matched
                 """);
         query.setParameter("kw", "%" + escaped + "%");
         Set<UUID> result = new LinkedHashSet<>();
@@ -155,7 +201,174 @@ public class AuditActorDirectory {
         return result;
     }
 
-    private static UUID toUuid(Object value) {        if (value instanceof UUID uuid) {
+    /**
+     * UUID-authoritative people directory for the audit-center first step.
+     * Deleted/disabled historical users remain selectable; system jobs never
+     * appear because they have no row in {@code users}.
+     */
+    public PageResponse<AuditActorOption> findActors(
+            String keyword,
+            int page,
+            int size) {
+        var pageable = Pageables.of(page, size);
+        String pattern = actorKeywordPattern(keyword);
+        String filter = pattern == null ? "" : """
+                WHERE LOWER(COALESCE(directory.name, '')) LIKE :keyword ESCAPE '!'
+                   OR LOWER(COALESCE(directory.account, '')) LIKE :keyword ESCAPE '!'
+                   OR LOWER(COALESCE(directory.employee_code, '')) LIKE :keyword ESCAPE '!'
+                   OR LOWER(COALESCE(directory.department_name, '')) LIKE :keyword ESCAPE '!'
+                   OR LOWER(COALESCE(directory.position_name, '')) LIKE :keyword ESCAPE '!'
+                """;
+        var dataQuery = entityManager.createNativeQuery("""
+                SELECT directory.actor_id,
+                       directory.actor_type,
+                       directory.account,
+                       directory.name,
+                       directory.department_name,
+                       directory.position_name
+                FROM (
+                    SELECT u.id AS actor_id,
+                           'staff' AS actor_type,
+                           u.login_account AS account,
+                           e.full_name AS name,
+                           e.code AS employee_code,
+                           d.name AS department_name,
+                           p.name AS position_name
+                    FROM users u
+                    LEFT JOIN employees e ON e.id = u.employee_id
+                    LEFT JOIN departments d ON d.id = e.department_id
+                    LEFT JOIN positions p ON p.id = e.position_id
+                    UNION ALL
+                    SELECT visitor.id,
+                           'visitor',
+                           visitor.visitor_no,
+                           visitor.name,
+                           NULL,
+                           '外部访客',
+                           '访客'
+                    FROM visitor_accounts visitor
+                ) directory
+                """ + filter + """
+                ORDER BY COALESCE(directory.name, directory.account),
+                         directory.actor_id
+                """);
+        var countQuery = entityManager.createNativeQuery("""
+                SELECT count(*)
+                FROM (
+                    SELECT u.id AS actor_id,
+                           'staff' AS actor_type,
+                           u.login_account AS account,
+                           e.full_name AS name,
+                           e.code AS employee_code,
+                           d.name AS department_name,
+                           p.name AS position_name
+                    FROM users u
+                    LEFT JOIN employees e ON e.id = u.employee_id
+                    LEFT JOIN departments d ON d.id = e.department_id
+                    LEFT JOIN positions p ON p.id = e.position_id
+                    UNION ALL
+                    SELECT visitor.id,
+                           'visitor',
+                           visitor.visitor_no,
+                           visitor.name,
+                           NULL,
+                           '外部访客',
+                           '访客'
+                    FROM visitor_accounts visitor
+                ) directory
+                """ + filter);
+        if (pattern != null) {
+            dataQuery.setParameter("keyword", pattern);
+            countQuery.setParameter("keyword", pattern);
+        }
+        dataQuery.setFirstResult((int) pageable.getOffset());
+        dataQuery.setMaxResults(pageable.getPageSize());
+
+        List<AuditActorOption> items = new ArrayList<>();
+        for (Object raw : dataQuery.getResultList()) {
+            Object[] row = (Object[]) raw;
+            UUID actorId = toUuid(row[0]);
+            if (actorId == null) {
+                continue;
+            }
+            String account = toText(row[2]);
+            String name = toText(row[3]);
+            items.add(new AuditActorOption(
+                    actorId,
+                    toText(row[1]),
+                    account,
+                    actorDisplay(account, name),
+                    name,
+                    toText(row[4]),
+                    toText(row[5]),
+                    null));
+        }
+        if (!items.isEmpty()) {
+            var activityQuery = entityManager.createNativeQuery("""
+                    SELECT actor_id, max(created_at)
+                    FROM audit_log
+                    WHERE actor_id IN (:actorIds)
+                    GROUP BY actor_id
+                    """);
+            activityQuery.setParameter(
+                    "actorIds", items.stream().map(AuditActorOption::actorId).toList());
+            Map<UUID, OffsetDateTime> lastActivity = new HashMap<>();
+            for (Object raw : activityQuery.getResultList()) {
+                Object[] row = (Object[]) raw;
+                UUID id = toUuid(row[0]);
+                if (id != null) {
+                    lastActivity.put(id, toOffsetDateTime(row[1]));
+                }
+            }
+            items.replaceAll(item -> new AuditActorOption(
+                    item.actorId(), item.actorType(), item.account(),
+                    item.displayName(), item.name(),
+                    item.department(), item.position(), lastActivity.get(item.actorId())));
+        }
+        long total = ((Number) countQuery.getSingleResult()).longValue();
+        int totalPages = total == 0
+                ? 0
+                : (int) ((total + pageable.getPageSize() - 1) / pageable.getPageSize());
+        return new PageResponse<>(
+                List.copyOf(items),
+                pageable.getPageNumber() + 1,
+                pageable.getPageSize(),
+                total,
+                totalPages);
+    }
+
+    private static String actorKeywordPattern(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return null;
+        }
+        String escaped = keyword.trim().toLowerCase()
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
+        return "%" + escaped + "%";
+    }
+
+    private static String actorDisplay(String account, String name) {
+        if (name == null || name.isBlank()) {
+            return account == null ? "" : account;
+        }
+        return account == null || account.isBlank()
+                ? name
+                : name + "(" + account + ")";
+    }
+
+    private static OffsetDateTime toOffsetDateTime(Object value) {
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime;
+        }
+        if (value instanceof Timestamp timestamp) {
+            return OffsetDateTime.ofInstant(timestamp.toInstant(), BusinessTime.ZONE);
+        }
+        return value == null ? null : OffsetDateTime.parse(value.toString());
+    }
+
+    private static UUID toUuid(Object value) {
+        if (value instanceof UUID uuid) {
             return uuid;
         }
         if (value instanceof String text) {

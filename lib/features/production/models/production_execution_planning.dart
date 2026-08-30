@@ -79,7 +79,7 @@ class ProductionPlanningPreview {
     this.materials = const [],
     this.targetWarehouseMaterials = const [],
     this.executionSegments = const [],
-    this.noBomPlanItemIds = const [],
+    this.unresolvedZeroMaterialLineageIds = const [],
   });
 
   final String planId;
@@ -90,7 +90,12 @@ class ProductionPlanningPreview {
   final bool balancedKitCoverage;
   final bool executionSegmentationReady;
   final List<ProductionExecutionSegmentPreview> executionSegments;
-  final List<String> noBomPlanItemIds;
+
+  /// 仅用于识别没有物料分析来源谱系的旧/手工计划行。
+  ///
+  /// 它不是“缺少 BOM”清单：有物料分析事实且无子层级的产品会直接形成
+  /// ZERO_MATERIAL / DIRECT_MAKE 执行段，不会出现在这里。
+  final List<String> unresolvedZeroMaterialLineageIds;
 
   factory ProductionPlanningPreview.fromJson(Map<String, dynamic> json) {
     return ProductionPlanningPreview(
@@ -111,19 +116,16 @@ class ProductionPlanningPreview {
         json['executionSegments'],
         ProductionExecutionSegmentPreview.fromJson,
       ),
-      noBomPlanItemIds: _decodeList(
-        json['noBomPlanItemIds'],
-        (e) => e as String,
+      unresolvedZeroMaterialLineageIds: _decodeStringList(
+        json['unresolvedZeroMaterialLineageIds'] ?? json['noBomPlanItemIds'],
       ),
     );
   }
 }
 
 extension ProductionPlanningPreviewIntegrity on ProductionPlanningPreview {
-  /// 「无 BOM」不再拦截排产：原材料/叶子件（含自制叶子件，原料走车间领料、本就不进 BOM）
-  /// 无论作为组件还是顶层产品都合法——自制叶子件缺料由后端派生「造 N 个」裸子计划，
-  /// 可直接报工入库。保留此 getter 供对话框/详细排产调用处兼容，按策略恒为 false。
-  bool get hasBlockingBomGaps => false;
+  bool get hasUnresolvedZeroMaterialLineage =>
+      unresolvedZeroMaterialLineageIds.isNotEmpty;
 }
 
 class ProductionPlanningMaterial {
@@ -1020,6 +1022,10 @@ List<T> _decodeList<T>(
       decoder(Map<String, dynamic>.from(item as Map)),
   ];
 }
+
+List<String> _decodeStringList(Object? value) => value is List
+    ? value.whereType<String>().toList(growable: false)
+    : const <String>[];
 
 T? _decodeOptional<T>(Object? value, T Function(Map<String, dynamic>) decoder) {
   if (value is! Map) return null;

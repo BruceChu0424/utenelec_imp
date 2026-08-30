@@ -99,8 +99,8 @@ class ProductionPlanningRequestValidatorTest {
     }
 
     @Test
-    void rejectsLeafProductWithoutDirectMakePolicyOrExplicitOverride() {
-        // 无 BOM 行只有挂上物料分析事实才会被授权为 DIRECT_MAKE 零料段；遗留行保持拦截。
+    void rejectsZeroMaterialProductWithoutAnalysisLineage() {
+        // 零料候选行只有挂上精确物料分析谱系才会授权为 DIRECT_MAKE；遗留行保持拦截。
         GeneratePlanningPackageRequest request = request("a".repeat(64));
         ProductionExecutionPlanningService.Snapshot snapshot = snapshot(
                 request.getPreviewFingerprint(), List.of(),
@@ -110,12 +110,12 @@ class ProductionPlanningRequestValidatorTest {
         assertThatThrownBy(() -> validator.validateCurrent(
                 UUID.randomUUID(), request))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("缺少物料分析事实");
+                .hasMessageContaining("缺少物料分析来源谱系");
         verify(planning, never()).applyRequested(any(), any());
     }
 
     @Test
-    void allowsNoBomWhenPreviewAlreadyAppliedDirectMakePolicyOrExplicitOverride() {
+    void allowsZeroMaterialProductWhenLineageWasResolvedByPreview() {
         GeneratePlanningPackageRequest request = request("a".repeat(64));
         ProductionExecutionPlanningService.Snapshot snapshot = snapshot(
                 request.getPreviewFingerprint(), List.of(), List.of());
@@ -179,10 +179,10 @@ class ProductionPlanningRequestValidatorTest {
     private static ProductionExecutionPlanningService.Snapshot snapshot(
             String fingerprint,
             List<CompleteKitAllocator.ProductLine> lines,
-            List<UUID> noBom) {
+            List<UUID> unresolvedZeroMaterialLineageIds) {
         return new ProductionExecutionPlanningService.Snapshot(
                 UUID.randomUUID(), UUID.randomUUID(), fingerprint,
-                lines, Map.of(), noBom);
+                lines, Map.of(), unresolvedZeroMaterialLineageIds);
     }
 
     private static CompleteKitAllocator.ProductLine productLine(String route) {

@@ -25,6 +25,42 @@ void main() {
     expect(segment.materialIssued, isFalse);
   });
 
+  testWidgets('empty execution result stays neutral and offers refresh', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var reads = 0;
+
+    await tester.pumpWidget(
+      _app(
+        repository: _repository(
+          status: 'READY',
+          empty: true,
+          onRead: () => reads++,
+        ),
+        permissions: const {},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('production-execution-segments-empty')),
+      findsOneWidget,
+    );
+    expect(find.text('执行子计划'), findsOneWidget);
+    expect(find.textContaining('当前尚未形成执行子计划'), findsOneWidget);
+    expect(find.textContaining('物料分析准备'), findsOneWidget);
+    expect(find.textContaining('补 BOM'), findsNothing);
+    expect(find.text('刷新执行状态'), findsOneWidget);
+    expect(reads, 1);
+
+    await tester.tap(find.text('刷新执行状态'));
+    await tester.pumpAndSettle();
+    expect(reads, 2);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('row tap opens execution segment details for read-only users', (
     tester,
   ) async {
@@ -554,6 +590,7 @@ Widget _app({
 
 ProductionPlanRepository _repository({
   required String status,
+  bool empty = false,
   bool autoPromoteWhenReady = true,
   int materialDemandCount = 2,
   int fullyIssuedDemandCount = 2,
@@ -586,29 +623,34 @@ ProductionPlanRepository _repository({
             requestOptions: request,
             statusCode: 200,
             data: isRead
-                ? [
-                    _segmentJson(
-                      status: status,
-                      autoPromoteWhenReady: autoPromoteWhenReady,
-                      materialDemandCount: materialDemandCount,
-                      fullyIssuedDemandCount: fullyIssuedDemandCount,
-                      materialIssued: materialIssued,
-                      reportedQty: reportedQty,
-                      remainingQty: remainingQty,
-                      ordinaryRemainingQty:
-                          ordinaryRemainingQty ?? remainingQty,
-                      fqcPendingQty: fqcPendingQty,
-                      fqcPassedQty: fqcPassedQty,
-                      fqcFailedQty: fqcFailedQty,
-                      finishedInboundPendingQty: finishedInboundPendingQty,
-                      inboundQty: inboundQty,
-                      finishedInboundRejectedQty: finishedInboundRejectedQty,
-                      fqcRecoveryAvailableQty: fqcRecoveryAvailableQty,
-                      fqcReworkAvailableQty: fqcReworkAvailableQty,
-                      fqcReplacementAvailableQty: fqcReplacementAvailableQty,
-                      fqcReplacementReadyQty: fqcReplacementReadyQty,
-                    ),
-                  ]
+                ? empty
+                      ? <Map<String, dynamic>>[]
+                      : [
+                          _segmentJson(
+                            status: status,
+                            autoPromoteWhenReady: autoPromoteWhenReady,
+                            materialDemandCount: materialDemandCount,
+                            fullyIssuedDemandCount: fullyIssuedDemandCount,
+                            materialIssued: materialIssued,
+                            reportedQty: reportedQty,
+                            remainingQty: remainingQty,
+                            ordinaryRemainingQty:
+                                ordinaryRemainingQty ?? remainingQty,
+                            fqcPendingQty: fqcPendingQty,
+                            fqcPassedQty: fqcPassedQty,
+                            fqcFailedQty: fqcFailedQty,
+                            finishedInboundPendingQty:
+                                finishedInboundPendingQty,
+                            inboundQty: inboundQty,
+                            finishedInboundRejectedQty:
+                                finishedInboundRejectedQty,
+                            fqcRecoveryAvailableQty: fqcRecoveryAvailableQty,
+                            fqcReworkAvailableQty: fqcReworkAvailableQty,
+                            fqcReplacementAvailableQty:
+                                fqcReplacementAvailableQty,
+                            fqcReplacementReadyQty: fqcReplacementReadyQty,
+                          ),
+                        ]
                 : _segmentJson(
                     status: status,
                     materialDemandCount: materialDemandCount,

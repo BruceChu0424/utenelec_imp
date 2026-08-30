@@ -845,6 +845,14 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void noProductionMaterialChildrenAreReadyForEntireDemand() {
+        assertThat(MaterialAnalysisService.maxReadyExact(
+                bd("12.3456"), List.of(), Map.of(),
+                MaterialAnalysisService.BorrowTuning.NONE))
+                .isEqualByComparingTo("12.3456");
+    }
+
+    @Test
     void expectedReadinessUsesWholePackageAndFixedBatchSteps() {
         UUID itemId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
@@ -1376,7 +1384,7 @@ class MaterialAnalysisServiceBehaviorTest {
             UUID itemId, UUID goodsId, UUID unitId, int priority, String demand) {
         Object[] row = sourceRow(itemId, goodsId, unitId);
         row[17] = bd(demand);
-        row[36] = priority;
+        row[35] = priority;
         return MaterialAnalysisService.SourceLine.from(row);
     }
 
@@ -1439,13 +1447,13 @@ class MaterialAnalysisServiceBehaviorTest {
                 LocalDate.of(2026, 8, 20), null,
                 goodsId, "FG-01", "Finished good", null, null, null,
                 unitId, "piece", BigDecimal.ONE, bd("100"), BigDecimal.ZERO,
-                BigDecimal.ZERO, true, bd("100"), BigDecimal.ZERO,
+                BigDecimal.ZERO, bd("100"), BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, null, false, false, false, false,
                 "REQ-BOM-001", "BOM signature test", 1, bd("10"), bd("10"),
                 bd("10"), bd("10"), bd("10"),
                 null, null,
-                // V294：SourceLine 新增 orderFinanceConfirmed（row[45]），
+                // V294：SourceLine 新增 orderFinanceConfirmed（row[43]），
                 // 测试夹具默认财务已确认，不改变既有用例语义。
                 true
         };
@@ -1492,7 +1500,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ONE, bd("10"), BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, shortage, null,
                 "BUY", "BUY", null,
-                false, false);
+                false);
     }
 
     private static Query query(List<?> rows) {

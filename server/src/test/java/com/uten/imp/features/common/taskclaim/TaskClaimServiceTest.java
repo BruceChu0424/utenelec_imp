@@ -18,7 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -31,6 +34,7 @@ class TaskClaimServiceTest {
     private EmployeeNameResolver nameResolver;
     private SecurityContextCurrentUser currentUser;
     private AuthUser meUser;
+    private com.uten.imp.audit.AuditService audit;
     private TaskClaimService service;
 
     private static final String TYPE = "EXPENSE_APPROVE";
@@ -44,12 +48,15 @@ class TaskClaimServiceTest {
         nameResolver = mock(EmployeeNameResolver.class);
         currentUser = mock(SecurityContextCurrentUser.class);
         meUser = mock(AuthUser.class);
+        audit = mock(com.uten.imp.audit.AuditService.class);
         service = new TaskClaimService(
-                claimRepo, nameResolver, currentUser, mock(com.uten.imp.audit.AuditService.class));
+                claimRepo, nameResolver, currentUser, audit);
 
         when(currentUser.get()).thenReturn(Optional.of(meUser));
         when(currentUser.employeeId()).thenReturn(Optional.of(me));
         when(meUser.isSuperAdmin()).thenReturn(false);
+        when(meUser.getId()).thenReturn(UUID.randomUUID());
+        when(meUser.getLoginAccount()).thenReturn("auditor");
         when(meUser.getEmployeeId()).thenReturn(me);
         when(nameResolver.nameOf(any(UUID.class))).thenReturn("张三");
         // claim() 会 save 认领记录，回传同一对象便于断言
@@ -121,6 +128,9 @@ class TaskClaimServiceTest {
         TaskClaimService.TaskClaimView view = service.claim(TYPE, KEY);
         assertTrue(view.claimedByMe());
         assertEquals(me, view.claimedBy());
+        verify(audit).logCommitted(
+                eq(meUser.getId()), eq("auditor"), eq("task_claim"),
+                eq("task_claims"), eq(TYPE + "/" + KEY), eq("success"));
     }
 
     @Test
@@ -130,5 +140,94 @@ class TaskClaimServiceTest {
                 .thenReturn(Optional.of(activeClaim(other)));
         ApiException ex = assertThrows(ApiException.class, () -> service.claim(TYPE, KEY));
         assertEquals(ErrorCode.CONFLICT, ex.getCode());
+    }
+
+    @Test
+    void claimingOwnActiveLeaseIsRecordedAsRenewNotNewClaim() {
+        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
+                .thenReturn(Optional.of(activeClaim(me)));
+
+        assertTrue(service.claim(TYPE, KEY).claimedByMe());
+
+        verify(audit).logCommitted(
+                eq(meUser.getId()), eq("auditor"), eq("task_renew"),
+                eq("task_claims"), eq(TYPE + "/" + KEY), eq("success"));
+        verify(audit, never()).logCommitted(
+                any(), any(), eq("task_claim"), any(), any(), any());
+    }
+
+    @Test
+    void heartbeatBeforeRenewalThresholdDoesNotWriteOrAudit() {
+        TaskClaim claim = activeClaim(me);
+        claim.setLeaseUntil(OffsetDateTime.now().plusMinutes(20));
+        when(currentUser.requireEmployeeId()).thenReturn(me);
+        when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
+                .thenReturn(Optional.of(claim));
+
+        TaskClaimService.TaskClaimView view = service.heartbeat(TYPE, KEY);
+
+        assertEquals(claim.getLeaseUntil(), view.leaseUntil());
+        verify(claimRepo, never()).save(any(TaskClaim.class));
+        verify(audit, never()).logCommitted(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void heartbeatInsideRenewalThresholdExtendsLeaseOnceWithoutExplicitAudit() {
+        TaskClaim claim = activeClaim(me);
+        OffsetDateTime oldLease = OffsetDateTime.now().plusMinutes(5);
+        claim.setLeaseUntil(oldLease);
+        when(currentUser.requireEmployeeId()).thenReturn(me);
+        when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
+                .thenReturn(Optional.of(claim));
+
+        TaskClaimService.TaskClaimView view = service.heartbeat(TYPE, KEY);
+
+        assertTrue(view.leaseUntil().isAfter(oldLease));
+        verify(claimRepo).save(claim);
+        verify(audit, never()).logCommitted(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void takeoverByCurrentOwnerIsRecordedAsManualRenewNotTakeover() {
+        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        TaskClaim mine = activeClaim(me);
+        when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
+                .thenReturn(Optional.of(mine), Optional.of(mine));
+
+        TaskClaimService.TaskClaimView view = service.takeover(TYPE, KEY);
+
+        assertTrue(view.claimedByMe());
+        verify(audit).logCommitted(
+                eq(meUser.getId()), eq("auditor"), eq("task_renew"),
+                eq("task_claims"), eq(TYPE + "/" + KEY), eq("success"));
+    }
+
+    @Test
+    void takeoverIsAuditedOnlyWhenItActuallyReplacesAnotherOwner() {
+        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        TaskClaim theirs = activeClaim(other);
+        when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
+                .thenReturn(Optional.of(theirs), Optional.empty());
+
+        TaskClaimService.TaskClaimView view = service.takeover(TYPE, KEY);
+
+        assertTrue(view.claimedByMe());
+        verify(audit).logCommitted(
+                eq(meUser.getId()), eq("auditor"), eq("task_takeover"),
+                eq("task_claims"), eq(TYPE + "/" + KEY), eq("success"));
+    }
+
+    @Test
+    void takeoverWithoutActiveOwnerIsRecordedAsClaim() {
+        when(meUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(TYPE, KEY))
+                .thenReturn(Optional.empty(), Optional.empty());
+
+        assertTrue(service.takeover(TYPE, KEY).claimedByMe());
+
+        verify(audit).logCommitted(
+                eq(meUser.getId()), eq("auditor"), eq("task_claim"),
+                eq("task_claims"), eq(TYPE + "/" + KEY), eq("success"));
     }
 }

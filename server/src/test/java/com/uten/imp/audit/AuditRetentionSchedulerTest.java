@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AuditRetentionSchedulerTest {
@@ -56,9 +57,33 @@ class AuditRetentionSchedulerTest {
         verify(audit).logExplicit(
                 eq(null),
                 eq("system"),
-                eq("delete"),
+                eq("audit_retention_failed"),
                 eq("audit_retention"),
                 contains("hotMonths=0"),
                 eq("failure"));
+    }
+
+    @Test
+    void successfulAutomaticRetentionDoesNotCreateUserActivityNoise()
+            throws Exception {
+        DataSource dataSource = mock(DataSource.class);
+        AuditRuntimeSettings settings = mock(AuditRuntimeSettings.class);
+        AuditService audit = mock(AuditService.class);
+        when(settings.hotRetentionMonths()).thenReturn(6);
+        when(settings.archiveRetentionMonths()).thenReturn(30);
+        AuditRetentionScheduler scheduler = new AuditRetentionScheduler(
+                dataSource,
+                settings,
+                audit,
+                Clock.fixed(Instant.parse("2026-07-31T00:00:00Z"), ZoneOffset.UTC)) {
+            @Override
+            RetentionResult execute(Cutoffs cutoffs) {
+                return new RetentionResult(true, 10, 10, 2);
+            }
+        };
+
+        scheduler.runScheduled();
+
+        verifyNoInteractions(audit);
     }
 }

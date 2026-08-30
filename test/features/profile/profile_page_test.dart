@@ -24,7 +24,10 @@ void main() {
       // Hero 身份恒可见：一律以本人档案 DTO 为准，不吃 session 陈旧字段。
       expect(find.text('DTO Name'), findsWidgets);
       expect(find.text('DTO-CODE'), findsOneWidget);
-      expect(find.textContaining('DTO Department · DTO Position'), findsWidgets);
+      expect(
+        find.textContaining('DTO Department · DTO Position'),
+        findsWidgets,
+      );
       expect(find.text('Session Name'), findsNothing);
       expect(find.text('SESSION-CODE'), findsNothing);
       expect(find.text('Session Department'), findsNothing);
@@ -55,7 +58,9 @@ void main() {
       expect(find.text('SECRET-SALARY'), findsNothing);
       expect(find.text('SECRET-BANK'), findsNothing);
       await tester.dragUntilVisible(
-        find.textContaining('\u85aa\u916c\u4e0e\u94f6\u884c\u4fe1\u606f\u4e0d\u4f1a'),
+        find.textContaining(
+          '\u85aa\u916c\u4e0e\u94f6\u884c\u4fe1\u606f\u4e0d\u4f1a',
+        ),
         find.byType(ListView),
         const Offset(0, -160),
       );

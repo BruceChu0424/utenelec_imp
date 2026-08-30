@@ -363,8 +363,6 @@ abstract final class Perm {
   static const rdTaskView = 'rd_task:view';
   static const rdTaskResolve = 'rd_task:resolve';
 
-  /// 生产待排产 BOM 缺失转发工程研发部（独立权限点，不复用 production_plan:edit）。
-
   // ===== V328：按钮级动作权限（与后端迁移 code 一一对应） =====
   static const materialCategoryCreate = 'material_category:create';
   static const materialCategoryDelete = 'material_category:delete';

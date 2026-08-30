@@ -44,6 +44,7 @@ import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../repositories/purchase_repository.dart';
+import '../../basic_data/widgets/uten_supplier_picker.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/repositories/task_claim_repository.dart';
 import '../widgets/doc_link_picker.dart';
@@ -242,6 +243,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
             ..upstreamItemId = upstreamItemId
             ..colorId = it.colorId
             ..unitId = it.unitId;
+          // 订货单一单一商：明细不落供应商 id，编辑回显按单头供应商回填各行。
+          if (widget.docType == PurchaseDocType.order) {
+            row.supplierId = d.supplierId;
+          }
           row.qty.text = it.qty?.toString() ?? '';
           row.price.text = it.price?.toString() ?? '';
           rows.add(row);
@@ -336,6 +341,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       }
       if (rows.isEmpty) throw StateError('所选采购申请明细缺少有效物料');
       _grid.replaceAll(rows);
+      // 引入申请行后按「学习记忆」预填各货品上次订货的供应商，减少逐行手选。
+      await _prefillRememberedSuppliers();
       final dates =
           open
               .map((line) => _parseDate(line.needDate))
@@ -434,6 +441,119 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       ..colorId = g.colorId
       ..unitId = g.unitId
       ..stockPlaceNotifier.value = g.stockPlace;
+    // 订货单：换货品后按「学习记忆」预填该货品上次订货的供应商（不覆盖已选值）。
+    if (widget.docType == PurchaseDocType.order) {
+      await _prefillRememberedSuppliers();
+    }
+  }
+
+  /// 行级供应商「学习预填」：按货品查最近一次订货用的供应商（服务端历史归集），
+  /// 回填尚未选供应商的行。只回填启用中的供应商；失败静默（记忆是提效加分项）。
+  Future<void> _prefillRememberedSuppliers() async {
+    if (widget.docType != PurchaseDocType.order) return;
+    final pending = _grid.rows
+        .where((r) => r.goods != null && r.supplierId == null)
+        .map((r) => r.goods!.id)
+        .toSet();
+    if (pending.isEmpty) return;
+    try {
+      final remembered = await ref
+          .read(purchaseRepositoryProvider(PurchaseDocType.order))
+          .lastSuppliersByGoods(pending);
+      if (!mounted) return;
+      final names = ref.read(masterNameServiceProvider);
+      var changed = false;
+      for (final r in _grid.rows) {
+        final goodsId = r.goods?.id;
+        if (goodsId == null || r.supplierId != null) continue;
+        final sid = remembered[goodsId];
+        if (sid != null && !names.isSupplierDisabled(sid)) {
+          r.supplierId = sid;
+          changed = true;
+        }
+      }
+      if (changed) setState(() {});
+    } catch (_) {
+      // 学习预填失败静默：用户可逐行手选或勾选多行统一设置。
+    }
+  }
+
+  /// 批量设供应商弹窗的「新增供应商」由供应商滑入面板内置（supplier:create 权限）。
+
+  /// 多选行统一设供应商（订货单表头不录供应商，行级必填）：打开供应商滑入面板
+  /// （分类树+搜索+可内联新建）选一个，把同一供应商填到所有选中行；
+  /// 保存时后端按行供应商拆单归集。
+  Future<void> _batchSetSuppliers() async {
+    final rows = _grid.selectedRows;
+    if (rows.isEmpty) return;
+    final picked = await showUtenSupplierPicker(context, ref, title: '统一设置供应商');
+    if (picked == null || !mounted) return;
+    // 既有单据只持久化单头 supplierId，不能在编辑时制造多供应商行。
+    final targets = widget.id == null ? rows : _grid.rows;
+    for (final r in targets) {
+      r.supplierId = picked.id;
+    }
+    setState(() {});
+  }
+
+  /// 行级供应商选择：打开供应商滑入面板，选中后按多选范围落值
+  /// （勾选多行时任一选中行选的供应商联动填到所有选中行；否则只写本行）。
+  Future<void> _pickRowSupplier(PurchaseGridRow row) async {
+    final picked = await showUtenSupplierPicker(context, ref);
+    if (picked == null || !mounted) return;
+    _applyRowSupplier(row, picked.id);
+  }
+
+  /// 行级供应商选择落值：该行处于多选选中态时，在任一选中行选的供应商
+  /// 会联动填到**所有**选中行；未勾选（或点的行不在选中集）则只写本行。
+  void _applyRowSupplier(PurchaseGridRow row, String? value) {
+    if (widget.id != null) {
+      for (final r in _grid.rows) {
+        r.supplierId = value;
+      }
+      context.appInfo('既有订货单保持一单一商，已同步全部明细行');
+      setState(() {});
+      return;
+    }
+    final selected = _grid.selectedRows;
+    if (selected.contains(row)) {
+      for (final r in selected) {
+        r.supplierId = value;
+      }
+      if (selected.length > 1) {
+        context.appSuccess('已为 ${selected.length} 行设置同一供应商');
+      }
+    } else {
+      row.supplierId = value;
+    }
+    setState(() {});
+  }
+
+  /// 表头供应商展示名（启用商显名称；编辑旧单遇禁用商标注「已禁用」）。
+  String? _supplierHeaderName() {
+    final id = _supplierId;
+    if (id == null || id.isEmpty) return null;
+    final names = ref.read(masterNameServiceProvider);
+    final name = names.supplierEntries[id];
+    if (name == null || name.isEmpty) return id;
+    return names.isSupplierDisabled(id) ? '$name（已禁用）' : name;
+  }
+
+  /// 供应商显示名映射：启用中的供应商（禁用商不显示，避免对其新下单）。
+  /// 被 [referencedIds] 引用的禁用供应商（编辑旧单/上游预填）补进映射并标「已禁用」，
+  /// 保证已选值仍能显示名称；供明细供应商单元格显示用。
+  Map<String, String> _supplierDropdownEntries(
+    Iterable<String?> referencedIds,
+  ) {
+    final names = ref.read(masterNameServiceProvider);
+    final entries = {...names.supplierActiveEntries};
+    for (final id in referencedIds) {
+      if (id == null || id.isEmpty || entries.containsKey(id)) continue;
+      final name = names.supplierEntries[id];
+      if (name == null || name.isEmpty) continue;
+      entries[id] = '$name（已禁用）';
+    }
+    return entries;
   }
 
   /// 收货/退货实物单据：按货品主档补全各行库位号（选择器已返回的不再二次拉取）。
@@ -513,6 +633,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     if (_supplierId == null && sid != null && sid.isNotEmpty) {
       setState(() => _supplierId = sid);
     }
+    // 引入行后按「学习记忆」预填各货品上次订货的供应商（订货单行级必填）。
+    await _prefillRememberedSuppliers();
   }
 
   Future<void> _save() async {
@@ -521,9 +643,34 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       context.appError('请至少添加一条明细');
       return;
     }
-    if (_cfg.supplierRequired && _supplierId == null) {
+    if (_cfg.supplierRequired &&
+        !_cfg.supplierOnRowOnly &&
+        _supplierId == null) {
       context.appError('请选择供应商');
       return;
+    }
+    if (_cfg.supplierOnRowOnly) {
+      // 订货单：供应商在明细行必填（表头不录），勾选多行可「统一设供应商」批量填。
+      final missing = rows
+          .where((r) => r.goods != null && r.supplierId == null)
+          .toList();
+      if (missing.isNotEmpty) {
+        context.appError(
+          '${missing.first.goods!.name} 等 ${missing.length} 行未选择供应商；'
+          '可勾选多行后在任一行选择供应商统一填写',
+        );
+        return;
+      }
+      // 行供应商全部一致时同步表头（编辑旧单口径；新建按行拆单不用表头）。
+      final rowSuppliers = rows
+          .where((r) => r.goods != null)
+          .map((r) => r.supplierId)
+          .toSet();
+      if (widget.id != null && rowSuppliers.length != 1) {
+        context.appError('既有采购订货单必须保持全部明细为同一供应商');
+        return;
+      }
+      if (rowSuppliers.length == 1) _supplierId = rowSuppliers.first;
     }
     if (_cfg.warehouseRequired && _warehouseId == null) {
       context.appError('请选择仓库');
@@ -790,15 +937,22 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                     onChanged: (d) =>
                                         setState(() => _billDate = d),
                                   ),
-                                  if (_cfg.hasSupplier)
-                                    _dropdown(
-                                      '供应商',
-                                      _supplierId,
-                                      names.supplierEntries,
-                                      (v) => setState(() => _supplierId = v),
+                                  // 订货单：供应商改在明细行逐行必选（表头不显示），
+                                  // 保存按行供应商拆单归集；收货/退货仍走表头。
+                                  // 选商走右侧滑入面板（同销售订货单「客户」交互）：
+                                  // 分类树+搜索+分页+可内联新建，仅列启用供应商。
+                                  if (_cfg.hasSupplier &&
+                                      !_cfg.supplierOnRowOnly)
+                                    SupplierPickerField(
+                                      initialId: _supplierId,
+                                      initialName: _supplierHeaderName(),
                                       required: _cfg.supplierRequired,
                                       // 到货登记模式：供应商来自预计到货任务，锁定防手滑改坏来源关联。
                                       enabled: !_isArrivalMode,
+                                      onChanged: (v) =>
+                                          setState(() => _supplierId = v),
+                                      onPick: () =>
+                                          showUtenSupplierPicker(context, ref),
                                     ),
                                   if (_cfg.hasWarehouse)
                                     // 到货登记模式也不锁仓：入库仓库在收货时确定，
@@ -941,7 +1095,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                               Expanded(
                                 child: Text(
                                   '已从采购申请 $_sourceRequestBillNo 引入 ${_grid.length} 行；'
-                                  '请补充供应商、交货日期和价格后提交财务审核。',
+                                  '请逐行选择供应商（勾选多行后在任一行选即批量填写）、'
+                                  '填写交货日期和价格后提交财务审核。',
                                 ),
                               ),
                             ],
@@ -992,6 +1147,37 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                       ),
                       UtenEditableGrid<PurchaseGridRow>(
                         controller: _grid,
+                        // 订货单多选行批量操作：统一设供应商（可内联新建供应商）。
+                        batchActionsBuilder:
+                            widget.docType == PurchaseDocType.order
+                            ? (ctx, ctl) => [
+                                TextButton.icon(
+                                  onPressed: ctl.selectedCount > 0
+                                      ? _batchSetSuppliers
+                                      : null,
+                                  icon: const Icon(
+                                    Icons.local_shipping_outlined,
+                                    size: 16,
+                                  ),
+                                  label: Text('统一设供应商 (${ctl.selectedCount})'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Theme.of(
+                                      ctx,
+                                    ).colorScheme.primary,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 2,
+                                    ),
+                                    minimumSize: const Size(0, 36),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    textStyle: Theme.of(
+                                      ctx,
+                                    ).textTheme.titleSmall,
+                                  ),
+                                ),
+                              ]
+                            : null,
                         columns: purchaseGridColumns(
                           _pickGoods,
                           arrivalMode: _isArrivalMode,
@@ -1000,15 +1186,23 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                               widget.docType == PurchaseDocType.receipt ||
                               widget.docType == PurchaseDocType.returnDoc,
                           // 订货单：明细可逐行选供应商，保存时按供应商自动拆单。
+                          // 选项与表头同口径：只列启用供应商（行内已引用的禁用商补显）。
                           supplierEntries:
                               widget.docType == PurchaseDocType.order
-                              ? names.supplierEntries
+                              ? _supplierDropdownEntries([
+                                  _supplierId,
+                                  for (final r in _grid.rows) r.supplierId,
+                                ])
                               : const {},
+                          // 订货单表头不录供应商：行级必选（列头红 * + 空值红字提示）。
+                          supplierRequired:
+                              widget.docType == PurchaseDocType.order,
                           headerSupplierId:
                               widget.docType == PurchaseDocType.order
                               ? _supplierId
                               : null,
-                          onSupplierChanged: (_) => setState(() {}),
+                          // 行内点选供应商 → 滑入面板（页面按多选范围落值联动）。
+                          onPickSupplier: _pickRowSupplier,
                         ),
                         createBlankRow: () => PurchaseGridRow(),
                         // 到货登记模式：行来自预计到货任务（带订货明细关联），

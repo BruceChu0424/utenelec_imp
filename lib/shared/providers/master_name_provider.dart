@@ -207,6 +207,9 @@ class MasterNameService extends MasterDictionaryService {
   MasterNameService(super.api);
 
   Map<String, String> _suppliers = {};
+
+  /// 供应商状态（id → 使用/禁用；缺失视为启用，兼容旧后端未返回 status 的字典）。
+  Map<String, String> _supplierStatus = {};
   Map<String, String> _departments = {};
   Future<void>? _load;
 
@@ -223,10 +226,18 @@ class MasterNameService extends MasterDictionaryService {
         for (final entry in entries)
           entry['id'] as String: (entry['name'] ?? '') as String,
       };
+      _supplierStatus = {
+        for (final entry in entries)
+          if (entry['status'] != null)
+            entry['id'] as String: entry['status'] as String,
+      };
     } catch (_) {
       // 列表名称解析可降级。
     }
   }
+
+  /// 单据页内联新增供应商后重载字典（让本实例的下拉选项立即含新值）。
+  Future<void> reloadSuppliers() => _loadSuppliers();
 
   Future<void> _loadDepartments() async {
     try {
@@ -244,6 +255,17 @@ class MasterNameService extends MasterDictionaryService {
       MasterDictionaryService.resolveName(_departments, id);
 
   Map<String, String> get supplierEntries => _suppliers;
+
+  /// 启用中的供应商（单据表单下拉用）：禁用项不进选项，避免对禁用商下新单。
+  /// 名称解析仍走 [supplierEntries] 全量（历史单据可能引用禁用商）。
+  Map<String, String> get supplierActiveEntries => {
+    for (final entry in _suppliers.entries)
+      if (_supplierStatus[entry.key] != '禁用') entry.key: entry.value,
+  };
+
+  /// 供应商是否禁用（状态缺失视为启用）。
+  bool isSupplierDisabled(String? id) =>
+      id != null && _supplierStatus[id] == '禁用';
   Map<String, String> get departmentEntries => _departments;
 
   static Map<String, String> _flattenDeptTree(List<dynamic> nodes) {

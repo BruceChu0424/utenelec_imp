@@ -22,6 +22,13 @@ public interface MasterReferenceValidationPort {
 
     void requireVisibleActiveClient(UUID clientId);
 
+    /**
+     * Requires a supplier that may receive new purchase/subcontract business.
+     * Null legacy status remains selectable; deleted, disabled, and internal-workshop
+     * rows are rejected. Implementations lock the row for the caller transaction.
+     */
+    void requireSelectableSupplier(UUID supplierId);
+
     ResolvedLineUnit resolveVisibleActiveGoodsUnit(
             UUID goodsId,
             UUID unitId,

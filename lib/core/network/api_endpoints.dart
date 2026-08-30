@@ -43,6 +43,8 @@ abstract final class ApiEndpoints {
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
   static const warehouseInboundExpectationCount =
       '/warehouse/inbound/expectations/count';
+  static const warehouseInboundExpectationTypeCounts =
+      '/warehouse/inbound/expectations/type-counts';
   static const warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
   static const warehouseArrivalExceptionCount =
@@ -168,8 +170,6 @@ abstract final class ApiEndpoints {
   static const rdTaskCount = '$rdTasks/count';
   static String rdTaskResolve(String id) => '$rdTasks/$id/resolve';
   static String rdTaskAssign(String id) => '$rdTasks/$id/assign';
-  // 生产待排产 BOM 缺失 → 转发工程研发部
-  static const productionScheduleForwardRd = '/production/schedule/forward-rd';
 
   // 货品资料分类（基础资料 / master-data）
   static const materialCategories = '/master/material-categories';

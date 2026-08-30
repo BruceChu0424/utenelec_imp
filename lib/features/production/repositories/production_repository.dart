@@ -270,12 +270,6 @@ class ProductionPlanRepository {
 
   // ───────────────────────── MRP-lite（物料需求 → 采购申请） ─────────────────────────
 
-  /// 物料需求预览：BOM 展开毛需求 − 库存 − 在途 = 净需求（自制件标记）。
-  Future<List<MrpRow>> mrpPreview(String id) async {
-    final list = await api.getList('/production/plans/$id/mrp'); // ENDPOINT
-    return list.map(MrpRow.fromJson).toList();
-  }
-
   /// 目标发料仓口径的齐套预览。服务端返回指纹和 READY/WAITING 执行段，
   /// 确认时必须原样回传，避免预览后库存变化导致重复占料。
   Future<ProductionPlanningPreview> planningExecutionPreview(
@@ -785,7 +779,7 @@ class ProductionPlanRepository {
     return PagedResult.fromJson(json, SchedulePendingRow.fromJson);
   }
 
-  /// 待排产状态 facets（表头值筛选用）：{status:[MasterFacetBucket]}（BOM缺失/紧急/正常）。
+  /// 待排产状态 facets（表头值筛选用）：{status:[MasterFacetBucket]}（紧急/正常）。
   Future<SchedulePendingFacets> schedulePendingFacets({
     String keyword = '',
     String? dateFrom,
@@ -936,7 +930,7 @@ double? _scheduleRatio(Object? raw) {
   return normalizeProgressRatio(value);
 }
 
-/// 待排产 facets（表头值筛选用）。当前仅 status 键：BOM缺失/紧急/正常 三桶。
+/// 待排产 facets（表头值筛选用）。当前仅 status 键：紧急/正常两桶。
 /// 形状对齐主档 GoodsFacets（`fields: Map<key, List<MasterFacetBucket>>`），供 MasterDataTableView。
 class SchedulePendingFacets {
   const SchedulePendingFacets({this.fields = const {}});
@@ -1324,7 +1318,6 @@ class MrpRow {
     'INBOUND_LATE' => '在途晚到',
     'PARTIAL' || 'PARTIAL_SHORTAGE' => '部分缺料',
     'SHORTAGE' => '缺料',
-    'BOM_MISSING' => 'BOM 缺失',
     'READY' => '齐套',
     _ => '待复核',
   };

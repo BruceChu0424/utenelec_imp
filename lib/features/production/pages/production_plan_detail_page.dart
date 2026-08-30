@@ -27,10 +27,8 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
-import '../widgets/execution_segment_planning_sheet.dart';
 import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
-import '../widgets/material_review_dialog.dart';
 import '../widgets/production_execution_card_print_preview.dart';
 import '../widgets/production_execution_segments_card.dart';
 import '../widgets/production_status_badge.dart';
@@ -59,14 +57,8 @@ class _ProductionPlanDetailPageState
   bool _loading = false;
   bool _busy = false;
   String? _error;
-  List<MrpRow>? _mrpRows;
   List<MrpSubplanRef>? _subplans;
-  bool _mrpLoading = false;
-  ProductionPlanningDraftView? _planningDraft;
-  bool _planningDraftLoading = false;
-  String? _planningDraftError;
-  bool _mrpBusy = false;
-  String? _mrpError;
+  bool _executionBusy = false;
   String? _subplanError;
   String? _focusedExecutionSegmentId;
   int _executionSegmentsRevision = 0;
@@ -84,12 +76,7 @@ class _ProductionPlanDetailPageState
     if (oldWidget.id != widget.id) {
       _detail = null;
       _error = null;
-      _mrpRows = null;
       _subplans = null;
-      _planningDraft = null;
-      _planningDraftLoading = false;
-      _planningDraftError = null;
-      _mrpError = null;
       _subplanError = null;
       _focusedExecutionSegmentId = widget.initialExecutionSegmentId;
       _executionSegmentsRevision = 0;
@@ -152,15 +139,11 @@ class _ProductionPlanDetailPageState
     return actions.contains(action);
   }
 
-  bool get _commandBusy => _busy || _mrpBusy;
+  bool get _commandBusy => _busy || _executionBusy;
 
   bool _hasPermission(String code) =>
       ref.read(currentPermissionsProvider).contains(code);
 
-  bool get _canGeneratePlanningPackage =>
-      _hasPermission(Perm.productionPlanningPackageGenerate);
-  bool get _canEditPlanningDraft =>
-      _hasPermission(Perm.productionPlanningPackageDraftEdit);
   bool get _canCancelPlanningPackage =>
       _hasPermission(Perm.productionPlanningPackageCancel);
   bool get _canReversePlanningPackage =>
@@ -231,15 +214,7 @@ class _ProductionPlanDetailPageState
         _detail = d;
         _loading = false;
       });
-      _loadMrp();
-      if (d.status == kProductionStatusDraft) {
-        _loadPlanningDraft(planId: planId);
-      } else {
-        setState(() {
-          _planningDraft = null;
-          _planningDraftError = null;
-        });
-      }
+      await _loadSubplans(planId: planId);
     } on ApiException catch (e) {
       if (!mounted || widget.id != planId) return;
       setState(() {
@@ -255,57 +230,11 @@ class _ProductionPlanDetailPageState
     }
   }
 
-  Future<void> _loadPlanningDraft({String? planId}) async {
-    if (!mounted) return;
-    final requestedPlanId = planId ?? widget.id;
-    setState(() {
-      _planningDraftLoading = true;
-      _planningDraftError = null;
-    });
-    try {
-      final draft = await ref
-          .read(productionPlanRepositoryProvider)
-          .planningDraft(requestedPlanId);
-      if (!mounted || widget.id != requestedPlanId) return;
-      setState(() {
-        _planningDraft = draft;
-        _planningDraftLoading = false;
-      });
-    } on ApiException catch (error) {
-      if (!mounted || widget.id != requestedPlanId) return;
-      setState(() {
-        _planningDraft = null;
-        _planningDraftLoading = false;
-        _planningDraftError = error.code == 'NOT_FOUND' ? null : error.message;
-      });
-    } catch (_) {
-      if (!mounted || widget.id != requestedPlanId) return;
-      setState(() {
-        _planningDraft = null;
-        _planningDraftLoading = false;
-        _planningDraftError = '预排草案加载失败';
-      });
-    }
-  }
-
   Future<void> _approve() async {
-    if (_mrpBusy) {
-      context.appWarning('预排方案正在处理，请完成或关闭后再审核', force: true);
-      return;
-    }
-    if (_planningDraftLoading) {
-      context.appWarning('正在确认预排草案状态，请稍候再审核', force: true);
-      return;
-    }
-    if (_planningDraftError != null) {
-      context.appError('预排草案状态读取失败，请刷新页面后再审核', force: true);
-      return;
-    }
-    final confirm = _planningDraft != null
-        ? '本计划已有预排草案。审核与正式下达将在同一事务完成；'
-              '任一步失败都会整体回滚，不会留下半套单据。确认继续？'
-        : '当前没有已保存的预排草案。本次只审核，不会自动生成计划包；'
-              '建议先取消并完成物料评审与预排。若继续，审核后可再补建排产。';
+    const confirm =
+        '审核会按关联物料分析重新校验本计划的子层级物料：有子层级时，只有整套齐全才会形成执行子计划与领料单；'
+        '无下层物料时按直接自制下达，不生成生产领料单。审核与执行下达在同一事务完成，'
+        '任一步失败都会整体回滚。确认继续？';
     await _doAction(
       confirm,
       (repo) => repo.approve(widget.id),
@@ -377,34 +306,6 @@ class _ProductionPlanDetailPageState
     }
   }
 
-  // ───────────────────────── MRP-lite 面板 ─────────────────────────
-  Future<void> _loadMrp() async {
-    if (!mounted) return;
-    final planId = widget.id;
-    setState(() {
-      _mrpLoading = true;
-      _mrpError = null;
-      _subplanError = null;
-    });
-    final subplansFuture = _loadSubplans(planId: planId);
-    try {
-      final repo = ref.read(productionPlanRepositoryProvider);
-      final rows = await repo.mrpPreview(planId);
-      if (!mounted || widget.id != planId) return;
-      setState(() {
-        _mrpRows = rows;
-        _mrpLoading = false;
-      });
-    } catch (error) {
-      if (!mounted || widget.id != planId) return;
-      setState(() {
-        _mrpLoading = false;
-        _mrpError = productionErrorMessage(error, fallback: '物料需求加载失败');
-      });
-    }
-    await subplansFuture;
-  }
-
   Future<void> _loadSubplans({String? planId}) async {
     if (!mounted) return;
     final requestedPlanId = planId ?? widget.id;
@@ -431,24 +332,28 @@ class _ProductionPlanDetailPageState
       context.appWarning('已有生产计划操作正在处理，请稍候', force: true);
       return;
     }
-    setState(() => _mrpBusy = true);
+    setState(() => _executionBusy = true);
     try {
       final result = await ref
           .read(productionPlanRepositoryProvider)
           .latestPlanningPackageResult(widget.id);
       if (!mounted) return;
+      setState(() => _executionBusy = false);
       await _presentPlanningResult(result);
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.code == 'NOT_FOUND') {
-        context.appWarning('当前计划尚未生成正式计划包；有编辑权限的调度员可执行补建', force: true);
+        context.appWarning(
+          '当前计划没有可回查的执行单据。请从“物料分析准备”生成并审核计划，或联系系统管理员核对计划来源。',
+          force: true,
+        );
       } else {
         context.appError(error.message, force: true);
       }
     } catch (_) {
       if (mounted) context.appError('已生成单据加载失败，请稍后重试', force: true);
     } finally {
-      if (mounted) setState(() => _mrpBusy = false);
+      if (mounted) setState(() => _executionBusy = false);
     }
   }
 
@@ -461,549 +366,20 @@ class _ProductionPlanDetailPageState
     );
   }
 
-  ProductionPlanningDraftView? _compatibleDraftForPreview(
-    ProductionPlanningPreview preview,
-  ) {
-    final draft = _planningDraft;
-    if (draft == null || draft.warehouseId != preview.warehouseId) return null;
-    final sources = <String, ProductionExecutionSegmentPreview>{
-      for (final source in preview.executionSegments)
-        source.sourcePlanItemId: source,
-    };
-    final previewTotals = <String, double>{};
-    for (final source in preview.executionSegments) {
-      previewTotals.update(
-        source.sourcePlanItemId,
-        (value) => value + source.plannedQty,
-        ifAbsent: () => source.plannedQty,
-      );
-    }
-    final draftTotals = <String, double>{};
-    for (final segment in draft.segments) {
-      final source = sources[segment.sourcePlanItemId];
-      if (source == null || source.bomFingerprint != segment.bomFingerprint) {
-        return null;
-      }
-      draftTotals.update(
-        segment.sourcePlanItemId,
-        (value) => value + segment.plannedQty,
-        ifAbsent: () => segment.plannedQty,
-      );
-    }
-    if (previewTotals.length != draftTotals.length) return null;
-    for (final entry in previewTotals.entries) {
-      final draftQty = draftTotals[entry.key];
-      if (draftQty == null ||
-          (draftQty - entry.value).abs() > kProductionPlanningQuantityEpsilon) {
-        return null;
-      }
-    }
-    return draft;
-  }
-
-  Future<bool> _confirmUseFreshProposalAfterDraftConflict() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('已存草案与最新生产结构不一致'),
-        content: const SizedBox(
-          width: 500,
-          child: Text(
-            '计划数量、产品行或 BOM 已发生变化，旧草案不能安全套用。'
-            '系统不会猜测或修改旧数据；可以取消后核对，也可以基于最新数据重新规划并覆盖当前草案。',
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消并核对'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('使用最新数据重排'),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true;
-  }
-
-  /// 唯一排产入口：草稿阶段只保存可恢复预排；已审核无包时，
-  /// 服务端重算并在同一事务生成 READY/WAITING、占用与下游单据。
-  Future<void> _generatePlanningPackage() async {
-    if (_commandBusy) {
-      context.appWarning('已有生产计划操作正在处理，请稍候', force: true);
-      return;
-    }
-    final detail = _detail;
-    if (detail == null) return;
-    final isDraft = detail.status == kProductionStatusDraft;
-    final isApproved = detail.status == kProductionStatusApproved;
-    if (!isDraft && !isApproved) {
-      context.appWarning('仅草稿或已审核计划可以排产', force: true);
-      return;
-    }
-    final canWrite = isDraft
-        ? _canEditPlanningDraft
-        : _canGeneratePlanningPackage;
-    if (!canWrite) {
-      context.appWarning('当前账号没有本次排产动作权限', force: true);
-      return;
-    }
-
-    if (isApproved) {
-      setState(() => _mrpBusy = true);
-      try {
-        final existing = await ref
-            .read(productionPlanRepositoryProvider)
-            .latestPlanningPackageResult(widget.id);
-        if (!mounted) return;
-        await _presentPlanningResult(existing);
-        return;
-      } on ApiException catch (error) {
-        if (error.code != 'NOT_FOUND') {
-          if (mounted) context.appError(error.message);
-          return;
-        }
-      } catch (_) {
-        if (mounted) context.appError('计划包结果加载失败，请稍后重试');
-        return;
-      } finally {
-        if (mounted) setState(() => _mrpBusy = false);
-      }
-    }
-    if (!mounted) return;
-
-    final names = ref.read(masterNameServiceProvider);
-    final warehouses = names.warehouseEntries.entries.toList();
-    if (warehouses.isEmpty) {
-      context.appError('仓库字典未加载，无法按目标发料仓计算齐套', force: true);
-      return;
-    }
-    final savedWarehouseId = _planningDraft?.warehouseId;
-    String warehouseId =
-        isDraft &&
-            savedWarehouseId != null &&
-            warehouses.any((warehouse) => warehouse.key == savedWarehouseId)
-        ? savedWarehouseId
-        : warehouses.first.key;
-    final selected = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(isDraft ? '选择预排发料仓' : '选择正式发料仓'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isDraft
-                      ? '草案将按这个仓库计算齐套与供给缺口，但不会锁料或开单。再次保存会覆盖当前草案。'
-                      : '齐套、锁料、采购净缺口和领料单都以这个仓库为准。'
-                            '正式下达后若要换仓，必须取消未启动计划包并释放原占用。',
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                DropdownButtonFormField<String>(
-                  initialValue: warehouseId,
-                  decoration: const InputDecoration(
-                    labelText: '发料仓库',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final warehouse in warehouses)
-                      DropdownMenuItem(
-                        value: warehouse.key,
-                        child: Text(warehouse.value),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setDialogState(() => warehouseId = value);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('计算齐套并规划'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted) return;
-    if (selected != true) {
-      context.appInfo('已取消');
-      return;
-    }
-
-    setState(() => _mrpBusy = true);
-    try {
-      final repo = ref.read(productionPlanRepositoryProvider);
-      final preview = await repo.planningExecutionPreview(
-        widget.id,
-        warehouseId,
-      );
-      final requestedDraft =
-          isDraft && _planningDraft?.warehouseId == warehouseId
-          ? _planningDraft
-          : null;
-      final initialDraft = requestedDraft == null
-          ? null
-          : _compatibleDraftForPreview(preview);
-      final initialDraftRebased =
-          initialDraft != null &&
-          initialDraft.previewFingerprint != preview.fingerprint;
-      final materialGoodsIds = <String>{
-        for (final material in preview.materials) material.goodsId,
-        for (final segment in preview.executionSegments)
-          for (final material in segment.materials) material.goodsId,
-      };
-      await names.loadGoodsNames(materialGoodsIds);
-      await names.loadEmployeeNames(<String?>{
-        for (final segment in preview.executionSegments)
-          segment.responsibleEmployeeId,
-        for (final segment
-            in requestedDraft?.segments ??
-                const <ProductionExecutionSegmentConfirm>[])
-          segment.responsibleEmployeeId,
-      });
-      if (!mounted) return;
-      setState(() => _mrpBusy = false);
-      if (preview.executionSegments.isEmpty) {
-        await _showNoExecutableSegmentsDialog();
-        return;
-      }
-      if (requestedDraft != null && initialDraft == null) {
-        final useFresh = await _confirmUseFreshProposalAfterDraftConflict();
-        if (!mounted || !useFresh) return;
-      }
-      final reviewDecision = await showMaterialReviewDialog(
-        context,
-        preview: preview,
-        warehouseName: names.warehouse(warehouseId),
-        planBillNo: _detail?.billNo ?? widget.id,
-      );
-      if (!mounted) return;
-      if (reviewDecision == null) {
-        context.appInfo('已取消');
-        return;
-      }
-      final ProductionPlanningConfirmRequest? request;
-      if (initialDraft != null ||
-          reviewDecision.type ==
-              MaterialReviewDecisionType.openDetailedPlanning) {
-        request = await showExecutionSegmentPlanningSheet(
-          context,
-          ref,
-          preview: preview,
-          names: names,
-          warehouseName: names.warehouse(warehouseId),
-          mode: isDraft
-              ? ProductionPlanningSheetMode.draft
-              : ProductionPlanningSheetMode.confirm,
-          initialDraft: initialDraft,
-          initialDraftRebased: initialDraftRebased,
-          initialFocusMaterialIds: reviewDecision.focusMaterialIds,
-        );
-      } else {
-        request = reviewDecision.request;
-      }
-      if (!mounted) return;
-      if (request == null) {
-        context.appInfo('未提交排产方案');
-        return;
-      }
-      setState(() => _mrpBusy = true);
-      if (isDraft) {
-        final savedDraft = await repo.savePlanningDraft(widget.id, request);
-        if (!mounted) return;
-        setState(() {
-          _planningDraft = savedDraft;
-          _planningDraftError = null;
-          _mrpBusy = false;
-        });
-        await _showPlanningDraftSaved(savedDraft, names);
-      } else {
-        final result = await repo.confirmExecutionPlanning(widget.id, request);
-        if (!mounted) return;
-        setState(() => _mrpBusy = false);
-        await _presentPlanningResult(result);
-      }
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('生成生产计划失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _mrpBusy = false);
-    }
-  }
-
-  /// 预览无可执行分段时（通常是成品未维护 BOM，或剩余可排量为 0），
-  /// 用对话框明确告知原因并引导去货品资料维护 BOM，而不是一闪而过的 toast。
-  Future<void> _showNoExecutableSegmentsDialog() async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('暂无可排产的执行分段'),
-        content: const SizedBox(
-          width: 440,
-          child: Text(
-            '一键生成子计划需要每个成品在「货品资料」维护组成 BOM，'
-            '并且计划尚有未排数量。可能原因：\n\n'
-            '• 成品尚未维护 BOM(请在货品资料为成品添加组成组件)\n'
-            '• 所有计划行的剩余可排数量已为 0(已全部排产)\n'
-            '• 成品 BOM 中含自制/委外组件且路线尚未配置',
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              context.go(RouteName.basicinfoGoods);
-            },
-            child: const Text('前往货品资料'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showPlanningDraftSaved(
-    ProductionPlanningDraftView draft,
-    MasterNameService names,
-  ) {
-    return showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('预排草案已保存'),
-        content: SizedBox(
-          width: 480,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.warehouse_outlined),
-                title: Text('发料仓 ${names.warehouse(draft.warehouseId)}'),
-                subtitle: Text(
-                  '${draft.segmentCount} 个执行段 · '
-                  '保存于 ${_planningTimestamp(draft.plannedAt)}',
-                ),
-              ),
-              const Divider(),
-              const Text(
-                '当前只保存排产方案，不锁料，也不生成采购、委外或领料单。'
-                '审核后系统会按草案尝试正式下达；届时可在结果窗口打开关联单据。',
-              ),
-            ],
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('知道了'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showSavedPlanningDraftDetails() async {
-    final draft = _planningDraft;
-    if (draft == null) return;
-    final names = ref.read(masterNameServiceProvider);
-    await names.loadGoodsNames(draft.routes.map((route) => route.goodsId));
-    await names.loadEmployeeNames(
-      draft.segments.map((segment) => segment.responsibleEmployeeId),
-    );
-    if (!mounted) return;
-    final planItems = <String, ProductionPlanItem>{
-      for (final item in _detail?.items ?? const <ProductionPlanItem>[])
-        item.id: item,
-    };
-    final routeSummary = draft.routes
-        .map((route) {
-          final color = route.colorId == null
-              ? ''
-              : ' / ${names.color(route.colorId)}';
-          final routeLabel = switch (route.supplyRoute) {
-            'BUY' => '采购',
-            'SUBCONTRACT' => '委外',
-            _ => route.supplyRoute,
-          };
-          return '${names.goods(route.goodsId)}$color → $routeLabel';
-        })
-        .join('；');
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('已保存的预排草案'),
-        content: SizedBox(
-          // AlertDialog 会对 content 做 intrinsic 测量：宽度必须有界。
-          // 用屏幕宽度钳制，大屏不超过 980，中/小屏随窗口收缩。
-          width: (MediaQuery.sizeOf(ctx).width - 96).clamp(280.0, 980.0),
-          height: MediaQuery.sizeOf(ctx).height * 0.68,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                '发料仓 ${names.warehouse(draft.warehouseId)} · '
-                '${draft.segmentCount} 个执行段 · '
-                '保存于 ${_planningTimestamp(draft.plannedAt)}',
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '采购申请：${draft.generatePurchaseRequest ? '审核时生成' : '不生成'} · '
-                '采购/委外路线 ${draft.routes.length} 条',
-                style: Theme.of(ctx).textTheme.bodySmall,
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 72),
-                child: SingleChildScrollView(
-                  child: Text(
-                    routeSummary.isEmpty
-                        ? '无显式采购/委外路线(自制缺口由服务端推导)'
-                        : routeSummary,
-                    style: Theme.of(ctx).textTheme.bodySmall,
-                  ),
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '以下是审核时将重新校验并原子下达的精确草案。此处只读；如需修改，关闭后重新预排保存。',
-                style: Theme.of(ctx).textTheme.bodySmall,
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Expanded(
-                child: MasterDataTableView<ProductionExecutionSegmentConfirm>(
-                  embedded: true,
-                  columns: [
-                    MasterColumnDef(
-                      key: 'segment',
-                      label: '临时分段号',
-                      width: 145,
-                      value: (segment) => segment.clientSegmentKey,
-                    ),
-                    MasterColumnDef(
-                      key: 'product',
-                      label: '货品 / 编号 / 颜色',
-                      width: 280,
-                      value: (segment) {
-                        final item = planItems[segment.sourcePlanItemId];
-                        return [
-                              names.goods(item?.goodsId),
-                              item?.productNo,
-                              names.color(item?.colorId),
-                              if (item?.salesOrderNo?.isNotEmpty == true)
-                                '订单 ${item!.salesOrderNo}',
-                            ]
-                            .whereType<String>()
-                            .where((value) => value != '—')
-                            .join(' · ');
-                      },
-                    ),
-                    MasterColumnDef(
-                      key: 'qty',
-                      label: '实排数量',
-                      width: 100,
-                      type: 'number',
-                      value: (segment) =>
-                          formatProductionPlanningQuantity(segment.plannedQty),
-                    ),
-                    MasterColumnDef(
-                      key: 'status',
-                      label: '排产决策',
-                      width: 168,
-                      value: (segment) => segment.requestedStatus == 'READY'
-                          ? '优先生产'
-                          : segment.deferUntilManualRelease
-                          ? '人工暂缓 / 手动恢复'
-                          : '待料 / 齐套自动转产',
-                    ),
-                    MasterColumnDef(
-                      key: 'workshop',
-                      label: '生产车间',
-                      width: 150,
-                      value: (segment) =>
-                          names.department(segment.workshopDepartmentId),
-                    ),
-                    MasterColumnDef(
-                      key: 'team',
-                      label: '生产班组',
-                      width: 150,
-                      value: (segment) =>
-                          names.department(segment.teamDepartmentId),
-                    ),
-                    MasterColumnDef(
-                      key: 'owner',
-                      label: '负责人',
-                      width: 130,
-                      value: (segment) =>
-                          names.employee(segment.responsibleEmployeeId),
-                    ),
-                    MasterColumnDef(
-                      key: 'dates',
-                      label: '计划开工 / 完工',
-                      width: 210,
-                      value: (segment) =>
-                          '${segment.planBeginDate ?? '—'} / ${segment.planEndDate ?? '—'}',
-                    ),
-                  ],
-                  items: draft.segments,
-                  facets: const {},
-                  nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
-                  emptyMessage: '草案没有执行分段',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _showLatestPlanningResultAfterApproval(
     ProductionPlanRepository repo,
   ) async {
     try {
       final result = await repo.latestPlanningPackageResult(widget.id);
       if (!mounted) return;
-      setState(() => _planningDraft = null);
       await _presentPlanningResult(result);
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.code == 'NOT_FOUND') {
-        context.appInfo('审核已完成，当前没有正式计划包；有编辑权限的调度员可点击“补建正式计划包”');
+        context.appWarning(
+          '计划已审核，但未读取到执行单据。请回到“物料分析准备”核对来源，或联系系统管理员。',
+          force: true,
+        );
       } else {
         context.appWarning('计划已审核，但下达结果读取失败：${error.message}', force: true);
       }
@@ -1044,7 +420,7 @@ class _ProductionPlanDetailPageState
       }
       _executionSegmentsRevision++;
     });
-    await _loadMrp();
+    await _loadSubplans();
   }
 
   Future<void> _changePlanningPackageLifecycle(
@@ -1110,7 +486,7 @@ class _ProductionPlanDetailPageState
     reasonController.dispose();
     if (reason == null || !mounted) return;
 
-    setState(() => _mrpBusy = true);
+    setState(() => _executionBusy = true);
     try {
       await ref
           .read(productionPlanRepositoryProvider)
@@ -1133,16 +509,8 @@ class _ProductionPlanDetailPageState
     } catch (_) {
       if (mounted) context.appError('生产计划包$verb失败，请刷新后重试', force: true);
     } finally {
-      if (mounted) setState(() => _mrpBusy = false);
+      if (mounted) setState(() => _executionBusy = false);
     }
-  }
-
-  static String _planningTimestamp(String value) {
-    final parsed = DateTime.tryParse(value)?.toLocal();
-    if (parsed == null) return value;
-    String two(int number) => number.toString().padLeft(2, '0');
-    return '${parsed.year}-${two(parsed.month)}-${two(parsed.day)} '
-        '${two(parsed.hour)}:${two(parsed.minute)}';
   }
 
   Future<_PlanningResultSelection?> _showPlanningPackageResult(
@@ -1281,7 +649,8 @@ class _ProductionPlanDetailPageState
                           : Theme.of(ctx).colorScheme.error,
                     ),
                     title: Text(
-                      '${segment.segmentCode} · 数量 ${_mrpNumber(segment.plannedQty)}',
+                      '${segment.segmentCode} · 数量 '
+                      '${formatProductionPlanningQuantity(segment.plannedQty)}',
                     ),
                     subtitle: Text(
                       segment.status == 'READY'
@@ -1350,6 +719,81 @@ class _ProductionPlanDetailPageState
     if (closed == true && mounted) {
       await _load();
     }
+  }
+
+  /// 已审核计划只保留真实执行结果与材料台账入口。
+  ///
+  /// 物料齐套和计划生成统一在「物料分析准备」完成；计划详情不再提供第二套
+  /// MRP 估算、选仓预排或补建计划包入口，避免直接自制的零物料计划被误报为
+  /// 结构缺失错误。
+  Widget _executionDocumentsCard(ThemeData theme) {
+    return Card(
+      key: const Key('production-execution-documents-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.inventory_2_outlined,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '执行单据与物料台账',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        '查看审核下达形成的执行子计划、领料单和工卡；'
+                        '材料退库与结清以仓库实际发料为准。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.45,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                UtenButton(
+                  key: const Key('production-open-execution-documents'),
+                  type: UtenButtonType.tonal,
+                  icon: Icons.receipt_long_outlined,
+                  isLoading: _executionBusy,
+                  onPressed: _commandBusy ? null : _openLatestPlanningResult,
+                  child: const Text('查看执行单据 / 打印工卡'),
+                ),
+                UtenButton(
+                  key: const Key('production-open-material-ledger'),
+                  type: UtenButtonType.secondary,
+                  icon: Icons.fact_check_outlined,
+                  onPressed: _commandBusy ? null : _openMaterialSettlement,
+                  child: Text(
+                    _canManageProductionMaterials ? '材料退库与结清' : '查看材料台账',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// 子计划进度卡：与看板同款圆环进度行（点行跳子计划详情，可继续向下展开）。
@@ -1503,402 +947,6 @@ class _ProductionPlanDetailPageState
     }
   }
 
-  Widget _mrpCard(ThemeData theme, MasterNameService names) {
-    final rows = _mrpRows;
-    final legacy = rows?.any((row) => row.isLegacyAvailability) ?? false;
-    final hasLateInbound =
-        rows?.any((row) => row.materialStatus == 'INBOUND_LATE') ?? false;
-    final detail = _detail!;
-    final isDraft = detail.status == kProductionStatusDraft;
-    final canPlan =
-        (isDraft || detail.status == kProductionStatusApproved) &&
-        !detail.stopped &&
-        !detail.canceled;
-    final canWritePlanning = isDraft
-        ? _canEditPlanningDraft
-        : _canGeneratePlanningPackage;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '物料需求只读估算(MRP)',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (_mrpLoading)
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else
-                  TextButton.icon(
-                    onPressed: _commandBusy ? null : _loadMrp,
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('刷新物料'),
-                  ),
-              ],
-            ),
-            Text(
-              '估算可用 = 账面库存 − 销售锁定 − 安全库存；及时在途仅计算需求日前可到货数量。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            _mrpNotice(
-              theme,
-              color: theme.colorScheme.primary,
-              icon: Icons.verified_user_outlined,
-              text: isDraft
-                  ? '下表用于快速浏览物料风险；“预排并保存草案”会按实际发料仓重新计算，'
-                        '只保存执行段、数量、车间和日期建议，不锁料、不开单。'
-                  : '下表用于快速浏览物料风险；“补建正式计划包”会先读取既有结果，'
-                        '已有计划包只返回不可变结果，完全没有时才重新计算并正式下达。'
-                        '正式下达会原子写入执行段、物料占用及适用的采购、委外、领料单据。',
-            ),
-            if (isDraft && _planningDraftLoading) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              _mrpNotice(
-                theme,
-                color: theme.colorScheme.primary,
-                icon: Icons.hourglass_top_rounded,
-                text: '正在读取已保存的预排草案…',
-              ),
-            ],
-            if (isDraft && _planningDraft != null) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              _mrpNotice(
-                theme,
-                color: Colors.green,
-                icon: Icons.save_outlined,
-                text:
-                    '已预排草案 · 发料仓 '
-                    '${names.warehouse(_planningDraft!.warehouseId)} · '
-                    '${_planningDraft!.segmentCount} 个执行段 · '
-                    '${_planningTimestamp(_planningDraft!.plannedAt)}。'
-                    '再次预排会覆盖本计划当前草案，历史计划数据不会回填或批量改写。',
-              ),
-            ],
-            if (isDraft && _planningDraftError != null) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              _mrpNotice(
-                theme,
-                color: theme.colorScheme.error,
-                icon: Icons.sync_problem_outlined,
-                text:
-                    '预排草案读取失败：${_planningDraftError!}。'
-                    '可刷新页面重试；不要在状态不明时重复审核。',
-              ),
-            ],
-            if (legacy) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              _mrpNotice(
-                theme,
-                color: theme.colorScheme.error,
-                icon: Icons.gpp_maybe_outlined,
-                text:
-                    '当前快速浏览仍是旧口径；一键排产会调用目标仓权威预览重新计算。'
-                    '若 BOM、库存或供给挂接不完整，服务端会拒绝提交。',
-              ),
-            ],
-            if (hasLateInbound) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              _mrpNotice(
-                theme,
-                color: theme.colorScheme.tertiary,
-                icon: Icons.local_shipping_outlined,
-                text: '存在在途晚到物料。系统不会因晚到自动重复采购，请先催交、改配到货或人工确认追加采购。',
-              ),
-            ],
-            if (canWritePlanning && !canPlan) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              _mrpNotice(
-                theme,
-                color: theme.colorScheme.onSurfaceVariant,
-                icon: Icons.lock_outline_rounded,
-                text: '仅草稿或已审核且未停止、未取消的当前计划可进入预排或正式下达。',
-              ),
-            ],
-            if (canWritePlanning || (isDraft && _planningDraft != null)) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (canWritePlanning)
-                    UtenButton(
-                      icon: Icons.account_tree_outlined,
-                      isLoading: _mrpBusy,
-                      onPressed: _commandBusy || !canPlan
-                          ? null
-                          : _generatePlanningPackage,
-                      onDisabledTap: () => context.appWarning(
-                        _commandBusy ? '正在处理，请稍候…' : '当前计划状态不支持预排或正式下达',
-                        force: true,
-                      ),
-                      child: Text(
-                        isDraft
-                            ? _planningDraft == null
-                                  ? '预排并保存草案'
-                                  : '继续编辑并保存草案'
-                            : '补建正式计划包',
-                      ),
-                    ),
-                  if (isDraft && _planningDraft != null)
-                    OutlinedButton.icon(
-                      onPressed: _commandBusy
-                          ? null
-                          : _showSavedPlanningDraftDetails,
-                      icon: const Icon(Icons.preview_outlined, size: 18),
-                      label: const Text('查看草案明细'),
-                    ),
-                ],
-              ),
-            ],
-            if (detail.status == kProductionStatusApproved) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _commandBusy ? null : _openLatestPlanningResult,
-                    icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                    label: const Text('查看已生成单据 / 打印工卡'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _commandBusy ? null : _openMaterialSettlement,
-                    icon: const Icon(Icons.fact_check_outlined, size: 18),
-                    label: Text(
-                      _canManageProductionMaterials ? '材料退库与结清' : '查看材料台账',
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: UtenSpacing.s8),
-            const Divider(height: 1),
-            const SizedBox(height: UtenSpacing.s8),
-            if (_mrpError != null)
-              _mrpErrorView()
-            else if (rows == null)
-              const Padding(
-                padding: EdgeInsets.all(UtenSpacing.s16),
-                child: Center(child: Text('正在加载物料需求…')),
-              )
-            else if (rows.isEmpty)
-              _mrpNotice(
-                theme,
-                color: theme.colorScheme.error,
-                icon: Icons.error_outline_rounded,
-                text:
-                    '接口已成功返回，但未得到任何 BOM 物料。请检查本计划的每个产品是否已维护并启用 BOM；'
-                    '资料补齐前不能判断齐套。',
-              )
-            else
-              _mrpTable(theme, names, rows),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _mrpTable(
-    ThemeData theme,
-    MasterNameService names,
-    List<MrpRow> rows,
-  ) {
-    return MasterDataTableView<MrpRow>(
-      embedded: true,
-      columns: [
-        MasterColumnDef(
-          key: 'goods',
-          label: '物料 / 编码 / 规格',
-          width: 250,
-          value: (row) {
-            final detail = [
-              row.goodsCode,
-              row.spec,
-              names.color(row.colorId),
-            ].where((value) => value != null && value != '—').join(' · ');
-            return '${row.goodsName ?? names.goods(row.goodsId)}'
-                '${detail.isEmpty ? '' : '($detail)'}';
-          },
-        ),
-        MasterColumnDef(
-          key: 'supplyType',
-          label: '供应方式',
-          width: 90,
-          value: (row) => row.selfMade ? '自制' : '外购',
-        ),
-        MasterColumnDef(
-          key: 'unit',
-          label: '单位',
-          width: 80,
-          value: (row) => names.unit(row.unitId),
-        ),
-        MasterColumnDef(
-          key: 'gross',
-          label: '总需求',
-          width: 90,
-          type: 'number',
-          value: (row) => _mrpNumber(row.gross),
-        ),
-        MasterColumnDef(
-          key: 'bookStock',
-          label: '账面库存',
-          width: 90,
-          type: 'number',
-          value: (row) => _mrpNumber(row.bookStock),
-        ),
-        MasterColumnDef(
-          key: 'salesReserved',
-          label: '其他单据占用',
-          width: 90,
-          type: 'number',
-          value: (row) => _mrpNumber(row.salesReserved),
-        ),
-        MasterColumnDef(
-          key: 'safetyStock',
-          label: '安全库存',
-          width: 90,
-          type: 'number',
-          value: (row) => _mrpNumber(row.safetyStock),
-        ),
-        MasterColumnDef(
-          key: 'availableNow',
-          label: '估算可用',
-          width: 90,
-          type: 'number',
-          value: (row) => _mrpNumber(row.availableNow),
-        ),
-        MasterColumnDef(
-          key: 'openPoTotal',
-          label: '全部在途',
-          width: 90,
-          type: 'number',
-          value: (row) => _mrpNumber(row.openPoTotal),
-        ),
-        MasterColumnDef(
-          key: 'openPoOnTime',
-          label: '及时在途',
-          width: 90,
-          type: 'number',
-          value: (row) => _mrpNumber(row.openPoOnTime),
-        ),
-        MasterColumnDef(
-          key: 'needDate',
-          label: '需求日期',
-          width: 110,
-          type: 'date',
-          value: (row) {
-            final value = productionDateOnly(row.needDate);
-            return value.isEmpty ? null : value;
-          },
-        ),
-        MasterColumnDef(
-          key: 'earliestArrivalDate',
-          label: '最早到货',
-          width: 110,
-          type: 'date',
-          value: (row) {
-            final value = productionDateOnly(row.earliestArrivalDate);
-            return value.isEmpty ? null : value;
-          },
-        ),
-        MasterColumnDef(
-          key: 'purchaseNetShortage',
-          label: '估算采购缺口',
-          width: 100,
-          type: 'number',
-          value: (row) => _mrpNumber(row.purchaseNetShortage),
-        ),
-        MasterColumnDef(
-          key: 'timelyShortage',
-          label: '估算开工缺口',
-          width: 100,
-          type: 'number',
-          value: (row) => _mrpNumber(row.timelyShortage),
-        ),
-        MasterColumnDef(
-          key: 'materialStatus',
-          label: '估算状态',
-          width: 120,
-          value: (row) =>
-              row.isLegacyAvailability ? '旧口径 · 待复核' : row.statusLabel,
-        ),
-      ],
-      items: rows,
-      facets: const {},
-      nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
-      rowColor: (row) => _mrpRowColor(theme, row),
-      emptyMessage: '暂无物料需求',
-    );
-  }
-
-  Color? _mrpRowColor(ThemeData theme, MrpRow row) {
-    if (row.isLegacyAvailability) {
-      return theme.colorScheme.errorContainer.withValues(alpha: 0.2);
-    }
-    return switch (row.materialStatus) {
-      'READY' || 'READY_NOW' || 'READY_BY_DATE' =>
-        theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
-      'PARTIAL_SHORTAGE' || 'PARTIAL' || 'INBOUND_LATE' =>
-        theme.colorScheme.tertiaryContainer.withValues(alpha: 0.28),
-      'SHORTAGE' ||
-      'BOM_MISSING' => theme.colorScheme.errorContainer.withValues(alpha: 0.28),
-      _ => null,
-    };
-  }
-
-  Widget _mrpErrorView() => ProductionMrpErrorPanel(
-    serverMessage: _mrpError!,
-    isRetrying: _mrpLoading,
-    onRetry: _loadMrp,
-  );
-
-  Widget _mrpNotice(
-    ThemeData theme, {
-    required Color color,
-    required IconData icon,
-    required String text,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: UtenRadius.smAll,
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
-        ],
-      ),
-    );
-  }
-
-  String? _mrpNumber(double? value) {
-    if (value == null) return null;
-    return formatProductionPlanningQuantity(value);
-  }
-
   Future<void> _delete() async {
     if (!_canDelete) {
       context.appWarning('当前账号没有生产计划删除权限', force: true);
@@ -2003,8 +1051,6 @@ class _ProductionPlanDetailPageState
                       _traceabilityCard(theme),
                     ],
                     const SizedBox(height: UtenSpacing.s12),
-                    _mrpCard(theme, names),
-                    const SizedBox(height: UtenSpacing.s12),
                     ProductionExecutionSegmentsCard(
                       key: ValueKey('${widget.id}|$_executionSegmentsRevision'),
                       planId: widget.id,
@@ -2014,8 +1060,12 @@ class _ProductionPlanDetailPageState
                       canStart: _canStartExecution,
                       canReport: _canReport,
                       initialSegmentId: _focusedExecutionSegmentId,
-                      onChanged: _loadMrp,
+                      onChanged: _loadSubplans,
                     ),
+                    if (_detail!.status == kProductionStatusApproved) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _executionDocumentsCard(theme),
+                    ],
                     if (_subplanError != null)
                       const SizedBox(height: UtenSpacing.s12),
                     _subplanErrorCard(theme),
@@ -2462,197 +1512,6 @@ class _ProductionPlanDetailPageState
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: children,
-        ),
-      ),
-    );
-  }
-}
-
-@visibleForTesting
-class ProductionMrpErrorGuidance {
-  const ProductionMrpErrorGuidance({
-    required this.title,
-    required this.nextStep,
-    required this.icon,
-  });
-
-  final String title;
-  final String nextStep;
-  final IconData icon;
-
-  static ProductionMrpErrorGuidance fromServerMessage(String message) {
-    final normalized = message.toLowerCase();
-    if (_containsAny(normalized, const [
-      '多层 bom',
-      '下层 bom',
-      '超过 10 层',
-      '循环引用',
-    ])) {
-      return const ProductionMrpErrorGuidance(
-        title: 'BOM 层级当前无法处理',
-        nextStep:
-            '请先为半成品建立独立生产计划，或调整 BOM 层级后再刷新。'
-            '不要在资料未调整前继续生成执行分段。',
-        icon: Icons.account_tree_outlined,
-      );
-    }
-    if (_containsAny(normalized, const [
-      '未维护 bom',
-      '没有有效 bom',
-      '缺少有效 bom',
-      '没有可排产的成品行或有效 bom',
-      '无物料可领',
-    ])) {
-      return const ProductionMrpErrorGuidance(
-        title: '计划产品缺少有效 BOM',
-        nextStep:
-            '请逐项检查计划产品，在基础资料中维护并启用 BOM；'
-            '所有计划行都有有效 BOM 后再刷新物料需求。',
-        icon: Icons.inventory_2_outlined,
-      );
-    }
-
-    final mentionsColor =
-        normalized.contains('颜色') || normalized.contains('color');
-    final mentionsUnit =
-        normalized.contains('单位') ||
-        normalized.contains('换算率') ||
-        normalized.contains('unit');
-    if (mentionsColor && mentionsUnit) {
-      return const ProductionMrpErrorGuidance(
-        title: 'BOM 颜色或单位资料不完整',
-        nextStep:
-            '请检查相关 BOM 组件的颜色映射、基本单位和换算率；'
-            '无颜色组件也应按系统约定维护，修正后再刷新。',
-        icon: Icons.rule_folder_outlined,
-      );
-    }
-    if (mentionsColor) {
-      return const ProductionMrpErrorGuidance(
-        title: 'BOM 颜色映射无效',
-        nextStep:
-            '请检查相关 BOM 组件及货品档案的颜色资料；'
-            '确认无颜色组件符合系统约定后再刷新。',
-        icon: Icons.palette_outlined,
-      );
-    }
-    if (mentionsUnit) {
-      return const ProductionMrpErrorGuidance(
-        title: '物料单位或换算率无效',
-        nextStep:
-            'BOM 用量按组件货品基本单位计算，不另设 BOM 单位。'
-            '请维护货品基本单位；仅对仍有未收数量的采购行，'
-            '确认采购单位有效且换算率大于 0。'
-            '没有未完成采购行时不受这项校验影响。',
-        icon: Icons.straighten_outlined,
-      );
-    }
-    return const ProductionMrpErrorGuidance(
-      title: '物料需求接口校验失败',
-      nextStep:
-          '请按下方服务端原始提示检查计划或物料资料后重试；'
-          '若仍失败，请将完整提示交给系统管理员排查。',
-      icon: Icons.sync_problem_outlined,
-    );
-  }
-
-  static bool _containsAny(String value, List<String> patterns) =>
-      patterns.any(value.contains);
-}
-
-@visibleForTesting
-class ProductionMrpErrorPanel extends StatelessWidget {
-  const ProductionMrpErrorPanel({
-    super.key,
-    required this.serverMessage,
-    required this.onRetry,
-    this.isRetrying = false,
-  });
-
-  final String serverMessage;
-  final VoidCallback onRetry;
-  final bool isRetrying;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final guidance = ProductionMrpErrorGuidance.fromServerMessage(
-      serverMessage,
-    );
-    return Semantics(
-      liveRegion: true,
-      label: '物料需求加载失败：${guidance.title}',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.errorContainer.withValues(alpha: 0.32),
-          border: Border.all(
-            color: theme.colorScheme.error.withValues(alpha: 0.5),
-          ),
-          borderRadius: UtenRadius.smAll,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(guidance.icon, color: theme.colorScheme.error),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    guidance.title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '下一步：${guidance.nextStep}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  Text(
-                    '服务端原始提示',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  SelectableText(
-                    serverMessage,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final compact = constraints.maxWidth < 480;
-                      final button = UtenButton(
-                        type: UtenButtonType.tonal,
-                        icon: Icons.refresh_rounded,
-                        isLoading: isRetrying,
-                        isExpanded: compact,
-                        onPressed: isRetrying ? null : onRetry,
-                        child: Text(isRetrying ? '正在重试' : '重试加载'),
-                      );
-                      return Align(
-                        alignment: Alignment.centerLeft,
-                        child: compact
-                            ? SizedBox(width: double.infinity, child: button)
-                            : button,
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
         ),
       ),
     );

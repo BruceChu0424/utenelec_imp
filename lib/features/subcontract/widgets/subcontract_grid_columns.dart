@@ -60,7 +60,12 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   String? sourceDocNo;
 
   /// 明细级委外商（订货单可逐行选不同委外商，保存时按委外商自动拆单；为空回落表头）。
-  String? supplierId;
+  /// ValueNotifier：多选统一设委外商/记忆预填后单元格与必填提示即时刷新。
+  final ValueNotifier<String?> supplierIdNotifier = ValueNotifier<String?>(
+    null,
+  );
+  String? get supplierId => supplierIdNotifier.value;
+  set supplierId(String? v) => supplierIdNotifier.value = v;
 
   /// 预计到货登记模式（[subcontractGridColumns] arrivalMode）：该行财务批准剩余量，
   /// 只读对照列展示；不实设 maxQty，仓库须能如实登记超量实到数。
@@ -96,6 +101,7 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
     standardQty.dispose();
     wasteRate.dispose();
     cause.dispose();
+    supplierIdNotifier.dispose();
     super.dispose();
   }
 }
@@ -110,8 +116,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   SubcontractDocConfig cfg, {
   bool arrivalMode = false,
   Map<String, String> supplierEntries = const {},
+  bool supplierRequired = false,
   String? headerSupplierId,
-  ValueChanged<String?>? onSupplierChanged,
+  Future<void> Function(SubcontractGridRow row)? onPickSupplier,
 }) {
   final showSupplier =
       !arrivalMode && supplierEntries.isNotEmpty && cfg.hasSupplier;
@@ -180,14 +187,18 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         key: 'supplier',
         label: '委外商',
         width: 150,
-        cellBuilder: (context, row) => ProcurementSupplierCell(
-          value: row.supplierId,
-          fallback: headerSupplierId,
-          entries: supplierEntries,
-          onChanged: (v) {
-            row.supplierId = v;
-            onSupplierChanged?.call(v);
-          },
+        required: supplierRequired,
+        textOf: (r) => supplierEntries[r.supplierId] ?? '',
+        listenableOf: (r) => r.supplierIdNotifier,
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.supplierIdNotifier,
+          builder: (_, v, _) => ProcurementSupplierCell(
+            value: v,
+            fallback: headerSupplierId,
+            entries: supplierEntries,
+            requiredEmpty: supplierRequired && v == null,
+            onPick: onPickSupplier == null ? null : () => onPickSupplier(row),
+          ),
         ),
       ),
     // 批准剩余：只读对照（财务批准还能收多少），超量实到不拦截，由服务端审核隔离。

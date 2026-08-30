@@ -691,6 +691,55 @@ void main() {
   );
 
   testWidgets(
+    'product without child materials is shown as direct make instead of a BOM error',
+    (tester) async {
+      final analysis = _analysisJson(const ['VIEW']);
+      final product =
+          (analysis['products']! as List<dynamic>).first
+              as Map<String, dynamic>;
+      product
+        ..['readyNowQty'] = 10
+        ..['readyByDateQty'] = 10
+        ..['readinessRatio'] = 1
+        ..['hasProductionMaterialChildren'] = false;
+      analysis
+        ..['products'] = [product]
+        ..['flatMaterials'] = <Map<String, dynamic>>[];
+
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+        },
+        analysisJson: analysis,
+      );
+
+      final productCard = find.byKey(
+        const ValueKey('material-analysis-product-product-line-1'),
+      );
+      expect(
+        find.descendant(
+          of: productCard,
+          matching: find.text('无下层物料，可直接自制 10 个'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const ValueKey('material-analysis-direct-make-product-line-1'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('无需领料'), findsOneWidget);
+      expect(find.textContaining('生产 BOM 策略'), findsNothing);
+      expect(find.textContaining('资料异常'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'material card distinguishes exact node receipt peg from whole-kit readiness',
     (tester) async {
       final analysis = _analysisJson(const ['VIEW']);
@@ -1261,10 +1310,6 @@ void main() {
         'remainingQty': 10,
         'readyNowQty': 6,
         'readinessRatio': 0.6,
-        'productionBomPolicy': 'DIRECT_MAKE',
-        'missingBom': false,
-        'bomOverrideRequired': false,
-        'hasActiveBom': false,
         'allocationPriority': 2,
       });
       await _pumpPage(
@@ -2027,10 +2072,6 @@ void main() {
               'readyNowQty': 1,
               'readyByDateQty': 1,
               'readinessRatio': 1,
-              'productionBomPolicy': 'DIRECT_MAKE',
-              'missingBom': false,
-              'bomOverrideRequired': false,
-              'hasActiveBom': false,
               'allocationPriority': index,
             },
         ]
@@ -4098,10 +4139,6 @@ Map<String, dynamic> _analysisJson(
       'readyNowQty': 4,
       'readyByDateQty': 8,
       'readinessRatio': 0.4,
-      'productionBomPolicy': 'DIRECT_MAKE',
-      'missingBom': false,
-      'bomOverrideRequired': false,
-      'hasActiveBom': false,
       'allocationPriority': 1,
     },
     {
@@ -4114,10 +4151,6 @@ Map<String, dynamic> _analysisJson(
       'readyNowQty': 2,
       'readyByDateQty': 4,
       'readinessRatio': 0.3333,
-      'productionBomPolicy': 'DIRECT_MAKE',
-      'missingBom': false,
-      'bomOverrideRequired': false,
-      'hasActiveBom': false,
       'allocationPriority': 2,
     },
   ],
@@ -4360,10 +4393,6 @@ Map<String, dynamic> _makeReadyChildAnalysisJson() {
     'remainingQty': 8,
     'readyNowQty': 8,
     'readinessRatio': 1,
-    'productionBomPolicy': 'DIRECT_MAKE',
-    'missingBom': false,
-    'bomOverrideRequired': false,
-    'hasActiveBom': false,
     'allocationPriority': 3,
   });
   return json;

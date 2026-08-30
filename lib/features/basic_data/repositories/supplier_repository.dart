@@ -15,7 +15,8 @@ abstract interface class SupplierRepository {
   /// 某分类（子树）下的供应商分页。
   ///
   /// [keyword] 模糊匹配名称/全称/联系人/法人/地区/手机；[filters] 字段精确筛选，
-  /// 值为 [kMasterFilterNullValue] 表示筛该字段为空。page 从 1 起。
+  /// 值为 [kMasterFilterNullValue] 表示筛该字段为空。[selectableOnly]=true 仅返回
+  /// 「使用」状态（单据选商面板用，与基础资料页全量列表区分）。page 从 1 起。
   Future<PagedResult<SupplierListItem>> list(
     String categoryId, {
     int page = 1,
@@ -24,13 +25,16 @@ abstract interface class SupplierRepository {
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
+    bool selectableOnly = false,
   });
 
   /// 全局搜供应商（供应商资料页"搜供应商定位分类"用；不限分类，按编号/简称/全称/联系人/法人/地区/手机模糊）。
+  /// [selectableOnly] 同 [list]：单据选商面板搜索用（仅「使用」状态）。
   Future<PagedResult<SupplierListItem>> search(
     String keyword, {
     int page = 1,
     int size = 20,
+    bool selectableOnly = false,
   });
 
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
@@ -38,7 +42,8 @@ abstract interface class SupplierRepository {
 
   Future<SupplierDetail> detail(String id);
 
-  Future<void> create(Map<String, dynamic> body);
+  /// 新建供应商：返回服务端生成的详情（含 id，单据页内联新建后自动选中用）。
+  Future<SupplierDetail> create(Map<String, dynamic> body);
 
   Future<void> update(String id, Map<String, dynamic> body);
 
@@ -58,6 +63,7 @@ class DioSupplierRepository implements SupplierRepository {
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
+    bool selectableOnly = false,
   }) async {
     final query = <String, dynamic>{
       'categoryId': categoryId,
@@ -67,6 +73,7 @@ class DioSupplierRepository implements SupplierRepository {
         'keyword': keyword.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
+      if (selectableOnly) 'selectableOnly': true,
     };
     // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
     // 其余按 字段=值 发送。
@@ -89,6 +96,7 @@ class DioSupplierRepository implements SupplierRepository {
     String keyword, {
     int page = 1,
     int size = 20,
+    bool selectableOnly = false,
   }) async {
     // 后端 categoryId 可空：不传即全库搜索。
     final json = await api.get(
@@ -97,6 +105,7 @@ class DioSupplierRepository implements SupplierRepository {
         'page': page,
         'size': size,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (selectableOnly) 'selectableOnly': true,
       },
     );
     return PagedResult.fromJson(json, SupplierListItem.fromJson);
@@ -118,8 +127,9 @@ class DioSupplierRepository implements SupplierRepository {
   }
 
   @override
-  Future<void> create(Map<String, dynamic> body) async {
-    await api.post(ApiEndpoints.suppliers, body: body);
+  Future<SupplierDetail> create(Map<String, dynamic> body) async {
+    final json = await api.post(ApiEndpoints.suppliers, body: body);
+    return SupplierDetail.fromJson(json);
   }
 
   @override

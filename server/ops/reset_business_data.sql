@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（V423；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（V425；保留主档、人事、权限与治理证据）
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -22,14 +22,15 @@
 --   · outbox 有待处理/失败事件，或存在非人事附件 owner 时拒绝执行。
 --   · 当前 public 非分区普通表/分区父表必须恰好分类一次；未知表失败关闭。
 --   · 不使用级联扩大范围；新增未分类 FK 表会让执行失败，而不是被静默删除。
---   · 单事务完成清空、账户金额/遗留期初/货品安全库存与成本预算归零、六张物化视图刷新、CLEAR 逐表为零和
+--   · 单事务完成业务表及其 identity 清空、账户金额/遗留期初/货品安全库存与成本预算归零、
+--     六张物化视图刷新、CLEAR 逐表为零和
 --     PRESERVE 逐表计数不变校验；保留主档 UPDATE 不停审计、共享 request ID 并使用可辨识 actor，
 --     客户/供应商/货品 @Version 与 updated_at 随真实变化推进，
 --     审计写入完成后才记录 PRESERVE 计数基线；任一失败全部回滚。
 --
 -- 先备份（示例；不要覆盖既有备份）：
 --   $resetStamp = Get-Date -Format 'yyyyMMdd_HHmmss'
---   $backupName = "uten_imp_pre_reset_v423_$resetStamp.dump"
+--   $backupName = "uten_imp_pre_reset_v425_$resetStamp.dump"
 --   docker exec uten-imp-postgres pg_dump -U uten -d uten_imp -Fc \
 --       -f "/tmp/$backupName"
 --   docker exec uten-imp-postgres pg_restore -l "/tmp/$backupName"
@@ -529,7 +530,7 @@ BEGIN
 
     IF clear_count <> 191 OR preserve_count <> 92 THEN
         RAISE EXCEPTION
-            'V423 白名单数量异常：CLEAR %（应为191），PRESERVE %（应为92）',
+            'V425 白名单数量异常：CLEAR %（应为191），PRESERVE %（应为92）',
             clear_count, preserve_count;
     END IF;
 
@@ -835,7 +836,7 @@ END $$;
 
 COMMIT;
 
-\echo '完成：业务流程、库存、账户金额、遗留期初往来/库存快照、货品安全库存及成本预算已归零；货品身份/BOM/max_qty/业务售价(price/a_price/price2)与其它主档、人事、权限、审计、附件及治理证据保留。'
+\echo '完成：业务流程及其自增序列、库存、账户金额、遗留期初往来/库存快照、货品安全库存及成本预算已归零；货品身份/BOM/max_qty/业务售价(price/a_price/price2)与其它主档、人事、权限、审计、附件及治理证据保留。'
 \echo '抽查：'
 SELECT 'employees' AS table_name, count(*) AS row_count FROM employees
 UNION ALL SELECT 'goods', count(*) FROM goods

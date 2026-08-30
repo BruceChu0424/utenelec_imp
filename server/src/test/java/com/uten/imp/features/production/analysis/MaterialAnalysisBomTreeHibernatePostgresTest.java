@@ -10,10 +10,13 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.postgresql.util.PSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.lang.reflect.InvocationTargetException;
@@ -25,6 +28,7 @@ import java.util.Properties;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 
@@ -46,6 +50,7 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
                     .withPassword("uten");
 
     private static JdbcTemplate jdbc;
+    private static TransactionTemplate transaction;
     private static EntityManagerFactory entityManagerFactory;
     private static EntityManager entityManager;
 
@@ -66,6 +71,8 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
                 POSTGRES.getUsername(),
                 POSTGRES.getPassword());
         jdbc = new JdbcTemplate(dataSource);
+        transaction = new TransactionTemplate(
+                new DataSourceTransactionManager(dataSource));
 
         LocalContainerEntityManagerFactoryBean factory =
                 new LocalContainerEntityManagerFactoryBean();
@@ -148,6 +155,145 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
         assertThat(grandchild.perProductQty()).isEqualByComparingTo("6");
     }
 
+    @Test
+    void directMakeGuardRequiresExactPlanItemAndAnalysisItemLineage() {
+        UUID employeeId = jdbc.queryForObject(
+                "SELECT id FROM employees ORDER BY id LIMIT 1", UUID.class);
+        UUID unitId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID otherProductId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        UUID analysisId = UUID.randomUUID();
+        UUID analysisItemId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        UUID packageId = UUID.randomUUID();
+        String planNo = "SJ20260829000001";
+        String productNo = "SJ20260829000001-001";
+
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,?)",
+                unitId, "LINEAGE-U-" + unitId, "piece");
+        insertGoods(productId, unitId, "LINEAGE-FG-");
+        insertGoods(otherProductId, unitId, "LINEAGE-OTHER-");
+        jdbc.update("INSERT INTO warehouses(id,code,name,status) VALUES(?,?,?,'使用')",
+                warehouseId, "LINEAGE-W-" + warehouseId, "lineage warehouse");
+        jdbc.update("""
+                INSERT INTO production_material_analyses(
+                    id, warehouse_id, status, fingerprint,
+                    initial_idempotency_key, maker_id)
+                VALUES (?, ?, 'ACTIVE', ?, ?, ?)
+                """, analysisId, warehouseId, "a".repeat(64),
+                "lineage-analysis-" + analysisId, employeeId);
+        jdbc.update("""
+                INSERT INTO production_material_analysis_items(
+                    id, analysis_id, source_type, goods_id, unit_id,
+                    source_ref, source_reason, requested_qty)
+                VALUES (?, ?, 'OTHER', ?, ?, ?, 'V426 lineage fixture', 10)
+                """, analysisItemId, analysisId, productId, unitId,
+                "LINEAGE-" + analysisItemId);
+        jdbc.update("""
+                INSERT INTO production_plans(
+                    id, bill_no, bill_date, status, maker_id)
+                VALUES (?, ?, DATE '2026-08-29', 1, ?)
+                """, planId, planNo, employeeId);
+        jdbc.update("""
+                INSERT INTO production_plan_items(
+                    id, bill_no, bill_date, plan_id, product_no,
+                    goods_id, unit_id, unit_rate, qty)
+                VALUES (?, ?, DATE '2026-08-29', ?, ?, ?, ?, 1, 10)
+                """, planItemId, planNo, planId,
+                productNo, productId, unitId);
+        jdbc.update("""
+                UPDATE production_plans
+                SET material_analysis_id = ?, material_analysis_item_id = ?
+                WHERE id = ?
+                """, analysisId, analysisItemId, planId);
+        String insertPackage = """
+                INSERT INTO production_planning_packages(
+                    id, plan_id, warehouse_id, idempotency_key,
+                    request_hash, preview_fingerprint, status,
+                    execution_model_version)
+                VALUES (?, ?, ?, ?, ?, ?, 'CONFIRMED', 1)
+                """;
+
+        String insertSegment = """
+                INSERT INTO production_execution_segments(
+                    id, package_id, plan_id, source_plan_item_id,
+                    segment_no, segment_code, client_segment_key,
+                    product_goods_id, product_unit_id, product_unit_rate,
+                    planned_qty, status, bom_fingerprint, idempotency_key,
+                    material_requirement_mode, zero_material_reason,
+                    zero_material_analysis_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
+                        10, 'READY', ?, ?, 'ZERO_MATERIAL',
+                        'DIRECT_MAKE', ?)
+                """;
+        UUID validSegmentId = UUID.randomUUID();
+        transaction.executeWithoutResult(ignored -> {
+            jdbc.update(insertPackage,
+                    packageId, planId, warehouseId,
+                    "lineage-package-" + packageId,
+                    "b".repeat(64), "c".repeat(64));
+            jdbc.update(insertSegment,
+                    validSegmentId, packageId, planId, planItemId, 1,
+                    segmentCode(validSegmentId),
+                    "lineage-valid-" + validSegmentId,
+                    productId, unitId, "d".repeat(64),
+                    "lineage-segment-" + validSegmentId, analysisId);
+        });
+
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM production_execution_segments WHERE id = ?",
+                Long.class, validSegmentId)).isEqualTo(1L);
+
+        UUID mismatchedSegmentId = UUID.randomUUID();
+        assertThatThrownBy(() -> jdbc.update(insertSegment,
+                mismatchedSegmentId, packageId, planId, planItemId, 2,
+                segmentCode(mismatchedSegmentId),
+                "lineage-bad-" + mismatchedSegmentId,
+                otherProductId, unitId, "e".repeat(64),
+                "lineage-segment-" + mismatchedSegmentId, analysisId))
+                .hasMessageContaining(
+                        "zero-material evidence does not match the plan/BOM facts")
+                .satisfies(MaterialAnalysisBomTreeHibernatePostgresTest::assertCheckViolation);
+
+        String insertNullReasonSegment = """
+                INSERT INTO production_execution_segments(
+                    id, package_id, plan_id, source_plan_item_id,
+                    segment_no, segment_code, client_segment_key,
+                    product_goods_id, product_unit_id, product_unit_rate,
+                    planned_qty, status, bom_fingerprint, idempotency_key,
+                    material_requirement_mode, zero_material_reason,
+                    zero_material_analysis_id)
+                VALUES (?, ?, ?, ?, 3, ?, ?, ?, ?, 1,
+                        10, 'READY', ?, ?, 'ZERO_MATERIAL', NULL, NULL)
+                """;
+        UUID nullReasonSegmentId = UUID.randomUUID();
+        assertThatThrownBy(() -> jdbc.update(insertNullReasonSegment,
+                nullReasonSegmentId, packageId, planId, planItemId,
+                segmentCode(nullReasonSegmentId),
+                "lineage-null-reason-" + nullReasonSegmentId,
+                productId, unitId, "f".repeat(64),
+                "lineage-segment-" + nullReasonSegmentId))
+                .hasMessageContaining(
+                        "zero-material evidence does not match the plan/BOM facts")
+                .satisfies(MaterialAnalysisBomTreeHibernatePostgresTest::assertCheckViolation);
+    }
+
+    private static String segmentCode(UUID id) {
+        return "ZX%08d".formatted(
+                Math.floorMod(id.hashCode(), 99_999_999) + 1);
+    }
+
+    private static void assertCheckViolation(Throwable error) {
+        Throwable root = error;
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+        assertThat(root).isInstanceOf(PSQLException.class);
+        assertThat(((PSQLException) root).getSQLState()).isEqualTo("23514");
+    }
+
     private static void insertGoods(UUID goodsId, UUID unitId, String codePrefix) {
         jdbc.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) "
                         + "VALUES(?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
@@ -161,14 +307,14 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
                 LocalDate.of(2026, 8, 20), null,
                 goodsId, "FG-01", "Finished good", null, null, null,
                 unitId, "piece", BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO,
-                BigDecimal.ZERO, "BOM_REQUIRED", true, BigDecimal.ONE,
+                BigDecimal.ZERO, BigDecimal.ONE,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, false,
                 false, false, false, "REQ-BOM-HIBERNATE-001",
                 "Hibernate recursive BOM regression", 1, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, null, null,
-                // V294：SourceLine 新增 orderFinanceConfirmed（row[45]），
+                // V294：SourceLine 新增 orderFinanceConfirmed（row[43]），
                 // 测试夹具默认财务已确认，不改变既有用例语义。
                 true
         });

@@ -61,6 +61,7 @@ class ServerJarPackagingIT {
                     .contains(
                             "com/uten/imp/migration/UtenImpMigrator.class",
                             "com/uten/imp/migration/AppliedMigrationCompatibilityCallback.class",
+                            "com/uten/imp/migration/AuditFreshStartGuardCallback.class",
                             "org/postgresql/util/LazyCleaner.class")
                     .noneMatch(name -> name.startsWith("BOOT-INF/"))
                     .noneMatch(name -> name.startsWith("org/springframework/"));

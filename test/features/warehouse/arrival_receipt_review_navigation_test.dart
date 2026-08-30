@@ -23,6 +23,15 @@ import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
+/// 双击指定行（两次点按间隔 50ms，落在 350ms 手动双击判定窗内）——
+/// 任务中心表格行双击 = 打开到货详情弹窗。
+Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
+  await tester.tap(finder);
+  await tester.pump(const Duration(milliseconds: 50));
+  await tester.tap(finder);
+  await tester.pump();
+}
+
 void main() {
   testWidgets('登记并送检丢响应重试复用原 key，回任务中心且不跳收货单详情', (tester) async {
     tester.view.physicalSize = const Size(1400, 2000);
@@ -88,7 +97,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 任务中心：点「登记实际到货」进登记页。
+    // 任务中心：双击行打开到货详情，点「登记实际到货」进登记页。
+    await _doubleTapRow(tester, find.text('SC-PO-001'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('登记实际到货'));
     await tester.pumpAndSettle();
     expect(find.text('登记实际到货 · 委外'), findsOneWidget);
@@ -228,8 +239,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 断点恢复：任务卡停在「已登记 · 待送检」，点「继续送检」→ 责任确认框 → 完成。
+    // 断点恢复：任务停在「已登记 · 待送检」，双击行开详情点「继续送检」→ 责任确认框 → 完成。
     expect(find.text('已登记 · 待送检'), findsOneWidget);
+    await _doubleTapRow(tester, find.text('SC-PO-001'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('继续送检'));
     await tester.pumpAndSettle();
     expect(find.text('确认送检'), findsOneWidget);
@@ -274,9 +287,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('已送检 · 待品质检验'), findsOneWidget);
+    // 只读步骤：双击进详情，按钮禁用，不给仓库多余操作。
+    await _doubleTapRow(tester, find.text('SC-PO-001'));
+    await tester.pumpAndSettle();
     expect(find.text('待品质检验(2)'), findsOneWidget);
     expect(find.textContaining('检验合格后自动入库存，仓库无需操作'), findsOneWidget);
-    // 只读步骤：按钮禁用，不给仓库多余操作。
     final button = tester.widget<UtenButton>(
       find.byKey(const Key('create-receipt-expectation-1')),
     );

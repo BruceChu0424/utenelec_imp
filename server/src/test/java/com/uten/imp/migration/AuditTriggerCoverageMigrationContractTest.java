@@ -401,7 +401,8 @@ class AuditTriggerCoverageMigrationContractTest {
     }
 
     @Test
-    void v425FreshStartTruncatesOnlyTheAuditSinkAndRestartsIdentity() throws IOException {
+    void v425BytesTouchOnlyAuditTablesAfterFreshChainGuardAllowsExecution()
+            throws IOException {
         String sql = stripSqlComments(Files.readString(
                 MIGRATION_ROOT.resolve("V425__audit_log_fresh_start.sql"),
                         StandardCharsets.UTF_8))
@@ -409,10 +410,15 @@ class AuditTriggerCoverageMigrationContractTest {
                 .toLowerCase(java.util.Locale.ROOT);
         assertTrue(sql.contains(
                 "truncate table audit_log, audit_log_archive restart identity"),
-                "V425 must empty both the hot table and the cold archive and "
-                        + "restart the id sequence from 1");
+                "Only after the fresh-chain guard allows V425, its frozen bytes must "
+                        + "touch only the hot audit table and cold archive");
         assertFalse(sql.contains("delete from") || sql.contains("truncate table business"),
                 "V425 must not touch business tables");
+        String migrator = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/migration/UtenImpMigrator.java"),
+                StandardCharsets.UTF_8);
+        assertTrue(migrator.contains("new AuditFreshStartGuardCallback()"),
+                "standalone migration must register the V425 fresh-chain guard");
     }
 
     @Test
@@ -436,6 +442,30 @@ class AuditTriggerCoverageMigrationContractTest {
         for (String table : protectedTables) {
             assertFalse(sql.contains(" on " + table),
                     () -> table + " business auditing must never be dropped by V424");
+        }
+    }
+
+    @Test
+    void everyFutureFullSweepMustKeepV424NoiseTablesExcluded() throws IOException {
+        try (var files = Files.list(MIGRATION_ROOT)) {
+            for (Path path : files.filter(Files::isRegularFile).toList()) {
+                Matcher matcher = MIGRATION_FILE.matcher(path.getFileName().toString());
+                if (!matcher.matches()
+                        || Integer.parseInt(matcher.group(1)) <= 424
+                        || !path.getFileName().toString()
+                        .contains("refresh_audit_trigger_coverage")) {
+                    continue;
+                }
+                String sql = stripSqlComments(Files.readString(
+                        path, StandardCharsets.UTF_8))
+                        .replaceAll("\\s+", " ")
+                        .toLowerCase(java.util.Locale.ROOT);
+                for (String table : V424_SYSTEM_NOISE_EXCLUSIONS.keySet()) {
+                    assertTrue(sql.contains("'" + table + "'"),
+                            () -> path.getFileName() + " must keep the approved V424 "
+                                    + "noise exclusion: " + table);
+                }
+            }
         }
     }
 

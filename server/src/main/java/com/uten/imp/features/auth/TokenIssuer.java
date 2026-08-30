@@ -71,13 +71,6 @@ public class TokenIssuer {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
         UserAccount user = outcome.account();
-        audit.logExplicit(
-                user.getId(),
-                user.getLoginAccount(),
-                "refresh_token",
-                "refresh_tokens",
-                outcome.tokenId().toString(),
-                "success");
         return responseFactory.build(user, outcome.newRefreshToken());
     }
 

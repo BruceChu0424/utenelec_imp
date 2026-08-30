@@ -84,7 +84,7 @@ public class SystemSettingsService {
         s.setUpdatedBy(actorId);
         repo.save(s);
         repo.flush();
-        audit.logExplicit(actorId, actorAccount, "update_system_setting", "system_settings",
+        audit.logCommitted(actorId, actorAccount, "update_system_setting", "system_settings",
                 key + ": " + old + " → " + normalized, "success");
         return SystemSettingDto.of(repo.findById(key).orElse(s));
     }

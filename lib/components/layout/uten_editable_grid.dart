@@ -298,6 +298,10 @@ class UtenEditableGridController<T extends EditableGridRow>
   bool get allSelected => _rows.isNotEmpty && _rows.every(_selected.contains);
   bool get hasBuffer => _copyBuffer.isNotEmpty;
 
+  /// 当前选中的行（快照；已删行自动排除）。批量操作（统一设供应商等）取此列表。
+  List<T> get selectedRows =>
+      List.unmodifiable(_selected.where(_rows.contains));
+
   void toggleSelect(T row) {
     if (!_selected.add(row)) _selected.remove(row);
     notifyListeners();
@@ -412,6 +416,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.confirmDelete = true,
     this.deleteConfirmLabel = '确认删除该行明细？',
     this.cloneRow,
+    this.batchActionsBuilder,
   });
 
   final UtenEditableGridController<T> controller;
@@ -438,6 +443,14 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
 
   /// 行克隆函数（深拷贝一行）；非空时操作条显「复制/粘贴」。各 feature 注入自家行克隆实现。
   final T Function(T)? cloneRow;
+
+  /// 操作条附加批量动作（插在「全选」之后、「复制/批量删除」之前）。
+  /// 按选中数即时刷新（订阅 controller）；如订货单「统一设供应商 (n)」。
+  final List<Widget> Function(
+    BuildContext context,
+    UtenEditableGridController<T> controller,
+  )?
+  batchActionsBuilder;
 
   @override
   State<UtenEditableGrid<T>> createState() => _UtenEditableGridState<T>();
@@ -954,6 +967,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
             runSpacing: UtenSpacing.s4,
             children: [
               _actBtn(theme, c.allSelected ? '取消全选' : '全选', c.selectAll),
+              ...?widget.batchActionsBuilder?.call(context, c),
               if (clone != null)
                 _actBtn(
                   theme,

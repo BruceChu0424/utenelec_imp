@@ -83,7 +83,8 @@ class ProcurementRejectedOrderEditTest {
                 unitPolicy,
                 projection,
                 mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
-                mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class));
+                mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class),
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
 
         com.uten.imp.features.purchase.order.dto.OrderSaveRequest request =
                 new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
@@ -166,7 +167,8 @@ class ProcurementRejectedOrderEditTest {
                 projection,
                 mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
                 mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
-                        mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class));
+                mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
 
         var request =
                 new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();

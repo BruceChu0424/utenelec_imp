@@ -5,6 +5,7 @@ import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
+import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -48,6 +49,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +87,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private final ProcurementApprovalProjectionQuery approvalProjection;
     private final ProcurementArrivalControlPort arrivalControl;
     private final PurchaseDocumentAccessPolicy access;
+    private final MasterReferenceValidationPort references;
 
     /** Spring injects this in production; direct-construction tests fail closed. */
     @Autowired
@@ -163,6 +166,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @PreAuthorize("hasAuthority('purchase_order:create') and hasAuthority('purchase_order:decompose')")
     public OrderDetail create(OrderSaveRequest req) {
         tx.bind();
+        requireRowsMatchHeaderSupplier(req);
         PurchaseOrder o = new PurchaseOrder();
         applyHeader(req, o);
         o.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -217,6 +221,22 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return created;
     }
 
+    /**
+     * 货品 → 最近一次订货供应商（订货编辑页行级供应商「学习预填」：选货品后自动
+     * 带出上次该货品的订货供应商，减少逐行手选）。批量一次查询；无历史返回空 Map。
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, UUID> lastSuppliersPerGoods(Collection<UUID> goodsIds) {
+        if (goodsIds == null || goodsIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, UUID> result = new LinkedHashMap<>();
+        for (Object[] row : itemRepo.findLastSupplierPerGoods(goodsIds)) {
+            result.put((UUID) row[0], (UUID) row[1]);
+        }
+        return result;
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('purchase_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
@@ -225,6 +245,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         access.requireWritable(o.getMakerId(), "只能操作本人负责的采购订货单");
         if (o.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         approvalProjection.requireMutable(orderType(), id);
+        requireRowsMatchHeaderSupplier(req);
         applyHeader(req, o);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -302,6 +323,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
         }
+        references.requireSelectableSupplier(order.getSupplierId());
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
         captureGoodsSnapshots(
                 items,
@@ -540,6 +562,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     private void applyHeader(OrderSaveRequest req, PurchaseOrder o) {
+        if (o.getSupplierId() == null
+                || !java.util.Objects.equals(o.getSupplierId(), req.getSupplierId())) {
+            references.requireSelectableSupplier(req.getSupplierId());
+        }
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (o.getBillNo() == null || o.getBillNo().isBlank()) {
             o.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_ORDER));
@@ -561,6 +587,19 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         }
         o.setDeliverDate(req.getDeliverDate());
         o.setRemark(req.getRemark());
+    }
+
+    static void requireRowsMatchHeaderSupplier(OrderSaveRequest req) {
+        UUID header = req.getSupplierId();
+        if (req.getItems() == null) return;
+        for (OrderItemLine line : req.getItems()) {
+            if (line.getSupplierId() != null
+                    && !java.util.Objects.equals(line.getSupplierId(), header)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "既有采购订货单必须保持一单一商；多供应商新单请使用批量拆单接口");
+            }
+        }
     }
 
     private List<OrderItemDto> saveItems(PurchaseOrder o, List<OrderItemLine> lines) {

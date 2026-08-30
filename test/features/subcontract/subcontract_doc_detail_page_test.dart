@@ -165,10 +165,18 @@ void main() {
     expect(find.text('明细 (1)'), findsOneWidget);
     expect(find.text('10.00'), findsOneWidget);
 
-    // 审批动作已收敛到「财务 → 订货审批任务中心」：订货详情页（采购/委外视角）
-    // 只读展示等待状态，不得出现审批按钮（即使当前账号有审核资格）。
-    expect(find.text('退回修改'), findsNothing);
-    expect(find.text('财务审核通过'), findsNothing);
+    // V426 起订货详情页对持权财务审核员开放页内审批（与任务中心共用端点）：
+    // 待审且 allowedActions 含 APPROVE/REJECT 时必须给出驳回/审批通过，
+    // 不再是仅「返回订货单列表」的只读视图。
+    expect(
+      find.byKey(const Key('subcontract-order-finance-reject')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('subcontract-order-finance-approve')),
+      findsOneWidget,
+    );
+    expect(find.text('返回订货单列表'), findsNothing);
   });
 
   testWidgets('委外进仓直接审核确认显示当前审核员责任', (tester) async {

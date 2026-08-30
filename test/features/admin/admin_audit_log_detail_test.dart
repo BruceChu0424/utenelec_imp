@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/core/audit/device_audit_store.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -63,27 +64,23 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await _selectDefaultAuditScope(tester);
 
-    await _scrollAuditPageUntilVisible(
-      tester,
-      find.textContaining('production_execution_segments'),
-    );
-    expect(
-      find.textContaining('production_execution_segments'),
-      findsOneWidget,
-    );
-    await tester.tap(find.textContaining('production_execution_segments'));
+    await _scrollAuditPageUntilVisible(tester, find.textContaining('修改生产执行分段'));
+    expect(find.textContaining('修改生产执行分段'), findsOneWidget);
+    await tester.tap(find.textContaining('修改生产执行分段'));
     await tester.pumpAndSettle();
 
     expect(find.text('审计详情 #42'), findsOneWidget);
     await tester.tap(find.widgetWithText(Tab, '数据变更'));
     await tester.pumpAndSettle();
 
-    expect(find.text('status'), findsOneWidget);
-    expect(find.text('READY'), findsOneWidget);
-    expect(find.text('DISPATCHED'), findsOneWidget);
-    await tester.ensureVisible(find.text('查看变更前原始 JSON'));
-    await tester.tap(find.text('查看变更前原始 JSON'));
+    expect(find.text('status'), findsNothing);
+    expect(find.text('状态'), findsWidgets);
+    expect(find.text('已就绪'), findsWidgets);
+    expect(find.text('已下达'), findsWidgets);
+    await tester.ensureVisible(find.text('查看变更前原始数据'));
+    await tester.tap(find.text('查看变更前原始数据'));
     await tester.pumpAndSettle();
     expect(find.textContaining('"status": "READY"'), findsOneWidget);
     expect(repository.detailCalls, 1);
@@ -111,27 +108,116 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await _selectDefaultAuditScope(tester);
 
-    await _scrollAuditPageUntilVisible(
-      tester,
-      find.textContaining('production_execution_segments'),
-    );
-    await tester.tap(find.textContaining('production_execution_segments'));
+    await _scrollAuditPageUntilVisible(tester, find.textContaining('修改生产执行分段'));
+    await tester.tap(find.textContaining('修改生产执行分段'));
     await tester.pumpAndSettle();
 
     // 叙事卡：标题 + 谁 + 何时/在哪 chips + 大字动作句 + 具体变更（字段名 + 新旧值胶囊）。
     expect(find.text('这次操作做了什么'), findsOneWidget);
-    expect(
-      find.text('修改生产执行分段：状态：READY → DISPATCHED'),
-      findsWidgets,
-    );
+    expect(find.text('修改生产执行分段：状态由已就绪改为已下达'), findsWidgets);
     expect(find.text('具体变更'), findsOneWidget);
     expect(find.text('状态'), findsWidgets);
-    expect(find.text('READY'), findsWidgets);
-    expect(find.text('DISPATCHED'), findsWidgets);
+    expect(find.text('已就绪'), findsWidgets);
+    expect(find.text('已下达'), findsWidgets);
     expect(find.text('成功'), findsWidgets);
-    expect(find.text('planner'), findsWidgets);
-    expect(find.text('排查线索'), findsOneWidget);
+    expect(find.textContaining('planner'), findsWidgets);
+    expect(find.textContaining('北京时间'), findsWidgets);
+    expect(find.text('操作说明'), findsOneWidget);
+  });
+
+  testWidgets(
+    'related request changes stay lightweight until one group is expanded',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repository = _AuditRepository(includeRelatedDatabase: true);
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            auditLogRepositoryProvider.overrideWithValue(repository),
+            currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: const MaterialApp(home: AdminAuditLogPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _selectDefaultAuditScope(tester);
+
+      await _scrollAuditPageUntilVisible(
+        tester,
+        find.textContaining('修改生产执行分段'),
+      );
+      await tester.tap(find.textContaining('修改生产执行分段'));
+      await tester.pumpAndSettle();
+
+      expect(repository.detailIds, [42]);
+      expect(
+        repository.listCalls.where(
+          (call) =>
+              call['requestId'] == _DeviceStore.requestId &&
+              call['activityOnly'] == false &&
+              call['size'] == 100,
+        ),
+        hasLength(1),
+      );
+
+      await tester.tap(find.widgetWithText(Tab, '数据变更'));
+      await tester.pumpAndSettle();
+      expect(find.text('本次操作产生 1 组业务变化'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('audit-related-change-43')),
+        findsOneWidget,
+      );
+      expect(repository.detailIds, [42]);
+
+      await tester.tap(find.text('生产执行分段 · 执行分段二'));
+      await tester.pumpAndSettle();
+      expect(repository.detailIds, [42, 43]);
+      expect(find.text('完整字段详情'), findsOneWidget);
+    },
+  );
+
+  testWidgets('decorated success result keeps a success badge', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = _AuditRepository(
+      resultCode: 'success;mode=custom/generated',
+      resultLabel: '按自定义规则生成成功',
+    );
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          auditLogRepositoryProvider.overrideWithValue(repository),
+          currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: const MaterialApp(home: AdminAuditLogPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _selectDefaultAuditScope(tester);
+
+    await _scrollAuditPageUntilVisible(tester, find.textContaining('修改生产执行分段'));
+    await tester.tap(find.textContaining('修改生产执行分段'));
+    await tester.pumpAndSettle();
+
+    final badge = tester
+        .widgetList<UtenStatusBadge>(find.byType(UtenStatusBadge))
+        .singleWhere((item) => item.label == '按自定义规则生成成功');
+    expect(badge.type, UtenStatusBadgeType.success);
   });
 
   testWidgets('risk metric card drills down to risky operations', (
@@ -156,6 +242,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await _selectDefaultAuditScope(tester);
 
     expect(repository.lastRiskLevel, isNull);
     await tester.tap(find.text('风险行为'));
@@ -168,6 +255,49 @@ void main() {
     expect(find.text('导出当前结果'), findsOneWidget);
     expect(exportButton.enabled, isTrue);
     expect(exportButton.queryParams['riskLevel'], 'risky');
+  });
+
+  testWidgets('personnel directory search debounces rapid input', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = _AuditRepository();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          auditLogRepositoryProvider.overrideWithValue(repository),
+          currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: const MaterialApp(home: AdminAuditLogPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('audit-select-actor')));
+    await tester.pumpAndSettle();
+    expect(repository.actorCalls, 1);
+
+    final field = find.descendant(
+      of: find.byType(Dialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(field, '计');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.enterText(field, '计划');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 299));
+    expect(repository.actorCalls, 1);
+
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
+    expect(repository.actorCalls, 2);
   });
 
   testWidgets(
@@ -196,12 +326,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await _selectDefaultAuditScope(tester);
 
       await _scrollAuditPageUntilVisible(
         tester,
-        find.textContaining('production_execution_segments'),
+        find.textContaining('修改生产执行分段'),
       );
-      await tester.tap(find.textContaining('production_execution_segments'));
+      await tester.tap(find.textContaining('修改生产执行分段'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(Tab, '设备证据'));
       await tester.pumpAndSettle();
@@ -210,8 +341,10 @@ void main() {
       expect(deviceStore.profileCalls, 0);
       expect(deviceStore.findCalls, 0);
 
-      await tester.ensureVisible(find.text('授权并核对本机回执'));
-      await tester.pumpAndSettle();
+      await _scrollAuditDetailUntilVisible(
+        tester,
+        find.byKey(const ValueKey('authorize-local-audit-receipt')),
+      );
       await tester.tap(find.text('授权并核对本机回执'));
       await tester.pumpAndSettle();
 
@@ -224,19 +357,6 @@ void main() {
       expect(find.text('测试电脑'), findsWidgets);
       expect(find.text('QA-1'), findsWidgets);
       expect(find.text(_DeviceStore.installationId), findsWidgets);
-      await tester.scrollUntilVisible(
-        find.text('请求尝试链(2 次)'),
-        240,
-        scrollable: find
-            .descendant(
-              of: find.byType(TabBarView),
-              matching: find.byType(Scrollable),
-            )
-            .last,
-        maxScrolls: 20,
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('请求尝试链(2 次)'), findsOneWidget);
     },
   );
 
@@ -248,7 +368,10 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final repository = _AuditRepository(earlyAttempt: true);
+    final repository = _AuditRepository(
+      earlyAttempt: true,
+      resultLabel: '成功；旧数据',
+    );
     final deviceStore = _DeviceStore();
     final api = _Api(postError: StateError('offline'));
     SharedPreferences.setMockInitialValues({});
@@ -266,17 +389,21 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await _selectDefaultAuditScope(tester);
 
-    await _scrollAuditPageUntilVisible(
-      tester,
-      find.textContaining('production_execution_segments'),
-    );
-    await tester.tap(find.textContaining('production_execution_segments'));
+    await _scrollAuditPageUntilVisible(tester, find.textContaining('修改生产执行分段'));
+    await tester.tap(find.textContaining('修改生产执行分段'));
     await tester.pumpAndSettle();
+    final failureBadge = tester
+        .widgetList<UtenStatusBadge>(find.byType(UtenStatusBadge))
+        .singleWhere((item) => item.label == '失败');
+    expect(failureBadge.type, UtenStatusBadgeType.danger);
     await tester.tap(find.widgetWithText(Tab, '设备证据'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('授权并核对本机回执'));
-    await tester.pumpAndSettle();
+    await _scrollAuditDetailUntilVisible(
+      tester,
+      find.byKey(const ValueKey('authorize-local-audit-receipt')),
+    );
     await tester.tap(find.text('授权并核对本机回执'));
     await tester.pumpAndSettle();
 
@@ -288,7 +415,7 @@ void main() {
   });
 
   testWidgets(
-    'initial list captures a high-water shared by summary and export',
+    'does not load until actor and date are applied, then shares high-water',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1;
@@ -310,21 +437,58 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(repository.listCalls, isEmpty);
+      expect(repository.summaryCalls, isEmpty);
+      expect(
+        tester.widget<UtenExportButton>(find.byType(UtenExportButton)).enabled,
+        isFalse,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('audit-select-actor')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('audit-actor-${_AuditRepository.actorId}')),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.listCalls, isEmpty);
+      expect(repository.summaryCalls, isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('audit-date-today')));
+      await tester.pumpAndSettle();
+      expect(repository.listCalls, isEmpty);
+      expect(repository.summaryCalls, isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('audit-run-query')));
+      await tester.pumpAndSettle();
       expect(repository.listCalls, hasLength(1));
       expect(repository.listCalls.single['snapshotId'], isNull);
-      expect(repository.listCalls.single['operationKind'], 'write');
+      expect(repository.listCalls.single['actorId'], _AuditRepository.actorId);
+      expect(repository.listCalls.single['operationKind'], isNull);
       expect(repository.listCalls.single['actorScope'], 'user');
+      expect(repository.listCalls.single['activityOnly'], isTrue);
+      expect(repository.listCalls.single['dateFrom'], isNotNull);
+      expect(
+        repository.listCalls.single['dateTo'],
+        repository.listCalls.single['dateFrom'],
+      );
       expect(repository.summaryCalls.single['snapshotId'], 9001);
-      expect(repository.summaryCalls.single['operationKind'], 'write');
+      expect(
+        repository.summaryCalls.single['actorId'],
+        _AuditRepository.actorId,
+      );
+      expect(repository.summaryCalls.single['operationKind'], isNull);
       expect(repository.summaryCalls.single['actorScope'], 'user');
+      expect(repository.summaryCalls.single['activityOnly'], isTrue);
 
       final exportButton = tester.widget<UtenExportButton>(
         find.byType(UtenExportButton),
       );
       expect(exportButton.enabled, isTrue);
       expect(exportButton.queryParams['snapshotId'], 9001);
-      expect(exportButton.queryParams['operationKind'], 'write');
+      expect(exportButton.queryParams['actorId'], _AuditRepository.actorId);
+      expect(exportButton.queryParams['operationKind'], isNull);
       expect(exportButton.queryParams['actorScope'], 'user');
+      expect(exportButton.queryParams['activityOnly'], isTrue);
     },
   );
 
@@ -350,6 +514,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await _selectDefaultAuditScope(tester);
 
       final createChip = find.byKey(const ValueKey('audit-operation-create'));
       await _scrollAuditPageUntilVisible(tester, createChip);
@@ -372,7 +537,7 @@ void main() {
   );
 
   testWidgets(
-    'security filter reveals anonymous events instead of AND hiding',
+    'unidentified access requires a date and never loads system records',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1;
@@ -394,31 +559,106 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final securityChip = find.byKey(
-        const ValueKey('audit-category-security'),
-      );
-      await tester.ensureVisible(securityChip);
-      await tester.tap(securityChip);
+      await tester.tap(find.byKey(const ValueKey('audit-select-anonymous')));
+      await tester.pumpAndSettle();
+      expect(repository.listCalls, isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('audit-date-today')));
+      await tester.pumpAndSettle();
+      expect(repository.listCalls, isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('audit-run-query')));
       await tester.pumpAndSettle();
 
-      expect(repository.listCalls.last['eventCategory'], 'security');
-      expect(repository.listCalls.last['operationKind'], isNull);
-      expect(repository.listCalls.last['actorScope'], isNull);
+      expect(repository.listCalls.last['actorId'], isNull);
+      expect(repository.listCalls.last['actorScope'], 'anonymous');
+      expect(repository.listCalls.last['activityOnly'], isTrue);
       expect(repository.listCalls.last['snapshotId'], isNull);
-      expect(
-        tester
-            .widget<ChoiceChip>(
-              find.byKey(const ValueKey('audit-operation-all')),
-            )
-            .selected,
-        isTrue,
+      expect(repository.listCalls.last['dateFrom'], isNotNull);
+
+      final actionMenu = find.text('动作分类：全部');
+      await _scrollAuditPageUntilVisible(tester, actionMenu);
+      await tester.tap(actionMenu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(PopupMenuItem<String>, '登录认证'));
+      await tester.pumpAndSettle();
+      expect(repository.listCalls.last['action'], 'login');
+      expect(repository.listCalls.last['actorScope'], 'anonymous');
+
+      final sourceMenu = find.text('事件来源：全部来源');
+      await _scrollAuditPageUntilVisible(tester, sourceMenu);
+      await tester.tap(sourceMenu);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(PopupMenuItem<String>, '安全拦截'));
+      await tester.pumpAndSettle();
+      expect(repository.listCalls.last['eventSource'], 'security');
+      expect(repository.listCalls.last['actorScope'], 'anonymous');
+
+      final securityCategory = find.byKey(
+        const ValueKey('audit-category-security'),
       );
-      expect(
-        tester
-            .widget<ChoiceChip>(find.byKey(const ValueKey('audit-scope-all')))
-            .selected,
-        isTrue,
+      await _scrollAuditPageUntilVisible(tester, securityCategory);
+      await tester.tap(securityCategory);
+      await tester.pumpAndSettle();
+      expect(repository.listCalls.last['eventCategory'], 'security');
+      expect(repository.listCalls.last['actorScope'], 'anonymous');
+
+      final authenticationCategory = find.byKey(
+        const ValueKey('audit-category-authentication'),
       );
+      await tester.tap(authenticationCategory);
+      await tester.pumpAndSettle();
+      expect(repository.listCalls.last['eventCategory'], 'authentication');
+      expect(repository.listCalls.last['actorScope'], 'anonymous');
+    },
+  );
+
+  testWidgets(
+    'system anomaly scope stays unloaded until date and shows a safe empty state',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final repository = _AuditRepository();
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            auditLogRepositoryProvider.overrideWithValue(repository),
+            currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: const MaterialApp(home: AdminAuditLogPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.listCalls, isEmpty);
+
+      await tester.tap(
+        find.byKey(const ValueKey('audit-select-system-anomaly')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('系统异常'), findsWidgets);
+      expect(find.text('仅调查失败的系统异常，不包含日常成功自动任务'), findsOneWidget);
+      expect(repository.listCalls, isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('audit-date-today')));
+      await tester.pumpAndSettle();
+      expect(repository.listCalls, isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('audit-run-query')));
+      await tester.pumpAndSettle();
+      expect(repository.listCalls, hasLength(1));
+      expect(repository.listCalls.single['actorId'], isNull);
+      expect(repository.listCalls.single['actorScope'], 'system');
+      expect(repository.listCalls.single['activityOnly'], isTrue);
+      expect(repository.listCalls.single['dateFrom'], isNotNull);
+      await _scrollAuditPageUntilVisible(tester, find.text('没有符合条件的操作记录'));
+      expect(find.text('没有符合条件的操作记录'), findsOneWidget);
+      expect(find.text('系统/迁移'), findsNothing);
     },
   );
 
@@ -442,6 +682,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await _selectDefaultAuditScope(tester);
+    final summaryCallCount = repository.summaryCalls.length;
 
     final jumpField = find.byKey(const ValueKey('audit-page-jump-field'));
     await _scrollAuditPageUntilVisible(tester, jumpField);
@@ -451,7 +693,7 @@ void main() {
 
     expect(repository.listCalls.last['page'], 79);
     expect(repository.listCalls.last['snapshotId'], 9001);
-    expect(repository.summaryCalls.last['snapshotId'], 9001);
+    expect(repository.summaryCalls, hasLength(summaryCallCount));
   });
 
   testWidgets('Request ID waits for a complete UUID before querying', (
@@ -477,6 +719,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(repository.listCalls, isEmpty);
+    await tester.tap(find.byKey(const ValueKey('audit-request-investigation')));
+    await tester.pumpAndSettle();
     final requestField = find.descendant(
       of: find.byKey(const ValueKey('audit-request-id-field')),
       matching: find.byType(TextField),
@@ -484,17 +729,19 @@ void main() {
     await tester.ensureVisible(requestField);
     await tester.enterText(requestField, '123e4567');
     await tester.pump(const Duration(milliseconds: 350));
-    expect(repository.listCalls, hasLength(1));
+    expect(repository.listCalls, isEmpty);
 
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
-    expect(repository.listCalls, hasLength(1));
+    expect(repository.listCalls, isEmpty);
 
     await tester.enterText(requestField, _DeviceStore.requestId);
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
     expect(repository.listCalls.last['requestId'], _DeviceStore.requestId);
+    expect(repository.listCalls.last['activityOnly'], isFalse);
     expect(repository.listCalls.last['snapshotId'], isNull);
+    expect(find.text('同一操作 操作趋势'), findsNothing);
   });
 
   testWidgets('same operation action locates the exact Request ID', (
@@ -519,12 +766,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await _selectDefaultAuditScope(tester);
 
-    await _scrollAuditPageUntilVisible(
-      tester,
-      find.textContaining('production_execution_segments'),
-    );
-    await tester.tap(find.textContaining('production_execution_segments'));
+    await _scrollAuditPageUntilVisible(tester, find.textContaining('修改生产执行分段'));
+    await tester.tap(find.textContaining('修改生产执行分段'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('audit-locate-same-request')));
     await tester.pumpAndSettle();
@@ -532,6 +777,7 @@ void main() {
     expect(repository.listCalls.last['requestId'], _DeviceStore.requestId);
     expect(repository.listCalls.last['operationKind'], isNull);
     expect(repository.listCalls.last['actorScope'], isNull);
+    expect(repository.listCalls.last['activityOnly'], isFalse);
     expect(repository.listCalls.last['snapshotId'], isNull);
   });
 
@@ -558,12 +804,14 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      await _selectDefaultAuditScope(tester);
 
       await _scrollAuditPageUntilVisible(
         tester,
         find.byKey(const ValueKey('audit-target-suppliers')),
       );
-      expect(find.text('系统/迁移'), findsOneWidget);
+      expect(find.text('系统/迁移'), findsNothing);
+      expect(find.text('数据库变更'), findsNothing);
       expect(find.text('供应商'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -589,6 +837,50 @@ Future<void> _scrollAuditPageUntilVisible(
   await tester.pumpAndSettle();
 }
 
+Future<void> _scrollAuditDetailUntilVisible(
+  WidgetTester tester,
+  Finder finder,
+) async {
+  final detailScrollable = find
+      .descendant(
+        of: find.byType(TabBarView),
+        matching: find.byType(Scrollable),
+      )
+      .hitTestable()
+      .first;
+  await tester.scrollUntilVisible(
+    finder,
+    240,
+    scrollable: detailScrollable,
+    maxScrolls: 20,
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _selectDefaultAuditScope(WidgetTester tester) async {
+  final selectActor = find.byKey(const ValueKey('audit-select-actor'));
+  await tester.ensureVisible(selectActor);
+  await tester.tap(selectActor);
+  await tester.pumpAndSettle();
+
+  final actor = find.byKey(
+    const ValueKey('audit-actor-${_AuditRepository.actorId}'),
+  );
+  expect(actor, findsOneWidget);
+  await tester.tap(actor);
+  await tester.pumpAndSettle();
+
+  final today = find.byKey(const ValueKey('audit-date-today'));
+  await tester.ensureVisible(today);
+  await tester.tap(today);
+  await tester.pumpAndSettle();
+
+  final runQuery = find.byKey(const ValueKey('audit-run-query'));
+  await tester.ensureVisible(runQuery);
+  await tester.tap(runQuery);
+  await tester.pumpAndSettle();
+}
+
 class _Api extends ApiClient {
   _Api({this.postError}) : super(Dio());
 
@@ -610,20 +902,61 @@ class _Api extends ApiClient {
 }
 
 class _AuditRepository implements AuditLogRepository {
-  _AuditRepository({this.earlyAttempt = false, this.totalPages = 1});
+  _AuditRepository({
+    this.earlyAttempt = false,
+    this.totalPages = 1,
+    this.includeRelatedDatabase = false,
+    this.resultCode = 'success',
+    this.resultLabel = '成功',
+  });
 
   final bool earlyAttempt;
   final int totalPages;
+  final bool includeRelatedDatabase;
+  final String resultCode;
+  final String resultLabel;
   int detailCalls = 0;
+  int actorCalls = 0;
   String? lastRiskLevel;
   final listCalls = <Map<String, Object?>>[];
   final summaryCalls = <Map<String, Object?>>[];
+  final detailIds = <int>[];
+
+  static const actorId = '123e4567-e89b-42d3-a456-426614174099';
+
+  @override
+  Future<AuditActorPage> actors({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+  }) async {
+    actorCalls++;
+    return const AuditActorPage(
+      items: [
+        AuditActorOption(
+          actorId: _AuditRepository.actorId,
+          account: 'planner',
+          actorType: 'user',
+          displayName: '计划员(planner)',
+          name: '计划员',
+          department: '生产部',
+          position: '计划专员',
+          lastActivityAt: '2026-07-31T06:00:00+08:00',
+        ),
+      ],
+      page: 1,
+      size: 20,
+      total: 1,
+      totalPages: 1,
+    );
+  }
 
   @override
   Future<AuditLogPage> list({
     int page = 1,
     int size = 20,
     String? action,
+    String? actorId,
     String? actorAccount,
     String? keyword,
     String? targetType,
@@ -632,6 +965,7 @@ class _AuditRepository implements AuditLogRepository {
     String? requestId,
     String? operationKind,
     String? actorScope,
+    bool activityOnly = true,
     int? snapshotId,
     String? riskLevel,
     String? eventCategory,
@@ -644,6 +978,7 @@ class _AuditRepository implements AuditLogRepository {
       'page': page,
       'size': size,
       'action': action,
+      'actorId': actorId,
       'actorAccount': actorAccount,
       'keyword': keyword,
       'targetType': targetType,
@@ -652,6 +987,7 @@ class _AuditRepository implements AuditLogRepository {
       'requestId': requestId,
       'operationKind': operationKind,
       'actorScope': actorScope,
+      'activityOnly': activityOnly,
       'snapshotId': snapshotId,
       'riskLevel': riskLevel,
       'eventCategory': eventCategory,
@@ -659,22 +995,55 @@ class _AuditRepository implements AuditLogRepository {
       'dateFrom': dateFrom,
       'dateTo': dateTo,
     });
+    final items = actorScope == 'system'
+        ? <AuditLogEntry>[]
+        : <AuditLogEntry>[
+            AuditLogEntry(
+              id: 42,
+              actorId: _AuditRepository.actorId,
+              actorAccount: 'planner',
+              actorName: '计划员',
+              actorDisplay: '计划员(planner)',
+              action: 'update',
+              actionLabel: '修改',
+              targetType: 'production_execution_segments',
+              objectLabel: '生产执行分段',
+              targetId: 'segment-1',
+              targetName: '执行分段一',
+              summary: '修改生产执行分段：状态由已就绪改为已下达',
+              result: resultCode,
+              resultLabel: resultLabel,
+              statusCode: 200,
+              createdAt: '2026-07-31T06:00:00+08:00',
+            ),
+            if (includeRelatedDatabase && requestId != null && !activityOnly)
+              const AuditLogEntry(
+                id: 43,
+                actorId: _AuditRepository.actorId,
+                actorAccount: 'planner',
+                actorName: '计划员',
+                actorDisplay: '计划员(planner)',
+                action: 'update',
+                actionLabel: '修改',
+                targetType: 'production_execution_segments',
+                objectLabel: '生产执行分段',
+                targetId: 'segment-2',
+                targetName: '执行分段二',
+                summary: '修改生产执行分段：状态由已就绪改为已下达',
+                changeSummary: '状态：READY → DISPATCHED',
+                result: 'success',
+                resultLabel: '成功',
+                eventSource: 'database',
+                requestId: _DeviceStore.requestId,
+                createdAt: '2026-07-31T06:00:00+08:00',
+              ),
+          ];
     return AuditLogPage(
-      items: const [
-        AuditLogEntry(
-          id: 42,
-          actorAccount: 'planner',
-          action: 'update',
-          targetType: 'production_execution_segments',
-          targetId: 'segment-1',
-          result: 'success',
-          createdAt: '2026-07-31T06:00:00+08:00',
-        ),
-      ],
+      items: items,
       page: page,
       size: 20,
-      total: totalPages,
-      totalPages: totalPages,
+      total: actorScope == 'system' ? 0 : totalPages,
+      totalPages: actorScope == 'system' ? 0 : totalPages,
       snapshotId: snapshotId ?? 9001,
     );
   }
@@ -682,6 +1051,7 @@ class _AuditRepository implements AuditLogRepository {
   @override
   Future<AuditSummary> summary({
     String? action,
+    String? actorId,
     String? actorAccount,
     String? keyword,
     String? targetType,
@@ -690,6 +1060,7 @@ class _AuditRepository implements AuditLogRepository {
     String? requestId,
     String? operationKind,
     String? actorScope,
+    bool activityOnly = true,
     int? snapshotId,
     String? eventCategory,
     String? dateFrom,
@@ -697,6 +1068,7 @@ class _AuditRepository implements AuditLogRepository {
   }) async {
     summaryCalls.add({
       'action': action,
+      'actorId': actorId,
       'actorAccount': actorAccount,
       'keyword': keyword,
       'targetType': targetType,
@@ -705,6 +1077,7 @@ class _AuditRepository implements AuditLogRepository {
       'requestId': requestId,
       'operationKind': operationKind,
       'actorScope': actorScope,
+      'activityOnly': activityOnly,
       'snapshotId': snapshotId,
       'eventCategory': eventCategory,
       'dateFrom': dateFrom,
@@ -723,6 +1096,28 @@ class _AuditRepository implements AuditLogRepository {
   @override
   Future<AuditLogDetail> detail(int id) async {
     detailCalls++;
+    detailIds.add(id);
+    if (id == 43) {
+      return const AuditLogDetail(
+        id: 43,
+        actorAccount: 'planner',
+        action: 'update',
+        targetType: 'production_execution_segments',
+        targetId: 'segment-2',
+        targetName: '执行分段二',
+        actionLabel: '修改',
+        objectLabel: '生产执行分段',
+        summary: '修改生产执行分段：状态由已就绪改为已下达',
+        resultLabel: '成功',
+        changeSummary: '状态：READY → DISPATCHED',
+        beforeJson: '{"status":"READY"}',
+        afterJson: '{"status":"DISPATCHED"}',
+        requestId: _DeviceStore.requestId,
+        eventSource: 'database',
+        result: 'success',
+        createdAt: '2026-07-31T06:00:00+08:00',
+      );
+    }
     return AuditLogDetail(
       id: 42,
       actorAccount: 'planner',
@@ -731,8 +1126,8 @@ class _AuditRepository implements AuditLogRepository {
       targetId: 'segment-1',
       actionLabel: '修改',
       objectLabel: '生产执行分段',
-      summary: '修改生产执行分段：状态：READY → DISPATCHED',
-      resultLabel: '成功',
+      summary: '修改生产执行分段：状态由已就绪改为已下达',
+      resultLabel: resultLabel,
       changeSummary: '状态：READY → DISPATCHED',
       beforeJson: '{"status":"READY"}',
       afterJson: '{"status":"DISPATCHED"}',
@@ -763,7 +1158,7 @@ class _AuditRepository implements AuditLogRepository {
       httpMethod: 'PATCH',
       httpPath: '/api/production/execution-segments/segment-1',
       statusCode: earlyAttempt ? 401 : 200,
-      result: earlyAttempt ? 'failure' : 'success',
+      result: earlyAttempt ? 'failure' : resultCode,
       createdAt: '2026-07-31T06:00:00+08:00',
     );
   }

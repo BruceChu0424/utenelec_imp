@@ -1,13 +1,15 @@
 /// 审计「数据变更」标签页的字段名可读化字典。
 ///
 /// before/after 快照里的键是数据库列名（snake_case），直接展示普通人看不懂。
-/// 这里把常见列名翻译成中文；未收录的键回退为原样展示。
+/// 这里把常见列名翻译成中文；未收录的键统一显示“其他字段”，原键只留在折叠排查数据中。
 library;
 
+import '../../../core/utils/display_datetime.dart';
+
 abstract final class AuditFieldLabels {
-  /// 返回中文标签；未收录时返回原字段名。
+  /// 返回中文标签；未收录时安全回退为“其他字段”。
   static String labelOf(String field) =>
-      _labels[field] ?? _labels[field.toLowerCase()] ?? field;
+      _labels[field] ?? _labels[field.toLowerCase()] ?? '其他字段';
 
   static const Map<String, String> _labels = {
     // 通用审计/状态列
@@ -126,6 +128,9 @@ abstract final class AuditFieldLabels {
     'due_date': '交期',
     'priority': '优先级',
     'analysis_id': '物料分析',
+    'cycle_id': '补产周期',
+    'authorization_id': '补产授权',
+    'reason_code': '原因代码',
     'from_material_id': '被借用物料',
     'to_material_id': '借出物料',
     'borrow_qty': '借用数量',
@@ -152,18 +157,54 @@ abstract final class AuditFieldLabels {
     'event_source': '记录来源',
   };
 
-  /// 值可读化：布尔/空值翻译；UUID 保持原样（由调用方决定是否再按字典解析）。
+  /// 值可读化：布尔/空值翻译；ISO 时间戳转「yyyy-MM-dd HH:mm(北京时间)」；
+  /// UUID 保持原样(由调用方决定是否再按字典解析)。
   static String valueOf(dynamic value) {
     if (value == null) return '—';
     if (value is bool) return value ? '是' : '否';
-    if (value is String && value.isEmpty) return '(空)';
+    if (value is String) {
+      if (value.isEmpty) return '(空)';
+      final translated = _valueLabels[value.trim().toLowerCase()];
+      if (translated != null) return translated;
+      if (_dateTimePattern.hasMatch(value)) {
+        final formatted = DisplayDateTime.beijing(value);
+        if (formatted.isNotEmpty) {
+          return formatted.replaceFirst('(北京)', '(北京时间)');
+        }
+      }
+    }
     return value.toString();
   }
+
+  /// 快照字段值里的 ISO 时间戳(含可选秒/毫秒/偏移；日期-only 不匹配)。
+  static final RegExp _dateTimePattern = RegExp(
+    r'^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})?$',
+  );
 
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
     r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
   );
+
+  static const Map<String, String> _valueLabels = {
+    'ready': '已就绪',
+    'dispatched': '已下达',
+    'pending': '待处理',
+    'draft': '草稿',
+    'submitted': '已提交',
+    'approved': '已批准',
+    'rejected': '已驳回',
+    'completed': '已完成',
+    'cancelled': '已取消',
+    'canceled': '已取消',
+    'enabled': '已启用',
+    'disabled': '已停用',
+    'active': '有效',
+    'inactive': '无效',
+    'success': '成功',
+    'failure': '失败',
+    'failed': '失败',
+  };
 
   /// 是否为 UUID 形式的值（通常需要再翻译成名称）。
   static bool looksLikeUuid(Object? value) =>

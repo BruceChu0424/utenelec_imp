@@ -1,8 +1,8 @@
 // 新建生产计划单「从订单带明细」面板。
 //
-// 产品 BOM 默认全部展开：每个产品卡片直接展示统一只读表格，不提供折叠控件。
-// 这里的库存仅是订单接口返回的即时库存，用于排产初筛；真正齐套判断必须在计划
-// 详情的 MRP 中按安全库存、锁定量和及时到货量复核。
+// 有子层级物料时默认全部展开：每个产品卡片直接展示统一只读表格，不提供折叠控件。
+// 无子层级物料时按直接自制带入。这里的库存仅用于初筛，正式可生产数量由物料分析
+// 按目标仓、安全库存、锁定量与合格供给统一确认。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -87,7 +87,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
   List<ScheduleOrderLine>? _lines;
   String? _error;
 
-  /// orderItemId；仅允许选择仍有排产缺口且已维护 BOM 的产品。
+  /// orderItemId；所有仍有排产缺口的产品都可选择。
   final Set<String> _selected = {};
 
   @override
@@ -109,7 +109,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
           ..clear()
           ..addAll(
             lines
-                .where((line) => (line.needQty ?? 0) > 0 && line.bom.isNotEmpty)
+                .where((line) => (line.needQty ?? 0) > 0)
                 .map((line) => line.orderItemId),
           );
       });
@@ -148,7 +148,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                         ),
                         const SizedBox(height: UtenSpacing.s4),
                         Text(
-                          'BOM 已全部展开。勾选可排产品带入计划；BOM 缺失的产品必须先补资料。',
+                          '有子层级物料时在下方展开；无子层级物料时按直接自制带入，不生成领料明细。',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -236,7 +236,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
           Expanded(
             child: Text(
               '库存口径：下表只显示当前即时库存，未扣安全库存、其他计划锁定量，也未判断在途是否能在开工前到达。'
-              '带入计划后必须以 MRP 齐套结果为准。',
+              '带入后以物料分析的子层级齐套结果为准；无子层级物料按直接自制处理。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onTertiaryContainer,
               ),
@@ -289,7 +289,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
   Widget _lineCard(ScheduleOrderLine line) {
     final theme = Theme.of(context);
     final need = line.needQty ?? 0;
-    final hasBom = line.bom.isNotEmpty;
+    final hasChildMaterials = line.bom.isNotEmpty;
     final plannable = need > 0;
     final checked = _selected.contains(line.orderItemId);
     final shortageCount = line.bom.where((item) {
@@ -354,12 +354,12 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                   ),
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                _bomCountBadge(theme, line.bom.length),
+                _materialCountBadge(theme, line.bom.length),
               ],
             ),
             const SizedBox(height: UtenSpacing.s8),
-            if (!hasBom)
-              _missingBomHint(theme)
+            if (!hasChildMaterials)
+              _directMakeHint(theme)
             else ...[
               Text(
                 '物料明细(按待排数量 ${_fmt(line.needQty)} 折算)',
@@ -438,13 +438,13 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                           alpha: 0.18,
                         );
                 },
-                emptyMessage: 'BOM 没有物料行',
+                emptyMessage: '暂无子层级物料',
               ),
               const SizedBox(height: UtenSpacing.s8),
               Text(
                 '即时初筛：共 ${line.bom.length} 种，已知缺 $shortageCount 种'
                 '${unknownCount == 0 ? '' : '，待复核 $unknownCount 种'}。'
-                '物料单位可能不同，不汇总缺口数量；最终以计划 MRP 为准。',
+                '物料单位可能不同，不汇总缺口数量；最终以物料分析齐套结果为准。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: shortageCount > 0
                       ? theme.colorScheme.error
@@ -459,9 +459,9 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
     );
   }
 
-  Widget _bomCountBadge(ThemeData theme, int count) {
-    final missing = count == 0;
-    final color = missing ? theme.colorScheme.error : theme.colorScheme.primary;
+  Widget _materialCountBadge(ThemeData theme, int count) {
+    final directMake = count == 0;
+    final color = theme.colorScheme.primary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -469,7 +469,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
         borderRadius: UtenRadius.smAll,
       ),
       child: Text(
-        missing ? 'BOM 缺失' : '$count 种物料',
+        directMake ? '无下层物料' : '$count 种物料',
         style: theme.textTheme.labelSmall?.copyWith(
           color: color,
           fontWeight: FontWeight.w700,
@@ -478,8 +478,8 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
     );
   }
 
-  /// 未维护 BOM 的产品按「直接自制」处理：无下层物料，不阻断带入排产。
-  Widget _missingBomHint(ThemeData theme) {
+  /// 无子层级物料的产品按「直接自制」处理，不阻断带入排产。
+  Widget _directMakeHint(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
@@ -496,7 +496,8 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
           const SizedBox(width: UtenSpacing.s8),
           Expanded(
             child: Text(
-              '该产品未维护 BOM，按直接自制处理：无下层物料需求，不生成领料明细。',
+              '该产品无子层级物料，按直接自制处理：可带入计划，不生成生产领料明细；'
+              '最终可生产数量由物料分析确认。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
@@ -511,7 +512,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
   String _availabilityStatus(ScheduleBomComponent item) {
     final onhand = item.onhand;
     final required = item.needQty;
-    if (onhand == null || required == null) return '待 MRP 复核';
+    if (onhand == null || required == null) return '待物料分析复核';
     return onhand + 1e-6 >= required ? '即时库存够' : '即时库存不足';
   }
 

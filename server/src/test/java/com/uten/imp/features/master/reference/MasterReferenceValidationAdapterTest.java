@@ -166,6 +166,90 @@ class MasterReferenceValidationAdapterTest {
     }
 
     @Test
+    void acceptsExternalSupplierWithLegacyNullStatusAndLocksTheReference() throws Exception {
+        EntityManager em = mock(EntityManager.class);
+        tupleQuery(em, new Object[]{false, null, false});
+        MasterReferenceValidationAdapter adapter = adapter(
+                em, mock(OwnerVisibility.class), false);
+
+        adapter.requireSelectableSupplier(UUID.randomUUID());
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertTrue(sql.getValue().contains("FOR SHARE"));
+        assertTrue(sql.getValue().contains("is_internal_workshop"));
+    }
+
+    @Test
+    void rejectsDisabledOrInternalWorkshopSupplier() throws Exception {
+        EntityManager disabledEm = mock(EntityManager.class);
+        tupleQuery(disabledEm, new Object[]{false, "禁用", false});
+        MasterReferenceValidationAdapter disabled = adapter(
+                disabledEm, mock(OwnerVisibility.class), false);
+
+        ApiException disabledError = assertThrows(
+                ApiException.class,
+                () -> disabled.requireSelectableSupplier(UUID.randomUUID()));
+        assertEquals(ErrorCode.CONFLICT, disabledError.getCode());
+
+        EntityManager workshopEm = mock(EntityManager.class);
+        tupleQuery(workshopEm, new Object[]{false, "使用", true});
+        MasterReferenceValidationAdapter workshop = adapter(
+                workshopEm, mock(OwnerVisibility.class), false);
+
+        ApiException workshopError = assertThrows(
+                ApiException.class,
+                () -> workshop.requireSelectableSupplier(UUID.randomUUID()));
+        assertEquals(ErrorCode.CONFLICT, workshopError.getCode());
+    }
+
+    @Test
+    void acceptsExplicitlyActiveSupplier() throws Exception {
+        EntityManager em = mock(EntityManager.class);
+        tupleQuery(em, new Object[]{false, "使用", false});
+        MasterReferenceValidationAdapter adapter = adapter(
+                em, mock(OwnerVisibility.class), false);
+
+        adapter.requireSelectableSupplier(UUID.randomUUID());
+    }
+
+    @Test
+    void rejectsDeletedOrUnknownSupplier() throws Exception {
+        EntityManager deletedEm = mock(EntityManager.class);
+        tupleQuery(deletedEm, new Object[]{true, "使用", false});
+        MasterReferenceValidationAdapter deleted = adapter(
+                deletedEm, mock(OwnerVisibility.class), false);
+        ApiException deletedError = assertThrows(
+                ApiException.class,
+                () -> deleted.requireSelectableSupplier(UUID.randomUUID()));
+        assertEquals(ErrorCode.CONFLICT, deletedError.getCode());
+
+        EntityManager missingEm = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        when(missingEm.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        MasterReferenceValidationAdapter missing = adapter(
+                missingEm, mock(OwnerVisibility.class), false);
+        ApiException missingError = assertThrows(
+                ApiException.class,
+                () -> missing.requireSelectableSupplier(UUID.randomUUID()));
+        assertEquals(ErrorCode.NOT_FOUND, missingError.getCode());
+    }
+
+    @Test
+    void rejectsMissingSupplierReference() throws Exception {
+        MasterReferenceValidationAdapter adapter = adapter(
+                mock(EntityManager.class), mock(OwnerVisibility.class), false);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> adapter.requireSelectableSupplier(null));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+    }
+
+    @Test
     void rejectsMigrationStubGoodsFromNewBusiness() throws Exception {
         EntityManager em = mock(EntityManager.class);
         OwnerVisibility visibility = mock(OwnerVisibility.class);

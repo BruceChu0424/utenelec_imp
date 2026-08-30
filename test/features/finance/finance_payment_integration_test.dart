@@ -260,7 +260,9 @@ void main() {
     tester,
   ) async {
     final api = await _pumpEditor(tester, detail: _appliedPaymentDetail());
-    final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(_financeGrid());
+    final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
+      _financeGrid(),
+    );
     grid.controller.rows.single.amount.text = '50.12345';
 
     await tester.tap(find.text('保存'));

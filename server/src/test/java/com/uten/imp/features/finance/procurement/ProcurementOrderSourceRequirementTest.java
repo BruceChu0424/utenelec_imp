@@ -62,7 +62,8 @@ class ProcurementOrderSourceRequirementTest {
                 mock(PurchaseLineUnitPolicy.class),
                 mock(ProcurementApprovalProjectionQuery.class),
                 mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
-                mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class));
+                mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class),
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
 
         ApiException error =
                 assertThrows(ApiException.class, () -> service.create(request));
@@ -107,7 +108,8 @@ class ProcurementOrderSourceRequirementTest {
                         mock(ProcurementApprovalProjectionQuery.class),
                         mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
                         mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
-                        mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class));
+                        mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
+                        mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
 
         // 手工行不再被「必须关联委外申请明细」拦截；mock 环境下只会停在后续的
         // 货品主档快照缺失校验（证明流程已越过来源校验进入保存管线）。

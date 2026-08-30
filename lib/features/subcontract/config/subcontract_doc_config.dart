@@ -38,6 +38,8 @@ class SubcontractDocConfig {
     this.hasSupplier = false,
     this.hasCurrency = false,
     this.supplierRequired = false,
+    // 订货单：表头不录委外商，明细逐行必选（保存按委外商拆单归集）
+    this.supplierOnRowOnly = false,
     this.warehouseRequired = false,
     this.hasWarehouse = true,
     this.hasPurchaser = false,
@@ -97,6 +99,10 @@ class SubcontractDocConfig {
   final bool hasSupplier; // 委外商（=suppliers）
   final bool hasCurrency; // 币种（汇率不展示不录入：固定 1 随单保存，保进仓/退货快照一致）
   final bool supplierRequired;
+
+  /// 委外商只在明细行录入（订货单）：表头不显示委外商字段，每行必选，
+  /// 保存时按行委外商自动拆单（一单一商）。进仓/发料/退货等仍走表头单一委外商。
+  final bool supplierOnRowOnly;
   final bool warehouseRequired;
 
   /// 单据是否涉及仓库选择。订货单=false：订货只管向委外商下单，
@@ -204,6 +210,8 @@ class SubcontractDocConfig {
     permissions: DocumentPermissionCatalog.subcontractOrder,
     hasSupplier: true,
     supplierRequired: true,
+    // 表头不录委外商：明细逐行必选（按行委外商拆单归集），减轻表头填写。
+    supplierOnRowOnly: true,
     hasCurrency: true,
     hasTaxRate: true,
     hasSettlement: true,

@@ -36,7 +36,7 @@ class ProductionExecutionPlanningServiceBomControlStageTest {
         ProductionExecutionPlanningService.Snapshot snapshot =
                 harness.service().preview(UUID.randomUUID(), UUID.randomUUID());
 
-        assertThat(snapshot.noBomPlanItemIds()).isEmpty();
+        assertThat(snapshot.unresolvedZeroMaterialLineageIds()).isEmpty();
         assertThat(snapshot.productLines()).singleElement()
                 .satisfies(line -> {
                     assertThat(line.materials()).isEmpty();

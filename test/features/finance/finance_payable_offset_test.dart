@@ -2,13 +2,16 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/payables/models/finance_payable.dart';
 import 'package:uten_imp/features/finance/payables/pages/finance_payables_page.dart';
 import 'package:uten_imp/features/finance/payables/repositories/finance_payables_repository.dart';
 import 'package:uten_imp/features/finance/payables/widgets/supplier_credit_apply_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
   test(
@@ -84,6 +87,9 @@ void main() {
   testWidgets('credit shows apply action while prepayment shows hard block', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _PageApi();
     tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -93,8 +99,11 @@ void main() {
       ProviderScope(
         overrides: [
           financePayablesRepositoryProvider.overrideWithValue(
-            FinancePayablesRepository(_PageApi()),
+            FinancePayablesRepository(api),
           ),
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          settlementMethodOptionsProvider.overrideWith((_) async => const []),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.arApLedgerView,
             Perm.financeViewAll,

@@ -1429,12 +1429,14 @@ public class SalesOrderService {
         order.setPartialShipmentConfirmationReason(
                 confirmed ? req.getReason().trim() : null);
         orderRepo.save(order);
-        currentUser.get().ifPresent(u -> auditService.logExplicit(
+        currentUser.get().ifPresent(u -> auditService.logCommitted(
                 u.getId(), u.getUsername(),
                 confirmed
                         ? "sales_partial_shipment_confirm"
                         : "sales_partial_shipment_revoke",
-                "sales_order", id.toString(), req.getReason().trim()));
+                "sales_order",
+                "订单=" + id + "；原因=已填写",
+                "success"));
         return detail(id);
     }
 
@@ -1474,9 +1476,11 @@ public class SalesOrderService {
         it.setPriority(priority);
         itemRepo.save(it);
         String reason = req.getReason() == null ? "" : req.getReason().trim();
-        currentUser.get().ifPresent(u -> auditService.logExplicit(u.getId(), u.getUsername(),
-                "sales_order_priority", "sales_order_item", orderItemId.toString(),
-                "优先级 " + old + "→" + priority + (reason.isEmpty() ? "" : "；原因：" + reason)));
+        currentUser.get().ifPresent(u -> auditService.logCommitted(u.getId(), u.getUsername(),
+                "sales_order_priority", "sales_order_item",
+                "订单行=" + orderItemId + "；优先级=" + old + "→" + priority
+                        + (reason.isEmpty() ? "" : "；原因=已填写"),
+                "success"));
         return detail(it.getOrderId());
     }
 
@@ -1544,9 +1548,11 @@ public class SalesOrderService {
             throw new ApiException(ErrorCode.CONFLICT, "订单预留累计小于让单量，禁止自动吞并错账");
         }
         String reason = req.getReason().trim();
-        currentUser.get().ifPresent(u -> auditService.logExplicit(u.getId(), u.getUsername(),
-                "sales_reservation_yield", "sales_order_item", orderItemId.toString(),
-                "让单释放预留 " + yieldRow.stripTrailingZeros().toPlainString() + "；原因：" + reason));
+        currentUser.get().ifPresent(u -> auditService.logCommitted(u.getId(), u.getUsername(),
+                "sales_reservation_yield", "sales_order_item",
+                "订单行=" + orderItemId + "；释放预留="
+                        + yieldRow.stripTrailingZeros().toPlainString() + "；原因=已填写",
+                "success"));
         // 3) 旁路通知被让单的归属销售（缺口已回待排产，提交后发送）
         chainNotice.notifyReservationYielded(orderItemId, yieldRow.stripTrailingZeros().toPlainString(),
                 reason, req.getYielderOrderNo());

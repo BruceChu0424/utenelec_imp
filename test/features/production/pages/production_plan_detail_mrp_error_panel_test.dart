@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/pages/production_plan_detail_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -10,104 +11,124 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import '../../../support/document_scope_capability_overrides.dart';
 
 void main() {
-  group('ProductionMrpErrorGuidance', () {
-    test('classifies a missing BOM response', () {
-      final guidance = ProductionMrpErrorGuidance.fromServerMessage(
-        '至少一个生产计划行没有有效 BOM，无法生成物料需求',
-      );
+  testWidgets(
+    'approved direct-make plan skips legacy MRP and shows the execution chain',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final requests = <RequestOptions>[];
+      final api = _directMakeApprovedPlanDetailApi(requests);
 
-      expect(guidance.title, '计划产品缺少有效 BOM');
-      expect(guidance.nextStep, contains('所有计划行'));
-    });
-
-    test('classifies a multi-level BOM response', () {
-      final guidance = ProductionMrpErrorGuidance.fromServerMessage(
-        '检测到多层 BOM，请先处理下层 BOM',
-      );
-
-      expect(guidance.title, 'BOM 层级当前无法处理');
-      expect(guidance.nextStep, contains('独立生产计划'));
-    });
-
-    test('classifies combined color and unit validation', () {
-      final guidance = ProductionMrpErrorGuidance.fromServerMessage(
-        'BOM 颜色不存在，单位换算率无效',
-      );
-
-      expect(guidance.title, 'BOM 颜色或单位资料不完整');
-      expect(guidance.nextStep, contains('基本单位和换算率'));
-    });
-
-    test('explains unit validation scope and BOM unit semantics', () {
-      final guidance = ProductionMrpErrorGuidance.fromServerMessage(
-        '货品 V51115 存在未完成采购行的单位或换算率无效，禁止计算齐套',
-      );
-
-      expect(guidance.title, '物料单位或换算率无效');
-      expect(guidance.nextStep, contains('不另设 BOM 单位'));
-      expect(guidance.nextStep, contains('仍有未收数量'));
-      expect(guidance.nextStep, contains('没有未完成采购行'));
-    });
-
-    test('keeps a useful fallback for unknown server errors', () {
-      final guidance = ProductionMrpErrorGuidance.fromServerMessage(
-        'unexpected validation failure',
-      );
-
-      expect(guidance.title, '物料需求接口校验失败');
-      expect(guidance.nextStep, contains('服务端原始提示'));
-    });
-  });
-
-  testWidgets('shows guidance, raw error and an enabled retry action', (
-    tester,
-  ) async {
-    var retries = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 360,
-            child: ProductionMrpErrorPanel(
-              serverMessage: '产品 280149012 没有有效 BOM',
-              onRetry: () => retries++,
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionWriteAllDocumentScope(),
+            productionPlanRepositoryProvider.overrideWithValue(
+              ProductionPlanRepository(api),
             ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionPlanView,
+            }),
+          ],
+          child: MaterialApp(
+            builder: (context, child) => Stack(
+              children: [
+                child!,
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: AppNotificationHost(),
+                ),
+              ],
+            ),
+            home: const ProductionPlanDetailPage(id: 'plan-1'),
           ),
         ),
-      ),
-    );
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('计划产品缺少有效 BOM'), findsOneWidget);
-    expect(find.textContaining('下一步：'), findsOneWidget);
-    expect(find.text('服务端原始提示'), findsOneWidget);
-    expect(find.text('产品 280149012 没有有效 BOM'), findsOneWidget);
-    expect(find.text('重试加载'), findsOneWidget);
+      expect(find.text('执行单据与物料台账'), findsOneWidget);
+      expect(find.text('执行子计划'), findsOneWidget);
+      expect(find.text('零物料 · 无需发料'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('plan-1|0'))).dy,
+        lessThan(
+          tester
+              .getTopLeft(
+                find.byKey(const Key('production-execution-documents-card')),
+              )
+              .dy,
+        ),
+      );
+      expect(find.text('物料需求只读估算(MRP)'), findsNothing);
+      expect(find.textContaining('补建正式计划包'), findsNothing);
+      expect(find.textContaining('资料补齐前不能判断齐套'), findsNothing);
+      expect(find.textContaining('缺少有效 BOM'), findsNothing);
 
-    await tester.tap(find.text('重试加载'));
-    expect(retries, 1);
-  });
+      final paths = requests.map((request) => request.path).toList();
+      expect(paths, isNot(contains('/production/plans/plan-1/mrp')));
+      expect(
+        paths.where((path) => path.contains('/planning-preview')),
+        isEmpty,
+      );
+      expect(paths.where((path) => path.contains('/planning-draft')), isEmpty);
+      expect(
+        paths.where((path) => path.contains('/generate-planning-package')),
+        isEmpty,
+      );
 
-  testWidgets('disables retry while a retry is already running', (
-    tester,
-  ) async {
-    var retries = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ProductionMrpErrorPanel(
-            serverMessage: '单位换算率无效',
-            isRetrying: true,
-            onRetry: () => retries++,
+      final openDocuments = find.text('查看执行单据 / 打印工卡');
+      await tester.ensureVisible(openDocuments);
+      await tester.tap(openDocuments);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.textContaining('请从“物料分析准备”生成并审核计划'), findsOneWidget);
+      expect(find.textContaining('补建'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'approved plan without segments shows neutral recovery guidance',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _directMakeApprovedPlanDetailApi(
+        <RequestOptions>[],
+        withSegment: false,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionWriteAllDocumentScope(),
+            productionPlanRepositoryProvider.overrideWithValue(
+              ProductionPlanRepository(api),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionPlanView,
+            }),
+          ],
+          child: const MaterialApp(
+            home: ProductionPlanDetailPage(id: 'plan-1'),
           ),
         ),
-      ),
-    );
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('正在重试'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    await tester.tap(find.text('正在重试'));
-    expect(retries, 0);
-  });
+      expect(
+        find.byKey(const Key('production-execution-segments-empty')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('当前尚未形成执行子计划'), findsOneWidget);
+      expect(find.textContaining('物料分析准备'), findsOneWidget);
+      expect(find.text('刷新执行状态'), findsOneWidget);
+      expect(find.textContaining('补 BOM'), findsNothing);
+      expect(find.text('执行单据与物料台账'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'analysis draft returns to analysis, hides generic mutation and keeps approve independent',
@@ -264,7 +285,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final openResult = find.text('查看已生成单据 / 打印工卡');
+      final openResult = find.text('查看执行单据 / 打印工卡');
       await tester.ensureVisible(openResult);
       await tester.tap(openResult);
       await tester.pumpAndSettle();
@@ -322,6 +343,73 @@ void main() {
     expect(find.text('分批报工'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+ApiClient _directMakeApprovedPlanDetailApi(
+  List<RequestOptions> requests, {
+  bool withSegment = true,
+}) {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (request, handler) {
+        requests.add(request);
+        final Object data = switch (request.path) {
+          '/production/plans/plan-1' => <String, dynamic>{
+            'id': 'plan-1',
+            'makerId': 'maker-1',
+            'billNo': 'SJ-1',
+            'billDate': '2026-08-29',
+            'status': 1,
+            'materialAnalysisId': 'analysis-1',
+            'allowedActions': ['VIEW'],
+            'items': <Map<String, dynamic>>[],
+          },
+          '/production/plans/plan-1/mrp/subplans' => <Map<String, dynamic>>[],
+          '/production/plans/plan-1/mrp/planning-package-result' =>
+            <String, dynamic>{},
+          '/production/plans/plan-1/execution-segments' =>
+            withSegment
+                ? <Map<String, dynamic>>[
+                    {
+                      'id': 'segment-1',
+                      'packageId': 'package-1',
+                      'planId': 'plan-1',
+                      'sourcePlanItemId': 'plan-item-1',
+                      'segmentNo': 1,
+                      'segmentCode': 'ZX-001',
+                      'productGoodsId': 'goods-1',
+                      'productCode': 'P-001',
+                      'productName': '直接自制产品',
+                      'productUnitId': 'unit-1',
+                      'plannedQty': 10,
+                      'reportedQty': 0,
+                      'remainingQty': 10,
+                      'status': 'READY',
+                      'autoPromoteWhenReady': true,
+                      'materialKindCount': 0,
+                      'shortageKindCount': 0,
+                      'materialReady': true,
+                      'materialDemandCount': 0,
+                      'fullyIssuedDemandCount': 0,
+                      'materialIssued': true,
+                      'lockVersion': 1,
+                    },
+                  ]
+                : <Map<String, dynamic>>[],
+          _ => <Map<String, dynamic>>[],
+        };
+        handler.resolve(
+          Response<dynamic>(
+            requestOptions: request,
+            statusCode: 200,
+            data: data,
+          ),
+        );
+      },
+    ),
+  );
+  return ApiClient(dio);
 }
 
 ApiClient _planDetailApi() {

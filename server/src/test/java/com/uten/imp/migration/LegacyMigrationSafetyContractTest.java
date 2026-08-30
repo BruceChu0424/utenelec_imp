@@ -85,8 +85,8 @@ class LegacyMigrationSafetyContractTest {
     void destructiveBootstrapRequiresTheExactCurrentFlywayInventory() throws IOException {
         String shell = compact(Files.readString(LEGACY_ROOT.resolve("migrate.sh")));
         assertThat(shell)
-                .contains("expected_flyway_migration_count=387")
-                .contains("expected_flyway_head=425")
+                .contains("expected_flyway_migration_count=388")
+                .contains("expected_flyway_head=426")
                 .contains("uten-imp-flyway-checksums-v1")
                 .contains("select count(*), count(*) filter (where success), "
                         + "count(distinct version), coalesce(max(version::integer), 0) "
@@ -96,7 +96,22 @@ class LegacyMigrationSafetyContractTest {
                 .contains("cmp -s")
                 .contains("tail -n +2 \"$flyway_checksum_manifest\"")
                 .contains("'uten-imp-flyway-checksums.tsv'")
-                .contains("mapping_version=\"bootstrap-v9-v425\"");
+                .contains("mapping_version=\"bootstrap-v10-v426\"");
+
+        String legacyReadme = compact(Files.readString(LEGACY_ROOT.resolve("README.md")));
+        assertThat(legacyReadme)
+                .contains("最高 v426，共 388 个迁移文件、388 个唯一版本")
+                .contains("exact-set 一致的 388 行 checksum manifest")
+                .contains("bootstrap-v10-v426")
+                .contains("v426 不授权跨越或执行尚未获准的破坏性 v425");
+
+        String migrationReadme = compact(Files.readString(
+                Path.of("../docs/数据迁移/README.md")));
+        assertThat(migrationReadme)
+                .contains("当前源码候选目录是 v426/388")
+                .contains("源码校验已同步 v426/388 与 `bootstrap-v10-v426`")
+                .contains("受保护 388 行 manifest")
+                .contains("v426 不授权跨越或执行尚未获准的破坏性 v425");
     }
 
     @Test

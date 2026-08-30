@@ -9,6 +9,11 @@
 > 分支、打 tag、dispatch release.yml**——release.yml 的 Protected source gate 会 fail-closed，但不得以
 > “试试看”的方式验证。人员 Git 签名、Release 制品签名、服务器管理员 SSH 密钥和服务器 Host Key 是四类
 > 独立 authority，禁止复用。
+>
+> **2026-08-29 单维护者口径**：公司当前只有 1 名维护者。源码 PR 不虚构第二审批人，也不以购买
+> Enterprise 作为内部开发前置；PR required approvals 设为 0，由最终 diff 自审 + required checks 留证。
+> internal-test 继续执行 ADR-044 的离线签名和人工激活补偿控制。下方 2026-08-15 网页实测保留为
+> 历史快照，当前远端设置仍需重新读回，不能用该快照冒充现状。
 
 ## 执行状态（2026-08-15 凌晨实测，先于一切步骤阅读）
 
@@ -29,7 +34,9 @@
 
 ## 0. 前置事实（已核对工作流源码）
 
-- Quality Gate 工作流（`quality.yml`）在 push 到 main 时运行，三个 job 名：`Secret history scan`、`Backend / Java 21`、`Flutter / Web`——它们就是 main 的 required status checks 名称。
+- Quality Gate 工作流（`quality.yml`）当前在 PR 和 push 到 main 时运行四个 job：`Secret history scan`、
+  `Backend / Java 21`、`Flutter / Web`、`Deployment contracts`。CodeQL 与 OSV 另提供三个 job；
+  internal-test 候选按源码合同精确核对共七个 job。
 - 发布工作流（`release.yml`）只接受 `v*` tag 或带精确确认串 `CREATE_INITIAL_CANDIDATE_POINTER` 的手动 dispatch；运行时硬校验：
   - tag 必须被 ruleset/保护规则覆盖（`github.ref_protected=true`）；
   - tag 必须**精确指向当前 `origin/main` 头**（`git rev-parse refs/remotes/origin/main == GITHUB_SHA`）；
@@ -38,9 +45,9 @@
 - 仓库内 Actions 已全部按 commit SHA 钉住——配置时**不要**改成浮动 tag。
 - 2026-08-15 本机只读核对显示 `user.signingkey`、`commit.gpgsign`、`tag.gpgsign`、`gpg.format` 均未配置，
   `gh auth status` 也报告默认 token 无效；因此当前不能读回远端保护设置，更不能把历史截图当成现状。
-- GitHub 当前官方文档说明：Free/Pro/Team 的 Environment required reviewers 只适用于 public repository；
-  私有仓库若要满足本文的 required-reviewer + prevent-self-review 合同，必须使用支持该能力的 Enterprise
-  方案，或先完成并审计一套外部双人审批/离线签名替代设计。不得为了取得该功能把 ERP 仓库改成 public。
+- GitHub 当前官方文档说明：Free/Pro/Team 的 Environment required reviewers 只适用于 public repository。
+  当前单维护者内部开发不启用无法履行的 required-reviewer + prevent-self-review 假门禁，也不得为此把
+  ERP 仓库改成 public；发布补偿控制按 ADR-044 的独立设备/密钥、离线签名、decision record 和人工激活执行。
   参考：<https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments>。
 
 ### 0.1 先冻结最终仓库身份与套餐
@@ -75,12 +82,11 @@ OSS 或服务器凭据。H01–H12/项目 `known_hosts` 不齐时，包括只读
 
 - Target：default branch（`main`）。
 - Rules 勾选：
-  - **Require a pull request before merging**（至少 1 名非作者 approving reviewer；有三名独立人员时建议 2 名）；
-  - **Dismiss stale approvals**、**Require approval of the most recent reviewable push**、
-    **Require conversation resolution**；
+  - **Require a pull request before merging**；当前单维护者阶段 required approvals = 0，不虚构非作者 reviewer；
+  - **Require conversation resolution**；以后有独立维护者时再启用 stale/latest approval 规则；
   - **Require signed commits**；
-  - **Require status checks to pass** 且 branch 必须 up to date → 添加三个精确检查名：
-    `Secret history scan`、`Backend / Java 21`、`Flutter / Web`（先在非受保护功能分支/PR 运行
+  - **Require status checks to pass** 且 branch 必须 up to date → 添加四个精确 Quality Gate 检查名：
+    `Secret history scan`、`Backend / Java 21`、`Flutter / Web`、`Deployment contracts`（先在功能分支/PR 运行
     `quality.yml` 注册检查名，禁止为了注册检查直接 push main）；
   - 状态检查来源固定为预期 GitHub Actions App，不接受任意来源伪造同名 status；
   - **Block force pushes**、**Require linear history**、**Restrict deletions**、**Do not allow bypassing**。

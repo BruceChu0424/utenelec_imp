@@ -478,6 +478,7 @@ class ProductionMaterialAnalysisProduct {
     this.readyShipQty,
     this.readyByDateQty,
     this.readinessRatio = 0,
+    this.hasProductionMaterialChildren,
     this.status,
     this.allocationPriority,
     this.parentAnalysisLineId,
@@ -517,6 +518,12 @@ class ProductionMaterialAnalysisProduct {
   final double? readyShipQty;
   final double? readyByDateQty;
   final double readinessRatio;
+
+  /// 服务端物料分析快照中的结构事实：当前产品是否存在生产子层级。
+  ///
+  /// `null` 仅用于兼容尚未返回该字段的旧服务端；页面会退回同一响应中的
+  /// `flatMaterials` 判断，绝不按货品来源或主档策略猜测。
+  final bool? hasProductionMaterialChildren;
   final String? status;
   final int? allocationPriority;
 
@@ -563,6 +570,10 @@ class ProductionMaterialAnalysisProduct {
     readyShipQty: _double(json['readyShipQty']),
     readyByDateQty: _double(json['readyByDateQty']),
     readinessRatio: _normaliseRatio(json['readinessRatio']),
+    hasProductionMaterialChildren:
+        json.containsKey('hasProductionMaterialChildren')
+        ? json['hasProductionMaterialChildren'] == true
+        : null,
     status: _string(json['status']),
     allocationPriority: _int(json['allocationPriority']),
     parentAnalysisLineId: _string(json['parentAnalysisLineId']),

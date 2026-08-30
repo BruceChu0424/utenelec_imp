@@ -108,6 +108,13 @@ public class SupplierService {
                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            // 单据选商口径：仅「使用」状态（老库 status 为空的按启用处理）可被选择。
+            if (f.selectableOnly()) {
+                ps.add(cb.or(
+                        cb.isNull(root.get("status")),
+                        cb.equal(root.get("status"), "使用")));
+                ps.add(cb.isFalse(root.get("internalWorkshop")));
+            }
             if (subtreeIds != null) {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
@@ -278,7 +285,8 @@ public class SupplierService {
 
     // ===== 详情 / CRUD（不变） =====
 
-    /** 全量字典（采购单据页按 id 解析供应商名用）：全部未软删供应商，按名称排序。 */
+    /** 全量字典（采购单据页按 id 解析供应商名用）：全部未软删供应商，按名称排序。
+     *  含禁用项（status 供前端下拉过滤，名称解析需全量）；排除内部车间。 */
     @Transactional(readOnly = true)
     public List<SupplierDictItem> dict() {
         // 排除内部车间：车间=部门，不再作为委外商可选
@@ -286,7 +294,7 @@ public class SupplierService {
                 cb.isFalse(root.get("deleted")),
                 cb.isFalse(root.get("internalWorkshop")));
         return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
-                .map(m -> new SupplierDictItem(m.getId(), m.getCode(), m.getName()))
+                .map(m -> new SupplierDictItem(m.getId(), m.getCode(), m.getName(), m.getStatus()))
                 .toList();
     }
 

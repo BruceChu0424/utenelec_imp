@@ -66,10 +66,7 @@ void main() {
       );
 
       expect(find.text('保存订货单草稿'), findsOneWidget);
-      expect(
-        find.text('保存并提交财务审核'),
-        findsNothing,
-      );
+      expect(find.text('保存并提交财务审核'), findsNothing);
       expect(find.byIcon(Icons.save_outlined), findsOneWidget);
       expect(find.byIcon(Icons.send_outlined), findsNothing);
 

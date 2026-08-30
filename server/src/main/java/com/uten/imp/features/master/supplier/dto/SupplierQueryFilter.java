@@ -36,5 +36,35 @@ public record SupplierQueryFilter(
         String taxId,
         String website,
         String shipVia,
-        String shipAddress) {
+        String shipAddress,
+        boolean selectableOnly) {
+
+    /** 基础资料页全量列表用（不过滤状态）。 */
+    public SupplierQueryFilter(
+            UUID categoryId,
+            String keyword,
+            Set<String> nullFields,
+            String name,
+            String description,
+            Integer tday,
+            String place,
+            String empId,
+            String legalPerson,
+            String linkman,
+            String mobile,
+            String phone,
+            String phone2,
+            String fax,
+            String postcode,
+            String address,
+            String bank,
+            String bankAccount,
+            String taxId,
+            String website,
+            String shipVia,
+            String shipAddress) {
+        this(categoryId, keyword, nullFields, name, description, tday, place, empId,
+                legalPerson, linkman, mobile, phone, phone2, fax, postcode, address,
+                bank, bankAccount, taxId, website, shipVia, shipAddress, false);
+    }
 }

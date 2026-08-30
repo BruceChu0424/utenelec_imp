@@ -70,7 +70,8 @@ class PasswordAccessInvalidationTest {
         when(encoder.encode("new-password")).thenReturn("new-hash");
         when(users.save(user)).thenReturn(user);
         when(users.bumpAuthVersion(user.getId())).thenReturn(1);
-        when(tokenIssuer.issueTokens(refreshedUser)).thenReturn(replacement);
+        when(tokenIssuer.issueTokensAfterPasswordChange(refreshedUser))
+                .thenReturn(replacement);
 
         PasswordService service = new PasswordService(
                 users,
@@ -98,7 +99,7 @@ class PasswordAccessInvalidationTest {
         order.verify(users).bumpAuthVersion(user.getId());
         order.verify(refreshTokens).revokeAllByUserId(user.getId());
         order.verify(users).findById(user.getId());
-        order.verify(tokenIssuer).issueTokens(refreshedUser);
+        order.verify(tokenIssuer).issueTokensAfterPasswordChange(refreshedUser);
         assertEquals(1, refreshedUser.getAuthVersion());
         assertFalse(refreshedUser.isMustChangePassword());
     }

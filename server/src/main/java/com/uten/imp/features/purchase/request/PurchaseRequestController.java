@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.request;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem;
 import com.uten.imp.features.purchase.request.dto.DecompositionPreviewRequest;
@@ -23,6 +24,7 @@ import java.util.UUID;
 public class PurchaseRequestController {
 
     private final PurchaseRequestService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('purchase_request:view')")
@@ -42,7 +44,15 @@ public class PurchaseRequestController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('purchase_request:view')")
     public RequestDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        RequestDetail result = service.detail(id);
+        auditViews.record(
+                "view_purchase_request_detail",
+                "purchase_requests",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "采购申请单");
+        return result;
     }
 
     @PostMapping("/decomposition-preview")

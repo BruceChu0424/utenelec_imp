@@ -66,10 +66,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             Claims claims;
             String tokenType;
             UUID subjectId;
+            UUID sessionId;
             try {
                 claims = jwtService.parse(token);
                 tokenType = requiredTokenType(claims);
                 subjectId = requiredSubjectId(claims);
+                sessionId = optionalSessionId(claims);
             } catch (JwtException | IllegalArgumentException ex) {
                 SecurityContextHolder.clearContext();
                 chain.doFilter(request, response);
@@ -118,7 +120,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     ? authUser.getImpersonatedBy() : authUser.getId();
             String auditActorAccount = authUser.getImpersonatedBy() != null
                     ? null : authUser.getLoginAccount();
-            AuditRequestContext.bindVerifiedActor(request, auditActorId, auditActorAccount);
+            AuditRequestContext.bindVerifiedActor(
+                    request, auditActorId, auditActorAccount, sessionId);
         }
         chain.doFilter(request, response);
     }
@@ -243,6 +246,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             throw new IllegalArgumentException("missing token subject");
         }
         return UUID.fromString(subject);
+    }
+
+    private UUID optionalSessionId(Claims claims) {
+        Object value = claims.get("sid");
+        if (value == null) {
+            // Compatibility window for access tokens issued before V428.
+            return null;
+        }
+        if (!(value instanceof String text) || text.isBlank()) {
+            throw new IllegalArgumentException("invalid token session");
+        }
+        return UUID.fromString(text);
     }
 
     private Long numericClaim(Claims claims, String name) {

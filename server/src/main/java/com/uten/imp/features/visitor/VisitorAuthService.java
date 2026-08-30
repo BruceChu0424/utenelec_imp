@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
@@ -132,15 +133,19 @@ public class VisitorAuthService {
         account.setLastLoginAt(OffsetDateTime.now());
         accountRepo.save(account);
 
+        VisitorRefreshTokenService.IssuedRefreshToken refresh =
+                refreshService.issueNewSession(account.getId(), deviceInfo);
+        AuditRequestContext.bindCurrentSessionId(refresh.sessionId());
         String access = jwtService.issueVisitorAccess(
-                account.getId(), account.getVisitorNo(), account.getAvatarSeed(), VISITOR_PERMS);
-        String refresh = refreshService.issue(account.getId(), deviceInfo);
+                account.getId(), account.getVisitorNo(), account.getAvatarSeed(),
+                VISITOR_PERMS, refresh.sessionId());
         audit.logCommitted(account.getId(), maskPhone(phone), "visitor_login",
-                "visitor_account", account.getId().toString(), "success");
+                "visitor_account", account.getId().toString(), "success",
+                refresh.sessionId());
 
         return new VisitorAuthDto.VisitorTokenResponse(
                 access,
-                refresh,
+                refresh.rawToken(),
                 account.getId(),
                 account.getVisitorNo(),
                 account.getName(),
@@ -162,16 +167,19 @@ public class VisitorAuthService {
             throw ex;
         }
         if (outcome.reuseDetected()) {
-            compromiseService.revoke(outcome.subjectId(), outcome.tokenId());
+            compromiseService.revoke(
+                    outcome.subjectId(), outcome.tokenId(), outcome.sessionId());
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
 
         VisitorAccount account = outcome.account();
+        AuditRequestContext.bindCurrentSessionId(outcome.sessionId());
         String access = jwtService.issueVisitorAccess(
                 account.getId(),
                 account.getVisitorNo(),
                 account.getAvatarSeed(),
-                VISITOR_PERMS);
+                VISITOR_PERMS,
+                outcome.sessionId());
         return new VisitorAuthDto.VisitorTokenResponse(
                 access,
                 outcome.newRefreshToken(),
@@ -197,7 +205,8 @@ public class VisitorAuthService {
         refreshService.revoke(token.get(), null);
         audit.logCommitted(token.get().getVisitorAccountId(), null,
                 "visitor_logout", "visitor_refresh_tokens",
-                token.get().getId().toString(), "success");
+                token.get().getId().toString(), "success",
+                token.get().getSessionId());
     }
 
     private VisitorAccount newAccount(String phone, String phoneHash) {

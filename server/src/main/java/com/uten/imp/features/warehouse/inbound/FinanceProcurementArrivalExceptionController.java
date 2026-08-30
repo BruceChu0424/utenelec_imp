@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalDecisionRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
@@ -25,6 +26,7 @@ import java.util.UUID;
 public class FinanceProcurementArrivalExceptionController {
 
     private final ProcurementArrivalControlService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/tasks")
     public PageResponse<ArrivalExceptionTask> tasks(
@@ -40,7 +42,19 @@ public class FinanceProcurementArrivalExceptionController {
 
     @GetMapping("/{id}")
     public ArrivalExceptionTask detail(@PathVariable UUID id) {
-        return service.financeDetail(id);
+        ArrivalExceptionTask result = service.financeDetail(id);
+        String documentNo = result.receiptBillNo() == null
+                || result.receiptBillNo().isBlank()
+                ? result.orderBillNo()
+                : result.receiptBillNo();
+        detailViewAudit.record(
+                "view_finance_procurement_arrival_exception_detail",
+                "procurement_arrival_exceptions",
+                id,
+                documentNo,
+                null,
+                "采购到货异常财务审批");
+        return result;
     }
 
     @PostMapping("/{id}/decision")

@@ -1,5 +1,7 @@
 package com.uten.imp.audit;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -7,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 显式审计写入（登录/改密/重置密码等非数据变更事件）。
@@ -15,6 +19,8 @@ import java.util.Locale;
  */
 @Service
 public class AuditService {
+
+    private static final JsonMapper AUDIT_JSON = JsonMapper.builder().build();
 
     private final AuditLogRepository repo;
     private final AuditDeviceContext deviceContext;
@@ -28,6 +34,27 @@ public class AuditService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logExplicit(UUID actorId, String actorAccount, String action,
                             String targetType, String targetId, String result) {
+        persistBusinessEvent(
+                actorId, actorAccount, action, targetType, targetId, result, null);
+    }
+
+    /** Explicit authentication evidence with a server-authoritative session UUID. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void logExplicit(UUID actorId, String actorAccount, String action,
+                            String targetType, String targetId, String result,
+                            UUID sessionId) {
+        persistBusinessEvent(
+                actorId, actorAccount, action, targetType, targetId, result, sessionId);
+    }
+
+    private void persistBusinessEvent(
+            UUID actorId,
+            String actorAccount,
+            String action,
+            String targetType,
+            String targetId,
+            String result,
+            UUID sessionId) {
         AuditLog a = base(
                 truncate(action, 120),
                 truncate(targetType, 200),
@@ -36,7 +63,7 @@ public class AuditService {
         a.setActorId(actorId);
         a.setActorAccount(truncate(actorAccount, 200));
         a.setEventSource("business");
-        fillRequest(a);
+        fillRequest(a, currentRequest(), sessionId);
         repo.save(a);
         AuditRequestContext.markMeaningfulEventRecorded(currentRequest());
     }
@@ -49,17 +76,52 @@ public class AuditService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void logCommitted(UUID actorId, String actorAccount, String action,
                              String targetType, String targetId, String result) {
-        AuditLog a = base(
+        persistBusinessEvent(
+                actorId, actorAccount, action, targetType, targetId, result, null);
+    }
+
+    /** Transaction-bound success evidence with an explicit authentication session. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void logCommitted(UUID actorId, String actorAccount, String action,
+                             String targetType, String targetId, String result,
+                             UUID sessionId) {
+        persistBusinessEvent(
+                actorId, actorAccount, action, targetType, targetId, result, sessionId);
+    }
+
+    /**
+     * Fail-closed evidence that one detail object passed existence and
+     * object-scope checks and was resolved for the response. It does not claim
+     * that JSON conversion or client network delivery completed.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void logSuccessfulDetailView(
+            UUID actorId,
+            String actorAccount,
+            String action,
+            String targetType,
+            UUID targetId,
+            String viewDisplayName) {
+        AuditLog value = base(
                 truncate(action, 120),
                 truncate(targetType, 200),
-                truncate(targetId, 1000),
-                truncate(result, 500));
-        a.setActorId(actorId);
-        a.setActorAccount(truncate(actorAccount, 200));
-        a.setEventSource("business");
-        fillRequest(a);
-        repo.save(a);
-        AuditRequestContext.markMeaningfulEventRecorded(currentRequest());
+                targetId == null ? null : targetId.toString(),
+                "success");
+        value.setActorId(actorId);
+        value.setActorAccount(truncate(actorAccount, 200));
+        value.setEventSource("business");
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("view_metadata_kind", "business_detail_view");
+        metadata.put("view_display_name", truncate(viewDisplayName, 200));
+        try {
+            value.setAfter(AUDIT_JSON.writeValueAsString(metadata));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to encode detail-view audit metadata", exception);
+        }
+        HttpServletRequest request = currentRequest();
+        fillRequest(value, request);
+        repo.save(value);
+        AuditRequestContext.markMeaningfulEventRecorded(request);
     }
 
     /** One readable coverage row for every user-facing API request. */
@@ -124,6 +186,17 @@ public class AuditService {
     }
 
     private void fillRequest(AuditLog a, HttpServletRequest req) {
+        fillRequest(a, req, null);
+    }
+
+    private void fillRequest(
+            AuditLog a,
+            HttpServletRequest req,
+            UUID explicitSessionId) {
+        UUID sessionId = explicitSessionId != null
+                ? explicitSessionId
+                : AuditRequestContext.sessionId(req);
+        a.setSessionId(sessionId);
         if (req != null) {
             a.setIp(truncate(req.getRemoteAddr(), 64));
             a.setUserAgent(truncate(req.getHeader("User-Agent"), 1000));

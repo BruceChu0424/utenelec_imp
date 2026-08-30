@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Base64;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -30,17 +31,34 @@ public class RefreshTokenService {
         this.settings = settings;
     }
 
-    /** 签发新令牌：返回原始令牌（仅此一次交给客户端），库内只存哈希。 */
-    public String issue(UUID userId, String deviceInfo) {
+    public record IssuedRefreshToken(
+            String rawToken,
+            UUID tokenId,
+            UUID sessionId,
+            OffsetDateTime expiresAt) {
+    }
+
+    /** Starts one new login session and issues its first refresh token. */
+    public IssuedRefreshToken issueNewSession(UUID userId, String deviceInfo) {
+        return issueInSession(userId, deviceInfo, UUID.randomUUID());
+    }
+
+    /** Rotates within an existing server-authoritative login session. */
+    public IssuedRefreshToken issueInSession(
+            UUID userId,
+            String deviceInfo,
+            UUID sessionId) {
+        Objects.requireNonNull(sessionId, "sessionId");
         String raw = rawToken();
         RefreshToken t = new RefreshToken();
         t.setUserId(userId);
+        t.setSessionId(sessionId);
         t.setDeviceInfo(deviceInfo);
         t.setTokenHash(HashUtil.sha256(raw));
         t.setIssuedAt(OffsetDateTime.now());
         t.setExpiresAt(OffsetDateTime.now().plusDays(settings.readLong("jwt_refresh_ttl_days", 7)));
         repo.save(t);
-        return raw;
+        return new IssuedRefreshToken(raw, t.getId(), sessionId, t.getExpiresAt());
     }
 
     /** 标记某令牌已撤销（轮换时），并记录被哪个新令牌取代。 */

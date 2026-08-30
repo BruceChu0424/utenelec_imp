@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ReturnCompletionRequest;
@@ -25,6 +26,7 @@ import java.util.UUID;
 public class ProcurementArrivalExceptionController {
 
     private final ProcurementArrivalControlService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/tasks")
     public PageResponse<ArrivalExceptionTask> tasks(
@@ -42,7 +44,19 @@ public class ProcurementArrivalExceptionController {
 
     @GetMapping("/{id}")
     public ArrivalExceptionTask detail(@PathVariable UUID id) {
-        return service.ownerDetail(id);
+        ArrivalExceptionTask result = service.ownerDetail(id);
+        String documentNo = result.receiptBillNo() == null
+                || result.receiptBillNo().isBlank()
+                ? result.orderBillNo()
+                : result.receiptBillNo();
+        detailViewAudit.record(
+                "view_procurement_arrival_exception_detail",
+                "procurement_arrival_exceptions",
+                id,
+                documentNo,
+                null,
+                "采购到货异常");
+        return result;
     }
 
     @PostMapping("/return-tasks/{id}/complete")

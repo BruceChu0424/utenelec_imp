@@ -27,6 +27,13 @@ public class DailyReportSaveRequest {
     private UUID warehouseId;
     private UUID departmentId;
     private String workshopName;
+    /**
+     * Ordered whole-report participants. This is not line-level contribution
+     * or piece-rate/payroll evidence. New clients use this list; workerId is
+     * retained as the first responsible employee for legacy compatibility.
+     */
+    @Size(max = 100)
+    private List<@NotNull UUID> workerIds;
     private UUID workerId;
     private UUID supplierId;
     private String remark;

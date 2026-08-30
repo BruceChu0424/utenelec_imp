@@ -7,10 +7,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/audit_log_entry.dart';
+import '../models/audit_session.dart';
 
 abstract interface class AuditLogRepository {
   /// 分页搜索审计操作人员。候选不含系统任务，以 actorId 作为选择权威。
   Future<AuditActorPage> actors({int page = 1, int size = 20, String? keyword});
+
+  /// 按登录会话分页；服务端负责跨午夜边界和 sessionId 权威分组。
+  Future<AuditSessionPage> sessions({
+    required String actorId,
+    required String dateFrom,
+    required String dateTo,
+    int page = 1,
+    int size = 10,
+    int? snapshotAuditId,
+  });
+
+  /// 懒加载单个会话的事件；返回现有 AuditLogPage 以复用详情链路。
+  Future<AuditSessionEventPage> sessionEvents({
+    required String sessionId,
+    int size = 20,
+    String? cursorAt,
+    int? cursorId,
+    int? snapshotAuditId,
+  });
 
   /// 审计日志分页查询（按 createdAt DESC）。
   ///
@@ -81,6 +101,52 @@ class DioAuditLogRepository implements AuditLogRepository {
       },
     );
     return AuditActorPage.fromJson(Map<String, dynamic>.from(json as Map));
+  }
+
+  @override
+  Future<AuditSessionPage> sessions({
+    required String actorId,
+    required String dateFrom,
+    required String dateTo,
+    int page = 1,
+    int size = 10,
+    int? snapshotAuditId,
+  }) async {
+    final json = await api.get(
+      '/admin/audit-sessions',
+      query: <String, dynamic>{
+        'actorId': actorId,
+        'dateFrom': dateFrom,
+        'dateTo': dateTo,
+        'page': page,
+        'size': size,
+        'snapshotAuditId': ?snapshotAuditId,
+      },
+    );
+    return AuditSessionPage.fromJson(Map<String, dynamic>.from(json as Map));
+  }
+
+  @override
+  Future<AuditSessionEventPage> sessionEvents({
+    required String sessionId,
+    int size = 20,
+    String? cursorAt,
+    int? cursorId,
+    int? snapshotAuditId,
+  }) async {
+    final safeSessionId = Uri.encodeComponent(sessionId.trim());
+    final json = await api.get(
+      '/admin/audit-sessions/$safeSessionId/events',
+      query: <String, dynamic>{
+        'size': size,
+        'cursorAt': ?cursorAt,
+        'cursorId': ?cursorId,
+        'snapshotAuditId': ?snapshotAuditId,
+      },
+    );
+    return AuditSessionEventPage.fromJson(
+      Map<String, dynamic>.from(json as Map),
+    );
   }
 
   @override

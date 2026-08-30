@@ -28,6 +28,18 @@ class AuditServiceTransactionContractTest {
 
         assertEquals(Propagation.MANDATORY, transactional.propagation(),
                 "claim success audit must not open an independent transaction");
+        Method sessionAware = AuditService.class.getMethod(
+                "logCommitted",
+                java.util.UUID.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                java.util.UUID.class);
+        assertEquals(
+                Propagation.MANDATORY,
+                sessionAware.getAnnotation(Transactional.class).propagation());
     }
 
     @Test
@@ -44,6 +56,35 @@ class AuditServiceTransactionContractTest {
         Transactional transactional = method.getAnnotation(Transactional.class);
 
         assertEquals(Propagation.REQUIRES_NEW, transactional.propagation());
+        Method sessionAware = AuditService.class.getMethod(
+                "logExplicit",
+                java.util.UUID.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                java.util.UUID.class);
+        assertEquals(
+                Propagation.REQUIRES_NEW,
+                sessionAware.getAnnotation(Transactional.class).propagation());
+    }
+
+    @Test
+    void authorizedDetailViewAuditFailsClosedInAnIndependentTransaction()
+            throws Exception {
+        Method method = AuditService.class.getMethod(
+                "logSuccessfulDetailView",
+                java.util.UUID.class,
+                String.class,
+                String.class,
+                String.class,
+                java.util.UUID.class,
+                String.class);
+        Transactional transactional = method.getAnnotation(Transactional.class);
+
+        assertEquals(Propagation.REQUIRES_NEW, transactional.propagation(),
+                "a successful detail response must not be returned without its audit row");
     }
 
     @Test
@@ -118,6 +159,8 @@ class AuditServiceTransactionContractTest {
         org.junit.jupiter.api.Assertions.assertTrue(
                 password.contains("audit.logCommitted(")
                         && password.contains("\"change_password\""));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                password.contains("issueTokensAfterPasswordChange"));
         org.junit.jupiter.api.Assertions.assertTrue(
                 password.contains("audit.logExplicit")
                         && password.contains("change_password_failed"));

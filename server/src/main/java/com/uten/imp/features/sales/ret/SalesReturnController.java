@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.ret;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.sales.ret.dto.ReturnDetail;
 import com.uten.imp.features.sales.ret.dto.ReturnListItem;
 import com.uten.imp.features.sales.ret.dto.ReturnQueryFilter;
@@ -45,6 +46,7 @@ public class SalesReturnController {
 
     private final SalesReturnService service;
     private final SalesReturnQualityService qualityService;
+    private final AuditDetailViewRecorder viewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('sales_return:view')")
@@ -66,7 +68,11 @@ public class SalesReturnController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_return:view')")
     public ReturnDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ReturnDetail detail = service.detail(id);
+        viewAudit.record(
+                "view_sales_return_detail", "sales_returns", id,
+                detail.getBillNo(), detail.getLegacyId(), "销售退货单");
+        return detail;
     }
 
     @PostMapping

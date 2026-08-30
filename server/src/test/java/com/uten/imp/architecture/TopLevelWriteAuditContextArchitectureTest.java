@@ -161,10 +161,8 @@ class TopLevelWriteAuditContextArchitectureTest {
         assertBefore(LOGIN, "public TokenResponse login(",
                 "tx.bindActor(user.getId(), user.getLoginAccount());",
                 "userRepo.save(");
-        String quote = Character.toString(34);
         String successfulLoginAudit =
-                "audit.logExplicit(user.getId(), user.getLoginAccount(), "
-                        + quote + "login" + quote;
+                "audit.logCommitted(user.getId(), user.getLoginAccount(),";
         assertBefore(LOGIN, "public TokenResponse login(",
                 "TokenResponse response = tokenIssuer.issueTokens(user);",
                 successfulLoginAudit);

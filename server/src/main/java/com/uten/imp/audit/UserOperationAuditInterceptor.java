@@ -91,9 +91,15 @@ public class UserOperationAuditInterceptor implements HandlerInterceptor {
         String method = request.getMethod().toUpperCase(Locale.ROOT);
         String path = request.getRequestURI();
         try {
+            AuditRequestContext.VerifiedActor verifiedActor =
+                    AuditRequestContext.verifiedActor(request);
             auditService.logHttpOperation(
-                    user == null ? null : user.getId(),
-                    user == null ? null : user.getLoginAccount(),
+                    verifiedActor == null
+                            ? user == null ? null : user.getId()
+                            : verifiedActor.actorId(),
+                    verifiedActor == null
+                            ? user == null ? null : user.getLoginAccount()
+                            : verifiedActor.actorAccount(),
                     method,
                     path,
                     AuditRequestContext.routeGroup(path),

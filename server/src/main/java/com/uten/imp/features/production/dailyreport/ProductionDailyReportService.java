@@ -50,6 +50,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Map;
@@ -155,24 +156,29 @@ public class ProductionDailyReportService {
         UUID actorId = currentUser.requireId();
         String idempotencyKey =
                 normalizeCreateIdempotencyKey(req.getIdempotencyKey());
+        List<UUID> workerIds = normalizeWorkerIds(req);
         String requestHash = createRequestHash(req);
         lockCreateCommand(actorId, idempotencyKey);
         CreateCommand replay = findCreateCommand(actorId, idempotencyKey);
         if (replay != null) {
-            if (!requestHash.equals(replay.requestHash())) {
+            boolean legacyReplay = req.getWorkerIds() == null
+                    && legacyCreateRequestHash(req).equals(replay.requestHash());
+            if (!requestHash.equals(replay.requestHash()) && !legacyReplay) {
                 throw new ApiException(
                         ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报创建请求");
             }
             return detail(replay.reportId());
         }
+        validateWorkerIds(workerIds);
 
         ProductionDailyReport r = new ProductionDailyReport();
-        applyHeader(req, r);
+        applyHeader(req, r, workerIds);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（对象级归属）
         r.setStatus(STATUS_DRAFT);
         reportRepo.saveAndFlush(r);
         saveItems(r, req.getItems());
         itemRepo.flush();
+        syncReportWorkers(r.getId(), workerIds);
         recordCreateCommand(
                 actorId, idempotencyKey, requestHash, r.getId());
         return detail(r.getId());
@@ -187,10 +193,13 @@ public class ProductionDailyReportService {
         requireExpectedVersion(req == null ? null : req.getExpectedVersion(),
                 r.getRowVersion());
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
-        applyHeader(req, r);
+        List<UUID> workerIds = normalizeWorkerIds(req);
+        validateWorkerIds(workerIds);
+        applyHeader(req, r, workerIds);
         itemRepo.deleteByReportId(id);
         itemRepo.flush();
         saveItems(r, req.getItems());
+        syncReportWorkers(id, workerIds);
         // An item-only edit must still dirty the header so JPA @Version advances.
         r.setUpdatedAt(java.time.Instant.now());
         reportRepo.saveAndFlush(r);
@@ -1175,21 +1184,77 @@ public class ProductionDailyReportService {
     }
 
     /**
+     * New clients author the ordered list. A missing list means an old client,
+     * so its single workerId is lifted into the same canonical representation.
+     * An explicitly empty list clears both the relation and legacy header.
+     */
+    static List<UUID> normalizeWorkerIds(DailyReportSaveRequest request) {
+        if (request == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "生产日报请求不能为空");
+        }
+        List<UUID> requested = request.getWorkerIds();
+        if (requested == null) {
+            return request.getWorkerId() == null
+                    ? List.of() : List.of(request.getWorkerId());
+        }
+        if (requested.size() > 100) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "生产日报参与人员最多 100 人");
+        }
+        LinkedHashSet<UUID> normalized = new LinkedHashSet<>();
+        for (UUID employeeId : requested) {
+            if (employeeId == null) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED, "生产日报参与人员不能为空");
+            }
+            normalized.add(employeeId);
+        }
+        return List.copyOf(normalized);
+    }
+
+    /**
      * Canonical create payload. Server-owned bill numbers, retry metadata and
      * readable plan/order number snapshots are intentionally excluded.
      */
     static String createRequestHash(DailyReportSaveRequest request) {
+        return createRequestHash(request, false);
+    }
+
+    /**
+     * V409 command rows created before V427 used the single workerId field in
+     * their hash. Old-client retries remain replayable after the forward
+     * migration, while every new command is recorded with the ordered list.
+     */
+    static String legacyCreateRequestHash(
+            DailyReportSaveRequest request) {
+        return createRequestHash(request, true);
+    }
+
+    private static String createRequestHash(
+            DailyReportSaveRequest request, boolean legacyWorkers) {
         if (request == null) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "生产日报创建请求不能为空");
         }
         List<String> parts = new ArrayList<>();
-        addCanonical(parts, "schema", "PRODUCTION-DAILY-REPORT-CREATE-V1");
+        addCanonical(parts, "schema", legacyWorkers
+                ? "PRODUCTION-DAILY-REPORT-CREATE-V1"
+                : "PRODUCTION-DAILY-REPORT-CREATE-V2");
         addCanonical(parts, "header.billDate", request.getBillDate());
         addCanonical(parts, "header.warehouseId", request.getWarehouseId());
         addCanonical(parts, "header.departmentId", request.getDepartmentId());
         addCanonical(parts, "header.workshopName", request.getWorkshopName());
-        addCanonical(parts, "header.workerId", request.getWorkerId());
+        if (legacyWorkers) {
+            addCanonical(parts, "header.workerId", request.getWorkerId());
+        } else {
+            List<UUID> workerIds = normalizeWorkerIds(request);
+            addCanonical(parts, "header.workerIds.count", workerIds.size());
+            for (int index = 0; index < workerIds.size(); index++) {
+                addCanonical(parts, "header.workerIds[" + index + "]",
+                        workerIds.get(index));
+            }
+        }
         addCanonical(parts, "header.supplierId", request.getSupplierId());
         addCanonical(parts, "header.remark", request.getRemark());
         addCanonical(parts, "header.sourceDocNo", request.getSourceDocNo());
@@ -1268,7 +1333,81 @@ public class ProductionDailyReportService {
         parts.add(path + "=" + canonical);
     }
 
-    private void applyHeader(DailyReportSaveRequest req, ProductionDailyReport r) {
+    private void validateWorkerIds(List<UUID> workerIds) {
+        if (workerIds.isEmpty()) return;
+        List<UUID> lockOrder = List.copyOf(new TreeSet<>(workerIds));
+        List<UUID> valid = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                WITH RECURSIVE production_department_tree AS (
+                                    SELECT department.id
+                                    FROM departments department
+                                    WHERE department.code = 'DEPT_PROD'
+                                      AND department.is_deleted = FALSE
+                                    UNION ALL
+                                    SELECT child.id
+                                    FROM departments child
+                                    JOIN production_department_tree parent
+                                      ON parent.id = child.parent_id
+                                    WHERE child.is_deleted = FALSE
+                                )
+                                SELECT employee.id
+                                FROM employees employee
+                                JOIN production_department_tree scope
+                                  ON scope.id = employee.department_id
+                                WHERE employee.id IN (:ids)
+                                  AND employee.is_deleted = FALSE
+                                  AND employee.status IN ('active', 'probation')
+                                ORDER BY employee.id
+                                FOR SHARE OF employee
+                                """)
+                        .setParameter("ids", lockOrder),
+                UUID.class);
+        if (valid.size() != lockOrder.size()) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "生产日报参与人员必须是生产部组织树内未删除且在职或试用的员工");
+        }
+    }
+
+    private void syncReportWorkers(UUID reportId, List<UUID> workerIds) {
+        em.createNativeQuery("""
+                        DELETE FROM production_daily_report_workers
+                        WHERE report_id = :reportId
+                        """)
+                .setParameter("reportId", reportId)
+                .executeUpdate();
+        for (int index = 0; index < workerIds.size(); index++) {
+            em.createNativeQuery("""
+                            INSERT INTO production_daily_report_workers(
+                                report_id, employee_id, sort_order)
+                            VALUES (:reportId, :employeeId, :sortOrder)
+                            """)
+                    .setParameter("reportId", reportId)
+                    .setParameter("employeeId", workerIds.get(index))
+                    .setParameter("sortOrder", index + 1)
+                    .executeUpdate();
+        }
+    }
+
+    private List<UUID> reportWorkerIds(
+            UUID reportId, UUID legacyWorkerId) {
+        if (legacyWorkerId == null) return List.of();
+        List<UUID> workerIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT employee_id
+                                FROM production_daily_report_workers
+                                WHERE report_id = :reportId
+                                ORDER BY sort_order, id
+                                """)
+                        .setParameter("reportId", reportId),
+                UUID.class);
+        return workerIds.isEmpty() ? List.of(legacyWorkerId) : workerIds;
+    }
+
+    private void applyHeader(
+            DailyReportSaveRequest req,
+            ProductionDailyReport r,
+            List<UUID> workerIds) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PRODUCTION_DAILY_REPORT));
@@ -1277,7 +1416,7 @@ public class ProductionDailyReportService {
         r.setWarehouseId(req.getWarehouseId());
         r.setDepartmentId(req.getDepartmentId());
         r.setWorkshopName(req.getWorkshopName());
-        r.setWorkerId(req.getWorkerId());
+        r.setWorkerId(workerIds.isEmpty() ? null : workerIds.getFirst());
         r.setSupplierId(req.getSupplierId());
         r.setRemark(req.getRemark());
         r.setSourceDocNo(req.getSourceDocNo());
@@ -1432,7 +1571,8 @@ public class ProductionDailyReportService {
 
     private DailyReportDetail toDetail(ProductionDailyReport r, List<DailyReportItemDto> items) {
         return new DailyReportDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getWarehouseId(), r.getDepartmentId(), r.getWorkshopName(), r.getWorkerId(), r.getSupplierId(),
+                r.getWarehouseId(), r.getDepartmentId(), r.getWorkshopName(), r.getWorkerId(),
+                reportWorkerIds(r.getId(), r.getWorkerId()), r.getSupplierId(),
                 r.getMakerId(), r.getApproverId(), r.getMakerLegacyId(), r.getApproverLegacyId(), r.getRemark(),
                 r.getStatus(), r.isClosed(), r.isCanceled(), r.getSourceDocNo(), items,
                 nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), r.getRowVersion());

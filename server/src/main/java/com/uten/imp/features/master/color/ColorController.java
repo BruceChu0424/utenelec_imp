@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.color;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.color.dto.ColorDetail;
 import com.uten.imp.features.master.color.dto.ColorFacets;
@@ -42,6 +43,7 @@ import java.util.UUID;
 public class ColorController {
 
     private final ColorService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('color:view')")
@@ -72,7 +74,15 @@ public class ColorController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('color:view')")
     public ColorDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ColorDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_color_detail", "colors", id, displayName,
+                result.getLegacyId(), "颜色");
+        return result;
     }
 
     @PostMapping

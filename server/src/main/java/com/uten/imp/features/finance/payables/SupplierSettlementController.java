@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payables;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +23,7 @@ import static com.uten.imp.features.finance.payables.SupplierSettlementContracts
 @RequiredArgsConstructor
 public class SupplierSettlementController {
     private final SupplierSettlementService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('supplier_settlement:view')")
@@ -39,7 +41,16 @@ public class SupplierSettlementController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('supplier_settlement:view')")
     public BatchDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        BatchDetail result = service.detail(id);
+        String batchNo = result.summary() == null ? null : result.summary().batchNo();
+        detailViewAudit.record(
+                "view_supplier_settlement_detail",
+                "supplier_settlements",
+                id,
+                batchNo,
+                null,
+                "供应商对账单");
+        return result;
     }
 
     @PostMapping

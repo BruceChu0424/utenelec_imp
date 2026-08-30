@@ -25,6 +25,20 @@ int? _asInt(dynamic v) {
   return null;
 }
 
+List<String> _stringIds(Object? value, Object? fallback) {
+  final ids = <String>[];
+  final seen = <String>{};
+  if (value is List) {
+    for (final entry in value.whereType<String>()) {
+      if (entry.isNotEmpty && seen.add(entry)) ids.add(entry);
+    }
+  }
+  if (ids.isEmpty && fallback is String && fallback.isNotEmpty) {
+    ids.add(fallback);
+  }
+  return List.unmodifiable(ids);
+}
+
 double? _asDouble(dynamic v) {
   if (v == null) return null;
   if (v is double) return v;
@@ -43,6 +57,7 @@ class ProductionDailyReportListItem {
     this.departmentId,
     this.workshopName,
     this.workerId,
+    this.workerIds = const [],
     this.supplierId,
     this.status,
     this.closed = false,
@@ -57,6 +72,10 @@ class ProductionDailyReportListItem {
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
+
+  /// 整张日报的生产参与人员。首位同时作为旧 workerId 责任人兼容值。
+  /// 这里只证明整单参与，不表达行级贡献、分配权重或计件工资。
+  final List<String> workerIds;
   final String? supplierId;
   final int? status;
   final bool closed;
@@ -72,6 +91,7 @@ class ProductionDailyReportListItem {
         departmentId: json['departmentId'] as String?,
         workshopName: json['workshopName'] as String?,
         workerId: json['workerId'] as String?,
+        workerIds: _stringIds(json['workerIds'], json['workerId']),
         supplierId: json['supplierId'] as String?,
         status: _asInt(json['status']),
         closed: (json['closed'] as bool?) ?? false,
@@ -193,6 +213,7 @@ class ProductionDailyReportDetail {
     this.departmentId,
     this.workshopName,
     this.workerId,
+    this.workerIds = const [],
     this.supplierId,
     this.makerId,
     this.approverId,
@@ -217,6 +238,9 @@ class ProductionDailyReportDetail {
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
+
+  /// 整张日报的生产参与人员；不证明行级贡献或计件工资归属。
+  final List<String> workerIds;
   final String? supplierId;
   final String? makerId;
   final String? approverId;
@@ -246,6 +270,7 @@ class ProductionDailyReportDetail {
         departmentId: json['departmentId'] as String?,
         workshopName: json['workshopName'] as String?,
         workerId: json['workerId'] as String?,
+        workerIds: _stringIds(json['workerIds'], json['workerId']),
         supplierId: json['supplierId'] as String?,
         makerId: json['makerId'] as String?,
         makerName: json['makerName'] as String?,

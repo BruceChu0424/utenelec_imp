@@ -47,12 +47,26 @@ public class StaffTokenResponseFactory {
 
     @Transactional(readOnly = true)
     public TokenResponse build(UserAccount user, String rawRefresh) {
+        return build(user, rawRefresh, null);
+    }
+
+    @Transactional(readOnly = true)
+    public TokenResponse build(
+            UserAccount user,
+            String rawRefresh,
+            UUID sessionId) {
         UUID userId = user.getId();
         AuthorizationSnapshot snapshot = stableAuthorizationSnapshot(userId);
-        String access = jwtService.issueAccess(
-                userId,
-                snapshot.authVersion(),
-                snapshot.authorizationEpoch());
+        String access = sessionId == null
+                ? jwtService.issueAccess(
+                        userId,
+                        snapshot.authVersion(),
+                        snapshot.authorizationEpoch())
+                : jwtService.issueAccess(
+                        userId,
+                        snapshot.authVersion(),
+                        snapshot.authorizationEpoch(),
+                        sessionId);
         return new TokenResponse(
                 access,
                 rawRefresh,
@@ -75,14 +89,31 @@ public class StaffTokenResponseFactory {
      */
     @Transactional(readOnly = true)
     public TokenResponse buildImpersonation(UserAccount target, UUID adminUserId, Instant expiresAt) {
+        return buildImpersonation(target, adminUserId, expiresAt, null);
+    }
+
+    @Transactional(readOnly = true)
+    public TokenResponse buildImpersonation(
+            UserAccount target,
+            UUID adminUserId,
+            Instant expiresAt,
+            UUID sessionId) {
         UUID targetId = target.getId();
         AuthorizationSnapshot snapshot = stableAuthorizationSnapshot(targetId);
-        String access = jwtService.issueImpersonationAccess(
-                targetId,
-                snapshot.authVersion(),
-                snapshot.authorizationEpoch(),
-                adminUserId,
-                expiresAt);
+        String access = sessionId == null
+                ? jwtService.issueImpersonationAccess(
+                        targetId,
+                        snapshot.authVersion(),
+                        snapshot.authorizationEpoch(),
+                        adminUserId,
+                        expiresAt)
+                : jwtService.issueImpersonationAccess(
+                        targetId,
+                        snapshot.authVersion(),
+                        snapshot.authorizationEpoch(),
+                        adminUserId,
+                        expiresAt,
+                        sessionId);
         long ttlSeconds = Math.max(1, Duration.between(Instant.now(), expiresAt).getSeconds());
         return new TokenResponse(
                 access,

@@ -4343,48 +4343,114 @@ public class MaterialAnalysisService {
     private Map<UUID, ProductPlanState> productPlanStates(UUID analysisId) {
         Map<UUID, ProductPlanState> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH active_links AS (
+                    SELECT link.analysis_item_id, link.plan_id,
+                           MAX(link.created_at) AS created_at,
+                           BOOL_OR(link.allocation_status = 'APPROVED') AS approved
+                    FROM production_material_analysis_plan_links link
+                    JOIN production_plans plan
+                      ON plan.id = link.plan_id
+                     AND plan.is_deleted = FALSE
+                     AND plan.is_canceled = FALSE
+                     AND plan.status IN (0,1)
+                    WHERE link.analysis_id = :analysisId
+                      AND link.allocation_status IN ('SUBMITTED','APPROVED')
+                    GROUP BY link.analysis_item_id, link.plan_id
+                ),
+                plan_ids AS (
+                    SELECT DISTINCT plan_id
+                    FROM active_links
+                ),
+                item_rollup AS (
+                    SELECT ids.plan_id,
+                           COUNT(plan_item.id) AS item_count,
+                           COALESCE(SUM(GREATEST(COALESCE(plan_item.qty,0),0)),0)
+                             AS planned_qty,
+                           COALESCE(SUM(GREATEST(LEAST(
+                               COALESCE(plan_item.iqty,0),
+                               GREATEST(COALESCE(plan_item.qty,0),0)),0)),0)
+                             AS inbound_qty,
+                           COALESCE(BOOL_AND(
+                               COALESCE(plan_item.qty,0) - COALESCE(plan_item.iqty,0) <= 0)
+                               FILTER (WHERE plan_item.id IS NOT NULL), FALSE)
+                             AS all_complete
+                    FROM plan_ids ids
+                    LEFT JOIN production_plan_items plan_item
+                      ON plan_item.plan_id = ids.plan_id
+                     AND plan_item.is_deleted = FALSE
+                    GROUP BY ids.plan_id
+                ),
+                segment_rollup AS (
+                    SELECT ids.plan_id,
+                           COALESCE(BOOL_OR(segment.status = 'IN_PROGRESS'), FALSE)
+                             AS has_in_progress,
+                           COALESCE(BOOL_OR(segment.status = 'DISPATCHED'), FALSE)
+                             AS has_dispatched,
+                           COALESCE(BOOL_OR(segment.status = 'READY'), FALSE)
+                             AS has_ready,
+                           COALESCE(BOOL_OR(segment.status = 'WAITING'), FALSE)
+                             AS has_waiting
+                    FROM plan_ids ids
+                    LEFT JOIN production_plan_items plan_item
+                      ON plan_item.plan_id = ids.plan_id
+                     AND plan_item.is_deleted = FALSE
+                    LEFT JOIN production_execution_segments segment
+                      ON segment.source_plan_item_id = plan_item.id
+                     AND segment.is_deleted = FALSE
+                     AND segment.status NOT IN ('CANCELLED','REVERSED')
+                    GROUP BY ids.plan_id
+                )
                 SELECT link.analysis_item_id,
                        (array_agg(plan.id ORDER BY link.created_at DESC, plan.id DESC))[1],
                        (array_agg(plan.bill_no ORDER BY link.created_at DESC, plan.id DESC))[1],
                        CASE
-                         WHEN COUNT(plan_item.id) > 0
-                              AND BOOL_AND(COALESCE(plan_item.qty,0)
-                                  - COALESCE(plan_item.iqty,0) <= 0)
-                           THEN 'COMPLETED'
-                         WHEN COALESCE(BOOL_OR(segment.status = 'IN_PROGRESS'), FALSE)
-                           THEN 'IN_PROGRESS'
-                         WHEN COALESCE(BOOL_OR(segment.status = 'DISPATCHED'), FALSE)
-                           THEN 'DISPATCHED'
-                         WHEN COALESCE(BOOL_OR(segment.status = 'READY'), FALSE)
-                           THEN 'READY'
-                         WHEN COALESCE(BOOL_OR(segment.status = 'WAITING'), FALSE)
-                           THEN 'WAITING'
-                         WHEN COALESCE(BOOL_OR(link.allocation_status = 'APPROVED'), FALSE)
-                           THEN 'APPROVED'
+                         WHEN COALESCE(SUM(item_rollup.item_count),0) > 0
+                              AND BOOL_AND(item_rollup.all_complete)
+                            THEN 'COMPLETED'
+                         WHEN COALESCE(BOOL_OR(segment_rollup.has_in_progress), FALSE)
+                            THEN 'IN_PROGRESS'
+                         WHEN COALESCE(BOOL_OR(segment_rollup.has_dispatched), FALSE)
+                            THEN 'DISPATCHED'
+                         WHEN COALESCE(BOOL_OR(segment_rollup.has_ready), FALSE)
+                            THEN 'READY'
+                         WHEN COALESCE(BOOL_OR(segment_rollup.has_waiting), FALSE)
+                            THEN 'WAITING'
+                         WHEN COALESCE(BOOL_OR(link.approved), FALSE)
+                            THEN 'APPROVED'
                          ELSE 'SUBMITTED'
-                       END AS execution_status
-                FROM production_material_analysis_plan_links link
+                       END AS execution_status,
+                       COALESCE(SUM(item_rollup.planned_qty)
+                           FILTER (WHERE link.approved AND plan.status = 1),0)
+                         AS execution_planned_qty,
+                       COALESCE(SUM(item_rollup.inbound_qty)
+                           FILTER (WHERE link.approved AND plan.status = 1),0)
+                         AS execution_inbound_qty
+                FROM active_links link
                 JOIN production_plans plan
                   ON plan.id = link.plan_id
-                 AND plan.is_deleted = FALSE
-                 AND plan.is_canceled = FALSE
-                 AND plan.status IN (0,1)
-                LEFT JOIN production_plan_items plan_item
-                  ON plan_item.plan_id = plan.id
-                 AND plan_item.is_deleted = FALSE
-                LEFT JOIN production_execution_segments segment
-                  ON segment.source_plan_item_id = plan_item.id
-                 AND segment.is_deleted = FALSE
-                 AND segment.status NOT IN ('CANCELLED','REVERSED')
-                WHERE link.analysis_id = :analysisId
-                  AND link.allocation_status IN ('SUBMITTED','APPROVED')
+                JOIN item_rollup
+                  ON item_rollup.plan_id = link.plan_id
+                JOIN segment_rollup
+                  ON segment_rollup.plan_id = link.plan_id
                 GROUP BY link.analysis_item_id
                 ORDER BY link.analysis_item_id
                 """).setParameter("analysisId", analysisId))) {
+            BigDecimal plannedQty = decimal(row[4]);
+            BigDecimal inboundQty = decimal(row[5]);
             result.put(uuid(row[0]), new ProductPlanState(
-                    string(row[3]), uuid(row[1]), string(row[2])));
+                    string(row[3]), uuid(row[1]), string(row[2]),
+                    plannedQty, inboundQty,
+                    planExecutionProgressRatio(plannedQty, inboundQty)));
         }
         return Map.copyOf(result);
+    }
+
+    static BigDecimal planExecutionProgressRatio(
+            BigDecimal plannedQty, BigDecimal inboundQty) {
+        if (plannedQty == null || plannedQty.signum() <= 0) return null;
+        BigDecimal safeInbound = inboundQty == null ? BigDecimal.ZERO : inboundQty;
+        safeInbound = safeInbound.max(BigDecimal.ZERO).min(plannedQty);
+        return safeInbound.divide(plannedQty, 4, RoundingMode.DOWN);
     }
 
     private Map<MaterialDimension, List<WarehouseBreakdown>> warehouseBreakdown(
@@ -5352,13 +5418,22 @@ public class MaterialAnalysisService {
                     readyStartQty, readyFinishQty, readyShipQty, ratio,
                     hasProductionMaterialChildren,
                     parentAnalysisLineId, parentGoodsName,
-                    planState.status(), planState.planId(), planState.planNo());
+                    planState.status(), planState.planId(), planState.planNo(),
+                    planState.plannedQty(), planState.inboundQty(),
+                    planState.progressRatio());
         }
     }
 
-    record ProductPlanState(String status, UUID planId, String planNo) {
-        static final ProductPlanState NONE = new ProductPlanState(null, null, null);
-    }
+    record ProductPlanState(
+            String status,
+            UUID planId,
+            String planNo,
+            BigDecimal plannedQty,
+            BigDecimal inboundQty,
+            BigDecimal progressRatio) {
+        static final ProductPlanState NONE = new ProductPlanState(
+                null, null, null, BigDecimal.ZERO, BigDecimal.ZERO, null);
+     }
 
     record BomNode(
             UUID analysisItemId, UUID bomItemId, UUID parentGoodsId,

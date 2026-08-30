@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.inquiry;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryDetail;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryListItem;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class SubcontractInquiryController {
 
     private final SubcontractInquiryService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_inquiry:view')")
@@ -59,7 +61,15 @@ public class SubcontractInquiryController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_inquiry:view')")
     public InquiryDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        InquiryDetail result = service.detail(id);
+        auditViews.record(
+                "view_subcontract_inquiry_detail",
+                "subcontract_inquiries",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外询价单");
+        return result;
     }
 
     @PostMapping

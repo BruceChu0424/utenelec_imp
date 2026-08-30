@@ -64,6 +64,14 @@ public class ProductionExecutionSegmentController {
         return service.start(planId, segmentId, request);
     }
 
+    @PostMapping("/batch-start")
+    @PreAuthorize("hasAuthority('production_execution:start')")
+    public List<ExecutionSegmentView> batchStart(
+            @PathVariable UUID planId,
+            @Valid @RequestBody BatchStartRequest request) {
+        return service.batchStart(planId, request);
+    }
+
     @PostMapping("/{segmentId}/cancel")
     @PreAuthorize("hasAuthority('production_execution:cancel')")
     public ExecutionSegmentView cancel(

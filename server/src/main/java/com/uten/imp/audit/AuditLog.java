@@ -36,6 +36,9 @@ public class AuditLog {
     @Column(name = "actor_account")
     private String actorAccount;
 
+    @Column(name = "session_id")
+    private UUID sessionId;
+
     @Column(nullable = false)
     private String action;
 

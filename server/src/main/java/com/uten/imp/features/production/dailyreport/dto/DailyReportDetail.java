@@ -19,6 +19,8 @@ public class DailyReportDetail {
     private UUID departmentId;
     private String workshopName;
     private UUID workerId;
+    /** Ordered whole-report participants; never line contribution or payroll evidence. */
+    private List<UUID> workerIds;
     private UUID supplierId;
     private UUID makerId;
     private UUID approverId;

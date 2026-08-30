@@ -1,5 +1,6 @@
 package com.uten.imp.features.org.department;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.org.department.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ public class DepartmentController {
 
     private final DepartmentService service;
     private final WorkforceOverviewService workforceOverviewService;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/tree")
     @PreAuthorize("hasAnyAuthority('department:view', 'notice:publish')")
@@ -39,7 +41,15 @@ public class DepartmentController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('department:view')")
     public DepartmentDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        DepartmentDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_department_detail", "departments", id, displayName,
+                null, "部门");
+        return result;
     }
 
     @GetMapping("/{id}/workforce-overview")

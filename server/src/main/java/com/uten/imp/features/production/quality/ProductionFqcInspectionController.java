@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.quality;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionResult;
@@ -26,6 +27,7 @@ public class ProductionFqcInspectionController {
 
     private final ProductionFqcInspectionService service;
     private final ProductionFqcTaskAccessPolicy taskAccess;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('production_quality_inspection:view')")
@@ -53,7 +55,15 @@ public class ProductionFqcInspectionController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('production_quality_inspection:view')")
     public InspectionView detail(@PathVariable UUID id) {
-        return service.detail(id);
+        InspectionView result = service.detail(id);
+        auditViews.record(
+                "view_production_fqc_inspection_detail",
+                "production_fqc_inspections",
+                id,
+                result.reportNo(),
+                null,
+                "生产终检任务");
+        return result;
     }
 
     @PostMapping("/{id}/decisions")

@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.receipt;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptListItem;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class PurchaseReceiptController {
 
     private final PurchaseReceiptService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('purchase_receipt:view')")
@@ -59,7 +61,15 @@ public class PurchaseReceiptController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('purchase_receipt:view')")
     public ReceiptDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ReceiptDetail result = service.detail(id);
+        auditViews.record(
+                "view_purchase_receipt_detail",
+                "purchase_receipts",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "采购收货单");
+        return result;
     }
 
     @PostMapping

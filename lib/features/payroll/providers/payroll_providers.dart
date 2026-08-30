@@ -85,7 +85,8 @@ final payrollDetailProvider = FutureProvider.autoDispose
 
 Future<void> markPayrollViewed(WidgetRef ref, String id) async {
   await ref.read(payrollRepositoryProvider).markViewed(id);
-  ref.invalidate(payrollDetailProvider(id));
+  // The detail GET already returned the page the user is reading. Reloading it
+  // here would create a second synthetic view and duplicate the audit event.
   ref.invalidate(payrollListProvider);
 }
 

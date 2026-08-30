@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.clientcategory;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.clientcategory.dto.*;
 import jakarta.validation.Valid;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class ClientCategoryController {
 
     private final ClientCategoryService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/tree")
     @PreAuthorize("hasAuthority('client_category:view')")
@@ -33,7 +35,15 @@ public class ClientCategoryController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('client_category:view')")
     public ClientCategoryDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ClientCategoryDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_client_category_detail", "client_categories", id, displayName,
+                result.getLegacyId(), "客户分类");
+        return result;
     }
 
     @GetMapping("/{id}/prefix-preview")

@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.receipt;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptListItem;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class SubcontractReceiptController {
 
     private final SubcontractReceiptService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_receipt:view')")
@@ -59,7 +61,15 @@ public class SubcontractReceiptController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_receipt:view')")
     public ReceiptDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ReceiptDetail result = service.detail(id);
+        auditViews.record(
+                "view_subcontract_receipt_detail",
+                "subcontract_receipts",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外进仓单");
+        return result;
     }
 
     @PostMapping

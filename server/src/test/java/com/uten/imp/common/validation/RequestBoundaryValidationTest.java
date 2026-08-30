@@ -379,7 +379,8 @@ class RequestBoundaryValidationTest {
                 mock(XlsxExportService.class),
                 mock(WorkbookDownloadService.class),
                 mock(AuditService.class),
-                mock(SecurityContextCurrentUser.class));
+                mock(SecurityContextCurrentUser.class),
+                mock(com.uten.imp.audit.AuditDetailViewRecorder.class));
 
         assertValidationFailure(() -> controller.lookup(null));
         assertValidationFailure(() -> controller.lookup(Set.of()));

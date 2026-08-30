@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.client;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
@@ -55,6 +56,7 @@ public class ClientController {
     private final XlsxExportService xlsxExport;
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
+    private final AuditDetailViewRecorder viewAudit;
     private final SecurityContextCurrentUser currentUser;
 
     @GetMapping
@@ -116,7 +118,11 @@ public class ClientController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('client:view')")
     public ClientDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ClientDetail detail = service.detail(id);
+        viewAudit.record(
+                "view_client_detail", "clients", id,
+                detail.getCode(), detail.getLegacyId(), "客户档案");
+        return detail;
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤/排序走 query，与 GET /list 一致） ----------

@@ -29,14 +29,20 @@ public class VisitorRefreshTransaction {
     public record Outcome(boolean reuseDetected,
                           UUID subjectId,
                           UUID tokenId,
+                          UUID sessionId,
                           VisitorAccount account,
                           String newRefreshToken) {
-        static Outcome reuse(UUID subjectId, UUID tokenId) {
-            return new Outcome(true, subjectId, tokenId, null, null);
+        static Outcome reuse(UUID subjectId, UUID tokenId, UUID sessionId) {
+            return new Outcome(true, subjectId, tokenId, sessionId, null, null);
         }
 
-        static Outcome rotated(VisitorAccount account, UUID tokenId, String rawToken) {
-            return new Outcome(false, account.getId(), tokenId, account, rawToken);
+        static Outcome rotated(
+                VisitorAccount account,
+                UUID tokenId,
+                UUID sessionId,
+                String rawToken) {
+            return new Outcome(
+                    false, account.getId(), tokenId, sessionId, account, rawToken);
         }
     }
 
@@ -50,7 +56,8 @@ public class VisitorRefreshTransaction {
                 .findAndLockByTokenHash(HashUtil.sha256(rawRefresh))
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         if (token.getRevokedAt() != null) {
-            return Outcome.reuse(token.getVisitorAccountId(), token.getId());
+            return Outcome.reuse(
+                    token.getVisitorAccountId(), token.getId(), token.getSessionId());
         }
         if (!token.isValid()) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
@@ -62,8 +69,14 @@ public class VisitorRefreshTransaction {
             throw new ApiException(ErrorCode.VISITOR_BLOCKED);
         }
 
-        String newRaw = tokenService.issue(account.getId(), deviceInfo);
-        tokenService.revoke(token, null);
-        return Outcome.rotated(account, token.getId(), newRaw);
+        VisitorRefreshTokenService.IssuedRefreshToken replacement =
+                tokenService.issueInSession(
+                        account.getId(), deviceInfo, token.getSessionId());
+        tokenService.revoke(token, replacement.tokenId());
+        return Outcome.rotated(
+                account,
+                token.getId(),
+                token.getSessionId(),
+                replacement.rawToken());
     }
 }

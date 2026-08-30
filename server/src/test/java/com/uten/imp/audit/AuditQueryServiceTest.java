@@ -194,7 +194,12 @@ class AuditQueryServiceTest {
         verify(root, atLeastOnce()).get("id");
         verify((JpaExpression<?>) requestIdPath).cast(String.class);
         verify(root, never()).get("before");
-        verify(root, never()).get("after");
+        verify(root, atLeastOnce()).get("after");
+        verify(criteriaBuilder).function(
+                eq("jsonb_extract_path_text"),
+                eq(String.class),
+                any(Expression.class),
+                any(Expression.class));
         verify(root, never()).get("userAgent");
         verify(root, never()).get("ip");
     }
@@ -728,6 +733,13 @@ class AuditQueryServiceTest {
         verify(root, atLeastOnce()).get("httpPath");
         verify(root, atLeastOnce()).get("statusCode");
         verify(cb).lessThan(root.get("statusCode"), 400);
+        Expression<String> normalizedRequestPath =
+                cb.lower(root.<String>get("httpPath"));
+        verify(normalizedRequestPath).in(AuditNoisePolicy.automaticReadPaths());
+        AuditNoisePolicy.automaticReadSqlLikePatterns().forEach(pattern ->
+                verify(cb).like(normalizedRequestPath, pattern));
+        AuditNoisePolicy.automaticSessionWriteSqlLikePatterns().forEach(pattern ->
+                verify(cb).like(normalizedRequestPath, pattern));
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.waste;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.waste.dto.WasteDetail;
 import com.uten.imp.features.subcontract.waste.dto.WasteListItem;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class SubcontractWasteController {
 
     private final SubcontractWasteService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_waste:view')")
@@ -59,7 +61,15 @@ public class SubcontractWasteController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_waste:view')")
     public WasteDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        WasteDetail result = service.detail(id);
+        auditViews.record(
+                "view_subcontract_waste_detail",
+                "subcontract_wastes",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外材料损耗单");
+        return result;
     }
 
     @PostMapping

@@ -18,7 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -221,6 +225,46 @@ public class ProductionExecutionSegmentService {
                 "production_execution:start");
     }
 
+    /**
+     * Starts up to one hundred exact execution segments atomically.
+     *
+     * <p>Duplicate segment ids with the same command collapse to one item.
+     * Ambiguous duplicates fail closed. Every segment row is locked in UUID
+     * order before any item is preflighted or mutated, then all items are
+     * preflighted before the first status update. The enclosing transaction
+     * rolls back every status, event and notification when any write fails.
+     */
+    @Transactional
+    public List<ExecutionSegmentView> batchStart(
+            UUID planId, BatchStartRequest request) {
+        List<BatchStartRequest.Item> items = batchStartItems(request);
+        tx.bind();
+        List<LockedStartRequest> locked = new ArrayList<>(items.size());
+        for (BatchStartRequest.Item item : items) {
+            locked.add(new LockedStartRequest(
+                    lock(planId, item.segmentId()),
+                    new SegmentTransitionRequest(
+                            item.expectedVersion(), item.idempotencyKey())));
+        }
+
+        List<PreparedTransition> prepared = new ArrayList<>(locked.size());
+        for (LockedStartRequest target : locked) {
+            prepared.add(prepareTransition(
+                    target.segment(),
+                    target.request(),
+                    ACTION_START,
+                    ProductionExecutionSegment.STATUS_DISPATCHED,
+                    ProductionExecutionSegment.STATUS_IN_PROGRESS,
+                    "production_execution:start"));
+        }
+
+        List<ExecutionSegmentView> results = new ArrayList<>(prepared.size());
+        for (PreparedTransition transition : prepared) {
+            results.add(applyTransition(transition));
+        }
+        return List.copyOf(results);
+    }
+
     @Transactional
     public ExecutionSegmentView cancel(
             UUID planId,
@@ -262,18 +306,38 @@ public class ProductionExecutionSegmentService {
         tx.bind();
         requireTransitionRequest(request);
         LockedSegment segment = lock(planId, segmentId);
+        return applyTransition(prepareTransition(
+                segment,
+                request,
+                action,
+                fromStatus,
+                toStatus,
+                operationAuthority));
+    }
+
+    private PreparedTransition prepareTransition(
+            LockedSegment segment,
+            SegmentTransitionRequest request,
+            String action,
+            String fromStatus,
+            String toStatus,
+            String operationAuthority) {
         requireSegmentOperationAccess(segment, operationAuthority);
         String requestHash = hashTransition(request, action);
         ExecutionSegmentView replay =
                 replay(segment, action, request.idempotencyKey(), requestHash);
-        if (replay != null) return replay;
+        if (replay != null) {
+            return new PreparedTransition(
+                    segment, request, action, fromStatus, toStatus,
+                    requestHash, replay);
+        }
         requireVersion(segment, request.expectedVersion());
         requireActivePlan(segment);
         if (!fromStatus.equals(segment.status())) {
             throw conflict("执行段状态已经变化，请刷新后重试");
         }
         if (ACTION_DISPATCH.equals(action)) {
-            ExecutionSegmentView current = one(planId, segmentId);
+            ExecutionSegmentView current = one(segment.planId(), segment.id());
             if (!current.materialReady()) {
                 throw conflict("执行段尚未齐套，不能派工");
             }
@@ -292,20 +356,32 @@ public class ProductionExecutionSegmentService {
         } else if (ACTION_START.equals(action)) {
             requireMaterialsIssuedForStart(segment);
         }
-        updateStatus(segmentId, request.expectedVersion(), fromStatus, toStatus);
+        return new PreparedTransition(
+                segment, request, action, fromStatus, toStatus,
+                requestHash, null);
+    }
+
+    private ExecutionSegmentView applyTransition(PreparedTransition transition) {
+        if (transition.replay() != null) return transition.replay();
+        LockedSegment segment = transition.segment();
+        SegmentTransitionRequest request = transition.request();
+        updateStatus(
+                segment.id(), request.expectedVersion(),
+                transition.fromStatus(), transition.toStatus());
         long resultingVersion = request.expectedVersion() + 1;
         recordEvent(
-                segmentId,
-                action,
+                segment.id(),
+                transition.action(),
                 request.idempotencyKey(),
-                requestHash,
+                transition.requestHash(),
                 request.expectedVersion(),
                 resultingVersion);
-        if (ACTION_DISPATCH.equals(action) || ACTION_START.equals(action)) {
+        if (ACTION_DISPATCH.equals(transition.action())
+                || ACTION_START.equals(transition.action())) {
             chainNotice.notifyExecutionSegmentTransition(
-                    segmentId, ACTION_START.equals(action));
+                    segment.id(), ACTION_START.equals(transition.action()));
         }
-        return one(planId, segmentId);
+        return one(segment.planId(), segment.id());
     }
 
     private ExecutionSegmentView terminal(
@@ -778,6 +854,41 @@ public class ProductionExecutionSegmentService {
         }
     }
 
+    private static List<BatchStartRequest.Item> batchStartItems(
+            BatchStartRequest request) {
+        if (request == null || request.items() == null
+                || request.items().isEmpty() || request.items().size() > 100) {
+            throw validation("批量开工必须包含 1-100 个执行段");
+        }
+        Map<UUID, BatchStartRequest.Item> unique = new LinkedHashMap<>();
+        for (BatchStartRequest.Item item : request.items()) {
+            if (item == null || item.segmentId() == null
+                    || item.expectedVersion() == null
+                    || item.idempotencyKey() == null
+                    || item.idempotencyKey().isBlank()) {
+                throw validation("批量开工项缺少执行段、版本或幂等键");
+            }
+            String key = item.idempotencyKey().strip();
+            if (key.length() < 8 || key.length() > 128) {
+                throw validation("批量开工幂等键长度必须为 8-128 个字符");
+            }
+            BatchStartRequest.Item normalized = new BatchStartRequest.Item(
+                    item.segmentId(), item.expectedVersion(), key);
+            BatchStartRequest.Item previous = unique.putIfAbsent(
+                    normalized.segmentId(), normalized);
+            if (previous != null
+                    && (!Objects.equals(
+                            previous.expectedVersion(), normalized.expectedVersion())
+                    || !Objects.equals(
+                            previous.idempotencyKey(), normalized.idempotencyKey()))) {
+                throw conflict("同一执行段的重复批量开工请求不一致");
+            }
+        }
+        return unique.values().stream()
+                .sorted(Comparator.comparing(BatchStartRequest.Item::segmentId))
+                .toList();
+    }
+
     private static void requireVersion(
             LockedSegment segment, long expectedVersion) {
         if (segment.lockVersion() != expectedVersion) {
@@ -903,5 +1014,19 @@ public class ProductionExecutionSegmentService {
             boolean autoPromoteWhenReady,
             String materialRequirementMode,
             UUID planMakerId) {
+    }
+
+    private record LockedStartRequest(
+            LockedSegment segment, SegmentTransitionRequest request) {
+    }
+
+    private record PreparedTransition(
+            LockedSegment segment,
+            SegmentTransitionRequest request,
+            String action,
+            String fromStatus,
+            String toStatus,
+            String requestHash,
+            ExecutionSegmentView replay) {
     }
 }

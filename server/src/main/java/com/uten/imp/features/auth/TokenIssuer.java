@@ -1,5 +1,6 @@
 package com.uten.imp.features.auth;
 
+import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
@@ -67,11 +68,14 @@ public class TokenIssuer {
             throw ex;
         }
         if (outcome.reuseDetected()) {
-            compromiseService.revoke(outcome.subjectId(), outcome.tokenId());
+            compromiseService.revoke(
+                    outcome.subjectId(), outcome.tokenId(), outcome.sessionId());
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
         UserAccount user = outcome.account();
-        return responseFactory.build(user, outcome.newRefreshToken());
+        AuditRequestContext.bindCurrentSessionId(outcome.sessionId());
+        return responseFactory.build(
+                user, outcome.newRefreshToken(), outcome.sessionId());
     }
 
     /**
@@ -98,11 +102,15 @@ public class TokenIssuer {
         }
         UUID userId = token.getUserId();
         UUID tokenId = token.getId();
+        UUID sessionId = token.getSessionId();
         refreshTokenService.revoke(token, null);
-        scheduleLogoutAudit(userId, tokenId);
+        scheduleLogoutAudit(userId, tokenId, sessionId);
     }
 
-    private void scheduleLogoutAudit(UUID userId, UUID tokenId) {
+    private void scheduleLogoutAudit(
+            UUID userId,
+            UUID tokenId,
+            UUID sessionId) {
         try {
             if (TransactionSynchronizationManager.isSynchronizationActive()
                     && TransactionSynchronizationManager.isActualTransactionActive()) {
@@ -110,12 +118,12 @@ public class TokenIssuer {
                         new TransactionSynchronization() {
                             @Override
                             public void afterCommit() {
-                                logLogoutBestEffort(userId, tokenId);
+                                logLogoutBestEffort(userId, tokenId, sessionId);
                             }
                         });
                 return;
             }
-            logLogoutBestEffort(userId, tokenId);
+            logLogoutBestEffort(userId, tokenId, sessionId);
         } catch (RuntimeException ex) {
             // Scheduling/logging is deliberately secondary to token revocation.
             log.error(
@@ -126,7 +134,10 @@ public class TokenIssuer {
         }
     }
 
-    private void logLogoutBestEffort(UUID userId, UUID tokenId) {
+    private void logLogoutBestEffort(
+            UUID userId,
+            UUID tokenId,
+            UUID sessionId) {
         try {
             audit.logExplicit(
                     userId,
@@ -134,7 +145,8 @@ public class TokenIssuer {
                     "logout",
                     "refresh_tokens",
                     tokenId.toString(),
-                    "success");
+                    "success",
+                    sessionId);
         } catch (RuntimeException ex) {
             log.error(
                     "Failed to persist logout audit for userId={} tokenId={}",
@@ -154,7 +166,25 @@ public class TokenIssuer {
 
     /** Issue a fresh token pair after login or password change. */
     public TokenResponse issueTokens(UserAccount user) {
-        String refresh = refreshTokenService.issue(user.getId(), null);
-        return responseFactory.build(user, refresh);
+        RefreshTokenService.IssuedRefreshToken refresh =
+                refreshTokenService.issueNewSession(user.getId(), null);
+        AuditRequestContext.bindCurrentSessionId(refresh.sessionId());
+        return responseFactory.build(
+                user, refresh.rawToken(), refresh.sessionId());
+    }
+
+    /** Starts the replacement session after a successful password change. */
+    public TokenResponse issueTokensAfterPasswordChange(UserAccount user) {
+        TokenResponse response = issueTokens(user);
+        UUID sessionId = AuditRequestContext.currentSessionId();
+        audit.logCommitted(
+                user.getId(),
+                user.getLoginAccount(),
+                "session_start_after_password_change",
+                "refresh_tokens",
+                sessionId == null ? null : sessionId.toString(),
+                "success",
+                sessionId);
+        return response;
     }
 }

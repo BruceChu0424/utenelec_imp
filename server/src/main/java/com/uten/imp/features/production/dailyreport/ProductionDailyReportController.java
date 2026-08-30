@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.dailyreport;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
@@ -47,6 +48,7 @@ public class ProductionDailyReportController {
 
     private final ProductionDailyReportService service;
     private final ReportablePlanLineQueryService reportablePlanLines;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping("/reportable-plan-lines")
     @PreAuthorize("hasAuthority('production_daily_report:view')")
@@ -81,7 +83,15 @@ public class ProductionDailyReportController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('production_daily_report:view')")
     public DailyReportDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        DailyReportDetail result = service.detail(id);
+        auditViews.record(
+                "view_production_daily_report_detail",
+                "production_daily_reports",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "生产日报");
+        return result;
     }
 
     @PostMapping

@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.asset;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -40,6 +41,7 @@ public class FixedAssetController {
     private final FinanceAssetPostingService posting;
     private final FinanceAssetPeriodService periods;
     private final FixedAssetService legacyReports;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/asset-workbench/overview")
     @PreAuthorize("hasAuthority('finance_asset:view')")
@@ -59,7 +61,18 @@ public class FixedAssetController {
 
     @GetMapping("/fixed-assets/{id}")
     @PreAuthorize("hasAuthority('finance_asset:view')")
-    public AssetWorkbenchResponses.Detail fixedAsset(@PathVariable UUID id) { return query.fixedAsset(id); }
+    public AssetWorkbenchResponses.Detail fixedAsset(@PathVariable UUID id) {
+        AssetWorkbenchResponses.Detail result = query.fixedAsset(id);
+        String code = result.summary() == null ? null : result.summary().code();
+        detailViewAudit.record(
+                "view_fixed_asset_detail",
+                "fixed_assets",
+                id,
+                code,
+                null,
+                "固定资产");
+        return result;
+    }
 
     @PostMapping("/fixed-assets")
     @PreAuthorize("hasAuthority('finance_asset:edit')")
@@ -160,7 +173,18 @@ public class FixedAssetController {
 
     @GetMapping("/deferred-expenses/{id}")
     @PreAuthorize("hasAuthority('finance_asset:view')")
-    public AssetWorkbenchResponses.Detail deferredExpense(@PathVariable UUID id) { return query.deferredExpense(id); }
+    public AssetWorkbenchResponses.Detail deferredExpense(@PathVariable UUID id) {
+        AssetWorkbenchResponses.Detail result = query.deferredExpense(id);
+        String code = result.summary() == null ? null : result.summary().code();
+        detailViewAudit.record(
+                "view_deferred_expense_detail",
+                "deferred_expenses",
+                id,
+                code,
+                null,
+                "递延费用");
+        return result;
+    }
 
     @PostMapping("/deferred-expenses")
     @PreAuthorize("hasAuthority('finance_asset:edit')")
@@ -272,7 +296,20 @@ public class FixedAssetController {
 
     @GetMapping("/asset-posting-runs/{id}")
     @PreAuthorize("hasAuthority('finance_asset:view')")
-    public AssetWorkbenchResponses.PostingRun postingRun(@PathVariable UUID id) { return posting.get(id); }
+    public AssetWorkbenchResponses.PostingRun postingRun(@PathVariable UUID id) {
+        AssetWorkbenchResponses.PostingRun result = posting.get(id);
+        String displayName = result.voucherNo() == null || result.voucherNo().isBlank()
+                ? result.period()
+                : result.voucherNo();
+        detailViewAudit.record(
+                "view_asset_posting_run_detail",
+                "finance_asset_posting_runs",
+                id,
+                displayName,
+                null,
+                "资产过账批次");
+        return result;
+    }
 
     @PostMapping("/asset-posting-runs/preview")
     @PreAuthorize("hasAuthority('finance_asset:post')")

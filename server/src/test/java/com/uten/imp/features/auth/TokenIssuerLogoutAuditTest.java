@@ -57,7 +57,8 @@ class TokenIssuerLogoutAuditTest {
                 "logout",
                 "refresh_tokens",
                 token.getId().toString(),
-                "success");
+                "success",
+                token.getSessionId());
     }
 
     @Test
@@ -89,7 +90,8 @@ class TokenIssuerLogoutAuditTest {
                         "logout",
                         "refresh_tokens",
                         token.getId().toString(),
-                        "success");
+                        "success",
+                        token.getSessionId());
         beginTransactionSynchronization();
 
         fixture.issuer.logout(rawRefresh);
@@ -104,7 +106,8 @@ class TokenIssuerLogoutAuditTest {
                 "logout",
                 "refresh_tokens",
                 token.getId().toString(),
-                "success");
+                "success",
+                token.getSessionId());
     }
 
     private void beginTransactionSynchronization() {
@@ -130,6 +133,7 @@ class TokenIssuerLogoutAuditTest {
     private RefreshToken token(String rawRefresh) {
         RefreshToken token = new RefreshToken();
         token.setUserId(UUID.randomUUID());
+        token.setSessionId(UUID.randomUUID());
         token.setTokenHash(HashUtil.sha256(rawRefresh));
         return token;
     }

@@ -1,5 +1,6 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.UserAccountAdminService;
 import com.uten.imp.features.org.employee.dto.*;
@@ -25,6 +26,7 @@ public class EmployeeController {
     private final EmployeeCommandService commandService;
     private final UserAccountAdminService userAccountAdminService;
     private final DataHandoverService dataHandoverService;
+    private final AuditDetailViewRecorder viewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('employee:view')")
@@ -41,7 +43,11 @@ public class EmployeeController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('employee:view')")
     public EmployeeDetail detail(@PathVariable UUID id) {
-        return queryService.detail(id);
+        EmployeeDetail detail = queryService.detail(id);
+        viewAudit.record(
+                "view_employee_detail", "employees", id,
+                detail.getCode(), null, "员工档案");
+        return detail;
     }
 
     @GetMapping("/{id}/history")

@@ -143,6 +143,110 @@ class AuditEventInterpreterTest {
     }
 
     @Test
+    void interpretsSalesDetailViewsWithBillNumberOrHistoryFallback() {
+        AuditLog withBill = new AuditLog();
+        withBill.setAction("view_sales_order_detail");
+        withBill.setTargetType("sales_orders");
+        withBill.setTargetId(UUID.randomUUID().toString());
+        withBill.setAfter("{\"view_metadata_kind\":\"business_detail_view\","
+                + "\"view_display_name\":\"SO-2026-001\"}");
+        withBill.setEventSource("business");
+        withBill.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(withBill);
+        assertEquals("查看销售订单详情", event.actionLabel());
+        assertEquals("销售订单", event.objectLabel());
+        assertEquals("SO-2026-001", event.targetName());
+        assertEquals("", event.changeSummary());
+        assertEquals("查看销售订单详情 SO-2026-001", event.summary());
+
+        AuditLog historyOnly = new AuditLog();
+        historyOnly.setAction("view_sales_quote_detail_history");
+        historyOnly.setTargetType("sales_quotes");
+        historyOnly.setTargetId(UUID.randomUUID().toString());
+        historyOnly.setAfter("{\"view_metadata_kind\":\"business_detail_view\","
+                + "\"view_display_name\":\"销售报价单(旧系统编号 11)\"}");
+        historyOnly.setEventSource("business");
+        historyOnly.setResult("success");
+        assertEquals("销售报价单(旧系统编号 11)",
+                interpreter.interpret(historyOnly).targetName());
+        assertEquals("查看销售报价历史单据",
+                interpreter.interpret(historyOnly).actionLabel());
+    }
+
+    @Test
+    void translatesSensitiveAndFutureDetailViewsWithoutExposingActionCodes() {
+        AuditLog employee = new AuditLog();
+        employee.setAction("view_employee_detail");
+        employee.setTargetType("employees");
+        employee.setTargetId(UUID.randomUUID().toString());
+        employee.setAfter("{\"view_metadata_kind\":\"business_detail_view\","
+                + "\"view_display_name\":\"E-001\"}");
+        employee.setEventSource("business");
+        employee.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent employeeEvent =
+                interpreter.interpret(employee);
+        assertEquals("查看员工档案", employeeEvent.actionLabel());
+        assertEquals("员工档案", employeeEvent.objectLabel());
+        assertEquals("查看员工档案 E-001", employeeEvent.summary());
+        assertEquals("medium", employeeEvent.riskLevel());
+        assertEquals("查看了包含个人、账户或财务敏感字段的业务详情",
+                employeeEvent.riskReason());
+
+        AuditLog receiptHistory = new AuditLog();
+        receiptHistory.setAction("view_finance_receipt_detail_history");
+        receiptHistory.setTargetType("finance_receipts");
+        receiptHistory.setAfter("{\"view_metadata_kind\":\"business_detail_view\","
+                + "\"view_display_name\":\"SK-001(旧系统编号 8)\"}");
+        receiptHistory.setEventSource("business");
+        receiptHistory.setResult("success");
+        AuditEventInterpreter.InterpretedEvent historyEvent =
+                interpreter.interpret(receiptHistory);
+        assertEquals("查看销售收款单历史单据", historyEvent.actionLabel());
+        assertEquals("SK-001(旧系统编号 8)", historyEvent.targetName());
+        assertEquals("medium", historyEvent.riskLevel());
+
+        AuditLog masterHistory = new AuditLog();
+        masterHistory.setAction("view_goods_detail_history");
+        masterHistory.setTargetType("goods");
+        masterHistory.setEventSource("business");
+        masterHistory.setResult("success");
+        assertEquals("查看货品历史记录",
+                interpreter.interpret(masterHistory).actionLabel());
+
+        AuditLog futureDetail = new AuditLog();
+        futureDetail.setAction("view_future_business_detail");
+        futureDetail.setTargetType("future_business");
+        futureDetail.setEventSource("business");
+        futureDetail.setResult("success");
+        assertEquals("查看详情", interpreter.interpret(futureDetail).actionLabel());
+    }
+
+    @Test
+    void translatesSessionTimelineInvestigationAndPasswordRestart() {
+        AuditLog sessionEvents = new AuditLog();
+        sessionEvents.setAction("view_audit_session_events");
+        sessionEvents.setTargetType("audit_session");
+        sessionEvents.setEventSource("business");
+        sessionEvents.setResult("success");
+        AuditEventInterpreter.InterpretedEvent investigation =
+                interpreter.interpret(sessionEvents);
+        assertEquals("查看登录会话时间线", investigation.actionLabel());
+        assertEquals("登录会话审计", investigation.objectLabel());
+        assertEquals("security", investigation.category());
+        assertEquals("medium", investigation.riskLevel());
+
+        AuditLog passwordRestart = new AuditLog();
+        passwordRestart.setAction("session_start_after_password_change");
+        passwordRestart.setTargetType("refresh_tokens");
+        passwordRestart.setEventSource("business");
+        passwordRestart.setResult("success");
+        assertEquals("修改密码后建立新会话",
+                interpreter.interpret(passwordRestart).actionLabel());
+    }
+
+    @Test
     void labelsMasterDataRoutesInChinese() {
         Map<String, String> expected = Map.of(
                 "/api/master/goods", "货品",

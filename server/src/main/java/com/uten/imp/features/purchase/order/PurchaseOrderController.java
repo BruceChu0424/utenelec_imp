@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.order;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.RequestUuidSets;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalDecisionRequest;
@@ -39,6 +40,7 @@ public class PurchaseOrderController {
     private final PurchaseOrderService service;
     private final ProcurementFinanceApprovalService financeApproval;
     private final PurchaseOrderFinanceDecisionCommandService financeDecision;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('purchase_order:view')")
@@ -59,7 +61,15 @@ public class PurchaseOrderController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('purchase_order:view','finance_order_approval:view')")
     public OrderDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        OrderDetail result = service.detail(id);
+        auditViews.record(
+                "view_purchase_order_detail",
+                "purchase_orders",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "采购订货单");
+        return result;
     }
 
     @PostMapping

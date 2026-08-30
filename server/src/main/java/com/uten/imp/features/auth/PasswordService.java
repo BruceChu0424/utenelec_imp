@@ -120,7 +120,7 @@ public class PasswordService {
                 "users",
                 userId.toString(),
                 "success");
-        return tokenIssuer.issueTokens(refreshedUser);
+        return tokenIssuer.issueTokensAfterPasswordChange(refreshedUser);
     }
 
     /**

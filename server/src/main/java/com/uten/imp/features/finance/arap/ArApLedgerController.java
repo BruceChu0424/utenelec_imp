@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.arap;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.finance.arap.dto.ArApLedgerDetail;
 import com.uten.imp.features.finance.arap.dto.ArApLedgerListItem;
@@ -35,6 +36,7 @@ import java.util.UUID;
 public class ArApLedgerController {
 
     private final ArApLedgerQueryService queryService;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('ar_ap_ledger:view')")
@@ -64,6 +66,18 @@ public class ArApLedgerController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('ar_ap_ledger:view')")
     public ArApLedgerDetail detail(@PathVariable UUID id) {
-        return queryService.detail(id);
+        ArApLedgerDetail result = queryService.detail(id);
+        String documentNo = result.getBillNo();
+        if (documentNo == null || documentNo.isBlank()) {
+            documentNo = result.getSourceDocNo();
+        }
+        detailViewAudit.record(
+                "view_ar_ap_ledger_detail",
+                "ar_ap_ledger",
+                id,
+                documentNo,
+                result.getLegacyId(),
+                "应收应付台账");
+        return result;
     }
 }

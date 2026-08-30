@@ -10,7 +10,6 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
-import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../department/models/department_node.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/production_execution_planning.dart';
@@ -19,9 +18,8 @@ import '../repositories/production_repository.dart';
 
 /// Confirmed execution segments and their operational state transitions.
 ///
-/// A row is selected before acting, which keeps the shared
-/// [MasterDataTableView] read-only while assignment and transitions remain
-/// explicit, version-checked commands.
+/// Responsive execution cards expose the legal action for each segment.
+/// Only fully-issued dispatched segments offer a 48x48 batch-start checkbox.
 class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
   const ProductionExecutionSegmentsCard({
     super.key,
@@ -57,7 +55,9 @@ class _ProductionExecutionSegmentsCardState
   String? _error;
   bool _loading = false;
   bool _busy = false;
+  bool _batchStarting = false;
   bool _detailOpening = false;
+  final Set<String> _selectedStartIds = <String>{};
 
   @override
   void initState() {
@@ -75,6 +75,7 @@ class _ProductionExecutionSegmentsCardState
       _loading = false;
       _selectedId = widget.initialSegmentId;
       _handledInitialSegmentId = null;
+      _selectedStartIds.clear();
       WidgetsBinding.instance.addPostFrameCallback((_) => _load());
       return;
     }
@@ -99,6 +100,13 @@ class _ProductionExecutionSegmentsCardState
       setState(() {
         _segments = result;
         _error = null;
+        final startableIds = result
+            .where(_isStartSelectable)
+            .map((segment) => segment.id)
+            .toSet();
+        _selectedStartIds.removeWhere(
+          (segmentId) => !startableIds.contains(segmentId),
+        );
         if (_selectedId != null &&
             !result.any((segment) => segment.id == _selectedId)) {
           _selectedId = null;
@@ -151,7 +159,7 @@ class _ProductionExecutionSegmentsCardState
 
   Future<void> _openSegment(ProductionExecutionSegmentView segment) async {
     if (!mounted || _detailOpening) return;
-    if (_busy) {
+    if (_busy || _batchStarting) {
       context.appWarning('正在处理，请稍候', force: true);
       return;
     }
@@ -170,6 +178,17 @@ class _ProductionExecutionSegmentsCardState
       }
     }
     if (!mounted || action == null) return;
+    await _handleSegmentAction(segment, action);
+  }
+
+  Future<void> _handleSegmentAction(
+    ProductionExecutionSegmentView segment,
+    _SegmentAction action,
+  ) async {
+    if (_batchStarting) {
+      context.appWarning('正在批量开工，请稍候', force: true);
+      return;
+    }
     switch (action) {
       case _SegmentAction.assign:
         await _assign(segment);
@@ -184,16 +203,29 @@ class _ProductionExecutionSegmentsCardState
         await _transition(segment, 'start');
         break;
       case _SegmentAction.report:
-        await context.push(
-          Uri(
-            path: RoutePath.productionDailyReportNew(),
-            queryParameters: {'executionSegmentId': segment.id},
-          ).toString(),
-        );
-        if (!mounted) return;
-        await _load();
-        await widget.onChanged?.call();
+        await _openReport(segment);
         break;
+    }
+  }
+
+  Future<void> _openReport(ProductionExecutionSegmentView segment) async {
+    if (_busy || _batchStarting) {
+      context.appWarning('正在处理，请稍候', force: true);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await context.push(
+        Uri(
+          path: RoutePath.productionDailyReportNew(),
+          queryParameters: {'executionSegmentId': segment.id},
+        ).toString(),
+      );
+      if (!mounted) return;
+      await _load();
+      await widget.onChanged?.call();
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -540,7 +572,7 @@ class _ProductionExecutionSegmentsCardState
     Future<ProductionExecutionSegmentView> Function() run,
     String success,
   ) async {
-    if (_busy) return;
+    if (_busy || _batchStarting) return;
     setState(() => _busy = true);
     try {
       final updated = await run();
@@ -562,6 +594,129 @@ class _ProductionExecutionSegmentsCardState
       await _load();
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  bool _isStartSelectable(ProductionExecutionSegmentView segment) =>
+      widget.canStart &&
+      segment.status == 'DISPATCHED' &&
+      segment.materialIssued;
+
+  List<ProductionExecutionSegmentView> get _startableSegments => [
+    for (final segment in _segments ?? const <ProductionExecutionSegmentView>[])
+      if (_isStartSelectable(segment)) segment,
+  ];
+
+  void _toggleStartSelection(
+    ProductionExecutionSegmentView segment,
+    bool selected,
+  ) {
+    if (!_isStartSelectable(segment) || _batchStarting) return;
+    setState(() {
+      if (selected) {
+        _selectedStartIds.add(segment.id);
+      } else {
+        _selectedStartIds.remove(segment.id);
+      }
+    });
+  }
+
+  void _selectAllStartable() {
+    if (_batchStarting) return;
+    setState(() {
+      _selectedStartIds
+        ..clear()
+        ..addAll(_startableSegments.map((segment) => segment.id));
+    });
+  }
+
+  void _clearStartSelection() {
+    if (_batchStarting || _selectedStartIds.isEmpty) return;
+    setState(_selectedStartIds.clear);
+  }
+
+  Future<void> _batchStart() async {
+    if (_batchStarting || _busy || _selectedStartIds.isEmpty) return;
+    final selected = [
+      for (final segment
+          in _segments ?? const <ProductionExecutionSegmentView>[])
+        if (_selectedStartIds.contains(segment.id) &&
+            _isStartSelectable(segment))
+          segment,
+    ];
+    if (selected.length != _selectedStartIds.length) {
+      setState(() {
+        _selectedStartIds
+          ..clear()
+          ..addAll(selected.map((segment) => segment.id));
+      });
+      context.appWarning('部分执行子计划状态已更新，请重新确认选择', force: true);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('批量开工(${selected.length} 项)'),
+        content: const Text(
+          '系统会在同一事务中校验全部执行子计划的状态、发料进度和版本。'
+          '任一项已变化都会整体失败，不会出现部分开工。确认继续？',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('确认批量开工'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _batchStarting = true);
+    try {
+      final updated = await ref
+          .read(productionPlanRepositoryProvider)
+          .batchStartExecutionSegments(
+            widget.planId,
+            items: [
+              for (final segment in selected)
+                ProductionExecutionBatchStartItem(
+                  segmentId: segment.id,
+                  expectedVersion: segment.lockVersion,
+                  idempotencyKey: businessIdempotencyKey(
+                    'production-segment-batch-start',
+                    '${segment.id}|${segment.lockVersion}|${segment.status}',
+                  ),
+                ),
+            ],
+          );
+      if (!mounted) return;
+      setState(() {
+        _selectedStartIds.clear();
+        if (updated.isNotEmpty) {
+          final updates = {for (final segment in updated) segment.id: segment};
+          _segments = [
+            for (final segment
+                in _segments ?? const <ProductionExecutionSegmentView>[])
+              updates[segment.id] ?? segment,
+          ];
+        }
+      });
+      context.appSuccess('已批量开工 ${selected.length} 个执行子计划');
+      await _load();
+      await widget.onChanged?.call();
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message, force: true);
+      await _load();
+    } catch (_) {
+      if (mounted) context.appError('批量开工失败，已刷新最新状态', force: true);
+      await _load();
+    } finally {
+      if (mounted) setState(() => _batchStarting = false);
     }
   }
 
@@ -668,13 +823,16 @@ class _ProductionExecutionSegmentsCardState
     final completed = segments
         .where((item) => item.status == 'COMPLETED')
         .length;
+    final startableCount = _startableSegments.length;
     return Card(
+      key: const Key('production-execution-segments-card'),
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: Column(
@@ -694,7 +852,7 @@ class _ProductionExecutionSegmentsCardState
                         ),
                       ),
                       Text(
-                        '点击任一行查看详情与可用操作',
+                        '操作已直接显示在卡片上；点击卡片或“详情”查看完整状态。',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.primary,
                           fontWeight: FontWeight.w600,
@@ -705,106 +863,454 @@ class _ProductionExecutionSegmentsCardState
                 ),
                 IconButton(
                   tooltip: '刷新执行状态',
-                  onPressed: _busy || _loading ? null : _load,
+                  onPressed: _busy || _batchStarting || _loading ? null : _load,
                   icon: const Icon(Icons.refresh_rounded),
                 ),
               ],
             ),
+            if (startableCount > 0 || _selectedStartIds.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              _selectionToolbar(theme, startableCount),
+            ],
             const SizedBox(height: UtenSpacing.s8),
-            MasterDataTableView<ProductionExecutionSegmentView>(
-              embedded: true,
-              columns: [
-                MasterColumnDef(
-                  key: 'segmentCode',
-                  label: '子计划编号',
-                  width: 135,
-                  value: (item) => item.segmentCode,
-                ),
-                MasterColumnDef(
-                  key: 'product',
-                  label: '产品',
-                  width: 190,
-                  value: (item) =>
-                      item.productName ?? item.productCode ?? '未命名产品',
-                ),
-                const MasterColumnDef(
-                  key: 'status',
-                  label: '状态',
-                  width: 95,
-                  value: _segmentStatusText,
-                ),
-                MasterColumnDef(
-                  key: 'planned',
-                  label: '计划数',
-                  width: 82,
-                  type: 'number',
-                  value: (item) => _number(item.plannedQty),
-                ),
-                MasterColumnDef(
-                  key: 'reported',
-                  label: '有效报工 / 待补',
-                  width: 105,
-                  type: 'number',
-                  value: (item) =>
-                      '${_number(item.reportedQty)} / ${_number(item.remainingQty)}',
-                ),
-                MasterColumnDef(
-                  key: 'qualityInbound',
-                  label: '品质 / 入库',
-                  width: 210,
-                  value: (item) =>
-                      '${_qualityProgressText(item)} / '
-                      '${_finishedInboundProgressText(item)}',
-                ),
-                const MasterColumnDef(
-                  key: 'material',
-                  label: '物料',
-                  width: 120,
-                  value: _materialProgressText,
-                ),
-                MasterColumnDef(
-                  key: 'workshop',
-                  label: '车间 / 班组',
-                  width: 160,
-                  value: (item) => [
-                    item.workshopName,
-                    item.teamName,
-                  ].where((value) => value?.isNotEmpty == true).join(' / '),
-                ),
-                MasterColumnDef(
-                  key: 'responsible',
-                  label: '负责人',
-                  width: 105,
-                  value: (item) => item.responsibleEmployeeName ?? '待分配',
-                ),
-                MasterColumnDef(
-                  key: 'dates',
-                  label: '开工 / 完工',
-                  width: 190,
-                  value: (item) =>
-                      '${item.planBeginDate ?? '待排'} / ${item.planEndDate ?? '待排'}',
-                ),
-                MasterColumnDef(
-                  key: 'open',
-                  label: '操作',
-                  width: 96,
-                  value: (_) => '查看详情',
-                ),
-              ],
-              items: segments,
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
-              onRowTap: _openSegment,
-              isSelected: (item) => item.id == _selectedId,
-              rowColor: (item) => _rowColor(theme, item),
-              emptyMessage: '暂无执行子计划',
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const gap = UtenSpacing.s12;
+                final twoColumns = constraints.maxWidth >= 1040;
+                final cardWidth = twoColumns
+                    ? (constraints.maxWidth - gap) / 2
+                    : constraints.maxWidth;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    for (final segment in segments)
+                      SizedBox(
+                        width: cardWidth,
+                        child: _segmentCard(theme, segment),
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _selectionToolbar(ThemeData theme, int startableCount) {
+    final allSelected =
+        startableCount > 0 && _selectedStartIds.length == startableCount;
+    return Container(
+      key: const Key('production-execution-start-selection-toolbar'),
+      padding: const EdgeInsets.all(UtenSpacing.s8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.28),
+        borderRadius: UtenRadius.smAll,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '已选 ${_selectedStartIds.length} 项 · 可开工 $startableCount 项',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          UtenButton(
+            key: const Key('production-execution-select-all-startable'),
+            type: UtenButtonType.tonal,
+            size: UtenButtonSize.small,
+            icon: Icons.select_all_rounded,
+            onPressed: allSelected || _batchStarting
+                ? null
+                : _selectAllStartable,
+            child: const Text('全选可开工'),
+          ),
+          TextButton(
+            key: const Key('production-execution-clear-start-selection'),
+            onPressed: _selectedStartIds.isEmpty || _batchStarting
+                ? null
+                : _clearStartSelection,
+            child: const Text('清空'),
+          ),
+          UtenButton(
+            key: const Key('production-execution-batch-start'),
+            size: UtenButtonSize.small,
+            icon: Icons.play_arrow_rounded,
+            isLoading: _batchStarting,
+            onPressed: _selectedStartIds.isEmpty || _busy || _batchStarting
+                ? null
+                : _batchStart,
+            child: Text('批量开工(${_selectedStartIds.length})'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segmentCard(ThemeData theme, ProductionExecutionSegmentView segment) {
+    final selected = _selectedStartIds.contains(segment.id);
+    final focused = _selectedId == segment.id;
+    final startSelectable = _isStartSelectable(segment);
+    final assignment = [
+      segment.workshopName,
+      segment.teamName,
+    ].where((value) => value?.isNotEmpty == true).join(' / ');
+    final product = [
+      segment.productName,
+      segment.productCode,
+    ].where((value) => value?.isNotEmpty == true).join(' · ');
+    final borderColor = selected || focused
+        ? theme.colorScheme.primary
+        : theme.colorScheme.outlineVariant;
+    final background = selected
+        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.34)
+        : _rowColor(theme, segment) ?? theme.colorScheme.surfaceContainerLowest;
+
+    return Semantics(
+      container: true,
+      selected: selected,
+      label: '执行子计划 ${segment.segmentCode}',
+      child: Material(
+        color: background,
+        shape: RoundedRectangleBorder(
+          borderRadius: UtenRadius.mdAll,
+          side: BorderSide(color: borderColor, width: selected ? 2 : 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _busy || _batchStarting ? null : () => _openSegment(segment),
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (startSelectable) ...[
+                      Semantics(
+                        label: '选择 ${segment.segmentCode} 批量开工',
+                        child: SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Checkbox(
+                            key: ValueKey(
+                              'production-execution-start-select-${segment.id}',
+                            ),
+                            value: selected,
+                            onChanged: _batchStarting
+                                ? null
+                                : (value) => _toggleStartSelection(
+                                    segment,
+                                    value ?? false,
+                                  ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: UtenSpacing.s8),
+                    ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            segment.segmentCode,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            product.isEmpty ? '未命名产品' : product,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    _cardStatusBadge(theme, segment),
+                  ],
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                _segmentMetrics(theme, segment),
+                const SizedBox(height: UtenSpacing.s12),
+                _cardFact(
+                  theme,
+                  Icons.verified_outlined,
+                  '品质 / 入库',
+                  '${_qualityProgressText(segment)} / '
+                      '${_finishedInboundProgressText(segment)}',
+                ),
+                _cardFact(
+                  theme,
+                  Icons.inventory_2_outlined,
+                  '物料',
+                  _materialProgressText(segment),
+                ),
+                _cardFact(
+                  theme,
+                  Icons.factory_outlined,
+                  '车间 / 班组',
+                  assignment.isEmpty ? '待分配' : assignment,
+                ),
+                _cardFact(
+                  theme,
+                  Icons.badge_outlined,
+                  '负责人',
+                  segment.responsibleEmployeeName ?? '待分配',
+                ),
+                _cardFact(
+                  theme,
+                  Icons.date_range_outlined,
+                  '计划开工 / 完工',
+                  '${segment.planBeginDate ?? '待排'} / '
+                      '${segment.planEndDate ?? '待排'}',
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                Divider(color: theme.colorScheme.outlineVariant),
+                const SizedBox(height: UtenSpacing.s8),
+                Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
+                  alignment: WrapAlignment.end,
+                  children: _segmentCardActions(segment),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cardStatusBadge(
+    ThemeData theme,
+    ProductionExecutionSegmentView segment,
+  ) {
+    final color = switch (segment.status) {
+      'WAITING' => theme.colorScheme.error,
+      'READY' || 'COMPLETED' => Colors.green.shade700,
+      'DISPATCHED' || 'IN_PROGRESS' => theme.colorScheme.primary,
+      _ => theme.colorScheme.onSurfaceVariant,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Text(
+        _segmentStatusText(segment),
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _segmentMetrics(
+    ThemeData theme,
+    ProductionExecutionSegmentView segment,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = UtenSpacing.s8;
+        final columns = constraints.maxWidth >= 420 ? 3 : 2;
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            _metricTile(
+              theme,
+              width: width,
+              label: '计划数',
+              value: _number(segment.plannedQty),
+            ),
+            _metricTile(
+              theme,
+              width: width,
+              label: '有效报工',
+              value: _number(segment.reportedQty),
+              valueColor: segment.reportedQty > 0
+                  ? theme.colorScheme.primary
+                  : null,
+            ),
+            _metricTile(
+              theme,
+              width: width,
+              label: '待补',
+              value: _number(segment.remainingQty),
+              valueColor: segment.remainingQty > 0
+                  ? theme.colorScheme.tertiary
+                  : Colors.green.shade700,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _metricTile(
+    ThemeData theme, {
+    required double width,
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s8,
+      ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.78),
+        borderRadius: UtenRadius.smAll,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: valueColor,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cardFact(ThemeData theme, IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: UtenSpacing.s8),
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _segmentCardActions(ProductionExecutionSegmentView segment) {
+    final commandBusy = _busy || _batchStarting;
+    final assigned =
+        segment.workshopDepartmentId != null &&
+        segment.responsibleEmployeeId != null;
+    return [
+      if (widget.canAssign &&
+          (segment.status == 'READY' || segment.status == 'WAITING'))
+        UtenButton(
+          key: ValueKey('production-execution-assign-${segment.id}'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.small,
+          icon: Icons.edit_location_alt_outlined,
+          onPressed: commandBusy
+              ? null
+              : () => _handleSegmentAction(segment, _SegmentAction.assign),
+          child: const Text('调整分配'),
+        ),
+      if (widget.canReleaseDefer &&
+          segment.status == 'WAITING' &&
+          !segment.autoPromoteWhenReady)
+        UtenButton(
+          key: ValueKey('production-execution-release-${segment.id}'),
+          type: UtenButtonType.tonal,
+          size: UtenButtonSize.small,
+          icon: Icons.play_circle_outline_rounded,
+          onPressed: commandBusy
+              ? null
+              : () =>
+                    _handleSegmentAction(segment, _SegmentAction.releaseDefer),
+          child: const Text('解除人工暂缓'),
+        ),
+      if (widget.canDispatch && segment.status == 'READY')
+        UtenButton(
+          key: ValueKey('production-execution-dispatch-${segment.id}'),
+          size: UtenButtonSize.small,
+          icon: Icons.assignment_turned_in_outlined,
+          onPressed: commandBusy || !segment.materialReady || !assigned
+              ? null
+              : () => _handleSegmentAction(segment, _SegmentAction.dispatch),
+          onDisabledTap: commandBusy
+              ? null
+              : () => context.appWarning(
+                  !segment.materialReady ? '物料尚未完整齐套，不能派工' : '派工前必须指定生产车间和负责人',
+                  force: true,
+                ),
+          child: const Text('派工'),
+        ),
+      if (widget.canStart && segment.status == 'DISPATCHED')
+        UtenButton(
+          key: ValueKey('production-execution-start-${segment.id}'),
+          size: UtenButtonSize.small,
+          icon: Icons.play_arrow_rounded,
+          onPressed: commandBusy || !segment.materialIssued
+              ? null
+              : () => _handleSegmentAction(segment, _SegmentAction.start),
+          onDisabledTap: commandBusy
+              ? null
+              : () => context.appWarning('仓库尚未完成全部生产领料，不能开工', force: true),
+          child: const Text('确认开工'),
+        ),
+      if (widget.canReport && _canReportSegment(segment))
+        UtenButton(
+          key: ValueKey('production-execution-report-${segment.id}'),
+          type: UtenButtonType.tonal,
+          size: UtenButtonSize.small,
+          icon: Icons.fact_check_outlined,
+          onPressed: commandBusy
+              ? null
+              : () => _handleSegmentAction(segment, _SegmentAction.report),
+          child: Text(
+            segment.ordinaryRemainingQty > 0
+                ? '分批报工'
+                : segment.fqcReworkAvailableQty > 0
+                ? '返工再检报工'
+                : segment.fqcReplacementReadyQty > 0
+                ? '补产完工报工'
+                : '分批报工',
+          ),
+        ),
+      UtenButton(
+        key: ValueKey('production-execution-detail-${segment.id}'),
+        type: UtenButtonType.ghost,
+        size: UtenButtonSize.small,
+        icon: Icons.info_outline_rounded,
+        onPressed: commandBusy ? null : () => _openSegment(segment),
+        child: const Text('详情'),
+      ),
+    ];
   }
 
   Widget _dateField(
@@ -1054,68 +1560,20 @@ class _ExecutionSegmentDetail extends StatelessWidget {
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Wrap(
-                alignment: WrapAlignment.end,
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
+              child: Row(
                 children: [
+                  Expanded(
+                    child: Text(
+                      '可用操作已显示在执行子计划卡片上。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('关闭'),
                   ),
-                  if (canReleaseDefer &&
-                      segment.status == 'WAITING' &&
-                      !segment.autoPromoteWhenReady)
-                    UtenButton(
-                      icon: Icons.play_circle_outline_rounded,
-                      onPressed: () => Navigator.of(
-                        context,
-                      ).pop(_SegmentAction.releaseDefer),
-                      child: const Text('解除人工暂缓'),
-                    ),
-                  if (canAssign &&
-                      (segment.status == 'READY' ||
-                          segment.status == 'WAITING'))
-                    OutlinedButton.icon(
-                      onPressed: () =>
-                          Navigator.of(context).pop(_SegmentAction.assign),
-                      icon: const Icon(
-                        Icons.edit_location_alt_outlined,
-                        size: 18,
-                      ),
-                      label: const Text('调整分配'),
-                    ),
-                  if (canDispatch && segment.status == 'READY')
-                    UtenButton(
-                      icon: Icons.assignment_turned_in_outlined,
-                      onPressed: () =>
-                          Navigator.of(context).pop(_SegmentAction.dispatch),
-                      child: const Text('派工'),
-                    ),
-                  if (canStart && segment.status == 'DISPATCHED')
-                    UtenButton(
-                      icon: Icons.play_arrow_rounded,
-                      onPressed: segment.materialIssued
-                          ? () =>
-                                Navigator.of(context).pop(_SegmentAction.start)
-                          : null,
-                      child: const Text('确认开工'),
-                    ),
-                  if (canReport && _canReportSegment(segment))
-                    UtenButton(
-                      icon: Icons.fact_check_outlined,
-                      onPressed: () =>
-                          Navigator.of(context).pop(_SegmentAction.report),
-                      child: Text(
-                        segment.ordinaryRemainingQty > 0
-                            ? '分批报工'
-                            : segment.fqcReworkAvailableQty > 0
-                            ? '返工再检报工'
-                            : segment.fqcReplacementReadyQty > 0
-                            ? '补产完工报工'
-                            : '分批报工',
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -1241,7 +1699,7 @@ String _qualityProgressText(ProductionExecutionSegmentView segment) {
   }
   final parts = <String>[
     if (segment.fqcPendingQty > 0) '待检 ${_number(segment.fqcPendingQty)}',
-    if (segment.fqcPassedQty > 0) 'PASS ${_number(segment.fqcPassedQty)}',
+    if (segment.fqcPassedQty > 0) '通过 ${_number(segment.fqcPassedQty)}',
     if (segment.fqcFailedQty > 0) '不合格 ${_number(segment.fqcFailedQty)}',
     if (segment.fqcReworkAvailableQty > 0)
       '返工再检待报 ${_number(segment.fqcReworkAvailableQty)}',

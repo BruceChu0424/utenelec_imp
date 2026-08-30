@@ -35,6 +35,9 @@ void main() {
           'planExecutionStatus': 'IN_PROGRESS',
           'latestPlanId': 'plan-1',
           'latestPlanNo': 'SC26080001',
+          'planExecutionPlannedQty': '10.0000',
+          'planExecutionInboundQty': 2.5,
+          'planExecutionProgressRatio': 0.25,
         },
       ],
       'flatMaterials': [
@@ -124,6 +127,16 @@ void main() {
     expect(view.products.single.planExecutionStatus, 'IN_PROGRESS');
     expect(view.products.single.latestPlanId, 'plan-1');
     expect(view.products.single.latestPlanNo, 'SC26080001');
+    expect(view.products.single.planExecutionPlannedQty, 10);
+    expect(view.products.single.planExecutionInboundQty, 2.5);
+    expect(view.products.single.planExecutionProgressRatio, 0.25);
+    expect(
+      ProductionMaterialAnalysisProduct.fromJson({
+        'analysisLineId': 'legacy-product',
+        'planExecutionStatus': 'IN_PROGRESS',
+      }).planExecutionProgressRatio,
+      isNull,
+    );
     final material = view.materials.single;
     expect(material.actionGroupKey, 'action-material-1');
     expect(material.path, ['产品', '组件A', '共享紧固件']);

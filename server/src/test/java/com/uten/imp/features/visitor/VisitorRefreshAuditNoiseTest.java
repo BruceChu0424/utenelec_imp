@@ -31,17 +31,19 @@ class VisitorRefreshAuditNoiseTest {
         JwtService jwt = mock(JwtService.class);
         VisitorAccount account = new VisitorAccount();
         UUID visitorId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
         account.setId(visitorId);
         account.setVisitorNo("V778899");
         account.setName("赵访客");
         account.setAvatarSeed("Z");
         when(refresh.rotate("raw", "web")).thenReturn(new VisitorRefreshTransaction.Outcome(
-                false, visitorId, UUID.randomUUID(), account, "replacement"));
+                false, visitorId, UUID.randomUUID(), sessionId, account, "replacement"));
         when(jwt.issueVisitorAccess(
                 org.mockito.ArgumentMatchers.eq(visitorId),
                 org.mockito.ArgumentMatchers.eq("V778899"),
                 org.mockito.ArgumentMatchers.eq("Z"),
-                anySet())).thenReturn("access");
+                anySet(),
+                org.mockito.ArgumentMatchers.eq(sessionId))).thenReturn("access");
         VisitorAuthService service = service(refresh, jwt, audit);
 
         VisitorAuthDto.VisitorTokenResponse result = service.refresh("raw", "web");

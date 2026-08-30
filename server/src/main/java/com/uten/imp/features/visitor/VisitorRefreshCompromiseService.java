@@ -28,4 +28,12 @@ public class VisitorRefreshCompromiseService {
         audit.logExplicit(visitorId, null, "visitor_refresh_reuse",
                 "visitor_refresh_token", reusedTokenId.toString(), "reuse_detected");
     }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void revoke(UUID visitorId, UUID reusedTokenId, UUID sessionId) {
+        tokens.revokeAllByVisitorAccountId(visitorId);
+        audit.logExplicit(visitorId, null, "visitor_refresh_reuse",
+                "visitor_refresh_token", reusedTokenId.toString(),
+                "reuse_detected", sessionId);
+    }
 }

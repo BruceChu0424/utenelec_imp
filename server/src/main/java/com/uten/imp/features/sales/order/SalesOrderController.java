@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.order;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.sales.order.dto.OrderDetail;
 import com.uten.imp.features.sales.order.dto.OrderListItem;
 import com.uten.imp.features.sales.order.dto.OrderQueryFilter;
@@ -33,6 +34,7 @@ public class SalesOrderController {
 
     private final SalesOrderService service;
     private final SalesOrderTimelineService timelineService;
+    private final AuditDetailViewRecorder viewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('sales_order:view')")
@@ -86,7 +88,11 @@ public class SalesOrderController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_order:view')")
     public OrderDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        OrderDetail detail = service.detail(id);
+        viewAudit.record(
+                "view_sales_order_detail", "sales_orders", id,
+                detail.getBillNo(), detail.getLegacyId(), "销售订货单");
+        return detail;
     }
 
     /** 排产进度（链路另一端）：每行 订货/可发/已排/已产 + 关联生产计划溯源。 */

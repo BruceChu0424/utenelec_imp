@@ -46,6 +46,7 @@ public record AuditLogDetail(
         String riskReason,
         String eventCategory,
         String eventSource,
+        UUID sessionId,
         UUID requestId,
         UUID clientEventId,
         AuditDeviceEvidence device,
@@ -65,6 +66,7 @@ public record AuditLogDetail(
             AuditActorDirectory.ActorProfile profile) {
         AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(value);
         AuditActorPresentation.View actor = AuditActorPresentation.of(value, profile);
+        boolean internalViewMetadata = AuditEventInterpreter.isDetailViewMetadata(value);
         return new AuditLogDetail(
                 value.getId(),
                 value.getActorId(),
@@ -79,8 +81,8 @@ public record AuditLogDetail(
                 value.getTargetId(),
                 blankToNull(event.targetName()),
                 blankToNull(event.pageLabel()),
-                value.getBefore(),
-                value.getAfter(),
+                internalViewMetadata ? null : value.getBefore(),
+                internalViewMetadata ? null : value.getAfter(),
                 value.getIp(),
                 value.getUserAgent(),
                 value.getResult(),
@@ -93,6 +95,7 @@ public record AuditLogDetail(
                 event.riskReason(),
                 event.category(),
                 value.getEventSource(),
+                value.getSessionId(),
                 value.getRequestId(),
                 value.getClientEventId(),
                 AuditDeviceEvidence.from(value),

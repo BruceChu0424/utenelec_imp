@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.currency;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
@@ -56,6 +57,7 @@ public class CurrencyController {
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('currency:view')")
@@ -88,7 +90,15 @@ public class CurrencyController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('currency:view')")
     public CurrencyDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        CurrencyDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_currency_detail", "currencies", id, displayName,
+                result.getLegacyId(), "币种");
+        return result;
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤/排序走 query，与 GET /list 一致） ----------

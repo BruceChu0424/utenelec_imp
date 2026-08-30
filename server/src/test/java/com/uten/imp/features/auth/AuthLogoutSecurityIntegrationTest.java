@@ -159,7 +159,8 @@ class AuthLogoutSecurityIntegrationTest {
                 "logout",
                 "refresh_tokens",
                 token.getId().toString(),
-                "success");
+                "success",
+                token.getSessionId());
     }
 
     @Test
@@ -210,7 +211,8 @@ class AuthLogoutSecurityIntegrationTest {
                         "logout",
                         "refresh_tokens",
                         token.getId().toString(),
-                        "success");
+                        "success",
+                        token.getSessionId());
 
         mvc.perform(post("/api/auth/logout")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -225,7 +227,8 @@ class AuthLogoutSecurityIntegrationTest {
                 "logout",
                 "refresh_tokens",
                 token.getId().toString(),
-                "success");
+                "success",
+                token.getSessionId());
     }
 
     @Test
@@ -272,11 +275,20 @@ class AuthLogoutSecurityIntegrationTest {
                 any(),
                 any(),
                 any());
+        verify(auditService, never()).logExplicit(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+                any());
     }
 
     private static RefreshToken token(String rawRefresh) {
         RefreshToken token = new RefreshToken();
         token.setUserId(UUID.randomUUID());
+        token.setSessionId(UUID.randomUUID());
         token.setTokenHash(HashUtil.sha256(rawRefresh));
         return token;
     }

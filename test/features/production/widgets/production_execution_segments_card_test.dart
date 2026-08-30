@@ -75,12 +75,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('点击任一行查看详情与可用操作'), findsOneWidget);
+    expect(find.textContaining('操作已直接显示在卡片上'), findsOneWidget);
     await tester.tap(find.text('SEG-001'));
     await tester.pumpAndSettle();
 
     expect(find.text('执行子计划详情'), findsOneWidget);
-    expect(find.text('成品灯 · P-001'), findsOneWidget);
+    expect(find.text('成品灯 · P-001'), findsWidgets);
     expect(find.text('当前账号可查看详情，但没有生产操作权限。'), findsOneWidget);
     expect(find.text('调整分配'), findsNothing);
     expect(find.text('派工'), findsNothing);
@@ -104,6 +104,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('production-execution-assign-segment-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('production-execution-dispatch-segment-1')),
+      findsOneWidget,
+    );
     await tester.tap(find.text('SEG-001'));
     await tester.pumpAndSettle();
 
@@ -145,6 +153,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('production-execution-report-segment-1')),
+        findsNothing,
+      );
       await tester.tap(find.text('SEG-001'));
       await tester.pumpAndSettle();
       expect(find.text('分批报工'), findsNothing);
@@ -161,6 +173,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('production-execution-report-segment-1')),
+        findsOneWidget,
+      );
       await tester.tap(find.text('SEG-001'));
       await tester.pumpAndSettle();
       expect(find.text('分批报工'), findsOneWidget);
@@ -225,6 +241,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('仓库拒收·待重新交付'), findsOneWidget);
+      expect(find.textContaining('通过 10'), findsOneWidget);
+      expect(find.textContaining('PASS'), findsNothing);
       await tester.tap(find.text('SEG-001'));
       await tester.pumpAndSettle();
       expect(find.text('分批报工'), findsNothing);
@@ -389,11 +407,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('人工暂缓'), findsOneWidget);
-    await tester.tap(find.text('SEG-001'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('解除人工暂缓'), findsWidgets);
-    await tester.tap(find.widgetWithText(UtenButton, '解除人工暂缓'));
+    await tester.tap(
+      find.byKey(const ValueKey('production-execution-release-segment-1')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认解除'));
     await tester.pumpAndSettle();
@@ -419,6 +435,55 @@ void main() {
 
     expect(find.text('执行子计划详情'), findsOneWidget);
   });
+
+  testWidgets(
+    'only fully issued dispatched segments support atomic batch start',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      RequestOptions? command;
+
+      await tester.pumpWidget(
+        _app(
+          repository: _repository(
+            status: 'DISPATCHED',
+            onCommand: (request) => command = request,
+          ),
+          permissions: const {Perm.productionExecutionStart},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final checkbox = find.byKey(
+        const ValueKey('production-execution-start-select-segment-1'),
+      );
+      expect(checkbox, findsOneWidget);
+      expect(
+        find.byKey(const Key('production-execution-start-selection-toolbar')),
+        findsOneWidget,
+      );
+      await tester.tap(checkbox);
+      await tester.pump();
+      expect(find.text('已选 1 项 · 可开工 1 项'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const Key('production-execution-batch-start')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认批量开工'));
+      await tester.pumpAndSettle();
+
+      expect(command?.path, endsWith('/execution-segments/batch-start'));
+      final data = command?.data as Map<String, dynamic>;
+      final items = data['items'] as List<dynamic>;
+      expect(items, hasLength(1));
+      expect(items.single, containsPair('segmentId', 'segment-1'));
+      expect(items.single, containsPair('expectedVersion', 1));
+      expect(
+        (items.single as Map<String, dynamic>)['idempotencyKey'],
+        isNotEmpty,
+      );
+    },
+  );
 
   testWidgets('repeated row taps do not stack detail dialogs', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
@@ -458,6 +523,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('已派工·待发料'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('production-execution-start-select-segment-1')),
+      findsNothing,
+    );
     await tester.tap(find.text('SEG-001'));
     await tester.pumpAndSettle();
 
@@ -547,9 +616,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(reads, 1);
 
-    await tester.tap(find.text('SEG-001'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('分批报工'));
+    await tester.tap(
+      find.byKey(const ValueKey('production-execution-report-segment-1')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('返回生产计划'), findsOneWidget);
 
@@ -616,6 +685,7 @@ ProductionPlanRepository _repository({
     InterceptorsWrapper(
       onRequest: (request, handler) {
         final isRead = request.method == 'GET';
+        final isBatchStart = request.path.endsWith('/batch-start');
         if (isRead) onRead?.call();
         if (!isRead) onCommand?.call(request);
         return handler.resolve(
@@ -651,6 +721,19 @@ ProductionPlanRepository _repository({
                             fqcReplacementReadyQty: fqcReplacementReadyQty,
                           ),
                         ]
+                : isBatchStart
+                ? [
+                    _segmentJson(
+                      status: 'IN_PROGRESS',
+                      materialDemandCount: materialDemandCount,
+                      fullyIssuedDemandCount: fullyIssuedDemandCount,
+                      materialIssued: materialIssued,
+                      reportedQty: reportedQty,
+                      remainingQty: remainingQty,
+                      ordinaryRemainingQty:
+                          ordinaryRemainingQty ?? remainingQty,
+                    ),
+                  ]
                 : _segmentJson(
                     status: status,
                     materialDemandCount: materialDemandCount,

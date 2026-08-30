@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.shipment;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.sales.shipment.dto.ShipmentDetail;
 import com.uten.imp.features.sales.shipment.dto.ShipmentListItem;
 import com.uten.imp.features.sales.shipment.dto.ShipmentQueryFilter;
@@ -40,6 +41,7 @@ import java.util.UUID;
 public class SalesShipmentController {
 
     private final SalesShipmentService service;
+    private final AuditDetailViewRecorder viewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('sales_shipment:view')")
@@ -61,7 +63,11 @@ public class SalesShipmentController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_shipment:view')")
     public ShipmentDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ShipmentDetail detail = service.detail(id);
+        viewAudit.record(
+                "view_sales_shipment_detail", "sales_shipments", id,
+                detail.getBillNo(), detail.getLegacyId(), "销售出货单");
+        return detail;
     }
 
     @PostMapping

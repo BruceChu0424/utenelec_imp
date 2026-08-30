@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.goods;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
@@ -58,6 +59,7 @@ public class GoodsController {
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('goods:view')")
@@ -126,7 +128,15 @@ public class GoodsController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('goods:view')")
     public GoodsDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        GoodsDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_goods_detail", "goods", id, displayName,
+                result.getLegacyId(), "货品");
+        return result;
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤/排序走 query，与 GET /list 一致） ----------

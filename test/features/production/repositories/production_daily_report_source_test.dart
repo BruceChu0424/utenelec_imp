@@ -15,6 +15,23 @@ void main() {
     expect(item.fqcRecoveryAuthorizationId, 'recovery-1');
   });
 
+  test('daily report detail preserves ordered production participants', () {
+    final detail = ProductionDailyReportDetail.fromJson(const {
+      'id': 'report-1',
+      'workerId': 'worker-legacy',
+      'workerIds': ['worker-2', 'worker-1', 'worker-2'],
+      'items': <Map<String, dynamic>>[],
+    });
+    final legacy = ProductionDailyReportDetail.fromJson(const {
+      'id': 'report-legacy',
+      'workerId': 'worker-legacy',
+      'items': <Map<String, dynamic>>[],
+    });
+
+    expect(detail.workerIds, ['worker-2', 'worker-1']);
+    expect(legacy.workerIds, ['worker-legacy']);
+  });
+
   test('reportable plan line preserves authoritative allocation fields', () {
     final line = ReportablePlanLine.fromJson({
       'planItemId': 'plan-item-1',
@@ -64,6 +81,28 @@ void main() {
     expect(line.isFqcRecovery, isTrue);
     expect(line.fqcRecoveryLabel, '返工再检');
     expect(line.canReport, isTrue);
+  });
+
+  test('exact segment skips the picker only for one authoritative row', () {
+    final first = ReportablePlanLine.fromJson(const {
+      'planItemId': 'plan-item-1',
+      'executionSegmentId': 'segment-1',
+      'planNo': 'SJ-001',
+      'goodsId': 'goods-1',
+      'maxReportQty': 8,
+    });
+    final second = ReportablePlanLine.fromJson(const {
+      'planItemId': 'plan-item-1',
+      'executionSegmentId': 'segment-1',
+      'planNo': 'SJ-001',
+      'goodsId': 'goods-1',
+      'maxReportQty': 2,
+      'orderItemId': 'order-item-2',
+    });
+
+    expect(uniqueReportablePlanLine([first], 1), same(first));
+    expect(uniqueReportablePlanLine([first, second], 2), isNull);
+    expect(uniqueReportablePlanLine([first], 2), isNull);
   });
 
   test(
@@ -147,6 +186,7 @@ void main() {
 
       final created = await repository.create(const {
         'billDate': '2026-08-28',
+        'workerIds': ['worker-1', 'worker-2'],
         'items': <Map<String, dynamic>>[],
       }, idempotencyKey: 'daily-report-create-command-0001');
       final updated = await repository.update('report-1', const {
@@ -157,6 +197,10 @@ void main() {
       expect(
         requests[0].data,
         containsPair('idempotencyKey', 'daily-report-create-command-0001'),
+      );
+      expect(
+        requests[0].data,
+        containsPair('workerIds', ['worker-1', 'worker-2']),
       );
       expect(requests[1].data, containsPair('expectedVersion', 3));
       expect(created.rowVersion, 0);

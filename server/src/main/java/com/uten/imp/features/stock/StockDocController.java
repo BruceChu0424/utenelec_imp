@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.stock.dto.StockDocDetail;
 import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
@@ -43,6 +44,7 @@ import java.util.UUID;
 public class StockDocController {
 
     private final StockDocService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('stock_doc:view')")
@@ -66,7 +68,15 @@ public class StockDocController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public StockDocDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        StockDocDetail result = service.detail(id);
+        auditViews.record(
+                "view_stock_document_detail",
+                "stock_documents",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "库存单据");
+        return result;
     }
 
     @PostMapping

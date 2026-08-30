@@ -69,7 +69,7 @@ public class AuditRetentionScheduler {
                 INSERT INTO audit_log_archive (
                     id, actor_id, actor_account, action, target_type, target_id,
                     "before", "after", ip, user_agent, result, created_at,
-                    request_id, event_source, http_method, http_path,
+                    request_id, session_id, event_source, http_method, http_path,
                     status_code, duration_ms, risk_level, event_category,
                     client_event_id, device_installation_id, device_name,
                     device_manufacturer, device_model, device_platform,
@@ -83,7 +83,7 @@ public class AuditRetentionScheduler {
                     hot.id, hot.actor_id, hot.actor_account, hot.action,
                     hot.target_type, hot.target_id, hot."before", hot."after",
                     hot.ip, hot.user_agent, hot.result, hot.created_at,
-                    hot.request_id, hot.event_source, hot.http_method,
+                    hot.request_id, hot.session_id, hot.event_source, hot.http_method,
                     hot.http_path, hot.status_code, hot.duration_ms,
                     hot.risk_level, hot.event_category,
                     hot.client_event_id, hot.device_installation_id,

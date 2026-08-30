@@ -29,4 +29,11 @@ public class StaffRefreshCompromiseService {
         audit.logExplicit(userId, null, "refresh_reuse", "refresh_tokens",
                 reusedTokenId.toString(), "reuse_detected");
     }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void revoke(UUID userId, UUID reusedTokenId, UUID sessionId) {
+        tokens.revokeAllByUserId(userId);
+        audit.logExplicit(userId, null, "refresh_reuse", "refresh_tokens",
+                reusedTokenId.toString(), "reuse_detected", sessionId);
+    }
 }

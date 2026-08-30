@@ -97,9 +97,10 @@ class RefreshTransactionBoundaryTest {
     void tokenIssuerRevokesBeforeReportingReuseAsUnauthorized() {
         UUID userId = UUID.randomUUID();
         UUID tokenId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
         when(staffRotation.rotate("reused"))
                 .thenReturn(new StaffRefreshTransaction.Outcome(
-                        true, userId, tokenId, null, null));
+                        true, userId, tokenId, sessionId, null, null));
         TokenIssuer issuer = new TokenIssuer(
                 null,
                 null,
@@ -110,7 +111,7 @@ class RefreshTransactionBoundaryTest {
                 audit);
 
         assertThrows(ApiException.class, () -> issuer.refresh("reused"));
-        verify(staffCompromise).revoke(userId, tokenId);
+        verify(staffCompromise).revoke(userId, tokenId, sessionId);
     }
 
     private void assertRequiresNew(Method method) {

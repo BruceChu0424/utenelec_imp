@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payment;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentDetail;
@@ -45,6 +46,7 @@ public class FinancePaymentController {
     private final FinancePaymentService service;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_payment:view')")
@@ -65,7 +67,15 @@ public class FinancePaymentController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_payment:view')")
     public FinancePaymentDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        FinancePaymentDetail result = service.detail(id);
+        detailViewAudit.record(
+                "view_finance_payment_detail",
+                "finance_payments",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "采购付款单");
+        return result;
     }
 
     @PostMapping

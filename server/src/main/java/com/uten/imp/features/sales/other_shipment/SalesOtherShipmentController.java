@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.other_shipment;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentDetail;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentListItem;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentQueryFilter;
@@ -31,6 +32,7 @@ import java.util.UUID;
 public class SalesOtherShipmentController {
 
     private final SalesOtherShipmentService service;
+    private final AuditDetailViewRecorder viewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('sales_other_shipment:view')")
@@ -52,7 +54,11 @@ public class SalesOtherShipmentController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_other_shipment:view')")
     public OtherShipmentDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        OtherShipmentDetail detail = service.detail(id);
+        viewAudit.record(
+                "view_sales_other_shipment_detail", "sales_other_shipments", id,
+                detail.getBillNo(), detail.getLegacyId(), "其它出货单");
+        return detail;
     }
 
     @PostMapping

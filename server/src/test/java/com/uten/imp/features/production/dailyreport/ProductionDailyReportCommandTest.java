@@ -24,6 +24,7 @@ import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -121,6 +122,157 @@ class ProductionDailyReportCommandTest {
     }
 
     @Test
+    void workerIdsAreDeduplicatedInOrderAndDriveTheCanonicalHash() {
+        UUID firstWorker = UUID.randomUUID();
+        UUID secondWorker = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        DailyReportSaveRequest duplicated = request(
+                "workers-one", null, goodsId, unitId,
+                null, null, BigDecimal.ONE);
+        duplicated.setWorkerId(UUID.randomUUID());
+        duplicated.setWorkerIds(List.of(
+                firstWorker, secondWorker, firstWorker));
+        DailyReportSaveRequest canonical = request(
+                "workers-two", null, goodsId, unitId,
+                null, null, BigDecimal.ONE);
+        canonical.setWorkerIds(List.of(firstWorker, secondWorker));
+        DailyReportSaveRequest reordered = request(
+                "workers-three", null, goodsId, unitId,
+                null, null, BigDecimal.ONE);
+        reordered.setWorkerIds(List.of(secondWorker, firstWorker));
+        DailyReportSaveRequest legacy = request(
+                "workers-four", null, goodsId, unitId,
+                null, null, BigDecimal.ONE);
+        legacy.setWorkerId(firstWorker);
+        DailyReportSaveRequest single = request(
+                "workers-five", null, goodsId, unitId,
+                null, null, BigDecimal.ONE);
+        single.setWorkerIds(List.of(firstWorker));
+
+        assertEquals(
+                List.of(firstWorker, secondWorker),
+                ProductionDailyReportService.normalizeWorkerIds(duplicated));
+        assertEquals(
+                ProductionDailyReportService.createRequestHash(duplicated),
+                ProductionDailyReportService.createRequestHash(canonical));
+        assertNotEquals(
+                ProductionDailyReportService.createRequestHash(canonical),
+                ProductionDailyReportService.createRequestHash(reordered));
+        assertEquals(
+                ProductionDailyReportService.createRequestHash(legacy),
+                ProductionDailyReportService.createRequestHash(single));
+    }
+
+    @Test
+    void createPersistsOrderedWorkersAndMirrorsTheFirstWorkerToLegacyHeader() {
+        UUID actorId = UUID.randomUUID();
+        UUID makerId = UUID.randomUUID();
+        UUID firstWorker = UUID.randomUUID();
+        UUID secondWorker = UUID.randomUUID();
+        DailyReportSaveRequest request = request(
+                "worker-create-key", null, UUID.randomUUID(), UUID.randomUUID(),
+                null, null, BigDecimal.ONE);
+        request.setWorkerId(UUID.randomUUID());
+        request.setWorkerIds(List.of(firstWorker, secondWorker, firstWorker));
+
+        Query advisory = query(true);
+        Query commandRead = query(false);
+        when(commandRead.getResultList()).thenReturn(List.of());
+        Query workerValidation = query(false);
+        when(workerValidation.getResultList()).thenReturn(
+                List.of(firstWorker, secondWorker));
+        Query workerDelete = query(false);
+        when(workerDelete.executeUpdate()).thenReturn(0);
+        Query workerInsert = query(false);
+        when(workerInsert.executeUpdate()).thenReturn(1);
+        Query commandInsert = query(false);
+        when(commandInsert.executeUpdate()).thenReturn(1);
+        Query workerRead = query(false);
+        when(workerRead.getResultList()).thenReturn(
+                List.of(firstWorker, secondWorker));
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("pg_advisory_xact_lock")) return advisory;
+            if (sql.contains("SELECT request_hash")
+                    && sql.contains("production_daily_report_commands")) {
+                return commandRead;
+            }
+            if (sql.contains("WITH RECURSIVE production_department_tree")) {
+                return workerValidation;
+            }
+            if (sql.contains("DELETE FROM production_daily_report_workers")) {
+                return workerDelete;
+            }
+            if (sql.contains("INSERT INTO production_daily_report_workers")) {
+                return workerInsert;
+            }
+            if (sql.contains("INSERT INTO production_daily_report_commands")) {
+                return commandInsert;
+            }
+            if (sql.contains("SELECT employee_id")
+                    && sql.contains("production_daily_report_workers")) {
+                return workerRead;
+            }
+            throw new AssertionError("unexpected SQL: " + sql);
+        });
+        when(currentUser.requireId()).thenReturn(actorId);
+        when(currentUser.requireEmployeeId()).thenReturn(makerId);
+        when(docNumberService.nextNumber(any())).thenReturn("SR20260829000001");
+        ArgumentCaptor<ProductionDailyReport> saved =
+                ArgumentCaptor.forClass(ProductionDailyReport.class);
+        when(reportRepo.saveAndFlush(saved.capture())).thenAnswer(invocation ->
+                invocation.getArgument(0));
+        when(reportRepo.findById(any())).thenAnswer(invocation ->
+                Optional.of(saved.getValue()));
+        when(itemRepo.findByReportIdOrderByLineNoAsc(any())).thenReturn(List.of());
+        when(nameResolver.nameOf(makerId)).thenReturn("制单人");
+
+        DailyReportDetail result = service.create(request);
+
+        assertEquals(firstWorker, saved.getValue().getWorkerId());
+        assertEquals(List.of(firstWorker, secondWorker), result.getWorkerIds());
+        verify(workerInsert).setParameter("employeeId", firstWorker);
+        verify(workerInsert).setParameter("employeeId", secondWorker);
+        verify(workerInsert).setParameter("sortOrder", 1);
+        verify(workerInsert).setParameter("sortOrder", 2);
+    }
+
+    @Test
+    void createRejectsWhenAnyParticipantIsOutsideTheActiveProductionTree() {
+        UUID acceptedWorker = UUID.randomUUID();
+        UUID rejectedWorker = UUID.randomUUID();
+        DailyReportSaveRequest request = request(
+                "worker-invalid-key", null, UUID.randomUUID(), UUID.randomUUID(),
+                null, null, BigDecimal.ONE);
+        request.setWorkerIds(List.of(acceptedWorker, rejectedWorker));
+        Query advisory = query(true);
+        Query commandRead = query(false);
+        when(commandRead.getResultList()).thenReturn(List.of());
+        Query workerValidation = query(false);
+        when(workerValidation.getResultList()).thenReturn(List.of(acceptedWorker));
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("pg_advisory_xact_lock")) return advisory;
+            if (sql.contains("SELECT request_hash")
+                    && sql.contains("production_daily_report_commands")) {
+                return commandRead;
+            }
+            if (sql.contains("WITH RECURSIVE production_department_tree")) {
+                return workerValidation;
+            }
+            throw new AssertionError("unexpected SQL: " + sql);
+        });
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+
+        ApiException error = assertThrows(
+                ApiException.class, () -> service.create(request));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        verify(reportRepo, never()).saveAndFlush(any());
+    }
+
+    @Test
     void sameActorKeyAndHashReplaysBoundReportWithoutCreatingAnother() {
         UUID actorId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
@@ -158,6 +310,60 @@ class ProductionDailyReportCommandTest {
         assertEquals(4, replay.getRowVersion());
         verify(reportRepo, never()).saveAndFlush(any());
         verify(itemRepo, never()).save(any());
+    }
+
+    @Test
+    void preV427SingleWorkerHashStillReplaysWithoutRevalidatingTheSnapshot() {
+        UUID actorId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
+        UUID workerId = UUID.randomUUID();
+        UUID reportId = UUID.randomUUID();
+        DailyReportSaveRequest request = request(
+                "legacy-worker-key", null, UUID.randomUUID(), UUID.randomUUID(),
+                null, null, BigDecimal.ONE);
+        request.setWorkerId(workerId);
+        String legacyHash =
+                ProductionDailyReportService.legacyCreateRequestHash(request);
+        assertNotEquals(
+                legacyHash,
+                ProductionDailyReportService.createRequestHash(request));
+        Query advisory = query(true);
+        Query command = query(false);
+        when(command.getResultList()).thenReturn(
+                java.util.Collections.singletonList(
+                        new Object[]{legacyHash, reportId}));
+        Query workerRead = query(false);
+        when(workerRead.getResultList()).thenReturn(List.of(workerId));
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (sql.contains("pg_advisory_xact_lock")) return advisory;
+            if (sql.contains("FROM production_daily_report_commands")) {
+                return command;
+            }
+            if (sql.contains("SELECT employee_id")
+                    && sql.contains("production_daily_report_workers")) {
+                return workerRead;
+            }
+            throw new AssertionError("unexpected SQL: " + sql);
+        });
+        when(currentUser.requireId()).thenReturn(actorId);
+        ProductionDailyReport existing = new ProductionDailyReport();
+        existing.setId(reportId);
+        existing.setBillNo("SR20260828000002");
+        existing.setBillDate(LocalDate.of(2026, 8, 28));
+        existing.setWorkerId(workerId);
+        existing.setMakerId(employeeId);
+        existing.setStatus((short) 0);
+        when(reportRepo.findById(reportId)).thenReturn(Optional.of(existing));
+        when(itemRepo.findByReportIdOrderByLineNoAsc(reportId)).thenReturn(List.of());
+        when(nameResolver.nameOf(employeeId)).thenReturn("Planner");
+
+        DailyReportDetail replay = service.create(request);
+
+        assertEquals(List.of(workerId), replay.getWorkerIds());
+        verify(reportRepo, never()).saveAndFlush(any());
+        verify(em, never()).createNativeQuery(argThat(
+                sql -> sql.contains("production_department_tree")));
     }
 
     @Test

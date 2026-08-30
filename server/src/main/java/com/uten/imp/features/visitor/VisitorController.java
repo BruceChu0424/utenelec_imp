@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApplyRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
@@ -26,6 +27,7 @@ import java.util.UUID;
 public class VisitorController {
 
     private final VisitorApplicationService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/mine")
     public PageResponse<VisitorListItem> mine(
@@ -37,7 +39,11 @@ public class VisitorController {
 
     @GetMapping("/{id}")
     public VisitorDetail detail(@PathVariable UUID id) {
-        return service.getDetail(id);
+        VisitorDetail result = service.getDetail(id);
+        detailViewAudit.record(
+                "view_visitor_application_detail", "visitor_applications", id,
+                null, null, "访客申请");
+        return result;
     }
 
     @PostMapping

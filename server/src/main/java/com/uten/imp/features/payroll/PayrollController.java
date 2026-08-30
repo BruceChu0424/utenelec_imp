@@ -1,5 +1,6 @@
 package com.uten.imp.features.payroll;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.PageResponse;
@@ -34,6 +35,7 @@ public class PayrollController {
     private final PayrollService service;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/slips")
     @PreAuthorize("hasAnyAuthority('payroll:view:self','payroll:view:all')")
@@ -50,7 +52,20 @@ public class PayrollController {
     @GetMapping("/slips/{id}")
     @PreAuthorize("hasAnyAuthority('payroll:view:self','payroll:view:all')")
     public PayrollSlipDto slip(@PathVariable UUID id) {
-        return service.getSlip(id);
+        PayrollSlipDto result = service.getSlip(id);
+        String period = result.year() + "年" + result.month() + "月";
+        String displayName = result.employeeCode() == null
+                || result.employeeCode().isBlank()
+                ? period
+                : result.employeeCode() + " · " + period;
+        detailViewAudit.record(
+                "view_payroll_slip_detail",
+                "payroll_slips",
+                id,
+                displayName,
+                null,
+                "工资条");
+        return result;
     }
 
     @PostMapping("/slips/{id}/view")
@@ -105,7 +120,20 @@ public class PayrollController {
             )
             """)
     public PayrollBatchDto batch(@PathVariable UUID id) {
-        return service.getBatch(id);
+        PayrollBatchDto result = service.getBatch(id);
+        String period = result.year() + "年" + result.month() + "月";
+        String displayName = result.departmentName() == null
+                || result.departmentName().isBlank()
+                ? period
+                : result.departmentName() + " · " + period;
+        detailViewAudit.record(
+                "view_payroll_batch_detail",
+                "payroll_batches",
+                id,
+                displayName,
+                null,
+                "工资批次");
+        return result;
     }
 
     @PostMapping("/batches")

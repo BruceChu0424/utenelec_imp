@@ -1,5 +1,6 @@
 package com.uten.imp.features.production;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.mrp.MrpController;
@@ -45,7 +46,8 @@ class ProductionLegacyWriteControllerTest {
     @Test
     void directPlanCreateIsPermanentlyRejectedWithoutCallingTheService() {
         ProductionPlanService service = mock(ProductionPlanService.class);
-        ProductionPlanController controller = new ProductionPlanController(service);
+        ProductionPlanController controller = new ProductionPlanController(
+                service, mock(AuditDetailViewRecorder.class));
 
         ApiException error = assertThrows(ApiException.class,
                 () -> controller.create(null));

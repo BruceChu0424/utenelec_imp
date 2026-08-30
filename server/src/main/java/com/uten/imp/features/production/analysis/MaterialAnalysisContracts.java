@@ -318,7 +318,10 @@ public final class MaterialAnalysisContracts {
             String parentGoodsName,
             String planExecutionStatus,
             UUID latestPlanId,
-            String latestPlanNo) {
+            String latestPlanNo,
+            BigDecimal planExecutionPlannedQty,
+            BigDecimal planExecutionInboundQty,
+            BigDecimal planExecutionProgressRatio) {
     }
 
     public record AnalysisListItem(

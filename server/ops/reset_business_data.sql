@@ -1,12 +1,12 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（V425；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（V429；保留主档、人事、权限与治理证据）
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
---   · CLEAR 191 张：销售、采购、库存、生产、委外、财务、工资、通知、访客、
+--   · CLEAR 192 张：销售、采购、库存、生产、委外、财务、工资、通知、访客、
 --     建议、任务认领和业务 outbox。
 --   · PRESERVE 92 张：主档、人事、账号/权限、系统配置、Flyway、审计日志、
 --     人事附件、导入/迁移证据、编号终身占用和单调流水。账户主档保留，
@@ -30,7 +30,7 @@
 --
 -- 先备份（示例；不要覆盖既有备份）：
 --   $resetStamp = Get-Date -Format 'yyyyMMdd_HHmmss'
---   $backupName = "uten_imp_pre_reset_v425_$resetStamp.dump"
+--   $backupName = "uten_imp_pre_reset_v429_$resetStamp.dump"
 --   docker exec uten-imp-postgres pg_dump -U uten -d uten_imp -Fc \
 --       -f "/tmp/$backupName"
 --   docker exec uten-imp-postgres pg_restore -l "/tmp/$backupName"
@@ -247,6 +247,7 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('procurement_order_approval_cases', 'CLEAR'),
 ('procurement_order_approval_events', 'CLEAR'),
 ('production_daily_report_commands', 'CLEAR'),
+('production_daily_report_workers', 'CLEAR'),
 ('production_daily_report_items', 'CLEAR'),
 ('production_daily_reports', 'CLEAR'),
 ('production_execution_segment_events', 'CLEAR'),
@@ -528,9 +529,9 @@ BEGIN
     INTO clear_count, preserve_count
     FROM reset_business_table_policy;
 
-    IF clear_count <> 191 OR preserve_count <> 92 THEN
+    IF clear_count <> 192 OR preserve_count <> 92 THEN
         RAISE EXCEPTION
-            'V425 白名单数量异常：CLEAR %（应为191），PRESERVE %（应为92）',
+            'V429 白名单数量异常：CLEAR %（应为192），PRESERVE %（应为92）',
             clear_count, preserve_count;
     END IF;
 

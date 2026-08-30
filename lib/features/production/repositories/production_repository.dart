@@ -406,6 +406,20 @@ class ProductionPlanRepository {
     return ProductionExecutionSegmentView.fromJson(json);
   }
 
+  /// Atomically starts all selected, fully-issued dispatched segments.
+  Future<List<ProductionExecutionSegmentView>> batchStartExecutionSegments(
+    String planId, {
+    required List<ProductionExecutionBatchStartItem> items,
+  }) async {
+    final list = await api.postList(
+      '/production/plans/$planId/execution-segments/batch-start',
+      body: {
+        'items': [for (final item in items) item.toJson()],
+      },
+    ); // ENDPOINT
+    return list.map(ProductionExecutionSegmentView.fromJson).toList();
+  }
+
   /// D3 订单物料分析：已审销售订货单直接 BOM 展开。
   Future<List<MrpRow>> mrpOrderPreview(String orderId) async {
     final list = await api.getList(

@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.materialcategory;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.materialcategory.dto.*;
 import jakarta.validation.Valid;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class MaterialCategoryController {
 
     private final MaterialCategoryService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/tree")
     @PreAuthorize("hasAuthority('material_category:view')")
@@ -33,7 +35,15 @@ public class MaterialCategoryController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('material_category:view')")
     public MaterialCategoryDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        MaterialCategoryDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_material_category_detail", "material_categories", id, displayName,
+                result.getLegacyId(), "物料分类");
+        return result;
     }
 
     @GetMapping("/{id}/delete-preview")

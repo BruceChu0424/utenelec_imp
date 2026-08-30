@@ -37,11 +37,7 @@ class PayrollSlipDetailPage extends ConsumerStatefulWidget {
 }
 
 class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _markViewed());
-  }
+  bool _markViewedRequested = false;
 
   Future<void> _markViewed() async {
     try {
@@ -64,7 +60,13 @@ class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
           actionLabel: '重试',
           onAction: () => ref.invalidate(payrollDetailProvider(widget.slipId)),
         ),
-        data: (slip) => _DetailContent(slip: slip),
+        data: (slip) {
+          if (!_markViewedRequested) {
+            _markViewedRequested = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) => _markViewed());
+          }
+          return _DetailContent(slip: slip);
+        },
       ),
     );
   }

@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.material_return;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnListItem;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class SubcontractMaterialReturnController {
 
     private final SubcontractMaterialReturnService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_material_return:view')")
@@ -59,7 +61,15 @@ public class SubcontractMaterialReturnController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_material_return:view')")
     public MaterialReturnDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        MaterialReturnDetail result = service.detail(id);
+        auditViews.record(
+                "view_subcontract_material_return_detail",
+                "subcontract_material_returns",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外材料退货单");
+        return result;
     }
 
     @PostMapping

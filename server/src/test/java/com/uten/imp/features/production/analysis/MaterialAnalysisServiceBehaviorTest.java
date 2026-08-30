@@ -1253,6 +1253,64 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void planExecutionProgressRatioClampsAndUsesFourDecimalScale() {
+        assertThat(MaterialAnalysisService.planExecutionProgressRatio(
+                bd("10"), bd("4"))).isEqualByComparingTo("0.4000");
+        assertThat(MaterialAnalysisService.planExecutionProgressRatio(
+                bd("10"), null)).isEqualByComparingTo("0.0000");
+        assertThat(MaterialAnalysisService.planExecutionProgressRatio(
+                bd("10"), bd("-1"))).isEqualByComparingTo("0.0000");
+        assertThat(MaterialAnalysisService.planExecutionProgressRatio(
+                bd("10"), bd("12"))).isEqualByComparingTo("1.0000");
+        assertThat(MaterialAnalysisService.planExecutionProgressRatio(
+                BigDecimal.ZERO, bd("1"))).isNull();
+        assertThat(MaterialAnalysisService.planExecutionProgressRatio(
+                null, bd("1"))).isNull();
+    }
+
+    @Test
+    void planExecutionProjectionPreaggregatesItemsAndSegmentsBeforeSumming()
+            throws Exception {
+        UUID analysisId = UUID.randomUUID();
+        UUID analysisItemId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        Query query = query(List.<Object[]>of(new Object[]{
+                analysisItemId, planId, "PP-001", "IN_PROGRESS",
+                bd("10"), bd("4")
+        }));
+        List<String> statements = new ArrayList<>();
+        EntityManager em = mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            statements.add(invocation.getArgument(0, String.class));
+            return query;
+        });
+        MaterialAnalysisService service = service(
+                em, mock(ProductionDocumentAccessPolicy.class));
+
+        Map<UUID, MaterialAnalysisService.ProductPlanState> projections =
+                invokePrivate(service, "productPlanStates",
+                        new Class<?>[]{UUID.class}, analysisId);
+
+        MaterialAnalysisService.ProductPlanState projection =
+                projections.get(analysisItemId);
+        assertThat(projection.status()).isEqualTo("IN_PROGRESS");
+        assertThat(projection.planId()).isEqualTo(planId);
+        assertThat(projection.plannedQty()).isEqualByComparingTo("10");
+        assertThat(projection.inboundQty()).isEqualByComparingTo("4");
+        assertThat(projection.progressRatio()).isEqualByComparingTo("0.4000");
+
+        String sql = statements.getFirst().replaceAll("\\s+", " ");
+        assertThat(sql)
+                .contains("WITH active_links AS")
+                .contains("plan_ids AS")
+                .contains("SELECT DISTINCT plan_id")
+                .contains("item_rollup AS")
+                .contains("segment_rollup AS")
+                .contains("FILTER (WHERE link.approved AND plan.status = 1)");
+        verify(query).setParameter("analysisId", analysisId);
+    }
+
+    @Test
     void currentEffectiveSqlAndProjectionIgnoreFormalizeRestoreButCountTargetRelease()
             throws Exception {
         UUID analysisId = UUID.randomUUID();

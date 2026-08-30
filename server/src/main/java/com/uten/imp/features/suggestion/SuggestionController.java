@@ -1,5 +1,6 @@
 package com.uten.imp.features.suggestion;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.suggestion.dto.SuggestionDto;
 import com.uten.imp.features.suggestion.dto.SuggestionReplyRequest;
@@ -34,6 +35,7 @@ import java.util.UUID;
 public class SuggestionController {
 
     private final SuggestionService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('suggestion:submit')")
@@ -48,7 +50,11 @@ public class SuggestionController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('suggestion:submit')")
     public SuggestionDto detail(@PathVariable UUID id) {
-        return service.getById(id);
+        SuggestionDto result = service.getById(id);
+        detailViewAudit.record(
+                "view_suggestion_detail", "suggestions", id, null,
+                null, "建议");
+        return result;
     }
 
     @PostMapping

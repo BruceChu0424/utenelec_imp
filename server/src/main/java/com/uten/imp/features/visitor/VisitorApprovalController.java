@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.HostConfirmRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApproveRequest;
@@ -36,6 +37,7 @@ public class VisitorApprovalController {
 
     private final VisitorHrApprovalService hrApprovalService;
     private final VisitorHostConfirmService hostConfirmService;
+    private final AuditDetailViewRecorder viewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('visitor:approve')")
@@ -70,7 +72,11 @@ public class VisitorApprovalController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('visitor:approve', 'visitor:host-confirm')")
     public VisitorDetail detail(@PathVariable UUID id) {
-        return hrApprovalService.getDetailForStaff(id);
+        VisitorDetail detail = hrApprovalService.getDetailForStaff(id);
+        viewAudit.record(
+                "view_visitor_application_detail", "visitor_applications", id,
+                detail.visitorName(), null, "访客申请");
+        return detail;
     }
 
     @PostMapping("/{id}/action")

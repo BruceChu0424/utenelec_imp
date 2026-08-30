@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -35,6 +36,7 @@ public class MaterialAnalysisController {
     private final MaterialStockReallocationService stockReallocationService;
     private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
     private final MaterialAnalysisSupplyProgressService supplyProgressService;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
@@ -82,7 +84,11 @@ public class MaterialAnalysisController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
     public AnalysisView detail(@PathVariable UUID id) {
-        return queryService.detail(id);
+        AnalysisView result = queryService.detail(id);
+        detailViewAudit.record(
+                "view_material_analysis_detail", "production_material_analyses", id,
+                null, null, "物料分析");
+        return result;
     }
 
     /** 物料节点供给全链路进度（只读）：下单/财务/收货/质检/入库逐步状态。 */

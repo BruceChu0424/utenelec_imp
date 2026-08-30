@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.warehouse;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.warehouse.dto.WarehouseDetail;
 import com.uten.imp.features.master.warehouse.dto.WarehouseFacets;
@@ -41,6 +42,7 @@ import java.util.UUID;
 public class WarehouseController {
 
     private final WarehouseService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('warehouse:view')")
@@ -77,7 +79,15 @@ public class WarehouseController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('warehouse:view')")
     public WarehouseDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        WarehouseDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_warehouse_detail", "warehouses", id, displayName,
+                result.getLegacyId(), "仓库");
+        return result;
     }
 
     @PostMapping

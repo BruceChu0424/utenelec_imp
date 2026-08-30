@@ -30,7 +30,8 @@ class CrossReallocationCandidateContractTest {
                 reallocations,
                 mock(com.uten.imp.features.production.mrp
                         .ProductionGoodsWorkshopPreferenceService.class),
-                mock(MaterialAnalysisSupplyProgressService.class));
+                mock(MaterialAnalysisSupplyProgressService.class),
+                mock(com.uten.imp.audit.AuditDetailViewRecorder.class));
         UUID sourceAnalysisId = UUID.randomUUID();
         UUID sourceMaterialId = UUID.randomUUID();
         CrossReallocationCandidate candidate = new CrossReallocationCandidate(

@@ -24,7 +24,8 @@ class DepartmentEmployeePickerSecurityContractTest {
         DepartmentService service = mock(DepartmentService.class);
         DepartmentController controller = new DepartmentController(
                 service,
-                mock(WorkforceOverviewService.class));
+                mock(WorkforceOverviewService.class),
+                mock(com.uten.imp.audit.AuditDetailViewRecorder.class));
         List<DepartmentPickerNode> expected = List.of();
         when(service.employeePickerTree()).thenReturn(expected);
 

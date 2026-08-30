@@ -28,16 +28,18 @@ class TokenIssuerRefreshAuditNoiseTest {
         UserAccount account = mock(UserAccount.class);
         UUID userId = UUID.randomUUID();
         UUID tokenId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
         when(account.getId()).thenReturn(userId);
         when(refresh.rotate("raw")).thenReturn(new StaffRefreshTransaction.Outcome(
-                false, userId, tokenId, account, "replacement"));
+                false, userId, tokenId, sessionId, account, "replacement"));
         TokenResponse expected = mock(TokenResponse.class);
-        when(responses.build(account, "replacement")).thenReturn(expected);
+        when(responses.build(account, "replacement", sessionId)).thenReturn(expected);
         TokenIssuer issuer = issuer(refresh, responses, audit);
 
         TokenResponse actual = issuer.refresh("raw");
 
         assertSame(expected, actual);
+        verify(responses).build(account, "replacement", sessionId);
         verifyNoInteractions(audit);
     }
 

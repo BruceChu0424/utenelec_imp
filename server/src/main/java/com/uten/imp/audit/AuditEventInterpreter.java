@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -53,6 +54,81 @@ public class AuditEventInterpreter {
             "list", "count", "pending-count", "host-pending-count", "type-counts",
             "summary", "export", "download", "heartbeat", "capability", "preview",
             "search", "tree", "subtree", "arrivals", "unread-count");
+    private static final Map<String, String> DETAIL_VIEW_ACTION_LABELS = Map.ofEntries(
+            Map.entry("view_sales_quote_detail", "查看销售报价详情"),
+            Map.entry("view_sales_order_detail", "查看销售订单详情"),
+            Map.entry("view_sales_shipment_detail", "查看销售出货详情"),
+            Map.entry("view_sales_other_shipment_detail", "查看销售其他出库详情"),
+            Map.entry("view_sales_return_detail", "查看销售退货详情"),
+            Map.entry("view_employee_detail", "查看员工档案"),
+            Map.entry("view_visitor_application_detail", "查看访客申请详情"),
+            Map.entry("view_website_inquiry_detail", "查看官网询盘详情"),
+            Map.entry("view_client_detail", "查看客户档案"),
+            Map.entry("view_supplier_detail", "查看供应商档案"),
+            Map.entry("view_account_detail", "查看资金账户档案"),
+            Map.entry("view_goods_detail", "查看货品详情"),
+            Map.entry("view_mould_detail", "查看模具详情"),
+            Map.entry("view_currency_detail", "查看币种详情"),
+            Map.entry("view_payment_style_detail", "查看收付款类别详情"),
+            Map.entry("view_warehouse_detail", "查看仓库详情"),
+            Map.entry("view_color_detail", "查看颜色详情"),
+            Map.entry("view_unit_detail", "查看计量单位详情"),
+            Map.entry("view_material_category_detail", "查看物料分类详情"),
+            Map.entry("view_mould_category_detail", "查看模具分类详情"),
+            Map.entry("view_client_category_detail", "查看客户分类详情"),
+            Map.entry("view_supplier_category_detail", "查看供应商分类详情"),
+            Map.entry("view_department_detail", "查看部门详情"),
+            Map.entry("view_suggestion_detail", "查看建议详情"),
+            Map.entry("view_material_analysis_detail", "查看物料分析详情"),
+            Map.entry("view_payroll_slip_detail", "查看工资条详情"),
+            Map.entry("view_payroll_batch_detail", "查看工资批次详情"),
+            Map.entry("view_finance_receipt_detail", "查看销售收款单详情"),
+            Map.entry("view_finance_payment_detail", "查看采购付款单详情"),
+            Map.entry("view_finance_expense_detail", "查看一般费用单详情"),
+            Map.entry("view_finance_other_income_detail", "查看其它收入单详情"),
+            Map.entry("view_finance_bank_transfer_detail", "查看银行存取款单详情"),
+            Map.entry("view_ar_ap_ledger_detail", "查看应收应付台账详情"),
+            Map.entry("view_supplier_settlement_detail", "查看供应商对账单详情"),
+            Map.entry("view_subcontract_loss_claim_detail", "查看委外损耗索赔详情"),
+            Map.entry("view_procurement_payable_detail", "查看采购应付明细"),
+            Map.entry("view_procurement_arrival_exception_detail", "查看采购到货异常详情"),
+            Map.entry("view_finance_procurement_arrival_exception_detail",
+                    "查看采购到货异常财务审批详情"),
+            Map.entry("view_expense_claim_detail", "查看费用报销详情"),
+            Map.entry("view_fixed_asset_detail", "查看固定资产详情"),
+            Map.entry("view_deferred_expense_detail", "查看递延费用详情"),
+            Map.entry("view_asset_posting_run_detail", "查看资产过账批次详情"),
+            Map.entry("view_purchase_request_detail", "查看采购申请详情"),
+            Map.entry("view_purchase_order_detail", "查看采购订单详情"),
+            Map.entry("view_purchase_receipt_detail", "查看采购收货详情"),
+            Map.entry("view_purchase_return_detail", "查看采购退货详情"),
+            Map.entry("view_subcontract_application_detail", "查看委外申请详情"),
+            Map.entry("view_subcontract_inquiry_detail", "查看委外询价详情"),
+            Map.entry("view_subcontract_order_detail", "查看委外订单详情"),
+            Map.entry("view_subcontract_receipt_detail", "查看委外收货详情"),
+            Map.entry("view_subcontract_return_detail", "查看委外退货详情"),
+            Map.entry("view_subcontract_material_issue_detail", "查看委外发料详情"),
+            Map.entry("view_subcontract_material_return_detail", "查看委外退料详情"),
+            Map.entry("view_subcontract_waste_detail", "查看委外废料详情"),
+            Map.entry("view_production_plan_detail", "查看生产计划详情"),
+            Map.entry("view_production_daily_report_detail", "查看生产日报详情"),
+            Map.entry("view_production_fqc_inspection_detail", "查看成品检验详情"),
+            Map.entry("view_stock_document_detail", "查看库存单据详情"));
+    private static final Set<String> SENSITIVE_DETAIL_TARGETS = Set.of(
+            "employees", "visitor_applications", "website_inquiries",
+            "clients", "suppliers", "accounts", "payroll_slips", "payroll_batches",
+            "finance_receipts", "finance_payments", "finance_expenses",
+            "finance_other_incomes", "finance_bank_transfers", "ar_ap_ledger",
+            "supplier_settlements", "subcontract_loss_claims", "procurement_payables",
+            "procurement_arrival_exceptions", "expense_claims", "fixed_assets",
+            "deferred_expenses", "finance_asset_posting_runs");
+    private static final Set<String> MASTER_HISTORY_ACTIONS = Set.of(
+            "view_client_detail", "view_supplier_detail", "view_account_detail",
+            "view_goods_detail", "view_mould_detail", "view_currency_detail",
+            "view_payment_style_detail", "view_warehouse_detail", "view_color_detail",
+            "view_unit_detail", "view_material_category_detail",
+            "view_mould_category_detail", "view_client_category_detail",
+            "view_supplier_category_detail", "view_department_detail");
 
     /**
      * 从 before/after 快照里提取"人看得懂"的对象名时优先尝试的字段。
@@ -60,9 +136,9 @@ public class AuditEventInterpreter {
      * 不取 phone / id_card 等 PII 字段。
      */
     private static final List<String> TARGET_NAME_KEYS = List.of(
-            "full_name", "name", "title", "doc_no", "bill_no", "voucher_no",
+            "view_display_name", "full_name", "name", "title", "doc_no", "bill_no", "voucher_no",
             "plan_no", "order_no", "request_no", "slip_no", "code",
-            "login_account");
+            "login_account", "history_label");
 
     /** 计算变更明细时跳过的纯技术列（不含业务含义或与业务变化无关）。 */
     private static final List<String> META_COLUMNS = List.of(
@@ -139,6 +215,9 @@ public class AuditEventInterpreter {
         if (isSensitiveAuditEvidenceAccess(action) || isSensitiveDataExport(action)) {
             return "medium";
         }
+        if (isSensitiveBusinessDetail(action, target)) {
+            return "medium";
+        }
         boolean readOnlyRequest = "http_get".equals(action);
         if ("delete".equals(action)
                 || "http_delete".equals(action)
@@ -195,6 +274,12 @@ public class AuditEventInterpreter {
         if ("view_audit_log_list".equals(action)) return "查看审计日志列表";
         if ("view_audit_log_summary".equals(action)) return "查看审计统计";
         if ("view_audit_log_detail".equals(action)) return "查看审计日志详情";
+        if ("view_audit_session_list".equals(action)) return "查看登录会话列表";
+        if ("view_audit_session_events".equals(action)) return "查看登录会话时间线";
+        if ("session_start_after_password_change".equals(action))
+            return "修改密码后建立新会话";
+        String detailViewLabel = detailViewActionLabel(action);
+        if (detailViewLabel != null) return detailViewLabel;
         if (isSensitiveDataExport(action)) return "下载工资条 PDF";
         if (action.startsWith("export_")) return exportLabel(action);
         if (path.contains("/export")) return "导出数据";
@@ -283,6 +368,34 @@ public class AuditEventInterpreter {
             case "delete", "http_delete" -> "删除";
             default -> "其他操作";
         };
+    }
+
+    private static String detailViewActionLabel(String action) {
+        String current = DETAIL_VIEW_ACTION_LABELS.get(action);
+        if (current != null) {
+            return current;
+        }
+        if (action.endsWith("_detail_history")) {
+            String base = action.substring(0, action.length() - "_history".length());
+            current = DETAIL_VIEW_ACTION_LABELS.get(base);
+            if (current == null) {
+                return "查看历史资料";
+            }
+            if (MASTER_HISTORY_ACTIONS.contains(base)) {
+                return current.endsWith("详情")
+                        ? current.substring(0, current.length() - "详情".length())
+                        + "历史记录"
+                        : current + "(历史记录)";
+            }
+            if (current.endsWith("详情")) {
+                return current.substring(0, current.length() - "详情".length())
+                        + "历史单据";
+            }
+            return current + "(历史记录)";
+        }
+        return action.startsWith("view_") && action.endsWith("_detail")
+                ? "查看详情"
+                : null;
     }
 
     private String objectLabel(String target, String path) {
@@ -480,6 +593,8 @@ public class AuditEventInterpreter {
             return "访问敏感审计证据";
         if (isSensitiveDataExport(action))
             return "工资条 PDF 被下载到系统外部，需关注使用范围";
+        if (isSensitiveBusinessDetail(action, target))
+            return "查看了包含个人、账户或财务敏感字段的业务详情";
         if ("view_audit_log_list".equals(action)
                 || "view_audit_log_summary".equals(action))
             return "授权人员进行常规审计核查";
@@ -765,6 +880,7 @@ public class AuditEventInterpreter {
         values.put("system_settings", "系统设置");
         values.put("audit_retention", "审计留存数据");
         values.put("audit_log", "审计日志");
+        values.put("audit_session", "登录会话审计");
         values.put("password_history", "密码历史");
         values.put("refresh_tokens", "员工登录会话");
         values.put("visitor_refresh_tokens", "访客登录会话");
@@ -859,6 +975,9 @@ public class AuditEventInterpreter {
         values.put("purchase_receipts", "采购收货");
         values.put("purchase_receipt_items", "采购收货明细");
         values.put("purchase_returns", "采购退货");
+        values.put("supplier_settlements", "供应商对账单");
+        values.put("subcontract_loss_claims", "委外损耗索赔");
+        values.put("procurement_payables", "采购应付明细");
         values.put("purchase_return_items", "采购退货明细");
         values.put("procurement_order_approval_cases", "采购订单审批案卷");
         values.put("procurement_order_approval_events", "采购订单审批事件");
@@ -913,6 +1032,7 @@ public class AuditEventInterpreter {
         values.put("production_planning_package_documents", "生产计划包单据");
         values.put("production_planning_package_document_items", "生产计划包单据明细");
         values.put("production_daily_reports", "生产日报");
+        values.put("production_daily_report_workers", "生产日报参与人员");
         values.put("production_daily_report_items", "生产日报明细");
         values.put("production_daily_report_commands", "生产日报提交指令");
         values.put("production_execution_segments", "生产执行分段");
@@ -1139,6 +1259,10 @@ public class AuditEventInterpreter {
         values.put("revoke_reason", "撤销原因");
         values.put("source_id", "来源单据");
         values.put("source_type", "来源类型");
+        values.put("legacy_id", "旧系统编号");
+        values.put("history_label", "历史单据标识");
+        values.put("view_display_name", "查看单据标识");
+        values.put("view_metadata_kind", "查看元数据类型");
         values.put("cycle_id", "补产周期");
         values.put("authorization_id", "补产授权");
         values.put("reason_code", "原因代码");
@@ -1336,12 +1460,22 @@ public class AuditEventInterpreter {
     private static boolean isAuditInvestigation(String action) {
         return "view_audit_log_list".equals(action)
                 || "view_audit_log_summary".equals(action)
+                || "view_audit_session_list".equals(action)
+                || "view_audit_session_events".equals(action)
                 || isSensitiveAuditEvidenceAccess(action);
     }
 
     private static boolean isSensitiveAuditEvidenceAccess(String action) {
         return "view_audit_log_detail".equals(action)
-                || "verify_local_audit_receipt".equals(action);
+                || "verify_local_audit_receipt".equals(action)
+                || "view_audit_session_list".equals(action)
+                || "view_audit_session_events".equals(action);
+    }
+
+    private static boolean isSensitiveBusinessDetail(String action, String target) {
+        return action.startsWith("view_")
+                && (action.endsWith("_detail") || action.endsWith("_detail_history"))
+                && SENSITIVE_DETAIL_TARGETS.contains(target);
     }
 
     private static boolean isSensitiveDataExport(String action) {
@@ -1381,6 +1515,13 @@ public class AuditEventInterpreter {
         } catch (JsonProcessingException ignored) {
             return null;
         }
+    }
+
+    static boolean isDetailViewMetadata(AuditLog value) {
+        JsonNode after = value == null ? null : parseAuditJson(value.getAfter());
+        return after != null
+                && "business_detail_view".equals(
+                after.path("view_metadata_kind").asText());
     }
 
     private static String normalized(String value) {

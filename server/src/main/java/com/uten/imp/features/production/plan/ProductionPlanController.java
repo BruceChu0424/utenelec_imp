@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.plan;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanListItem;
@@ -46,6 +47,7 @@ import java.util.UUID;
 public class ProductionPlanController {
 
     private final ProductionPlanService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('production_plan:view')")
@@ -105,7 +107,15 @@ public class ProductionPlanController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('production_plan:view')")
     public PlanDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        PlanDetail result = service.detail(id);
+        auditViews.record(
+                "view_production_plan_detail",
+                "production_plans",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "生产计划单");
+        return result;
     }
 
     @PostMapping

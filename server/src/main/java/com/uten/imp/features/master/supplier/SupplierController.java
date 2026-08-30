@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.supplier;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
@@ -54,6 +55,7 @@ public class SupplierController {
     private final XlsxExportService xlsxExport;
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
+    private final AuditDetailViewRecorder viewAudit;
     private final SecurityContextCurrentUser currentUser;
 
     @GetMapping
@@ -108,7 +110,11 @@ public class SupplierController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('supplier:view')")
     public SupplierDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        SupplierDetail detail = service.detail(id);
+        viewAudit.record(
+                "view_supplier_detail", "suppliers", id,
+                detail.getCode(), detail.getLegacyId(), "供应商档案");
+        return detail;
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤/排序走 query，与 GET /list 一致） ----------

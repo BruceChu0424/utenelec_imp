@@ -77,6 +77,23 @@ class UserOperationAuditInterceptorTest {
     }
 
     @Test
+    void verifiedRealActorWinsOverImpersonatedMvcSecurityContext() {
+        UUID realActorId = UUID.randomUUID();
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("GET", "/api/sales/orders/123");
+        AuditRequestContext.bindVerifiedActor(request, realActorId, "real-admin");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        interceptor.preHandle(request, response, new Object());
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        verify(auditService).logHttpOperation(
+                eq(realActorId), eq("real-admin"), eq("GET"),
+                eq("/api/sales/orders/123"), eq("api/sales/orders"), eq(200),
+                org.mockito.ArgumentMatchers.longThat(value -> value >= 0));
+    }
+
+    @Test
     void recordsAnonymousMalformedLoginWithoutCredentialsOrQueryValues() {
         when(currentUser.get()).thenReturn(Optional.empty());
         MockHttpServletRequest request =

@@ -50,6 +50,11 @@ void main() {
       expect(find.text('执行单据与物料台账'), findsOneWidget);
       expect(find.text('执行子计划'), findsOneWidget);
       expect(find.text('零物料 · 无需发料'), findsOneWidget);
+      expect(find.textContaining('明细 ('), findsNothing);
+      expect(
+        find.byKey(const Key('production-plan-draft-product-summary')),
+        findsNothing,
+      );
       expect(
         tester.getTopLeft(find.byKey(const ValueKey('plan-1|0'))).dy,
         lessThan(
@@ -163,6 +168,12 @@ void main() {
       expect(find.text('编辑'), findsNothing);
       expect(find.text('删除'), findsNothing);
       expect(find.text('审核'), findsOneWidget);
+      expect(find.textContaining('明细 ('), findsNothing);
+      expect(
+        find.byKey(const Key('production-plan-draft-product-summary')),
+        findsOneWidget,
+      );
+      expect(find.text('计划产品摘要'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

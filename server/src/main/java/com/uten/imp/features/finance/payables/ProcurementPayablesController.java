@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payables;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +23,7 @@ import static com.uten.imp.features.finance.payables.ProcurementPayablesContract
 @RequiredArgsConstructor
 public class ProcurementPayablesController {
     private final ProcurementPayablesService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('ar_ap_ledger:view') and hasAuthority('finance:view:all')")
@@ -50,7 +52,16 @@ public class ProcurementPayablesController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('ar_ap_ledger:view') and hasAuthority('finance:view:all')")
     public Detail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        Detail result = service.detail(id);
+        String sourceDocNo = result.item() == null ? null : result.item().sourceDocNo();
+        detailViewAudit.record(
+                "view_procurement_payable_detail",
+                "procurement_payables",
+                id,
+                sourceDocNo,
+                null,
+                "采购应付明细");
+        return result;
     }
 
     @PostMapping("/payment-preview")

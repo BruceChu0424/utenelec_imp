@@ -32,10 +32,13 @@ import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/repositories/public_settings_repository.dart';
+import '../models/audit_event_presentation.dart';
 import '../models/audit_field_labels.dart';
 import '../models/audit_log_entry.dart';
+import '../models/audit_session.dart';
 import '../repositories/audit_log_repository.dart';
 import '../widgets/audit_query_scope.dart';
+import '../widgets/audit_session_card.dart';
 
 class AdminAuditLogPage extends ConsumerStatefulWidget {
   const AdminAuditLogPage({super.key});
@@ -70,10 +73,16 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
 
   AuditLogPage? _page;
   AuditSummary? _summary;
+  AuditSessionPage? _sessionPage;
   int _pageNum = 1;
+  int _sessionPageNum = 1;
   bool _loading = false;
+  bool _sessionLoading = false;
+  bool _preferSessionView = true;
   String? _error;
+  String? _sessionError;
   final _loadRequests = LatestRequestGuard();
+  final _sessionLoadRequests = LatestRequestGuard();
   final _searchController = TextEditingController();
   final _requestIdController = TextEditingController();
   final _scrollController = ScrollController();
@@ -218,8 +227,67 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     }
   }
 
+  Future<void> _loadSessions(int page, {bool silent = false}) async {
+    final actor = _selectedActor;
+    final range = _dateRange;
+    if (!_canUseSessionView || actor == null || range == null) return;
+    final generation = _sessionLoadRequests.begin();
+    final requestedSnapshotId = _snapshotId;
+    _sessionPageNum = page;
+    if (!silent) {
+      setState(() {
+        _sessionLoading = true;
+        _sessionError = null;
+      });
+    }
+    try {
+      final pageResult = await ref
+          .read(auditLogRepositoryProvider)
+          .sessions(
+            actorId: actor.actorId,
+            dateFrom: ChinaDateTime.formatDate(range.start),
+            dateTo: ChinaDateTime.formatDate(range.end),
+            page: page,
+            snapshotAuditId: requestedSnapshotId,
+          );
+      if (!mounted || !_sessionLoadRequests.isCurrent(generation)) return;
+      setState(() {
+        _sessionPage = pageResult;
+        _snapshotId = pageResult.snapshotAuditId;
+        _sessionLoading = false;
+        _sessionError = null;
+      });
+    } on ApiException catch (error) {
+      if (!mounted || !_sessionLoadRequests.isCurrent(generation)) return;
+      if (silent) return;
+      setState(() {
+        _sessionError = error.message;
+        _sessionLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || !_sessionLoadRequests.isCurrent(generation)) return;
+      if (silent) return;
+      setState(() {
+        _sessionError = '加载登录会话失败';
+        _sessionLoading = false;
+      });
+    }
+  }
+
   bool get _isRequestInvestigation =>
       _requestIdPattern.hasMatch(_requestId.trim());
+
+  bool get _canUseSessionView =>
+      _scopeApplied &&
+      _selectedActor != null &&
+      !_anonymousMode &&
+      !_systemAnomalyMode &&
+      !_isRequestInvestigation &&
+      _dateRange != null;
+
+  bool get _sessionMode => _canUseSessionView && _preferSessionView;
+
+  bool get _activeLoading => _sessionMode ? _sessionLoading : _loading;
 
   bool get _canLoad =>
       _isRequestInvestigation ||
@@ -244,13 +312,18 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
 
   void _invalidateScopeResults() {
     _loadRequests.begin();
+    _sessionLoadRequests.begin();
     _scopeApplied = false;
     _snapshotId = null;
     _page = null;
     _summary = null;
+    _sessionPage = null;
     _error = null;
+    _sessionError = null;
     _loading = false;
+    _sessionLoading = false;
     _pageNum = 1;
+    _sessionPageNum = 1;
   }
 
   void _onSearchChanged(String v) {
@@ -304,6 +377,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       _riskFilter = null;
       _outcomeFilter = null;
       _snapshotId = null;
+      _sessionPage = null;
+      _sessionError = null;
+      _sessionLoading = false;
+      _preferSessionView = false;
     });
     _load(1);
   }
@@ -318,7 +395,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
 
   void _reloadFromFirstPage() {
     setState(() => _snapshotId = null);
-    if (_canLoad) _load(1);
+    if (!_canLoad) return;
+    if (_sessionMode) {
+      _loadSessions(1);
+    } else {
+      _load(1);
+    }
   }
 
   void _onChipTap(String? prefix) {
@@ -477,6 +559,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       _requestId = '';
       _requestIdController.clear();
       _actorScopeFilter = 'user';
+      _preferSessionView = true;
       _invalidateScopeResults();
     });
   }
@@ -502,13 +585,21 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       _snapshotId = null;
       _page = null;
       _summary = null;
+      _sessionPage = null;
       _error = null;
+      _sessionError = null;
+      _preferSessionView = _selectedActor != null;
     });
-    _load(1);
+    if (_sessionMode) {
+      _loadSessions(1);
+    } else {
+      _load(1);
+    }
   }
 
   void _clearScope() {
     _loadRequests.begin();
+    _sessionLoadRequests.begin();
     setState(() {
       _selectedActor = null;
       _anonymousMode = false;
@@ -520,8 +611,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       _snapshotId = null;
       _page = null;
       _summary = null;
+      _sessionPage = null;
       _error = null;
+      _sessionError = null;
       _loading = false;
+      _sessionLoading = false;
+      _preferSessionView = true;
     });
   }
 
@@ -531,6 +626,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       _anonymousMode = true;
       _systemAnomalyMode = false;
       _actorScopeFilter = 'anonymous';
+      _preferSessionView = false;
       _requestId = '';
       _requestIdController.clear();
       _invalidateScopeResults();
@@ -543,6 +639,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       _anonymousMode = false;
       _systemAnomalyMode = true;
       _actorScopeFilter = 'system';
+      _preferSessionView = false;
       _requestId = '';
       _requestIdController.clear();
       _invalidateScopeResults();
@@ -607,6 +704,16 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       'update' => '修改',
       'delete' => '删除',
       'refresh_reuse' => '令牌重用',
+      'view_sales_quote_detail' => '查看销售报价详情',
+      'view_sales_order_detail' => '查看销售订单详情',
+      'view_sales_shipment_detail' => '查看销售出货详情',
+      'view_sales_other_shipment_detail' => '查看销售其他出库详情',
+      'view_sales_return_detail' => '查看销售退货详情',
+      'view_sales_quote_detail_history' => '查看销售报价历史单据',
+      'view_sales_order_detail_history' => '查看销售订单历史单据',
+      'view_sales_shipment_detail_history' => '查看销售出货历史单据',
+      'view_sales_other_shipment_detail_history' => '查看销售其他出库历史单据',
+      'view_sales_return_detail_history' => '查看销售退货历史单据',
       _ => '其他操作',
     };
   }
@@ -633,7 +740,35 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   Future<void> _refresh() async {
     if (!_canLoad) return;
     setState(() => _snapshotId = null);
-    await _load(1);
+    if (_sessionMode) {
+      await _loadSessions(1);
+    } else {
+      await _load(1);
+    }
+  }
+
+  void _switchView(bool sessions) {
+    if (sessions == _sessionMode || (sessions && !_canUseSessionView)) return;
+    _loadRequests.begin();
+    _sessionLoadRequests.begin();
+    setState(() {
+      _preferSessionView = sessions;
+      _snapshotId = null;
+      _page = null;
+      _summary = null;
+      _sessionPage = null;
+      _error = null;
+      _sessionError = null;
+      _loading = false;
+      _sessionLoading = false;
+      _pageNum = 1;
+      _sessionPageNum = 1;
+    });
+    if (sessions) {
+      _loadSessions(1);
+    } else {
+      _load(1);
+    }
   }
 
   Map<String, dynamic> get _exportQueryParams => <String, dynamic>{
@@ -665,6 +800,20 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     return '审计日志_${ChinaDateTime.formatDate(range.start)}_'
         '${ChinaDateTime.formatDate(range.end)}';
   }
+
+  Future<AuditSessionEventPage> _loadSessionEvents(
+    String sessionId, {
+    String? cursorAt,
+    int? cursorId,
+    int? snapshotAuditId,
+  }) => ref
+      .read(auditLogRepositoryProvider)
+      .sessionEvents(
+        sessionId: sessionId,
+        cursorAt: cursorAt,
+        cursorId: cursorId,
+        snapshotAuditId: snapshotAuditId,
+      );
 
   Future<_AuditDetailBundle> _loadDetailBundle(AuditLogEntry entry) async {
     final repository = ref.read(auditLogRepositoryProvider);
@@ -770,9 +919,14 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     ref.onPageResume(RouteName.adminAuditLogs, () {
       if (!_canLoad) return;
       _snapshotId = null;
-      _load(1, silent: true);
+      if (_sessionMode) {
+        _loadSessions(_sessionPageNum, silent: true);
+      } else {
+        _load(_pageNum, silent: true);
+      }
     });
     final items = _page?.items ?? const <AuditLogEntry>[];
+    final sessions = _sessionPage?.items ?? const <AuditSessionSummary>[];
     final hasDrillDown =
         _riskFilter != null ||
         _outcomeFilter != null ||
@@ -820,7 +974,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           dateRange: _dateRange,
                           requestIdController: _requestIdController,
                           requestInvestigation: _isRequestInvestigation,
-                          loading: _loading,
+                          loading: _activeLoading,
                           scopeApplied: _scopeApplied,
                           onPickActor: _pickActor,
                           onSelectAnonymous: _selectAnonymousScope,
@@ -862,7 +1016,19 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           child: _AuditStartGuide(),
                         ),
                       ),
-                    if (_canLoad)
+                    if (_canUseSessionView)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                          child: _AuditViewModeSwitch(
+                            sessionMode: _sessionMode,
+                            loading: _activeLoading,
+                            onSession: () => _switchView(true),
+                            onEvents: () => _switchView(false),
+                          ),
+                        ),
+                      ),
+                    if (_canLoad && !_sessionMode)
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.only(top: UtenSpacing.s16),
@@ -885,7 +1051,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           ),
                         ),
                       ),
-                    if (_canLoad)
+                    if (_canLoad && !_sessionMode)
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.only(top: UtenSpacing.s16),
@@ -927,7 +1093,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           ),
                         ),
                       ),
-                    if (_canLoad && _summary?.dailyTrend.isNotEmpty == true)
+                    if (_canLoad &&
+                        !_sessionMode &&
+                        _summary?.dailyTrend.isNotEmpty == true)
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.only(top: UtenSpacing.s16),
@@ -939,7 +1107,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           ),
                         ),
                       ),
-                    if (_canLoad)
+                    if (_canLoad && !_sessionMode)
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.only(
@@ -957,22 +1125,97 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           ),
                         ),
                       ),
-                    if (_canLoad && _loading)
+                    if (_canLoad && _sessionMode)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                            top: UtenSpacing.s24,
+                            bottom: UtenSpacing.s8,
+                          ),
+                          child: _AuditSessionListHeader(
+                            total: _sessionPage?.total ?? 0,
+                            scopeLabel: _queryScopeLabel,
+                          ),
+                        ),
+                      ),
+                    if (_canLoad && _activeLoading)
                       const SliverToBoxAdapter(
                         child: LinearProgressIndicator(),
                       ),
-                    if (_canLoad && _error != null)
+                    if (_canLoad && _sessionMode && _sessionError != null)
+                      SliverToBoxAdapter(
+                        child: _AuditErrorCard(
+                          message: _sessionError!,
+                          onRetry: () => _loadSessions(_sessionPageNum),
+                        ),
+                      )
+                    else if (_canLoad &&
+                        _sessionMode &&
+                        !_sessionLoading &&
+                        sessions.isEmpty)
+                      SliverToBoxAdapter(
+                        child: _AuditSessionEmptyCard(
+                          onShowEvents: () => _switchView(false),
+                        ),
+                      )
+                    else if (_canLoad && _sessionMode)
+                      SliverList.separated(
+                        itemCount: sessions.length,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(height: UtenSpacing.s8),
+                        itemBuilder: (context, index) {
+                          final session = sessions[index];
+                          return AuditSessionCard(
+                            key: ValueKey(session.sessionId),
+                            session: session,
+                            snapshotAuditId: _sessionPage!.snapshotAuditId,
+                            loadEvents:
+                                ({
+                                  String? cursorAt,
+                                  int? cursorId,
+                                  int? snapshotAuditId,
+                                }) => _loadSessionEvents(
+                                  session.sessionId,
+                                  cursorAt: cursorAt,
+                                  cursorId: cursorId,
+                                  snapshotAuditId: snapshotAuditId,
+                                ),
+                            onOpenEvent: _openDetail,
+                          );
+                        },
+                      ),
+                    if (_canLoad &&
+                        _sessionMode &&
+                        _sessionPage != null &&
+                        _sessionError == null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: UtenSpacing.s20,
+                          ),
+                          child: _AuditPagination(
+                            currentPage: _sessionPage!.page,
+                            totalPages: _sessionPage!.totalPages,
+                            loading: _sessionLoading,
+                            onPageChanged: _loadSessions,
+                          ),
+                        ),
+                      ),
+                    if (_canLoad && !_sessionMode && _error != null)
                       SliverToBoxAdapter(
                         child: _AuditErrorCard(
                           message: _error!,
                           onRetry: () => _load(_pageNum),
                         ),
                       )
-                    else if (_canLoad && !_loading && items.isEmpty)
+                    else if (_canLoad &&
+                        !_sessionMode &&
+                        !_loading &&
+                        items.isEmpty)
                       SliverToBoxAdapter(
                         child: _AuditEmptyCard(onAdjustScope: _clearScope),
                       )
-                    else if (_canLoad)
+                    else if (_canLoad && !_sessionMode)
                       SliverList.separated(
                         itemCount: items.length,
                         separatorBuilder: (_, _) =>
@@ -982,7 +1225,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           onTap: () => _openDetail(items[index]),
                         ),
                       ),
-                    if (_canLoad && _page != null && _error == null)
+                    if (_canLoad &&
+                        !_sessionMode &&
+                        _page != null &&
+                        _error == null)
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
@@ -1761,6 +2007,168 @@ class _AuditTrendCard extends StatelessWidget {
   }
 }
 
+class _AuditViewModeSwitch extends StatelessWidget {
+  const _AuditViewModeSwitch({
+    required this.sessionMode,
+    required this.loading,
+    required this.onSession,
+    required this.onEvents,
+  });
+
+  final bool sessionMode;
+  final bool loading;
+  final VoidCallback onSession;
+  final VoidCallback onEvents;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return UtenCard(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final selector = Semantics(
+            label: sessionMode ? '当前按用户会话查看' : '当前按事件明细查看',
+            child: SegmentedButton<bool>(
+              key: const ValueKey('audit-view-mode'),
+              segments: [
+                ButtonSegment<bool>(
+                  value: true,
+                  enabled: !loading,
+                  icon: const Icon(Icons.login_rounded),
+                  label: const Text('用户会话'),
+                ),
+                ButtonSegment<bool>(
+                  value: false,
+                  enabled: !loading,
+                  icon: const Icon(Icons.list_alt_rounded),
+                  label: const Text('事件明细'),
+                ),
+              ],
+              selected: {sessionMode},
+              onSelectionChanged: (selection) {
+                if (selection.single) {
+                  onSession();
+                } else {
+                  onEvents();
+                }
+              },
+            ),
+          );
+          final description = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '查看方式',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s4),
+              Text(
+                sessionMode ? '每次建立会话一张卡，展开后再加载该会话的人工操作。' : '按单条事件筛选、分页和调查。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          );
+          if (constraints.maxWidth < 620) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                description,
+                const SizedBox(height: UtenSpacing.s12),
+                selector,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: description),
+              const SizedBox(width: UtenSpacing.s16),
+              selector,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AuditSessionListHeader extends StatelessWidget {
+  const _AuditSessionListHeader({
+    required this.total,
+    required this.scopeLabel,
+  });
+
+  final int total;
+  final String scopeLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '用户会话 · $total 次',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        Text(
+          '$scopeLabel · 卡片显示完整会话起止时间 · 全部为北京时间',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AuditSessionEmptyCard extends StatelessWidget {
+  const _AuditSessionEmptyCard({required this.onShowEvents});
+
+  final VoidCallback onShowEvents;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return UtenCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        child: Column(
+          children: [
+            Icon(
+              Icons.history_toggle_off_rounded,
+              size: 44,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            Text('该范围没有可识别的登录会话', style: theme.textTheme.titleMedium),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              '旧日志尚无会话标识，可切换事件视图。',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s16),
+            OutlinedButton.icon(
+              key: const ValueKey('audit-session-empty-show-events'),
+              onPressed: onShowEvents,
+              icon: const Icon(Icons.list_alt_rounded),
+              label: const Text('切换事件视图'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AuditListHeader extends StatelessWidget {
   const _AuditListHeader({
     required this.total,
@@ -1818,17 +2226,37 @@ class _AuditEventTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final actor = AuditEventPresentation.actorLabel(
+      actorDisplay: entry.actorDisplay,
+      actorName: entry.actorName,
+      actorAccount: entry.actorAccount,
+    );
+    final department = entry.actorDepartment?.trim();
+    final actorContext = department?.isNotEmpty == true
+        ? '$actor · $department'
+        : actor;
+    final time = _AdminAuditLogPageState._fmtTime(entry.createdAt);
     final action = entry.actionLabel?.trim().isNotEmpty == true
         ? entry.actionLabel!.trim()
         : _AdminAuditLogPageState._actionLabel(entry.action);
     final object = entry.objectLabel?.trim().isNotEmpty == true
         ? entry.objectLabel!.trim()
         : _objectTypeLabel(entry.targetType);
-    final summary = entry.summary?.trim().isNotEmpty == true
-        ? entry.summary!
-        : '$action · $object';
+    final salesViewNarrative = AuditEventPresentation.salesViewNarrative(
+      action: entry.action,
+      targetName: entry.targetName,
+    );
+    final summary =
+        salesViewNarrative ??
+        (entry.summary?.trim().isNotEmpty == true
+            ? entry.summary!
+            : '$action · $object');
+    final safeTargetName = AuditEventPresentation.safeBusinessReference(
+      entry.targetName,
+    );
     final detailBits = <String>[
-      if (entry.targetName?.trim().isNotEmpty == true) '对象 ${entry.targetName}',
+      if (salesViewNarrative == null && safeTargetName != null)
+        '对象 $safeTargetName',
       if (entry.pageLabel?.trim().isNotEmpty == true) '位置 ${entry.pageLabel}',
       if (entry.deviceLabel?.trim().isNotEmpty == true &&
           entry.deviceLabel != '未提供设备信息')
@@ -1870,8 +2298,9 @@ class _AuditEventTile extends StatelessWidget {
 
     return Semantics(
       button: true,
+      excludeSemantics: true,
       label:
-          '${_AdminAuditLogPageState._fmtTime(entry.createdAt)}，$summary，'
+          '$actor，在$time，$summary，'
           '${_auditOutcomeLabel(entry.result, entry.resultLabel, entry.statusCode)}，点击查看详情',
       child: UtenCard(
         onTap: onTap,
@@ -1881,13 +2310,50 @@ class _AuditEventTile extends StatelessWidget {
             final content = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _AdminAuditLogPageState._fmtTime(entry.createdAt),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.person_outline_rounded,
+                      size: 16,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s4),
+                    Expanded(
+                      child: Text(
+                        actorContext,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.schedule_rounded,
+                      size: 16,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s4),
+                    Expanded(
+                      child: Text(
+                        time,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: UtenSpacing.s4),
                 Text(
@@ -1973,7 +2439,11 @@ String _objectTypeLabel(String? value) => switch (value?.trim()) {
   'clients' => '客户',
   'suppliers' => '供应商',
   'purchase_orders' => '采购订单',
+  'sales_quotes' => '销售报价',
   'sales_orders' => '销售订单',
+  'sales_shipments' => '销售出货',
+  'sales_other_shipments' => '销售其他出库',
+  'sales_returns' => '销售退货',
   'subcontract_orders' => '委外订单',
   'production_plans' => '生产计划',
   'production_execution_segments' => '生产执行分段',
@@ -2425,6 +2895,10 @@ class _AuditDetailContent extends StatelessWidget {
               _AuditDetailHeader(
                 title: '审计详情 #${detail.id}',
                 subtitle:
+                    AuditEventPresentation.salesViewNarrative(
+                      action: detail.action,
+                      targetName: detail.targetName,
+                    ) ??
                     detail.summary ??
                     _AdminAuditLogPageState._actionLabel(detail.action),
                 onLocateRequest: detail.requestId?.trim().isNotEmpty == true
@@ -2510,19 +2984,22 @@ class _AuditStoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final displayName = detail.actorName?.trim().isNotEmpty == true
-        ? detail.actorName!
-        : detail.actorDisplay?.trim().isNotEmpty == true
-        ? detail.actorDisplay!
-        : detail.actorAccount?.trim().isNotEmpty == true
-        ? detail.actorAccount!
-        : '未知操作人';
+    final displayName = AuditEventPresentation.actorLabel(
+      actorDisplay: detail.actorDisplay,
+      actorName: detail.actorName,
+      actorAccount: detail.actorAccount,
+    );
     final initial = displayName.isNotEmpty ? displayName.characters.first : '?';
-    final headline = detail.summary?.trim().isNotEmpty == true
-        ? detail.summary!
-        : detail.actionLabel?.trim().isNotEmpty == true
-        ? detail.actionLabel!
-        : _AdminAuditLogPageState._actionLabel(detail.action);
+    final headline =
+        AuditEventPresentation.salesViewNarrative(
+          action: detail.action,
+          targetName: detail.targetName,
+        ) ??
+        (detail.summary?.trim().isNotEmpty == true
+            ? detail.summary!
+            : detail.actionLabel?.trim().isNotEmpty == true
+            ? detail.actionLabel!
+            : _AdminAuditLogPageState._actionLabel(detail.action));
     final objectText = _objectText(detail);
     final changes = _parseChangeEntries(detail);
     return UtenCard(
@@ -2700,10 +3177,17 @@ class _AuditStoryCard extends StatelessWidget {
   }
 
   static String? _objectText(AuditLogDetail detail) {
+    final salesObject = AuditEventPresentation.salesViewObjectText(
+      action: detail.action,
+      targetName: detail.targetName,
+    );
+    if (salesObject != null) return salesObject;
     final label = detail.objectLabel?.trim().isNotEmpty == true
         ? detail.objectLabel!
         : _objectTypeLabel(detail.targetType);
-    final name = detail.targetName?.trim();
+    final name = AuditEventPresentation.safeBusinessReference(
+      detail.targetName,
+    );
     if (label.isEmpty) {
       return name?.isNotEmpty == true ? name : null;
     }
@@ -2799,6 +3283,9 @@ class _AuditEnvironmentCard extends StatelessWidget {
               _AuditFact(
                 label: '做了什么',
                 value:
+                    AuditEventPresentation.salesViewActionLabel(
+                      detail.action,
+                    ) ??
                     detail.actionLabel ??
                     _AdminAuditLogPageState._actionLabel(detail.action),
               ),

@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.mouldcategory;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.mouldcategory.dto.*;
 import jakarta.validation.Valid;
@@ -29,6 +30,7 @@ import java.util.UUID;
 public class MouldCategoryController {
 
     private final MouldCategoryService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/tree")
     @PreAuthorize("hasAuthority('mould_category:view')")
@@ -45,7 +47,15 @@ public class MouldCategoryController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('mould_category:view')")
     public MouldCategoryDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        MouldCategoryDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_mould_category_detail", "mould_categories", id, displayName,
+                result.getLegacyId(), "模具分类");
+        return result;
     }
 
     @GetMapping("/{id}/prefix-preview")

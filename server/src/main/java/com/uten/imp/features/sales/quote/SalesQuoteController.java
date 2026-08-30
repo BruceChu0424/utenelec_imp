@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.quote;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.sales.quote.dto.QuoteDetail;
 import com.uten.imp.features.sales.quote.dto.QuoteListItem;
 import com.uten.imp.features.sales.quote.dto.QuoteQueryFilter;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class SalesQuoteController {
 
     private final SalesQuoteService service;
+    private final AuditDetailViewRecorder viewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('sales_quote:view')")
@@ -58,7 +60,11 @@ public class SalesQuoteController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_quote:view')")
     public QuoteDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        QuoteDetail detail = service.detail(id);
+        viewAudit.record(
+                "view_sales_quote_detail", "sales_quotes", id,
+                detail.getBillNo(), detail.getLegacyId(), "销售报价单");
+        return detail;
     }
 
     @PostMapping

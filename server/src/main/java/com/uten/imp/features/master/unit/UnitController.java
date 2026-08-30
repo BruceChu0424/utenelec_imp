@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.unit;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.unit.dto.UnitDetail;
 import com.uten.imp.features.master.unit.dto.UnitFacets;
@@ -42,6 +43,7 @@ import java.util.UUID;
 public class UnitController {
 
     private final UnitService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('unit:view')")
@@ -72,7 +74,15 @@ public class UnitController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('unit:view')")
     public UnitDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        UnitDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_unit_detail", "units", id, displayName,
+                result.getLegacyId(), "计量单位");
+        return result;
     }
 
     @PostMapping

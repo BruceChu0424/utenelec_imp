@@ -81,7 +81,7 @@ class _ProductionDailyReportDetailPageState
           .whereType<String>()
           .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      await ref.read(masterNameServiceProvider).loadEmployeeNames([d.workerId]);
+      await ref.read(masterNameServiceProvider).loadEmployeeNames(d.workerIds);
       if (!mounted) return;
       setState(() {
         _detail = d;
@@ -104,7 +104,7 @@ class _ProductionDailyReportDetailPageState
 
   Future<void> _approve() => _doAction(
     '审核后只累计完工申报量 fqty，并为每条明细生成生产成品质检任务；'
-        '此时不会增加库存或 iqty，只有品质 PASS 后才生成仓库待点收单。确认继续？',
+        '此时不会增加库存或 iqty，只有品质通过后才生成仓库待点收单。确认继续？',
     (repo) => repo.approve(widget.id),
     '已审核',
     reviewerResponsibility: true,
@@ -258,7 +258,8 @@ class _ProductionDailyReportDetailPageState
               ? names.department(d.departmentId)
               : d.workshopName,
         ),
-      if (d.workerId != null) _KV('生产工', names.employee(d.workerId)),
+      if (d.workerIds.isNotEmpty)
+        _KV('生产参与人员', d.workerIds.map(names.employee).join('、')),
       if ((d.sourceDocNo ?? '').isNotEmpty) _KV('来源单号', d.sourceDocNo),
       if ((d.remark ?? '').isNotEmpty) _KV('备注', d.remark),
       _KV(

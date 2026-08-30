@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.mould;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.mould.dto.MouldDetail;
 import com.uten.imp.features.master.mould.dto.MouldFacets;
@@ -42,6 +43,7 @@ import java.util.UUID;
 public class MouldController {
 
     private final MouldService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('mould:view')")
@@ -70,7 +72,15 @@ public class MouldController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('mould:view')")
     public MouldDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        MouldDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_mould_detail", "moulds", id, displayName,
+                result.getLegacyId(), "模具");
+        return result;
     }
 
     @PostMapping

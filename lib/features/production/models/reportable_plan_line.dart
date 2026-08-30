@@ -155,3 +155,10 @@ class ReportablePlanLine {
     fqcRecoveryRequiresMaterial: json['fqcRecoveryRequiresMaterial'] == true,
   );
 }
+
+/// 精确执行子任务只返回一个权威分摊时，可以跳过重复选择面板。
+/// 多个销售分摊仍必须由用户确认，不能默认取第一条导致串单。
+ReportablePlanLine? uniqueReportablePlanLine(
+  List<ReportablePlanLine> items,
+  int total,
+) => total == 1 && items.length == 1 ? items.single : null;

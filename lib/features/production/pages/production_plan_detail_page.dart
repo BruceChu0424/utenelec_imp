@@ -23,7 +23,6 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
@@ -1044,8 +1043,10 @@ class _ProductionPlanDetailPageState
                       ),
                     ),
                     _headerCard(theme, names),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _itemsCard(theme, names),
+                    if (_detail!.status == kProductionStatusDraft) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _planProductSummary(theme, names),
+                    ],
                     if (_hasTraceability) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _traceabilityCard(theme),
@@ -1266,7 +1267,7 @@ class _ProductionPlanDetailPageState
         ),
       if (d.workerId != null || (d.workerName ?? '').isNotEmpty)
         _KV(
-          '生产工',
+          '计划负责人',
           d.workerId != null ? names.employee(d.workerId) : d.workerName,
         ),
       if (d.sellerId != null || (d.sellerName ?? '').isNotEmpty)
@@ -1319,83 +1320,88 @@ class _ProductionPlanDetailPageState
     );
   }
 
-  /// 明细区：统一表格样式（MasterDataTableView 嵌入模式，与全站报表/主档同款），
-  /// 不再是卡片式拼凑行；口径保留（编号/颜色/单位并入货品列，关联销售订单一并显示）。
-  Widget _itemsCard(ThemeData theme, MasterNameService names) {
+  /// Draft-only product context. Approved plans use execution cards as the
+  /// authoritative operational surface while the item model remains intact.
+  Widget _planProductSummary(ThemeData theme, MasterNameService names) {
     final items = _detail!.items;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '明细 (${items.length})',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+    String quantity(double? value) {
+      if (value == null) return '—';
+      return value == value.roundToDouble()
+          ? value.toStringAsFixed(0)
+          : value.toStringAsFixed(2);
+    }
+
+    final totalQty = items.fold<double>(
+      0,
+      (sum, item) => sum + (item.qty ?? 0),
+    );
+    final namesPreview = [
+      for (final item in items.take(3)) names.goods(item.goodsId),
+    ].join('、');
+    final first = items.firstOrNull;
+    final firstMeta = first == null
+        ? const <String>[]
+        : [
+            first.productNo,
+            names.color(first.colorId),
+            names.unit(first.unitId),
+            if ((first.salesOrderNo ?? '').isNotEmpty)
+              '销售订单 ${first.salesOrderNo!}',
+          ].whereType<String>().where((value) => value != '—').toList();
+    final singleSummary = first == null
+        ? ''
+        : '${names.goods(first.goodsId)}'
+              '${firstMeta.isEmpty ? '' : ' · ${firstMeta.join(' · ')}'}'
+              ' · 计划 ${quantity(first.qty)}'
+              '${first.outboundDate == null ? '' : ' · 交货 ${productionDateOnly(first.outboundDate)}'}';
+    final multiSummary =
+        '$namesPreview'
+        '${items.length > 3 ? ' 等 ${items.length} 项' : ''}'
+        ' · 排产合计 ${quantity(totalQty)}';
+
+    return Card(
+      key: const Key('production-plan-draft-product-summary'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s12,
+          vertical: UtenSpacing.s8,
         ),
-        const SizedBox(height: UtenSpacing.s8),
-        MasterDataTableView<ProductionPlanItem>(
-          embedded: true,
-          columns: [
-            MasterColumnDef(
-              key: 'goods',
-              label: '货品 / 编号',
-              width: 260,
-              value: (it) {
-                final sub = [
-                  it.productNo,
-                  names.color(it.colorId),
-                  names.unit(it.unitId),
-                ].where((s) => s != '—').join(' · ');
-                final so = it.salesOrderNo;
-                return '${names.goods(it.goodsId)}'
-                    '${sub.isEmpty ? '' : '($sub)'}'
-                    '${(so != null && so.isNotEmpty) ? ' · 销售订单：$so' : ''}';
-              },
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 20,
+              color: theme.colorScheme.primary,
             ),
-            MasterColumnDef(
-              key: 'qty',
-              label: '排产量',
-              width: 90,
-              type: 'number',
-              value: (it) => it.qty?.toStringAsFixed(2),
-            ),
-            MasterColumnDef(
-              key: 'oqty',
-              label: '订货量',
-              width: 90,
-              type: 'number',
-              value: (it) => it.oqty?.toStringAsFixed(2),
-            ),
-            MasterColumnDef(
-              key: 'fqty',
-              label: '已报工',
-              width: 90,
-              type: 'number',
-              value: (it) => it.fqty?.toStringAsFixed(2),
-            ),
-            MasterColumnDef(
-              key: 'iqty',
-              label: '已入库',
-              width: 90,
-              type: 'number',
-              value: (it) => it.iqty?.toStringAsFixed(2),
-            ),
-            MasterColumnDef(
-              key: 'outboundDate',
-              label: '交货日',
-              width: 110,
-              type: 'date',
-              value: (it) => productionDateOnly(it.outboundDate),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '计划产品摘要',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (items.isEmpty)
+                    Text(
+                      '暂无计划产品',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    )
+                  else if (items.length == 1)
+                    Text(singleSummary)
+                  else
+                    Text(multiSummary),
+                ],
+              ),
             ),
           ],
-          items: items,
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          emptyMessage: '暂无明细',
         ),
-      ],
+      ),
     );
   }
 

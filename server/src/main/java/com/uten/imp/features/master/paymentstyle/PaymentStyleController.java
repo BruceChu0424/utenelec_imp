@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.paymentstyle;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.master.paymentstyle.dto.PaymentStyleDetail;
 import com.uten.imp.features.master.paymentstyle.dto.PaymentStyleNode;
 import com.uten.imp.features.master.paymentstyle.dto.PaymentStyleSaveRequest;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class PaymentStyleController {
 
     private final PaymentStyleService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/tree")
     @PreAuthorize("hasAuthority('payment_style:view')")
@@ -55,7 +57,15 @@ public class PaymentStyleController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('payment_style:view')")
     public PaymentStyleDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        PaymentStyleDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_payment_style_detail", "payment_styles", id, displayName,
+                result.getLegacyId(), "收付款类别");
+        return result;
     }
 
     @PostMapping

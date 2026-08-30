@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.order;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.RequestUuidSets;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalDecisionRequest;
@@ -42,6 +43,7 @@ public class SubcontractOrderController {
     private final ProcurementFinanceApprovalService financeApproval;
     private final SubcontractOrderFinanceDecisionCommandService financeDecision;
     private final SubcontractOrderProgressService progressService;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_order:view')")
@@ -63,7 +65,15 @@ public class SubcontractOrderController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('subcontract_order:view','finance_order_approval:view')")
     public OrderDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        OrderDetail result = service.detail(id);
+        auditViews.record(
+                "view_subcontract_order_detail",
+                "subcontract_orders",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外订货单");
+        return result;
     }
 
     /** BOM 成本子表只读（design doc 22 §五：本期不展开，仅查迁老库的原样数据）。 */

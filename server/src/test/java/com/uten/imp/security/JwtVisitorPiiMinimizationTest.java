@@ -37,6 +37,28 @@ class JwtVisitorPiiMinimizationTest {
     }
 
     @Test
+    void visitorAccessTokenCarriesSessionUuidWithoutAddingPii() {
+        JwtProperties properties = new JwtProperties();
+        properties.setSecret("0123456789abcdef0123456789abcdef");
+        properties.setIssuer("uten-test");
+        SystemSettingsService settings = mock(SystemSettingsService.class);
+        when(settings.readLong("jwt_access_ttl_minutes", 15)).thenReturn(15L);
+        JwtService service = new JwtService(properties, settings);
+        UUID sessionId = UUID.randomUUID();
+
+        Claims claims = service.parse(service.issueVisitorAccess(
+                UUID.randomUUID(),
+                "V800014",
+                "8002",
+                Set.of("visitor:view"),
+                sessionId));
+
+        assertEquals(sessionId.toString(), claims.get("sid", String.class));
+        assertNull(claims.get("phone"));
+        assertNull(claims.get("jti"));
+    }
+
+    @Test
     void rejectsTokenSignedWithTheSameKeyForAnotherIssuer() {
         SystemSettingsService settings = mock(SystemSettingsService.class);
         when(settings.readLong("jwt_access_ttl_minutes", 15)).thenReturn(15L);

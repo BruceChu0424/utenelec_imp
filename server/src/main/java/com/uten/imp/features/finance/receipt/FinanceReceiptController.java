@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.receipt;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptDetail;
@@ -45,6 +46,7 @@ public class FinanceReceiptController {
     private final FinanceReceiptService service;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_receipt:view')")
@@ -65,7 +67,15 @@ public class FinanceReceiptController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_receipt:view')")
     public FinanceReceiptDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        FinanceReceiptDetail result = service.detail(id);
+        detailViewAudit.record(
+                "view_finance_receipt_detail",
+                "finance_receipts",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "销售收款单");
+        return result;
     }
 
     @PostMapping

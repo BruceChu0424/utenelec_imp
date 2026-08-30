@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.material_issue;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueDetail;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueListItem;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class SubcontractMaterialIssueController {
 
     private final SubcontractMaterialIssueService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_material_issue:view')")
@@ -59,7 +61,15 @@ public class SubcontractMaterialIssueController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_material_issue:view')")
     public MaterialIssueDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        MaterialIssueDetail result = service.detail(id);
+        auditViews.record(
+                "view_subcontract_material_issue_detail",
+                "subcontract_material_issues",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外材料出仓单");
+        return result;
     }
 
     @PostMapping

@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin.impersonation;
 
+import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -150,7 +151,11 @@ public class ImpersonationService {
         long remaining = Duration.between(Instant.now(), claims.getExpiration().toInstant()).getSeconds();
         long ttlSeconds = Math.max(1, Math.min(accessTtl, remaining));
         Instant expiresAt = Instant.now().plusSeconds(ttlSeconds);
-        TokenResponse token = tokenFactory.buildImpersonation(target, admin.getId(), expiresAt);
+        TokenResponse token = tokenFactory.buildImpersonation(
+                target,
+                admin.getId(),
+                expiresAt,
+                AuditRequestContext.currentSessionId());
 
         TokenResponse.UserProfile profile = token.user();
         ImpersonationMeta meta = new ImpersonationMeta(

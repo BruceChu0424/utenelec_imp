@@ -41,14 +41,20 @@ public class StaffRefreshTransaction {
     public record Outcome(boolean reuseDetected,
                           UUID subjectId,
                           UUID tokenId,
+                          UUID sessionId,
                           UserAccount account,
                           String newRefreshToken) {
-        static Outcome reuse(UUID subjectId, UUID tokenId) {
-            return new Outcome(true, subjectId, tokenId, null, null);
+        static Outcome reuse(UUID subjectId, UUID tokenId, UUID sessionId) {
+            return new Outcome(true, subjectId, tokenId, sessionId, null, null);
         }
 
-        static Outcome rotated(UserAccount account, UUID tokenId, String rawToken) {
-            return new Outcome(false, account.getId(), tokenId, account, rawToken);
+        static Outcome rotated(
+                UserAccount account,
+                UUID tokenId,
+                UUID sessionId,
+                String rawToken) {
+            return new Outcome(
+                    false, account.getId(), tokenId, sessionId, account, rawToken);
         }
     }
 
@@ -69,7 +75,8 @@ public class StaffRefreshTransaction {
             UserAccount revokedUser = userRepo.findById(token.getUserId())
                     .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
             remoteAccessPolicy.requireStaffAccess(revokedUser);
-            return Outcome.reuse(token.getUserId(), token.getId());
+            return Outcome.reuse(
+                    token.getUserId(), token.getId(), token.getSessionId());
         }
         if (!token.isValid()) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
@@ -92,11 +99,14 @@ public class StaffRefreshTransaction {
         // Reject before issuing a replacement or mutating the current token family.
         remoteAccessPolicy.requireStaffAccess(user);
 
-        String newRaw = tokenService.issue(user.getId(), token.getDeviceInfo());
-        RefreshToken replacement = tokenRepo
-                .findByTokenHash(HashUtil.sha256(newRaw))
-                .orElseThrow(() -> new IllegalStateException("issued refresh token not found"));
-        tokenService.revoke(token, replacement.getId());
-        return Outcome.rotated(user, token.getId(), newRaw);
+        RefreshTokenService.IssuedRefreshToken replacement =
+                tokenService.issueInSession(
+                        user.getId(), token.getDeviceInfo(), token.getSessionId());
+        tokenService.revoke(token, replacement.tokenId());
+        return Outcome.rotated(
+                user,
+                token.getId(),
+                token.getSessionId(),
+                replacement.rawToken());
     }
 }

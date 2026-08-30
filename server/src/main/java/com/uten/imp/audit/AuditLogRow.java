@@ -46,6 +46,7 @@ public class AuditLogRow {
     private final String riskReason;
     private final String eventCategory;
     private final String eventSource;
+    private final UUID sessionId;
     private final UUID requestId;
     private final UUID clientEventId;
     private final UUID deviceInstallationId;
@@ -76,6 +77,7 @@ public class AuditLogRow {
             String riskReason,
             String eventCategory,
             String eventSource,
+            UUID sessionId,
             UUID requestId,
             UUID clientEventId,
             UUID deviceInstallationId,
@@ -115,6 +117,7 @@ public class AuditLogRow {
         this.riskReason = riskReason;
         this.eventCategory = eventCategory;
         this.eventSource = eventSource;
+        this.sessionId = sessionId;
         this.requestId = requestId;
         this.clientEventId = clientEventId;
         this.deviceInstallationId = deviceInstallationId;
@@ -155,6 +158,7 @@ public class AuditLogRow {
                 event.riskReason(),
                 event.category(),
                 a.getEventSource(),
+                a.getSessionId(),
                 a.getRequestId(),
                 a.getClientEventId(),
                 a.getDeviceInstallationId(),

@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.procurement;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalDecisionRequest;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.RejectionDecisionRequest;
 import com.uten.imp.features.purchase.order.PurchaseOrderController;
@@ -34,7 +35,10 @@ class ProcurementOrderFinanceDecisionResponseTest {
 
         assertSame(purchaseDetail,
                 new PurchaseOrderController(
-                        purchase, purchaseApproval, purchaseDecision)
+                        purchase,
+                        purchaseApproval,
+                        purchaseDecision,
+                        mock(AuditDetailViewRecorder.class))
                         .approve(purchaseId, new ApprovalDecisionRequest(3L)));
         verify(purchaseDecision).approve(purchaseId, 3L);
         verify(purchaseApproval, never()).approve("PURCHASE", purchaseId, 3L);
@@ -53,7 +57,8 @@ class ProcurementOrderFinanceDecisionResponseTest {
         assertSame(subcontractDetail,
                 new SubcontractOrderController(
                         subcontract, subcontractApproval, subcontractDecision,
-                        mock(com.uten.imp.features.subcontract.order.SubcontractOrderProgressService.class))
+                        mock(com.uten.imp.features.subcontract.order.SubcontractOrderProgressService.class),
+                        mock(AuditDetailViewRecorder.class))
                         .approve(subcontractId, new ApprovalDecisionRequest(4L)));
         verify(subcontractDecision).approve(subcontractId, 4L);
         verify(subcontractApproval, never())
@@ -75,7 +80,10 @@ class ProcurementOrderFinanceDecisionResponseTest {
 
         assertSame(purchaseDetail,
                 new PurchaseOrderController(
-                        purchase, purchaseApproval, purchaseDecision)
+                        purchase,
+                        purchaseApproval,
+                        purchaseDecision,
+                        mock(AuditDetailViewRecorder.class))
                         .reject(purchaseId,
                                 new RejectionDecisionRequest(
                                         5L, "price correction")));
@@ -98,7 +106,8 @@ class ProcurementOrderFinanceDecisionResponseTest {
         assertSame(subcontractDetail,
                 new SubcontractOrderController(
                         subcontract, subcontractApproval, subcontractDecision,
-                        mock(com.uten.imp.features.subcontract.order.SubcontractOrderProgressService.class))
+                        mock(com.uten.imp.features.subcontract.order.SubcontractOrderProgressService.class),
+                        mock(AuditDetailViewRecorder.class))
                         .reject(subcontractId,
                                 new RejectionDecisionRequest(
                                         6L, "supplier correction")));
@@ -122,7 +131,10 @@ class ProcurementOrderFinanceDecisionResponseTest {
 
         assertSame(purchaseDetail,
                 new PurchaseOrderController(
-                        purchase, purchaseApproval, purchaseDecision)
+                        purchase,
+                        purchaseApproval,
+                        purchaseDecision,
+                        mock(AuditDetailViewRecorder.class))
                         .submitFinance(purchaseId));
         verify(purchaseApproval).submit("PURCHASE", purchaseId);
         verify(purchaseDecision, never()).approve(purchaseId, 1L);
@@ -140,7 +152,8 @@ class ProcurementOrderFinanceDecisionResponseTest {
         assertSame(subcontractDetail,
                 new SubcontractOrderController(
                         subcontract, subcontractApproval, subcontractDecision,
-                        mock(com.uten.imp.features.subcontract.order.SubcontractOrderProgressService.class))
+                        mock(com.uten.imp.features.subcontract.order.SubcontractOrderProgressService.class),
+                        mock(AuditDetailViewRecorder.class))
                         .submitFinance(subcontractId));
         verify(subcontractApproval).submit("SUBCONTRACT", subcontractId);
         verify(subcontractDecision, never()).approve(subcontractId, 1L);

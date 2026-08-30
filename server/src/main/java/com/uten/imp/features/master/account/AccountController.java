@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.account;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
@@ -56,6 +57,7 @@ public class AccountController {
     private final XlsxExportService xlsxExport;
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
+    private final AuditDetailViewRecorder viewAudit;
     private final SecurityContextCurrentUser currentUser;
 
     @GetMapping
@@ -99,7 +101,11 @@ public class AccountController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('account:view')")
     public AccountDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        AccountDetail detail = service.detail(id);
+        viewAudit.record(
+                "view_account_detail", "accounts", id,
+                detail.getCode(), detail.getLegacyId(), "资金账户");
+        return detail;
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤/排序走 query，与 GET /list 一致） ----------

@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.expense;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseDetail;
@@ -45,6 +46,7 @@ public class FinanceExpenseController {
     private final FinanceExpenseService service;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_expense:view')")
@@ -65,7 +67,15 @@ public class FinanceExpenseController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_expense:view')")
     public FinanceExpenseDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        FinanceExpenseDetail result = service.detail(id);
+        detailViewAudit.record(
+                "view_finance_expense_detail",
+                "finance_expenses",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "一般费用单");
+        return result;
     }
 
     @PostMapping

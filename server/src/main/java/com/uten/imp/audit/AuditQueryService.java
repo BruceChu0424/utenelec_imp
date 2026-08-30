@@ -382,12 +382,22 @@ public class AuditQueryService {
                         cb.equal(activityResult, "success"))));
                 Expression<String> requestMethod = cb.upper(root.get("httpMethod"));
                 Expression<String> requestPath = cb.lower(root.get("httpPath"));
+                List<Predicate> automaticReadRoutes = new ArrayList<>();
+                automaticReadRoutes.add(
+                        requestPath.in(AuditNoisePolicy.automaticReadPaths()));
+                AuditNoisePolicy.automaticReadSqlLikePatterns().forEach(pattern ->
+                        automaticReadRoutes.add(cb.like(requestPath, pattern)));
                 Predicate automaticRead = cb.and(
                         requestMethod.in(List.of("GET", "HEAD")),
-                        requestPath.in(AuditNoisePolicy.automaticReadPaths()));
-                Predicate automaticSessionRefresh = cb.and(
-                        cb.equal(requestMethod, "POST"),
+                        cb.or(automaticReadRoutes.toArray(new Predicate[0])));
+                List<Predicate> automaticSessionRoutes = new ArrayList<>();
+                automaticSessionRoutes.add(
                         requestPath.in(AuditNoisePolicy.automaticSessionWritePaths()));
+                AuditNoisePolicy.automaticSessionWriteSqlLikePatterns().forEach(pattern ->
+                        automaticSessionRoutes.add(cb.like(requestPath, pattern)));
+                Predicate automaticSessionWrite = cb.and(
+                        cb.equal(requestMethod, "POST"),
+                        cb.or(automaticSessionRoutes.toArray(new Predicate[0])));
                 Predicate automaticHeartbeat = cb.and(
                         cb.equal(requestMethod, "POST"),
                         cb.like(requestPath, AuditNoisePolicy.heartbeatSqlLikePattern()));
@@ -398,7 +408,7 @@ public class AuditQueryService {
                         .in(SUCCESS_RESULT_CODES);
                 Predicate historicalAutomaticSuccess = cb.and(
                         cb.equal(cb.lower(root.get("eventSource")), "request"),
-                        cb.or(automaticRead, automaticSessionRefresh, automaticHeartbeat),
+                        cb.or(automaticRead, automaticSessionWrite, automaticHeartbeat),
                         successfulHttp,
                         successfulResult);
                 ps.add(cb.not(historicalAutomaticSuccess));
@@ -449,6 +459,11 @@ public class AuditQueryService {
                         criteria.keyword().trim().toLowerCase(Locale.ROOT)) + "%";
                 Expression<String> requestIdText = ((JpaExpression<?>)
                         root.get("requestId")).cast(String.class);
+                Expression<String> viewDisplayName = cb.function(
+                        "jsonb_extract_path_text",
+                        String.class,
+                        root.get("after"),
+                        cb.literal("view_display_name"));
                 // 操作人支持按"姓名"检索：先解析命中的用户 ID，再并入 OR 组。
                 java.util.Set<UUID> nameMatchedActorIds =
                         actorDirectory.findUserIdsByNameKeyword(criteria.keyword());
@@ -457,6 +472,7 @@ public class AuditQueryService {
                         cb.like(cb.lower(root.get("actorAccount")), pattern, '!'),
                         cb.like(cb.lower(root.get("targetType")), pattern, '!'),
                         cb.like(cb.lower(root.get("targetId")), pattern, '!'),
+                        cb.like(cb.lower(viewDisplayName), pattern, '!'),
                         cb.like(cb.lower(root.get("httpPath")), pattern, '!'),
                         cb.like(cb.lower(requestIdText), pattern, '!')));
                 if (nameMatchedActorIds != null && !nameMatchedActorIds.isEmpty()) {

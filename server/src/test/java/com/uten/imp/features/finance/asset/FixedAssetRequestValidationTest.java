@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.asset;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.GlobalExceptionHandler;
 import com.uten.imp.features.finance.asset.api.AssetWorkbenchRequests;
@@ -140,7 +141,8 @@ class FixedAssetRequestValidationTest {
         return MockMvcBuilders.standaloneSetup(new FixedAssetController(
                         mock(FinanceAssetQueryService.class), workflow,
                         mock(FinanceAssetCategoryService.class), mock(FinanceAssetPostingService.class),
-                        mock(FinanceAssetPeriodService.class), mock(FixedAssetService.class)))
+                        mock(FinanceAssetPeriodService.class), mock(FixedAssetService.class),
+                        mock(AuditDetailViewRecorder.class)))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

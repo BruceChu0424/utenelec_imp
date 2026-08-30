@@ -1,5 +1,6 @@
 package com.uten.imp.features.expenseclaim;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimCreateRequest;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimDto;
@@ -26,6 +27,7 @@ import java.util.UUID;
 public class ExpenseClaimController {
 
     private final ExpenseClaimService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/mine")
     @PreAuthorize("hasAuthority('expense:apply')")
@@ -64,7 +66,15 @@ public class ExpenseClaimController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay')")
     public ExpenseClaimDto detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ExpenseClaimDto result = service.detail(id);
+        detailViewAudit.record(
+                "view_expense_claim_detail",
+                "expense_claims",
+                id,
+                result.title(),
+                null,
+                "费用报销单");
+        return result;
     }
 
     @PostMapping

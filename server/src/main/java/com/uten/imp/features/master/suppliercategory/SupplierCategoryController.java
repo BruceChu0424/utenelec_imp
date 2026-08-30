@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.suppliercategory;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.suppliercategory.dto.*;
 import jakarta.validation.Valid;
@@ -17,6 +18,7 @@ import java.util.UUID;
 public class SupplierCategoryController {
 
     private final SupplierCategoryService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/tree")
     @PreAuthorize("hasAuthority('supplier_category:view')")
@@ -33,7 +35,15 @@ public class SupplierCategoryController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('supplier_category:view')")
     public SupplierCategoryDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        SupplierCategoryDetail result = service.detail(id);
+        String displayName = result.getCode();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = result.getName();
+        }
+        detailViewAudit.record(
+                "view_supplier_category_detail", "supplier_categories", id, displayName,
+                result.getLegacyId(), "供应商分类");
+        return result;
     }
 
     @GetMapping("/{id}/prefix-preview")

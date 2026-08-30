@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.ret;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.ret.dto.ReturnDetail;
 import com.uten.imp.features.subcontract.ret.dto.ReturnListItem;
@@ -39,6 +40,7 @@ import java.util.UUID;
 public class SubcontractReturnController {
 
     private final SubcontractReturnService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_return:view')")
@@ -59,7 +61,15 @@ public class SubcontractReturnController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_return:view')")
     public ReturnDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ReturnDetail result = service.detail(id);
+        auditViews.record(
+                "view_subcontract_return_detail",
+                "subcontract_returns",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外退货单");
+        return result;
     }
 
     @PostMapping

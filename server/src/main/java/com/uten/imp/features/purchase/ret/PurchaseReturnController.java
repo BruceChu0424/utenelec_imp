@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.ret;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.purchase.ret.dto.ReturnDetail;
 import com.uten.imp.features.purchase.ret.dto.ReturnListItem;
@@ -21,6 +22,7 @@ import java.util.UUID;
 public class PurchaseReturnController {
 
     private final PurchaseReturnService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('purchase_return:view')")
@@ -41,7 +43,15 @@ public class PurchaseReturnController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('purchase_return:view')")
     public ReturnDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ReturnDetail result = service.detail(id);
+        auditViews.record(
+                "view_purchase_return_detail",
+                "purchase_returns",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "采购退货单");
+        return result;
     }
 
     @PostMapping

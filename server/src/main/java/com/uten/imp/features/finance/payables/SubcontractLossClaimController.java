@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payables;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +21,7 @@ import static com.uten.imp.features.finance.payables.SubcontractLossClaimContrac
 @RequiredArgsConstructor
 public class SubcontractLossClaimController {
     private final SubcontractLossClaimService service;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_loss_claim:view')")
@@ -35,7 +37,18 @@ public class SubcontractLossClaimController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_loss_claim:view')")
     public CaseDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        CaseDetail result = service.detail(id);
+        String wasteBillNo = result.summary() == null
+                ? null
+                : result.summary().wasteBillNo();
+        detailViewAudit.record(
+                "view_subcontract_loss_claim_detail",
+                "subcontract_loss_claims",
+                id,
+                wasteBillNo,
+                null,
+                "委外损耗索赔");
+        return result;
     }
 
     @PostMapping("/{id}/decision")

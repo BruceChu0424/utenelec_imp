@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.other_income;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeDetail;
@@ -45,6 +46,7 @@ public class FinanceOtherIncomeController {
     private final FinanceOtherIncomeService service;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
+    private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_other_income:view')")
@@ -65,7 +67,15 @@ public class FinanceOtherIncomeController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_other_income:view')")
     public FinanceOtherIncomeDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        FinanceOtherIncomeDetail result = service.detail(id);
+        detailViewAudit.record(
+                "view_finance_other_income_detail",
+                "finance_other_incomes",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "其它收入单");
+        return result;
     }
 
     @PostMapping

@@ -50,9 +50,9 @@ class ResetBusinessDataScriptContractTest {
     void currentPolicyClassifiesEveryKnownParentTableAndPreservesEvidence() {
         Map<String, String> policy = policy();
 
-        assertThat(policy).hasSize(283);
+        assertThat(policy).hasSize(284);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(191);
+                .isEqualTo(192);
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
                 .isEqualTo(92);
 
@@ -76,6 +76,7 @@ class ResetBusinessDataScriptContractTest {
         Set.of(
                 "account_flow_monthly_summaries",
                 "production_daily_report_commands",
+                "production_daily_report_workers",
                 "production_fqc_cancellation_events",
                 "production_fqc_contribution_adjustments",
                 "production_fqc_decision_events",
@@ -118,9 +119,9 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry(
                 "production_product_no_sequences", "CLEAR");
         assertThat(sql)
-                .contains("clear_count <> 191 OR preserve_count <> 92")
-                .contains("V425 白名单数量异常")
-                .contains("CLEAR 191 张")
+                .contains("clear_count <> 192 OR preserve_count <> 92")
+                .contains("V429 白名单数量异常")
+                .contains("CLEAR 192 张")
                 .contains("PRESERVE 92 张");
     }
 

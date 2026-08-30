@@ -90,6 +90,95 @@ void main() {
     expect(api.query, isNot(contains('actorId')));
     expect(api.query, isNot(contains('dateFrom')));
   });
+
+  test(
+    'sessions use actor UUID, Beijing dates and ten-card pagination',
+    () async {
+      final api = _CaptureApi({
+        'items': [
+          {
+            'sessionId': 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            'actorId': '123e4567-e89b-42d3-a456-426614174099',
+            'actorDisplay': '王小明(sales01)',
+            'actorPosition': '销售专员',
+            'loginAt': '2026-08-29T23:30:00Z',
+            'startAction': 'login',
+            'startLabel': '员工登录',
+            'firstActivityAt': '2026-08-29T23:31:00Z',
+            'lastActivityAt': '2026-08-30T01:00:00Z',
+            'refreshExpiresAt': '2026-09-05T23:30:00Z',
+            'refreshCredentialStatus': 'active',
+            'refreshCredentialStatusLabel': '凭证有效',
+            'status': 'active',
+            'statusLabel': '仍在线',
+            'operationCount': 12,
+            'eventCount': 14,
+            'successCount': 13,
+            'failureCount': 1,
+            'riskCount': 2,
+            'postLogoutCount': 0,
+            'timelinePartial': false,
+          },
+        ],
+        'page': 1,
+        'size': 10,
+        'total': 1,
+        'snapshotAuditId': 9001,
+      });
+      final repository = DioAuditLogRepository(api);
+
+      final page = await repository.sessions(
+        actorId: '123e4567-e89b-42d3-a456-426614174099',
+        dateFrom: '2026-08-30',
+        dateTo: '2026-08-30',
+      );
+
+      expect(api.path, '/admin/audit-sessions');
+      expect(api.query, {
+        'actorId': '123e4567-e89b-42d3-a456-426614174099',
+        'dateFrom': '2026-08-30',
+        'dateTo': '2026-08-30',
+        'page': 1,
+        'size': 10,
+      });
+      expect(page.snapshotAuditId, 9001);
+      expect(page.totalPages, 1);
+      expect(page.items.single.operationCount, 12);
+      expect(page.items.single.statusLabel, '仍在线');
+    },
+  );
+
+  test(
+    'session events use keyset cursor and a stable audit snapshot',
+    () async {
+      final api = _CaptureApi({
+        'items': <dynamic>[],
+        'nextCursorAt': '2026-08-30T00:30:00Z',
+        'nextCursorId': 77,
+        'hasMore': true,
+        'snapshotAuditId': 9001,
+      });
+      final repository = DioAuditLogRepository(api);
+
+      await repository.sessionEvents(
+        sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        cursorAt: '2026-08-30T01:00:00Z',
+        cursorId: 88,
+        snapshotAuditId: 9001,
+      );
+
+      expect(
+        api.path,
+        '/admin/audit-sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/events',
+      );
+      expect(api.query, {
+        'size': 20,
+        'cursorAt': '2026-08-30T01:00:00Z',
+        'cursorId': 88,
+        'snapshotAuditId': 9001,
+      });
+    },
+  );
 }
 
 const _emptyPage = <String, dynamic>{

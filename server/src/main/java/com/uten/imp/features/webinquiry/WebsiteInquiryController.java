@@ -1,5 +1,6 @@
 package com.uten.imp.features.webinquiry;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -43,6 +44,7 @@ public class WebsiteInquiryController {
 
     private final WebsiteInquiryService service;
     private final WebsiteInquiryIngestGuard ingestGuard;
+    private final AuditDetailViewRecorder viewAudit;
 
     /** 官网服务端推送入口。密钥无效一律 401（不区分未配置/不匹配，防探测）。 */
     @PostMapping("/ingest")
@@ -79,7 +81,11 @@ public class WebsiteInquiryController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('webinquiry:view')")
     public WebsiteInquiryDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        WebsiteInquiryDetail detail = service.detail(id);
+        viewAudit.record(
+                "view_website_inquiry_detail", "website_inquiries", id,
+                detail.sourceId(), null, "官网询盘");
+        return detail;
     }
 
     @PostMapping("/{id}/status")

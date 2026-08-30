@@ -93,7 +93,9 @@ class JwtAuthorizationVersionTest {
     void acceptsPermissionsResolvedFromCurrentServerState() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
-        when(jwtService.parse("current-token")).thenReturn(claims(userId, 5, 9));
+        UUID sessionId = UUID.randomUUID();
+        when(jwtService.parse("current-token")).thenReturn(
+                claims(userId, 5, 9, sessionId));
         UserAccountRepository.AccountState accountState =
                 state(employeeId, "E1001", "active", false, false, 5, 9);
         when(userRepo.findAccountStateById(userId)).thenReturn(Optional.of(accountState));
@@ -118,6 +120,9 @@ class JwtAuthorizationVersionTest {
         assertTrue(principal.getAuthorities().stream()
                 .anyMatch(authority -> "employee:view".equals(authority.getAuthority())));
         assertNotNull(request.getAttribute(AuditRequestContext.VERIFIED_ACTOR_ATTRIBUTE));
+        assertEquals(
+                sessionId,
+                request.getAttribute(AuditRequestContext.SESSION_ID_ATTRIBUTE));
     }
 
     @Test
@@ -249,12 +254,23 @@ class JwtAuthorizationVersionTest {
     }
 
     private Claims claims(UUID userId, long authVersion, long authorizationEpoch) {
-        return Jwts.claims()
+        return claims(userId, authVersion, authorizationEpoch, null);
+    }
+
+    private Claims claims(
+            UUID userId,
+            long authVersion,
+            long authorizationEpoch,
+            UUID sessionId) {
+        var builder = Jwts.claims()
                 .subject(userId.toString())
                 .add("typ", "staff")
                 .add("av", authVersion)
-                .add("ae", authorizationEpoch)
-                .build();
+                .add("ae", authorizationEpoch);
+        if (sessionId != null) {
+            builder.add("sid", sessionId.toString());
+        }
+        return builder.build();
     }
 
     private UserAccountRepository.AccountState state(

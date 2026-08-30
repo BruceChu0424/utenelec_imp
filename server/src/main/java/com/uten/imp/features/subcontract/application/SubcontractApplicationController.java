@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.application;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.subcontract.application.dto.ApplicationDetail;
 import com.uten.imp.features.subcontract.application.dto.ApplicationListItem;
@@ -31,6 +32,7 @@ import java.util.UUID;
 public class SubcontractApplicationController {
 
     private final SubcontractApplicationService service;
+    private final AuditDetailViewRecorder auditViews;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_application:view')")
@@ -51,7 +53,15 @@ public class SubcontractApplicationController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_application:view')")
     public ApplicationDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        ApplicationDetail result = service.detail(id);
+        auditViews.record(
+                "view_subcontract_application_detail",
+                "subcontract_applications",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外申请单");
+        return result;
     }
 
     @PostMapping("/decomposition-preview")

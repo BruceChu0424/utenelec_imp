@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/production/models/production_execution_planning.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 
 void main() {
@@ -99,6 +100,47 @@ void main() {
     });
     expect(result.status, 'DISPATCHED');
   });
+
+  test(
+    'batch start posts one atomic list of version checked commands',
+    () async {
+      late RequestOptions captured;
+      final repository = ProductionPlanRepository(
+        _api((request) {
+          captured = request;
+          return [_segmentJson(status: 'IN_PROGRESS', lockVersion: 5)];
+        }),
+      );
+
+      final result = await repository.batchStartExecutionSegments(
+        'plan-1',
+        items: const [
+          ProductionExecutionBatchStartItem(
+            segmentId: 'segment-1',
+            expectedVersion: 4,
+            idempotencyKey: 'segment-batch-start-001',
+          ),
+        ],
+      );
+
+      expect(captured.method, 'POST');
+      expect(
+        captured.path,
+        '/production/plans/plan-1/execution-segments/batch-start',
+      );
+      expect(captured.data, {
+        'items': [
+          {
+            'segmentId': 'segment-1',
+            'expectedVersion': 4,
+            'idempotencyKey': 'segment-batch-start-001',
+          },
+        ],
+      });
+      expect(result.single.status, 'IN_PROGRESS');
+      expect(result.single.lockVersion, 5);
+    },
+  );
 }
 
 Map<String, dynamic> _segmentJson({

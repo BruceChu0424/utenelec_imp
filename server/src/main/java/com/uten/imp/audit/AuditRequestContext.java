@@ -21,6 +21,8 @@ public final class AuditRequestContext {
             "X-Uten-Audit-Request-Id";
     public static final String VERIFIED_ACTOR_ATTRIBUTE =
             "uten.audit.verifiedActor";
+    public static final String SESSION_ID_ATTRIBUTE =
+            "uten.audit.sessionId";
     static final String OPERATION_START_NANOS_ATTRIBUTE =
             "uten.audit.operationStartNanos";
     static final String OPERATION_RECORDED_ATTRIBUTE =
@@ -67,6 +69,36 @@ public final class AuditRequestContext {
                     VERIFIED_ACTOR_ATTRIBUTE,
                     new VerifiedActor(actorId, actorAccount));
         }
+    }
+
+    public static void bindVerifiedActor(
+            HttpServletRequest request,
+            UUID actorId,
+            String actorAccount,
+            UUID sessionId) {
+        bindVerifiedActor(request, actorId, actorAccount);
+        bindSessionId(request, sessionId);
+    }
+
+    public static void bindSessionId(HttpServletRequest request, UUID sessionId) {
+        if (request != null && sessionId != null) {
+            request.setAttribute(SESSION_ID_ATTRIBUTE, sessionId);
+        }
+    }
+
+    public static void bindCurrentSessionId(UUID sessionId) {
+        bindSessionId(currentRequest(), sessionId);
+    }
+
+    public static UUID currentSessionId() {
+        return sessionId(currentRequest());
+    }
+
+    static UUID sessionId(HttpServletRequest request) {
+        Object value = request == null
+                ? null
+                : request.getAttribute(SESSION_ID_ATTRIBUTE);
+        return value instanceof UUID id ? id : null;
     }
 
     static VerifiedActor verifiedActor(HttpServletRequest request) {

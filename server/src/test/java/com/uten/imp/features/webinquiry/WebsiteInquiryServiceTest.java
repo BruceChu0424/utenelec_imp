@@ -110,7 +110,7 @@ class WebsiteInquiryServiceTest {
                 ArgumentCaptor.forClass(WebsiteInquiryClientPort.CreateRequest.class);
         verify(clientPort).createFromInquiry(request.capture());
         assertEquals(currentUser.requireEmployeeId(), request.getValue().ownerEmployeeId());
-        verify(audit).logExplicit(any(), any(), any(), any(), any(), any());
+        verify(audit).logCommitted(any(), any(), any(), any(), any(), any());
 
         // 第二次 convert：直接返回详情，不再新建客户
         service.convert(inquiry.getId());

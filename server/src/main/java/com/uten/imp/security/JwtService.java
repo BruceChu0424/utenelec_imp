@@ -47,14 +47,26 @@ public class JwtService {
      * headers bounded and prevents a signed-but-stale permission snapshot from being used.
      */
     public String issueAccess(UUID userId, long authVersion, long authorizationEpoch) {
+        return issueAccess(userId, authVersion, authorizationEpoch, null);
+    }
+
+    public String issueAccess(
+            UUID userId,
+            long authVersion,
+            long authorizationEpoch,
+            UUID sessionId) {
         Instant now = Instant.now();
         Instant exp = now.plusSeconds(settings.readLong("jwt_access_ttl_minutes", 15) * 60);
-        return Jwts.builder()
+        var token = Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(userId.toString())
                 .claim("av", authVersion)
                 .claim("ae", authorizationEpoch)
-                .claim("typ", "staff")
+                .claim("typ", "staff");
+        if (sessionId != null) {
+            token.claim("sid", sessionId.toString());
+        }
+        return token
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .signWith(key)
@@ -70,15 +82,35 @@ public class JwtService {
      */
     public String issueImpersonationAccess(UUID targetUserId, long authVersion, long authorizationEpoch,
                                            UUID adminUserId, Instant expiresAt) {
+        return issueImpersonationAccess(
+                targetUserId,
+                authVersion,
+                authorizationEpoch,
+                adminUserId,
+                expiresAt,
+                null);
+    }
+
+    public String issueImpersonationAccess(
+            UUID targetUserId,
+            long authVersion,
+            long authorizationEpoch,
+            UUID adminUserId,
+            Instant expiresAt,
+            UUID sessionId) {
         Instant now = Instant.now();
         Instant exp = expiresAt.isBefore(now) ? now.plusSeconds(1) : expiresAt;
-        return Jwts.builder()
+        var token = Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(targetUserId.toString())
                 .claim("av", authVersion)
                 .claim("ae", authorizationEpoch)
                 .claim("typ", "staff")
-                .claim("imp", adminUserId.toString())
+                .claim("imp", adminUserId.toString());
+        if (sessionId != null) {
+            token.claim("sid", sessionId.toString());
+        }
+        return token
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .signWith(key)
@@ -111,9 +143,19 @@ public class JwtService {
     /** 访客访问 JWT（typ=visitor，subject=visitorId）。 */
     public String issueVisitorAccess(UUID visitorId, String visitorNo, String avatarSeed,
                                      Set<String> permissions) {
+        return issueVisitorAccess(
+                visitorId, visitorNo, avatarSeed, permissions, null);
+    }
+
+    public String issueVisitorAccess(
+            UUID visitorId,
+            String visitorNo,
+            String avatarSeed,
+            Set<String> permissions,
+            UUID sessionId) {
         Instant now = Instant.now();
         Instant exp = now.plusSeconds(settings.readLong("jwt_access_ttl_minutes", 15) * 60);
-        return Jwts.builder()
+        var token = Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(visitorId.toString())
                 .claim("typ", "visitor")
@@ -122,7 +164,11 @@ public class JwtService {
                 .claim("acc", visitorNo)
                 .claim("vno", visitorNo)
                 .claim("avs", avatarSeed)
-                .claim("perms", permissions)
+                .claim("perms", permissions);
+        if (sessionId != null) {
+            token.claim("sid", sessionId.toString());
+        }
+        return token
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .signWith(key)

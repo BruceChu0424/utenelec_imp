@@ -486,6 +486,9 @@ class ProductionMaterialAnalysisProduct {
     this.planExecutionStatus,
     this.latestPlanId,
     this.latestPlanNo,
+    this.planExecutionPlannedQty,
+    this.planExecutionInboundQty,
+    this.planExecutionProgressRatio,
   });
 
   final String analysisLineId;
@@ -535,6 +538,13 @@ class ProductionMaterialAnalysisProduct {
   final String? latestPlanId;
   final String? latestPlanNo;
 
+  /// Effective approved production-plan totals for this analysis product.
+  /// The ratio is nullable so an older server or a plan without an executable
+  /// denominator never masquerades as genuine 0% progress.
+  final double? planExecutionPlannedQty;
+  final double? planExecutionInboundQty;
+  final double? planExecutionProgressRatio;
+
   factory ProductionMaterialAnalysisProduct.fromJson(
     Map<String, dynamic> json,
   ) => ProductionMaterialAnalysisProduct(
@@ -581,6 +591,11 @@ class ProductionMaterialAnalysisProduct {
     planExecutionStatus: _string(json['planExecutionStatus']),
     latestPlanId: _string(json['latestPlanId']),
     latestPlanNo: _string(json['latestPlanNo']),
+    planExecutionPlannedQty: _double(json['planExecutionPlannedQty']),
+    planExecutionInboundQty: _double(json['planExecutionInboundQty']),
+    planExecutionProgressRatio: _normaliseNullableRatio(
+      json['planExecutionProgressRatio'],
+    ),
   );
 }
 
@@ -1658,6 +1673,11 @@ bool? _boolOrNull(Object? value) => switch (value) {
 double _normaliseRatio(Object? value) {
   final ratio = _double(value) ?? 0;
   return normalizeProgressRatio(ratio);
+}
+
+double? _normaliseNullableRatio(Object? value) {
+  final ratio = _double(value);
+  return ratio == null ? null : normalizeProgressRatio(ratio);
 }
 
 List<String> _path(Object? value) {

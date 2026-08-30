@@ -44,4 +44,33 @@ class JwtStaffClaimMinimizationTest {
         assertTrue(("Bearer " + token).length() < 512,
                 "staff Authorization header must retain ample room in the 16 KiB envelope");
     }
+
+    @Test
+    void staffAndImpersonationAccessTokensCarryOnlyTheStableSessionUuid() {
+        JwtProperties properties = new JwtProperties();
+        properties.setSecret("0123456789abcdef0123456789abcdef");
+        properties.setIssuer("uten-test");
+        SystemSettingsService settings = mock(SystemSettingsService.class);
+        when(settings.readLong("jwt_access_ttl_minutes", 15)).thenReturn(15L);
+        JwtService jwtService = new JwtService(properties, settings);
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
+        Claims staff = jwtService.parse(
+                jwtService.issueAccess(userId, 7, 11, sessionId));
+        Claims impersonation = jwtService.parse(jwtService.issueImpersonationAccess(
+                userId,
+                7,
+                11,
+                adminId,
+                java.time.Instant.now().plusSeconds(60),
+                sessionId));
+
+        assertEquals(sessionId.toString(), staff.get("sid", String.class));
+        assertEquals(sessionId.toString(), impersonation.get("sid", String.class));
+        assertEquals(adminId.toString(), impersonation.get("imp", String.class));
+        assertNull(staff.get("jti"));
+        assertNull(impersonation.get("jti"));
+    }
 }

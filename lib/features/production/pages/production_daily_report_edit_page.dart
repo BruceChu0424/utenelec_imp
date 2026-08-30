@@ -1,11 +1,10 @@
 // 生产日报编辑页（新建/编辑，全页路由）：与生产计划/销售编辑页同构（统一模板）。
 //
 // 日报特点：
-//   - 明细只记录完工申报数量；品质 PASS 与仓库实收分别决定可入库量和 iqty。
+//   - 明细只记录完工申报数量；品质通过与仓库实收分别决定可入库量和 iqty。
 //   - 单据号系统自动生成（后端 DocNumberService，PRODUCTION_DAILY_REPORT），本页只读显示。
 //   - 仓库 = 下拉（UtenDropdownField，warehouseId）；车间 = 部门选择器（department_id + 部门名冗余 workshop_name）；
-//     生产工 = 员工选择器（workerId）。
-//   - 后端 DailyReportSaveRequest 已具备 departmentId/workerId/warehouseId，纯前端改动。
+//     生产参与人员 = 多选员工(workerIds；首位兼容 workerId)。
 //   - 明细行：goodsId（必填）+ qty 完工量（必填）+ color/unit + 精确来源子任务 + remark。
 //
 // 仅草稿可编辑（后端校验；已审走详情页红冲）。
@@ -19,6 +18,7 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -36,6 +36,7 @@ import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_daily_report.dart';
+import '../models/reportable_plan_line.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_daily_grid_columns.dart';
@@ -65,8 +66,8 @@ class _ProductionDailyReportEditPageState
   // 车间 = 部门
   String? _departmentId;
   String? _workshopName; // 部门名冗余（供报表 workshop_name facet）
-  // 生产工
-  String? _workerId;
+  // 本次日报整单参与人员；不表达行级贡献或计件分配。
+  List<UtenEmployeePickerItem> _workers = const [];
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
   /// 生产工 picker 默认范围：生产部（DEPT_PROD）子树 id；解析前 picker 回退全公司。
@@ -125,7 +126,7 @@ class _ProductionDailyReportEditPageState
             .whereType<String>()
             .toSet();
         await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-        await _preloadEmployees([d.workerId]);
+        await _preloadEmployees(d.workerIds);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
         _remark.text = d.remark ?? '';
@@ -135,7 +136,10 @@ class _ProductionDailyReportEditPageState
         _warehouseId = d.warehouseId;
         _departmentId = d.departmentId;
         _workshopName = d.workshopName;
-        _workerId = d.workerId;
+        _workers = [
+          for (final id in d.workerIds)
+            _empCache[id] ?? UtenEmployeePickerItem(id: id, name: '已选生产工'),
+        ];
         _makerName = d.makerName;
         _createdAt = d.createdAt;
         _rowVersion = d.rowVersion;
@@ -186,7 +190,10 @@ class _ProductionDailyReportEditPageState
         initialSegmentId != null &&
         initialSegmentId.isNotEmpty &&
         _grid.rows.isNotEmpty) {
-      await _pickSource(_grid.rows.first, executionSegmentId: initialSegmentId);
+      await _loadInitialSource(
+        _grid.rows.first,
+        executionSegmentId: initialSegmentId,
+      );
     }
   }
 
@@ -237,6 +244,52 @@ class _ProductionDailyReportEditPageState
       );
       return;
     }
+    _applySource(row, source);
+  }
+
+  /// 卡片“分批报工”已给出精确执行子任务。若读侧只有一条可报分摊，直接
+  /// 应用并预填数量；同一执行段包含多条销售分摊时仍让用户确认，避免串单。
+  Future<void> _loadInitialSource(
+    DailyGridRow row, {
+    required String executionSegmentId,
+  }) async {
+    try {
+      final page = await ref
+          .read(productionDailyReportRepositoryProvider)
+          .reportablePlanLines(
+            size: 2,
+            departmentId: _departmentId,
+            executionSegmentId: executionSegmentId,
+          );
+      if (!mounted) return;
+      final source = uniqueReportablePlanLine(page.items, page.total);
+      if (source != null) {
+        if (!source.canReport) {
+          context.appWarning(
+            source.blockedReason ?? '当前执行子计划没有可报数量，请刷新后重试',
+            force: true,
+          );
+          return;
+        }
+        _applySource(row, source);
+        return;
+      }
+      if (page.total == 0 || page.items.isEmpty) {
+        context.appWarning('当前执行子计划没有可报来源，任务状态可能已被其他人更新', force: true);
+        return;
+      }
+      context.appWarning('当前执行子计划包含多个销售分摊，请确认本次报工对应的订单来源', force: true);
+      await _pickSource(row, executionSegmentId: executionSegmentId);
+    } catch (error) {
+      if (!mounted) return;
+      context.appError(
+        productionErrorMessage(error, fallback: '当前执行子计划加载失败，请稍后重试'),
+      );
+    }
+  }
+
+  void _applySource(DailyGridRow row, ReportablePlanLine source) {
+    if (!mounted) return;
     setState(() {
       row
         ..planItemId = source.planItemId
@@ -403,7 +456,8 @@ class _ProductionDailyReportEditPageState
       if (_departmentId != null) 'departmentId': _departmentId,
       if (_workshopName != null && _workshopName!.trim().isNotEmpty)
         'workshopName': _workshopName,
-      if (_workerId != null) 'workerId': _workerId,
+      if (_workers.isNotEmpty) 'workerId': _workers.first.id,
+      'workerIds': [for (final worker in _workers) worker.id],
       if (_remark.text.trim().isNotEmpty) 'remark': _remark.text.trim(),
       'items': itemsBody,
     };
@@ -443,46 +497,57 @@ class _ProductionDailyReportEditPageState
     }
   }
 
-  /// 人员选择器：关键字为空时默认收敛到职能部门子树、有关键字时全公司搜。
-  Widget _employeePicker({
-    required String label,
-    required String? currentId,
-    required String defaultDeptCode,
-    required ValueChanged<String?> onChanged,
-  }) {
-    return UtenEmployeePicker(
-      key: ValueKey('${label}_$currentId'),
-      label: label,
-      hint: '请选择$label',
-      sheetTitle: '选择$label',
-      initial: currentId == null ? null : _empCache[currentId],
-      loader: (kw) async {
-        final deptId =
-            (kw == null || kw.isEmpty) && defaultDeptCode == kDeptCodeProduction
-            ? _productionDeptId
-            : null;
-        final res = await ref
-            .read(employeeRepositoryProvider)
-            .list(
-              size: 30,
-              search: kw,
-              departmentId: deptId,
-              includeSubtree: true,
-            );
-        return [
-          for (final e in res.items)
-            UtenEmployeePickerItem(
-              id: e.id,
-              name: e.fullName,
-              employeeCode: e.code,
-              departmentName: e.departmentName,
-            ),
-        ];
-      },
-      onChanged: (item) {
-        if (item != null) _empCache[item.id] = item;
-        onChanged(item?.id);
-      },
+  Widget _workerPicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        UtenEmployeeMultiPicker(
+          key: ValueKey(_workers.map((worker) => worker.id).join('|')),
+          enabled: _departmentId != null || _productionDeptId != null,
+          label: '生产参与人员',
+          hint: '可选择多人或整条流水线成员',
+          sheetTitle: '选择本次报工参与人员',
+          searchHint: '搜索生产部员工姓名 / 工号',
+          emptyMessage: '当前生产部门没有匹配的在职或试用员工',
+          initialSelection: _workers,
+          loader: (kw) async {
+            final deptId = _departmentId ?? _productionDeptId;
+            if (deptId == null) return const <UtenEmployeePickerItem>[];
+            final res = await ref
+                .read(employeeRepositoryProvider)
+                .list(
+                  size: 100,
+                  search: kw,
+                  statuses: const {'active', 'probation'},
+                  departmentId: deptId,
+                  includeSubtree: true,
+                );
+            return [
+              for (final e in res.items)
+                UtenEmployeePickerItem(
+                  id: e.id,
+                  name: e.fullName,
+                  employeeCode: e.code,
+                  departmentName: e.departmentName,
+                ),
+            ];
+          },
+          onChanged: (items) => setState(() {
+            _workers = List.unmodifiable(items);
+            for (final item in items) {
+              _empCache[item.id] = item;
+            }
+          }),
+        ),
+        const SizedBox(height: UtenSpacing.s4),
+        Text(
+          '候选范围：制造与研发管理中心 / 生产部。选择车间后收窄到该车间及班组；'
+          '这里记录整单参与人员，不代表个人产量或计件工资。',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 
@@ -509,7 +574,9 @@ class _ProductionDailyReportEditPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
-    final workshopTree = ref.watch(productionWorkshopTreeProvider).valueOrNull;
+    final workforceTree = ref
+        .watch(productionWorkforceTreeProvider)
+        .valueOrNull;
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.id == null ? '新建生产日报' : '编辑生产日报',
@@ -590,9 +657,18 @@ class _ProductionDailyReportEditPageState
                                     mode: UtenDepartmentPickerMode.single,
                                     label: '车间',
                                     hint: '选择生产车间(部门)',
-                                    selectablePredicate:
-                                        isBusinessDepartmentNode,
-                                    treeOverride: workshopTree,
+                                    selectablePredicate: (node) =>
+                                        workforceTree?.productionDepartmentId !=
+                                            null &&
+                                        node.parentId ==
+                                            workforceTree!
+                                                .productionDepartmentId,
+                                    treeOverride:
+                                        workforceTree?.tree ?? const [],
+                                    expandOnRowTap: true,
+                                    initiallyExpandedIds:
+                                        workforceTree?.initiallyExpandedIds ??
+                                        const {},
                                     initialSelection: _departmentId == null
                                         ? const []
                                         : [
@@ -611,13 +687,7 @@ class _ProductionDailyReportEditPageState
                                       });
                                     },
                                   ),
-                                  _employeePicker(
-                                    label: '生产工',
-                                    currentId: _workerId,
-                                    defaultDeptCode: kDeptCodeProduction,
-                                    onChanged: (id) =>
-                                        setState(() => _workerId = id),
-                                  ),
+                                  _workerPicker(),
                                 ],
                               ),
                               const SizedBox(height: UtenSpacing.s12),
@@ -650,8 +720,8 @@ class _ProductionDailyReportEditPageState
                             Expanded(
                               child: Text(
                                 '数量口径：这里只填写本次实际完工申报量。审核后先进入生产成品质检；'
-                                '只有品质 PASS 数量会生成仓库待点收任务，仓库实收后才增加库存与完成率。'
-                                '疑似不良也应按实际完工事实申报，由品质登记 PASS、返工、报废或拒收。',
+                                '只有品质通过数量会生成仓库待点收任务，仓库实收后才增加库存与完成率。'
+                                '疑似不良也应按实际完工事实申报，由品质登记通过、返工、报废或拒收。',
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: theme.colorScheme.onTertiaryContainer,
                                 ),

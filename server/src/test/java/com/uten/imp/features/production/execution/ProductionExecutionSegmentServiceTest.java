@@ -13,19 +13,25 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -342,6 +348,191 @@ class ProductionExecutionSegmentServiceTest {
         verify(chainNotice).notifyExecutionSegmentTransition(segmentId, true);
     }
 
+    @Test
+    void batchStartDeduplicatesAndLocksInUuidOrderBeforeAnyMutation() {
+        UUID firstId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID secondId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+
+        Query firstLock = locked(
+                firstId, "DISPATCHED", 3L, "CONFIRMED", null, true,
+                "DEMANDED");
+        Query secondLock = locked(
+                secondId, "DISPATCHED", 7L, "CONFIRMED", null, true,
+                "DEMANDED");
+        Query firstReplay = query();
+        when(firstReplay.getResultList()).thenReturn(List.of());
+        Query firstDemands = query();
+        when(firstDemands.getResultList()).thenReturn(Collections.singletonList(
+                new Object[]{UUID.randomUUID(), "FULFILLED"}));
+        Query secondReplay = query();
+        when(secondReplay.getResultList()).thenReturn(List.of());
+        Query secondDemands = query();
+        when(secondDemands.getResultList()).thenReturn(Collections.singletonList(
+                new Object[]{UUID.randomUUID(), "FULFILLED"}));
+        Query firstUpdate = query();
+        when(firstUpdate.executeUpdate()).thenReturn(1);
+        Query firstEvent = query();
+        when(firstEvent.executeUpdate()).thenReturn(1);
+        Query firstView = query();
+        when(firstView.getResultList()).thenReturn(Collections.singletonList(
+                viewRow(firstId, "IN_PROGRESS", null, 4L, 1, 1, true)));
+        Query secondUpdate = query();
+        when(secondUpdate.executeUpdate()).thenReturn(1);
+        Query secondEvent = query();
+        when(secondEvent.executeUpdate()).thenReturn(1);
+        Query secondView = query();
+        when(secondView.getResultList()).thenReturn(Collections.singletonList(
+                viewRow(secondId, "IN_PROGRESS", null, 8L, 1, 1, true)));
+        when(em.createNativeQuery(anyString())).thenReturn(
+                firstLock, secondLock,
+                firstReplay, firstDemands,
+                secondReplay, secondDemands,
+                firstUpdate, firstEvent, firstView,
+                secondUpdate, secondEvent, secondView);
+
+        BatchStartRequest.Item first = new BatchStartRequest.Item(
+                firstId, 3L, "batch-start-first");
+        BatchStartRequest.Item second = new BatchStartRequest.Item(
+                secondId, 7L, "batch-start-second");
+        List<ExecutionSegmentView> result = service.batchStart(
+                planId, new BatchStartRequest(List.of(second, first, second)));
+
+        assertEquals(List.of(firstId, secondId), result.stream()
+                .map(ExecutionSegmentView::id)
+                .toList());
+        var lockOrder = inOrder(firstLock, secondLock, firstUpdate);
+        lockOrder.verify(firstLock).setParameter("segmentId", firstId);
+        lockOrder.verify(secondLock).setParameter("segmentId", secondId);
+        lockOrder.verify(firstUpdate).executeUpdate();
+        verify(em, times(12)).createNativeQuery(anyString());
+        verify(chainNotice).notifyExecutionSegmentTransition(firstId, true);
+        verify(chainNotice).notifyExecutionSegmentTransition(secondId, true);
+    }
+
+    @Test
+    void batchStartPreflightsEveryItemBeforeTheFirstStatusUpdate()
+            throws Exception {
+        UUID firstId = UUID.fromString("00000000-0000-0000-0000-000000000011");
+        UUID secondId = UUID.fromString("00000000-0000-0000-0000-000000000012");
+        Query firstLock = locked(
+                firstId, "DISPATCHED", 2L, "CONFIRMED", null, true,
+                "DEMANDED");
+        Query secondLock = locked(
+                secondId, "DISPATCHED", 4L, "CONFIRMED", null, true,
+                "DEMANDED");
+        Query firstReplay = query();
+        when(firstReplay.getResultList()).thenReturn(List.of());
+        Query firstDemands = query();
+        when(firstDemands.getResultList()).thenReturn(Collections.singletonList(
+                new Object[]{UUID.randomUUID(), "FULFILLED"}));
+        Query secondReplay = query();
+        when(secondReplay.getResultList()).thenReturn(List.of());
+        Query secondDemands = query();
+        when(secondDemands.getResultList()).thenReturn(Collections.singletonList(
+                new Object[]{UUID.randomUUID(), "ALLOCATED"}));
+        when(em.createNativeQuery(anyString())).thenReturn(
+                firstLock, secondLock,
+                firstReplay, firstDemands,
+                secondReplay, secondDemands);
+
+        ApiException error = assertThrows(ApiException.class, () ->
+                service.batchStart(planId, new BatchStartRequest(List.of(
+                        new BatchStartRequest.Item(
+                                secondId, 4L, "batch-preflight-second"),
+                        new BatchStartRequest.Item(
+                                firstId, 2L, "batch-preflight-first")))));
+
+        assertTrue(error.getMessage().contains("待发料 1 项"));
+        verify(em, times(6)).createNativeQuery(anyString());
+        verifyNoInteractions(chainNotice);
+
+        Method method = ProductionExecutionSegmentService.class
+                .getDeclaredMethod(
+                        "batchStart", UUID.class, BatchStartRequest.class);
+        Transactional transactional = method.getAnnotation(Transactional.class);
+        assertNotNull(transactional);
+        assertEquals(false, transactional.readOnly());
+    }
+
+    @Test
+    void batchStartSafelyReplaysEveryPreviouslyCommittedItem() {
+        UUID firstId = UUID.fromString("00000000-0000-0000-0000-000000000021");
+        UUID secondId = UUID.fromString("00000000-0000-0000-0000-000000000022");
+        String firstKey = "batch-replay-first";
+        String secondKey = "batch-replay-second";
+        Query firstLock = locked(
+                firstId, "IN_PROGRESS", 6L, "CONFIRMED", null, true,
+                "DEMANDED");
+        Query secondLock = locked(
+                secondId, "IN_PROGRESS", 9L, "CONFIRMED", null, true,
+                "DEMANDED");
+        Query firstReplay = query();
+        when(firstReplay.getResultList()).thenReturn(Collections.singletonList(
+                new Object[]{startHash(5L), 6L}));
+        Query firstView = query();
+        when(firstView.getResultList()).thenReturn(Collections.singletonList(
+                viewRow(firstId, "IN_PROGRESS", null, 6L, 1, 1, true)));
+        Query secondReplay = query();
+        when(secondReplay.getResultList()).thenReturn(Collections.singletonList(
+                new Object[]{startHash(8L), 9L}));
+        Query secondView = query();
+        when(secondView.getResultList()).thenReturn(Collections.singletonList(
+                viewRow(secondId, "IN_PROGRESS", null, 9L, 1, 1, true)));
+        when(em.createNativeQuery(anyString())).thenReturn(
+                firstLock, secondLock,
+                firstReplay, firstView,
+                secondReplay, secondView);
+
+        List<ExecutionSegmentView> result = service.batchStart(
+                planId, new BatchStartRequest(List.of(
+                        new BatchStartRequest.Item(secondId, 8L, secondKey),
+                        new BatchStartRequest.Item(firstId, 5L, firstKey))));
+
+        assertEquals(List.of(firstId, secondId), result.stream()
+                .map(ExecutionSegmentView::id)
+                .toList());
+        verify(em, times(6)).createNativeQuery(anyString());
+        verifyNoInteractions(chainNotice);
+    }
+
+    @Test
+    void batchStartRejectsTheSameIdempotencyKeyWithDifferentVersion() {
+        UUID targetId = UUID.fromString(
+                "00000000-0000-0000-0000-000000000031");
+        Query lock = locked(
+                targetId, "IN_PROGRESS", 6L, "CONFIRMED", null, true,
+                "DEMANDED");
+        Query replay = query();
+        when(replay.getResultList()).thenReturn(Collections.singletonList(
+                new Object[]{startHash(5L), 6L}));
+        when(em.createNativeQuery(anyString())).thenReturn(lock, replay);
+
+        ApiException error = assertThrows(ApiException.class, () ->
+                service.batchStart(planId, new BatchStartRequest(List.of(
+                        new BatchStartRequest.Item(
+                                targetId, 4L, "batch-shared-key")))));
+
+        assertTrue(error.getMessage().contains("相同幂等键"));
+        verify(em, times(2)).createNativeQuery(anyString());
+        verifyNoInteractions(chainNotice);
+    }
+
+    @Test
+    void batchStartRejectsAmbiguousDuplicatesBeforeLocking() {
+        UUID targetId = UUID.randomUUID();
+
+        ApiException error = assertThrows(ApiException.class, () ->
+                service.batchStart(planId, new BatchStartRequest(List.of(
+                        new BatchStartRequest.Item(
+                                targetId, 1L, "batch-duplicate-one"),
+                        new BatchStartRequest.Item(
+                                targetId, 2L, "batch-duplicate-two")))));
+
+        assertTrue(error.getMessage().contains("重复批量开工请求不一致"));
+        verifyNoInteractions(em, chainNotice);
+    }
+
 
     private Query locked(
             String status, long version, String packageStatus) {
@@ -366,10 +557,23 @@ class ProductionExecutionSegmentServiceTest {
             String status, long version, String packageStatus,
             UUID workshopId, boolean autoPromoteWhenReady,
             String materialRequirementMode) {
+        return locked(
+                segmentId, status, version, packageStatus, workshopId,
+                autoPromoteWhenReady, materialRequirementMode);
+    }
+
+    private Query locked(
+            UUID targetSegmentId,
+            String status,
+            long version,
+            String packageStatus,
+            UUID workshopId,
+            boolean autoPromoteWhenReady,
+            String materialRequirementMode) {
         Query lock = query();
         when(lock.getResultList()).thenReturn(
                 Collections.singletonList(new Object[]{
-                        segmentId,
+                        targetSegmentId,
                         planId,
                         packageId,
                         status,
@@ -399,8 +603,21 @@ class ProductionExecutionSegmentServiceTest {
             int demandCount,
             int fulfilledCount,
             boolean materialIssued) {
+        return viewRow(
+                segmentId, status, workshopId, version,
+                demandCount, fulfilledCount, materialIssued);
+    }
+
+    private Object[] viewRow(
+            UUID targetSegmentId,
+            String status,
+            UUID workshopId,
+            long version,
+            int demandCount,
+            int fulfilledCount,
+            boolean materialIssued) {
         return new Object[]{
-                segmentId, packageId, planId, UUID.randomUUID(),
+                targetSegmentId, packageId, planId, UUID.randomUUID(),
                 1, "SEG-1", goodsId, "G-1", "Goods",
                 null, UUID.randomUUID(),
                 BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ONE,
@@ -439,6 +656,11 @@ class ProductionExecutionSegmentServiceTest {
         Query replay = query();
         when(replay.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenReturn(lock, replay);
+    }
+
+    private static String startHash(long expectedVersion) {
+        return PlanningPackageFingerprint.sha256(List.of(
+                "ACTION|START", "VERSION|" + expectedVersion));
     }
 
     private static Query query() {

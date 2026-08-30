@@ -228,6 +228,10 @@ class AuditTriggerCoverageMigrationContractTest {
                     Map.entry("production_fqc_replenishment_cycle_cancellations", 415),
                     Map.entry("warehouse_arrival_registration_commands", 419));
 
+    /** Business tables repaired by a later narrow forward audit migration. */
+    private static final Map<String, Integer> POST_SWEEP_FORWARD_AUDIT_TABLES =
+            Map.of("production_daily_report_workers", 429);
+
     @Test
     void latestTrustedSweepValidatesTheFullTriggerContract() throws IOException {
         assertTrue(Files.isRegularFile(LATEST_FULL_AUDIT_SWEEP),
@@ -356,6 +360,8 @@ class AuditTriggerCoverageMigrationContractTest {
                 .filter(entry -> !TECHNICAL_TABLE_ALLOWLIST.containsKey(entry.getKey()))
                 .filter(entry ->
                         !POST_SWEEP_EXPLICIT_AUDIT_TABLES.containsKey(entry.getKey()))
+                .filter(entry ->
+                        !POST_SWEEP_FORWARD_AUDIT_TABLES.containsKey(entry.getKey()))
                 .sorted(Map.Entry.comparingByKey())
                 .map(entry -> entry.getKey() + "@V" + entry.getValue())
                 .toList();
@@ -384,6 +390,25 @@ class AuditTriggerCoverageMigrationContractTest {
                             && sql.contains(
                             "for each row execute function fn_audit()"),
                     entry.getKey() + " must own a full row-level audit trigger");
+        }
+    }
+
+    @Test
+    void postSweepForwardAuditRepairsAreNarrowAndLaterThanTableCreation()
+            throws IOException {
+        Map<String, Integer> createdAt = createdTableVersions();
+        for (Map.Entry<String, Integer> entry :
+                POST_SWEEP_FORWARD_AUDIT_TABLES.entrySet()) {
+            String sql = migrationSql(entry.getValue());
+            assertTrue(createdAt.get(entry.getKey()) < entry.getValue(),
+                    entry.getKey() + " forward audit repair must follow table creation");
+            assertTrue(sql.contains(
+                            "create trigger trg_audit_" + entry.getKey())
+                            && sql.contains(
+                            "after insert or update or delete on " + entry.getKey())
+                            && sql.contains(
+                            "for each row execute function fn_audit()"),
+                    entry.getKey() + " must receive one reviewed row-level audit trigger");
         }
     }
 

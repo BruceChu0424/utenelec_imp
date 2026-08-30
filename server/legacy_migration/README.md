@@ -2,7 +2,7 @@
 
 本目录只用于 `YTDQ_2023` 离线一致性快照到新库的首次引导导入或可丢弃演练。它不是切流后的增量同步器，也不是普通运维入口。权威模块清单、对账和生产门禁见 [迁移总索引](../../docs/数据迁移/README.md)。
 
-> 当前源码边界（2026-08-29）：Flyway 全局目录最高 V424，共 386 个迁移文件、386 个唯一版本且无重号。V420 是已授权的 BUY 需求 exact/公共安全补库分账，V421 是库存台账金额与货品成本完整性，V422 前向修正安全 action 单位快照和 allocation 反向门禁，V424 审计日志降噪（通知 4 表与系统管道/幂等指令表退出触发器覆盖）。离线 bootstrap 在任何写库前必须消费与当前候选 exact-set 一致的 386 行 checksum manifest，并把 `bootstrap-v9-v424` 写入迁移运行记录。V409–V415/V418 的生产质量事实、V419 在线到货命令以及 V420–V422 的在线修复语义均不由离线脚本伪造或回填。脚本存在、空库回放或本地演练都不表示公司目标库已应用 V239–V423，目标库仍以自身 `flyway_schema_history` 为准。
+> 当前源码边界（2026-08-29）：Flyway 全局目录最高 V425，共 387 个迁移文件、387 个唯一版本且无重号。V420 是已授权的 BUY 需求 exact/公共安全补库分账，V421 是库存台账金额与货品成本完整性，V422 前向修正安全 action 单位快照和 allocation 反向门禁，V424 审计日志降噪（通知 4 表与系统管道/幂等指令表退出触发器覆盖），V425 审计日志全新开始（清空并重置自增 ID）。离线 bootstrap 在任何写库前必须消费与当前候选 exact-set 一致的 386 行 checksum manifest，并把 `bootstrap-v9-v424` 写入迁移运行记录。V409–V415/V418 的生产质量事实、V419 在线到货命令以及 V420–V422 的在线修复语义均不由离线脚本伪造或回填。脚本存在、空库回放或本地演练都不表示公司目标库已应用 V239–V423，目标库仍以自身 `flyway_schema_history` 为准。
 
 ## 不变量
 
@@ -47,7 +47,7 @@ bash server/legacy_migration/migrate.sh --purchase --confirm-destructive
 
 ## PostgreSQL 前向升级演练
 
-本目录的 SQL Server 离线 bootstrap 与既有 PostgreSQL 的 Flyway 前向升级是两条不同链路，不能混用。自动测试 `V238ToCurrentSyntheticMigrationPostgresTest` 从最后一份公司目标库只读基线 V238 构造非空库并升级到当前 V424/386，用于发现空库回放看不到的结构、种子和约束问题；它不包含公司历史业务数据。
+本目录的 SQL Server 离线 bootstrap 与既有 PostgreSQL 的 Flyway 前向升级是两条不同链路，不能混用。自动测试 `V238ToCurrentSyntheticMigrationPostgresTest` 从最后一份公司目标库只读基线 V238 构造非空库并升级到当前 V425/387，用于发现空库回放看不到的结构、种子和约束问题；它不包含公司历史业务数据。
 
 公司数据只能在独立、可丢弃且可恢复的克隆上运行 `CurrentHeadNonEmptyCloneRehearsalTest`。除 `UTEN_RUN_REHEARSAL_DB_TESTS=true` 外，执行者必须通过私有环境显式提供：
 

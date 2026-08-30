@@ -401,6 +401,21 @@ class AuditTriggerCoverageMigrationContractTest {
     }
 
     @Test
+    void v425FreshStartTruncatesOnlyTheAuditSinkAndRestartsIdentity() throws IOException {
+        String sql = stripSqlComments(Files.readString(
+                MIGRATION_ROOT.resolve("V425__audit_log_fresh_start.sql"),
+                        StandardCharsets.UTF_8))
+                .replaceAll("\\s+", " ")
+                .toLowerCase(java.util.Locale.ROOT);
+        assertTrue(sql.contains(
+                "truncate table audit_log, audit_log_archive restart identity"),
+                "V425 must empty both the hot table and the cold archive and "
+                        + "restart the id sequence from 1");
+        assertFalse(sql.contains("delete from") || sql.contains("truncate table business"),
+                "V425 must not touch business tables");
+    }
+
+    @Test
     void v424DropsOnlyTheDeclaredSystemNoiseTriggers() throws IOException {
         String sql = stripSqlComments(Files.readString(
                 MIGRATION_ROOT.resolve(

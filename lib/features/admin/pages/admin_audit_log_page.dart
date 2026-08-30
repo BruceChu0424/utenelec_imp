@@ -2137,223 +2137,12 @@ class _AuditDetailContent extends StatelessWidget {
   }
 }
 
+/// 概览页：一张"操作叙事卡"按 谁 → 何时/在哪 → 做了什么 → 改了什么 的顺序讲完整事件，
+/// 再配风险说明与排查线索。信息按"读故事"的顺序组织，而不是按数据库字段罗列。
 class _AuditOverviewTab extends ConsumerWidget {
   const _AuditOverviewTab({required this.detail});
 
   final AuditLogDetail detail;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
-    return ListView(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
-      children: [
-        _AuditActorCard(detail: detail),
-        const SizedBox(height: UtenSpacing.s12),
-        Container(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          decoration: BoxDecoration(
-            color: _riskColor(
-              context,
-              detail.riskLevel,
-            ).withValues(alpha: 0.10),
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(
-              color: _riskColor(
-                context,
-                detail.riskLevel,
-              ).withValues(alpha: 0.35),
-            ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _AuditRiskIcon(level: detail.riskLevel),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _AuditRiskBadge(level: detail.riskLevel),
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      detail.riskReason ?? '未提供风险说明',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        height: 1.5,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      '风险等级由固定规则计算，用于排查优先级，不代表已经发生安全事故。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        UtenCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.fact_check_outlined,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      '这次操作做了什么',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  _AuditResultBadge(
-                    result: detail.result,
-                    statusCode: detail.statusCode,
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              // 一句话说明：后端拼好的中文摘要（动作 + 对象 + 关键变化 + 结果）。
-              Text(
-                detail.summary?.trim().isNotEmpty == true
-                    ? detail.summary!
-                    : detail.actionLabel?.trim().isNotEmpty == true
-                    ? detail.actionLabel!
-                    : _AdminAuditLogPageState._actionLabel(detail.action),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  height: 1.55,
-                ),
-              ),
-              // 数据库变更行：逐字段列出"什么从什么改成了什么"。
-              if (_changeLines(detail).isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                Text(
-                  '具体变更',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                ..._changeLines(detail).map(
-                  (line) => Padding(
-                    padding: const EdgeInsets.only(top: UtenSpacing.s4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 7),
-                          child: Container(
-                            width: 5,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Expanded(
-                          child: Text(
-                            line,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              height: 1.5,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-              const Divider(height: UtenSpacing.s24),
-              Wrap(
-                spacing: UtenSpacing.s24,
-                runSpacing: UtenSpacing.s16,
-                children: [
-                  _AuditFact(
-                    label: '做了什么',
-                    value:
-                        detail.actionLabel ??
-                        _AdminAuditLogPageState._actionLabel(detail.action),
-                  ),
-                  _AuditFact(
-                    label: '操作对象',
-                    value: detail.targetName?.trim().isNotEmpty == true
-                        ? '${detail.objectLabel ?? detail.targetType ?? '系统'}'
-                              ' · ${detail.targetName}'
-                        : detail.objectLabel ?? detail.targetType ?? '系统',
-                  ),
-                  _AuditFact(
-                    label: '所在页面',
-                    value: detail.pageLabel?.trim().isNotEmpty == true
-                        ? detail.pageLabel!
-                        : detail.httpPath ?? '—',
-                  ),
-                  _AuditFact(
-                    label: '操作时间',
-                    value: _AdminAuditLogPageState._fmtTime(
-                      detail.createdAt,
-                      local: local,
-                    ),
-                  ),
-                  _AuditFact(
-                    label: '结果',
-                    value: _outcomeText(detail),
-                  ),
-                  _AuditFact(label: '来源 IP', value: detail.ip ?? '—'),
-                  if (detail.durationMs != null)
-                    _AuditFact(
-                      label: '接口耗时',
-                      value: '${detail.durationMs} 毫秒',
-                    ),
-                  _AuditFact(
-                    label: '事件类型',
-                    value: _categoryLabel(detail.eventCategory),
-                  ),
-                  _AuditFact(
-                    label: '记录来源',
-                    value: _sourceLabel(detail.eventSource),
-                  ),
-                ],
-              ),
-              if (detail.targetId?.trim().isNotEmpty == true) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                _CopyableAuditFact(
-                  label: '对象数据库 ID(排查用)',
-                  value: detail.targetId!,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 把后端 changeSummary（分号分隔）拆成逐条变更；请求级事件为空。
-  static List<String> _changeLines(AuditLogDetail detail) {
-    final raw = detail.changeSummary?.trim();
-    if (raw == null || raw.isEmpty) return const [];
-    return raw
-        .split('；')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList();
-  }
 
   /// 结果优先用后端翻译好的中文（如 密码错误），兜底本地映射。
   static String _outcomeText(AuditLogDetail detail) {
@@ -2363,13 +2152,29 @@ class _AuditOverviewTab extends ConsumerWidget {
     if (local.isNotEmpty) return local;
     return '—';
   }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final local = ref.watch(timeDisplayModeProvider) == TimeDisplayMode.local;
+    return ListView(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
+      children: [
+        _AuditStoryCard(detail: detail, local: local),
+        const SizedBox(height: UtenSpacing.s12),
+        _AuditRiskCard(riskLevel: detail.riskLevel, riskReason: detail.riskReason),
+        const SizedBox(height: UtenSpacing.s12),
+        _AuditEnvironmentCard(detail: detail),
+      ],
+    );
+  }
 }
 
-/// 操作人卡片：姓名大字 + 账号 + 部门/职位，让"是谁做的"一眼可见。
-class _AuditActorCard extends StatelessWidget {
-  const _AuditActorCard({required this.detail});
+/// 操作叙事卡：回答"谁、在几点、在哪个页面、做了什么、对象是哪张单据、具体改了什么"。
+class _AuditStoryCard extends StatelessWidget {
+  const _AuditStoryCard({required this.detail, required this.local});
 
   final AuditLogDetail detail;
+  final bool local;
 
   @override
   Widget build(BuildContext context) {
@@ -2383,70 +2188,248 @@ class _AuditActorCard extends StatelessWidget {
         ? '系统任务'
         : (detail.actorAccount ?? '未知用户');
     final initial = displayName.isNotEmpty ? displayName.characters.first : '?';
+    final headline =
+        detail.summary?.trim().isNotEmpty == true
+        ? detail.summary!
+        : detail.actionLabel?.trim().isNotEmpty == true
+        ? detail.actionLabel!
+        : _AdminAuditLogPageState._actionLabel(detail.action);
+    final objectText = _objectText(detail);
+    final changes = _parseChangeEntries(detail);
     return UtenCard(
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: theme.colorScheme.primaryContainer,
-            child: Text(
-              initial,
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: theme.colorScheme.onPrimaryContainer,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  displayName,
+          // ── 卡片标题 + 操作结果 ──────────────────────────────
+          Row(
+            children: [
+              Icon(Icons.fact_check_outlined, color: theme.colorScheme.primary),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  '这次操作做了什么',
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (detail.actorName?.trim().isNotEmpty == true &&
-                    detail.actorAccount?.trim().isNotEmpty == true)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      '账号 ${detail.actorAccount}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+              ),
+              _AuditResultBadge(
+                result: detail.result,
+                statusCode: detail.statusCode,
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          // ── 谁 ─────────────────────────────────────────────
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: theme.colorScheme.primaryContainer,
+                child: Text(
+                  initial,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                  ),
-                const SizedBox(height: UtenSpacing.s8),
-                Wrap(
-                  spacing: UtenSpacing.s8,
-                  runSpacing: UtenSpacing.s8,
-                  children: [
-                    if (detail.actorDepartment?.trim().isNotEmpty == true)
-                      _OrgChip(
-                        icon: Icons.apartment_outlined,
-                        label: '部门',
-                        value: detail.actorDepartment!,
-                      ),
-                    if (detail.actorPosition?.trim().isNotEmpty == true)
-                      _OrgChip(
-                        icon: Icons.badge_outlined,
-                        label: '职位',
-                        value: detail.actorPosition!,
-                      ),
-                    if ((detail.actorDepartment?.trim().isNotEmpty != true) &&
-                        (detail.actorPosition?.trim().isNotEmpty != true) &&
-                        !isSystem)
+                    if (detail.actorName?.trim().isNotEmpty == true &&
+                        detail.actorAccount?.trim().isNotEmpty == true)
                       Text(
-                        '未登记部门/职位信息',
+                        '账号 ${detail.actorAccount}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                   ],
+                ),
+              ),
+              _AuditResultBadge(
+                result: detail.result,
+                statusCode: detail.statusCode,
+              ),
+            ],
+          ),
+          if (detail.actorDepartment?.trim().isNotEmpty == true ||
+              detail.actorPosition?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                if (detail.actorDepartment?.trim().isNotEmpty == true)
+                  _OrgChip(
+                    icon: Icons.apartment_outlined,
+                    label: '部门',
+                    value: detail.actorDepartment!,
+                  ),
+                if (detail.actorPosition?.trim().isNotEmpty == true)
+                  _OrgChip(
+                    icon: Icons.badge_outlined,
+                    label: '职位',
+                    value: detail.actorPosition!,
+                  ),
+              ],
+            ),
+          ],
+          const Divider(height: UtenSpacing.s24),
+          // ── 何时 / 在哪 ─────────────────────────────────────
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
+            children: [
+              _AuditContextChip(
+                icon: Icons.schedule_rounded,
+                text: _AdminAuditLogPageState._fmtTime(
+                  detail.createdAt,
+                  local: local,
+                ),
+              ),
+              if (detail.pageLabel?.trim().isNotEmpty == true)
+                _AuditContextChip(
+                  icon: Icons.web_asset_outlined,
+                  text: detail.pageLabel!,
+                ),
+              _AuditContextChip(
+                icon: Icons.storage_outlined,
+                text: _sourceLabel(detail.eventSource),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          // ── 做了什么：完整中文句子（动作 + 对象 + 单号 + 关键变化）──
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(UtenSpacing.s12, 2, 0, 2),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(color: theme.colorScheme.primary, width: 3),
+              ),
+            ),
+            child: Text(
+              headline,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                height: 1.6,
+              ),
+            ),
+          ),
+          // ── 对象：哪张单据 / 哪个档案 ────────────────────────
+          if (objectText != null) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            Row(
+              children: [
+                Icon(
+                  Icons.sell_outlined,
+                  size: 18,
+                  color: theme.colorScheme.tertiary,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Text(
+                  '操作对象',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Flexible(
+                  child: Text(
+                    objectText,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          // ── 具体变更：什么字段、从什么值改成了什么值 ──────────
+          if (changes.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s16),
+            Text(
+              '具体变更',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            ...changes.map((entry) => _AuditChangeRow(entry: entry)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String? _objectText(AuditLogDetail detail) {
+    final label = detail.objectLabel?.trim().isNotEmpty == true
+        ? detail.objectLabel!
+        : detail.targetType?.trim();
+    final name = detail.targetName?.trim();
+    if (label == null || label.isEmpty) {
+      return name?.isNotEmpty == true ? name : null;
+    }
+    return name?.isNotEmpty == true ? '$label · $name' : label;
+  }
+}
+
+/// 风险说明卡：等级徽标 + 风险原因 + 免责说明。
+class _AuditRiskCard extends StatelessWidget {
+  const _AuditRiskCard({required this.riskLevel, required this.riskReason});
+
+  final String riskLevel;
+  final String? riskReason;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = _riskColor(context, riskLevel);
+    return Container(
+      padding: const EdgeInsets.all(UtenSpacing.s16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: UtenRadius.lgAll,
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _AuditRiskIcon(level: riskLevel),
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _AuditRiskBadge(level: riskLevel),
+                const SizedBox(height: UtenSpacing.s8),
+                Text(
+                  riskReason ?? '未提供风险说明',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  '风险等级由固定规则计算，用于排查优先级，不代表已经发生安全事故。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -2455,6 +2438,273 @@ class _AuditActorCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 排查线索卡：概览读完故事后，需要进一步追查时用到的技术定位信息。
+class _AuditEnvironmentCard extends StatelessWidget {
+  const _AuditEnvironmentCard({required this.detail});
+
+  final AuditLogDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return UtenCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.travel_explore_rounded, color: theme.colorScheme.primary),
+              const SizedBox(width: UtenSpacing.s8),
+              Text(
+                '排查线索',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          Wrap(
+            spacing: UtenSpacing.s24,
+            runSpacing: UtenSpacing.s16,
+            children: [
+              _AuditFact(
+                label: '做了什么',
+                value:
+                    detail.actionLabel ??
+                    _AdminAuditLogPageState._actionLabel(detail.action),
+              ),
+              _AuditFact(label: '来源 IP', value: detail.ip ?? '—'),
+              _AuditFact(label: '结果', value: _AuditOverviewTab._outcomeText(detail)),
+              if (detail.durationMs != null)
+                _AuditFact(
+                  label: '接口耗时',
+                  value: '${detail.durationMs} 毫秒',
+                ),
+              if (detail.httpMethod != null && detail.httpPath != null)
+                _AuditFact(
+                  label: '接口',
+                  value: '${detail.httpMethod} ${detail.httpPath}',
+                ),
+              _AuditFact(
+                label: '事件类型',
+                value: _categoryLabel(detail.eventCategory),
+              ),
+            ],
+          ),
+          if (detail.targetId?.trim().isNotEmpty == true) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            _CopyableAuditFact(
+              label: '对象数据库 ID(排查用)',
+              value: detail.targetId!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 时间 / 页面 / 记录来源小标签（"何时、在哪"的上下文）。
+class _AuditContextChip extends StatelessWidget {
+  const _AuditContextChip({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: 4,
+      ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: UtenSpacing.s4),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 一条具体变更：字段名 + [旧值] → [新值]；非字段说明（如"共填写 N 项信息"）整行展示。
+class _AuditChangeRow extends StatelessWidget {
+  const _AuditChangeRow({required this.entry});
+
+  final _AuditChangeEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (entry.field == null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: UtenSpacing.s4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 7),
+              child: Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                entry.info ?? '',
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 104,
+            child: Text(
+              entry.field!,
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                height: 1.6,
+              ),
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Wrap(
+              spacing: UtenSpacing.s4,
+              runSpacing: UtenSpacing.s4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _AuditValueChip(value: entry.oldValue ?? '空', changed: false),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 14,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                _AuditValueChip(value: entry.newValue ?? '空', changed: true),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 变更值胶囊：旧值灰底、新值主题色底，让"改成什么"一眼突出。
+class _AuditValueChip extends StatelessWidget {
+  const _AuditValueChip({required this.value, required this.changed});
+
+  final String value;
+  final bool changed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final background = changed
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.surfaceContainerHighest;
+    final foreground = changed
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurfaceVariant;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 280),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Text(
+        value,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: foreground,
+          fontWeight: FontWeight.w600,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+}
+
+/// 后端 changeSummary（"字段：旧 → 新；…"，分号分隔）解析结果。
+class _AuditChangeEntry {
+  const _AuditChangeEntry._({
+    this.field,
+    this.oldValue,
+    this.newValue,
+    this.info,
+  });
+
+  const _AuditChangeEntry.ofField(String field, String oldValue, String newValue)
+    : this._(field: field, oldValue: oldValue, newValue: newValue);
+
+  const _AuditChangeEntry.ofNote(String info) : this._(info: info);
+
+  /// 中文字段名；为 null 表示这是一条说明行（info 有值）。
+  final String? field;
+  final String? oldValue;
+  final String? newValue;
+  final String? info;
+}
+
+List<_AuditChangeEntry> _parseChangeEntries(AuditLogDetail detail) {
+  final raw = detail.changeSummary?.trim();
+  if (raw == null || raw.isEmpty) return const [];
+  return raw
+      .split('；')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .map((line) {
+        // "字段：旧值 → 新值"：第一个冒号前是字段名，最后一个" → "两侧是前后值
+        final colon = line.indexOf('：');
+        final arrow = line.indexOf(' → ');
+        if (colon > 0 && arrow > colon) {
+          final rest = line.substring(colon + 1);
+          final separator = rest.lastIndexOf(' → ');
+          if (separator > 0) {
+            return _AuditChangeEntry.ofField(
+              line.substring(0, colon),
+              rest.substring(0, separator),
+              rest.substring(separator + 3),
+            );
+          }
+        }
+        return _AuditChangeEntry.ofNote(line);
+      })
+      .toList();
 }
 
 /// 部门/职位小标签。

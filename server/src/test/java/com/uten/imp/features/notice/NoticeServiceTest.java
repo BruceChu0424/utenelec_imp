@@ -88,7 +88,8 @@ class NoticeServiceTest {
                 new ObjectMapper(),
                 audienceService,
                 mock(TxSessionVars.class),
-                systemSettings);
+                systemSettings,
+                mock(com.uten.imp.audit.AuditService.class));
     }
 
     @Test

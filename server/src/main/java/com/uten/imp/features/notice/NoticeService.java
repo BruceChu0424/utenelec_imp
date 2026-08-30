@@ -140,6 +140,7 @@ public class NoticeService {
     private final NoticeAudienceService audienceService;
     private final TxSessionVars tx;
     private final SystemSettingsService systemSettings;
+    private final com.uten.imp.audit.AuditService audit;
 
     // =========================== 互动模式派生 ===========================
 
@@ -367,6 +368,9 @@ public class NoticeService {
                     .map(userId -> newState(noticeId, userId))
                     .toList());
         }
+        // 人工发布公告：V424 起 notices 表不再走触发器审计，这里补显式用户操作记录
+        audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "notice_publish", "notices", n.getTitle(), "success");
         return toDto(n, null, u.getId());
     }
 
@@ -394,6 +398,7 @@ public class NoticeService {
             existing.setAckedAt(now);
             ackRepo.save(existing);
         }
+        auditExplicit("notice_acknowledge", n.getTitle());
         return new AckResult(ackRepo.countByIdNoticeId(id), true);
     }
 
@@ -429,6 +434,7 @@ public class NoticeService {
         }
         NoticeBlessing saved = blessRepo.save(b);
         long count = blessRepo.countByNoticeId(id);
+        auditExplicit("notice_bless", n.getTitle());
         NoticeBlessingDto dto = new NoticeBlessingDto(
                 saved.getId().toString(), saved.getSenderName(), saved.getContent(),
                 saved.getCreatedAt() != null ? saved.getCreatedAt() : now, true);
@@ -764,6 +770,7 @@ public class NoticeService {
             st.setTaskCompletedAt(now);
         }
         stateRepo.save(st);
+        auditExplicit("notice_todo_complete", n.getTitle());
     }
 
     /** 全部已读：对当前用户可见且未读的通知批量落状态行。 */
@@ -813,6 +820,7 @@ public class NoticeService {
         Instant now = Instant.now();
         int deleted = 0;
         List<NoticeUserState> changed = new ArrayList<>();
+        List<String> deletedTitles = new ArrayList<>();
         for (UUID id : notices.keySet()) {
             NoticeUserState st = java.util.Optional.ofNullable(states.get(id))
                     .orElseGet(() -> newState(id, userId));
@@ -825,9 +833,18 @@ public class NoticeService {
                 st.setDeletedAt(now);
                 changed.add(st);
                 deleted++;
+                if (deletedTitles.size() < 3) {
+                    deletedTitles.add(notice.getTitle());
+                }
             }
         }
         stateRepo.saveAll(changed);
+        if (deleted > 0) {
+            String detail = deleted == 1 && deletedTitles.size() == 1
+                    ? deletedTitles.get(0)
+                    : "共 " + deleted + " 条（如《" + deletedTitles.get(0) + "》）";
+            auditExplicit("notice_delete", detail);
+        }
         return deleted;
     }
 
@@ -1172,6 +1189,16 @@ public class NoticeService {
 
     private UUID requireStaffId() {
         return requireStaff().getId();
+    }
+
+    /** 通知域用户操作显式审计（V424 起 notice 表不走触发器，人工动作在此留痕）。 */
+    private void auditExplicit(String action, String targetId) {
+        AuthUser u = currentUser.get().orElse(null);
+        if (u == null || u.isVisitor()) {
+            return;
+        }
+        audit.logExplicit(u.getId(), u.getLoginAccount(),
+                action, "notices", targetId, "success");
     }
 
     // =========================== 互动结果 DTO（内部记录，控制器层 Map.of 展开） ===========================

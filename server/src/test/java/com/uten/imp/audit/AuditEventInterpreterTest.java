@@ -115,6 +115,7 @@ class AuditEventInterpreterTest {
             log.setTargetType(targetType);
             log.setTargetId("target-id");
             log.setResult("success");
+            log.setEventSource("database");
 
             AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
             assertEquals(label, event.objectLabel(), targetType);
@@ -243,6 +244,54 @@ class AuditEventInterpreterTest {
     }
 
     @Test
+    void labelsNoticeAndTaskClaimUserActionsInChinese() {
+        AuditLog publish = new AuditLog();
+        publish.setAction("notice_publish");
+        publish.setTargetType("notices");
+        publish.setTargetId("关于国庆放假安排的通知");
+        publish.setEventSource("business");
+        publish.setResult("success");
+        publish.setHttpPath("/api/notices");
+
+        AuditEventInterpreter.InterpretedEvent publishEvent = interpreter.interpret(publish);
+        assertEquals("发布通知", publishEvent.actionLabel());
+        assertEquals("发布通知 关于国庆放假安排的通知", publishEvent.summary());
+        assertEquals("工作台 · 通知", publishEvent.pageLabel());
+
+        AuditLog claim = new AuditLog();
+        claim.setAction("hr_task_claim");
+        claim.setTargetType("hr_task_claims");
+        claim.setTargetId("confirm · 张三");
+        claim.setEventSource("business");
+        claim.setResult("success");
+        claim.setHttpPath("/api/org/hr-tasks/claims");
+
+        AuditEventInterpreter.InterpretedEvent claimEvent = interpreter.interpret(claim);
+        assertEquals("认领HR任务", claimEvent.actionLabel());
+        assertEquals("认领HR任务 confirm · 张三", claimEvent.summary());
+        assertEquals("人事 · HR任务中心", claimEvent.pageLabel());
+
+        // 认领端点的请求覆盖行也要显示成具体动作，而不是泛化的"新增"
+        AuditEventInterpreter.InterpretedEvent httpEvent = interpreter.interpret(
+                request("http_post", "/api/org/hr-tasks/claims"));
+        assertEquals("认领任务", httpEvent.actionLabel());
+        assertEquals("认领任务 · HR任务中心", httpEvent.summary());
+    }
+
+    @Test
+    void businessTargetNameIgnoresPathsUuidsAndStatStrings() {
+        AuditLog log = new AuditLog();
+        log.setAction("view_audit_log_list");
+        log.setTargetType("audit_log");
+        log.setTargetId("page=1;size=20;total=88");
+        log.setEventSource("business");
+        log.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+        assertEquals("", event.targetName());
+    }
+
+    @Test
     void labelsNoticeAndExportActionsInReadableChinese() {
         AuditLog export = new AuditLog();
         export.setAction("export_purchase_report");
@@ -252,7 +301,8 @@ class AuditEventInterpreterTest {
 
         AuditEventInterpreter.InterpretedEvent exportEvent = interpreter.interpret(export);
         assertEquals("导出采购报表", exportEvent.actionLabel());
-        assertEquals("导出采购报表", exportEvent.summary());
+        // 导出是显式事件（targetId 放了日期/行数），会作为对象信息拼进摘要
+        assertEquals("导出采购报表 2026-08-29/128rows", exportEvent.summary());
 
         AuditLog reset = new AuditLog();
         reset.setAction("password_temporary_reset");

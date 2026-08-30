@@ -41,11 +41,18 @@ public class HrTaskClaimService {
     private final HrTaskClaimRepository claimRepo;
     private final EmployeeRepository empRepo;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.audit.AuditService audit;
 
     /** 认领（幂等：自己已认领 = 续租；他人在租约内 = 409）。 */
     @PreAuthorize("hasAuthority('employee:view')")
     @Transactional
     public HrTaskClaimView claim(String taskType, UUID employeeId) {
+        HrTaskClaimView view = claimInternal(taskType, employeeId);
+        auditExplicit("hr_task_claim", taskType, claimantName(employeeId));
+        return view;
+    }
+
+    private HrTaskClaimView claimInternal(String taskType, UUID employeeId) {
         requireTaskType(taskType);
         UUID me = currentUser.requireEmployeeId();
         HrTaskClaim existing = claimRepo
@@ -91,6 +98,7 @@ public class HrTaskClaimService {
                     }
                     claim.setReleasedAt(OffsetDateTime.now());
                     claimRepo.save(claim);
+                    auditExplicit("hr_task_release", taskType, claimantName(employeeId));
                 });
     }
 
@@ -107,7 +115,16 @@ public class HrTaskClaimService {
                     c.setRemark("被接管");
                     claimRepo.save(c);
                 });
-        return claim(taskType, employeeId);
+        HrTaskClaimView view = claimInternal(taskType, employeeId);
+        auditExplicit("hr_task_takeover", taskType, claimantName(employeeId));
+        return view;
+    }
+
+    /** HR 任务认领用户操作显式审计：targetId = 任务类型 · 员工姓名。 */
+    private void auditExplicit(String action, String taskType, String employeeName) {
+        currentUser.get().ifPresent(u -> audit.logExplicit(
+                u.getId(), u.getLoginAccount(), action, "hr_task_claims",
+                taskType + " · " + employeeName, "success"));
     }
 
     /** summary 装配用：全部有效认领，key = taskType:employeeId。 */

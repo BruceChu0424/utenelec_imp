@@ -44,7 +44,8 @@ class TaskClaimServiceTest {
         nameResolver = mock(EmployeeNameResolver.class);
         currentUser = mock(SecurityContextCurrentUser.class);
         meUser = mock(AuthUser.class);
-        service = new TaskClaimService(claimRepo, nameResolver, currentUser);
+        service = new TaskClaimService(
+                claimRepo, nameResolver, currentUser, mock(com.uten.imp.audit.AuditService.class));
 
         when(currentUser.get()).thenReturn(Optional.of(meUser));
         when(currentUser.employeeId()).thenReturn(Optional.of(me));

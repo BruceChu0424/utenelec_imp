@@ -85,6 +85,9 @@ public class AuditEventInterpreter {
         String objectLabel = objectLabel(target, path);
         String actionLabel = actionLabel(action, path);
         String targetName = targetDisplayName(value);
+        if (targetName.isBlank()) {
+            targetName = businessTargetName(value);
+        }
         String pageLabel = pageLabel(path);
         String resultLabel = resultLabel(value.getResult(), value.getStatusCode());
         List<String> changes = changeEntries(action, value.getBefore(), value.getAfter());
@@ -205,6 +208,20 @@ public class AuditEventInterpreter {
         if ("sales_partial_shipment_revoke".equals(action)) return "撤销销售部分出货";
         if ("sales_order_priority".equals(action)) return "调整销售订单优先级";
         if ("sales_reservation_yield".equals(action)) return "让单释放库存预留";
+        // 通知域人工操作（V424 后由服务层显式留痕）
+        if ("notice_publish".equals(action)) return "发布通知";
+        if ("notice_acknowledge".equals(action)) return "确认收到通知";
+        if ("notice_todo_complete".equals(action)) return "完成待办任务";
+        if ("notice_bless".equals(action)) return "回复庆典祝福";
+        if ("notice_delete".equals(action)) return "移除通知";
+        // 任务认领（HR 任务中心 + 通用软认领）
+        if ("hr_task_claim".equals(action)) return "认领HR任务";
+        if ("hr_task_release".equals(action)) return "释放HR任务";
+        if ("hr_task_takeover".equals(action)) return "接管HR任务";
+        if ("task_claim".equals(action)) return "认领任务";
+        if ("task_release".equals(action)) return "释放任务";
+        if ("task_takeover".equals(action)) return "接管任务";
+        if ("task_force_release".equals(action)) return "强制释放任务";
         if (path.contains("/approve")) return "审批通过";
         if (path.contains("/reject")) return "驳回";
         if (path.contains("/submit")) return "提交";
@@ -223,6 +240,14 @@ public class AuditEventInterpreter {
         if (path.contains("/reverse")) return "执行红冲/撤销";
         if (path.contains("/dispatch")) return "下达执行";
         if (path.contains("/complete")) return "标记完成";
+        // 任务认领 / 通知互动的写请求：按路径给出具体动词，避免显示成泛化的"新增/修改"
+        if (!"http_get".equals(action)) {
+            if (containsAny(path, "/claim", "/claims")) return "认领任务";
+            if (path.contains("/takeover")) return "接管任务";
+            if (path.contains("/force-release")) return "强制释放任务";
+            if (path.contains("/acknowledge")) return "确认收到通知";
+            if (path.contains("/batch-delete")) return "移除通知";
+        }
         return switch (action) {
             case "http_get" -> "查看";
             case "insert", "http_post" -> "新增";
@@ -462,6 +487,28 @@ public class AuditEventInterpreter {
         return firstNameKey(parseAuditJson(value.getBefore()));
     }
 
+    /**
+     * 显式业务事件没有 before/after 快照，但 targetId 里通常直接放了
+     * 人可读的信息（通知标题、"任务类型 · 员工姓名"、系统设置键值等）。
+     * 用它当对象名，让"发布通知 《关于xx的通知》"这样的句子成立。
+     * 跳过路径、UUID 和分号串（统计参数这类机器格式）。
+     */
+    private static String businessTargetName(AuditLog value) {
+        if (!"business".equals(value.getEventSource())) {
+            return "";
+        }
+        String id = value.getTargetId();
+        if (id == null || id.isBlank() || id.length() > 200) {
+            return "";
+        }
+        String trimmed = id.trim();
+        if (trimmed.startsWith("/") || trimmed.contains(";")
+                || UUID_PATTERN.matcher(trimmed).matches()) {
+            return "";
+        }
+        return trimmed;
+    }
+
     private static String firstNameKey(JsonNode node) {
         if (node == null || !node.isObject()) {
             return "";
@@ -558,6 +605,8 @@ public class AuditEventInterpreter {
         values.put("/api/warehouse/inbound", "仓库 · 到货入库");
         values.put("/api/warehouse", "仓库");
         values.put("/api/notices", "工作台 · 通知");
+        values.put("/api/org/hr-tasks", "人事 · HR任务中心");
+        values.put("/api/task-claims", "工作台 · 任务认领");
         values.put("/api/suggestions", "工作台 · 意见建议");
         values.put("/api/dashboard", "工作台");
         values.put("/api/visitor", "访客管理");
@@ -609,8 +658,8 @@ public class AuditEventInterpreter {
         values.put("client_access_change_events", "客户权限变更记录");
         values.put("client_visibility_grants", "客户可见范围");
         values.put("profile_change_requests", "资料变更申请");
-        values.put("task_claims", "任务认领");
-        values.put("hr_task_claims", "人事任务认领");
+        values.put("task_claims", "任务");
+        values.put("hr_task_claims", "HR任务");
         values.put("system_settings", "系统设置");
         values.put("audit_retention", "审计留存数据");
         values.put("audit_log", "审计日志");
@@ -666,7 +715,7 @@ public class AuditEventInterpreter {
         values.put("account_balance_adjustment_batches", "账户余额调整批次");
         values.put("account_balance_adjustment_items", "账户余额调整明细");
         // 工作台
-        values.put("notices", "通知公告");
+        values.put("notices", "通知");
         values.put("notice_user_states", "通知阅读状态");
         values.put("notice_acknowledgments", "通知知悉确认");
         values.put("notice_blessings", "通知祝福回复");
@@ -920,7 +969,9 @@ public class AuditEventInterpreter {
         values.put("/api/finance/bank-transfers", "银行转账单");
         values.put("/api/finance/fa/depreciate", "固定资产折旧");
         values.put("/api/finance/fa/amortize", "待摊费用摊销");
-        values.put("/api/notices", "通知公告");
+        values.put("/api/notices", "通知");
+        values.put("/api/org/hr-tasks", "HR任务中心");
+        values.put("/api/task-claims", "任务认领");
         values.put("/api/suggestions", "意见建议");
         values.put("/api/visitor/applications", "访客申请");
         values.put("/api/expense-claims", "报销单");

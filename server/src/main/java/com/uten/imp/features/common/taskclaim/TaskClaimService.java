@@ -32,10 +32,17 @@ public class TaskClaimService {
     private final TaskClaimRepository claimRepo;
     private final EmployeeNameResolver nameResolver;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.audit.AuditService audit;
 
     /** 认领（幂等：自己已认领=续租；他人在租约内=409；过期=惰性释放后重建）。 */
     @Transactional
     public TaskClaimView claim(String targetType, String targetKey) {
+        TaskClaimView view = claimInternal(targetType, targetKey);
+        auditExplicit("task_claim", targetType, targetKey);
+        return view;
+    }
+
+    private TaskClaimView claimInternal(String targetType, String targetKey) {
         TaskClaimPolicy policy = TaskClaimPolicy.of(targetType);
         UUID me = requireEmployeeWithPermission(policy.claimPermission());
         TaskClaim existing = claimRepo
@@ -83,6 +90,9 @@ public class TaskClaimService {
                     c.setReleasedBy(me);
                     c.setReleaseReason(byManager ? "admin_force_release" : "manual");
                     claimRepo.save(c);
+                    auditExplicit(
+                            byManager ? "task_force_release" : "task_release",
+                            targetType, targetKey);
                 });
     }
 
@@ -100,7 +110,9 @@ public class TaskClaimService {
                     c.setRemark("被接管");
                     claimRepo.save(c);
                 });
-        return claim(targetType, targetKey);
+        TaskClaimView view = claimInternal(targetType, targetKey);
+        auditExplicit("task_takeover", targetType, targetKey);
+        return view;
     }
 
     /** 强制释放（manage 权限）：管理者只想解锁、不接管。 */
@@ -115,6 +127,7 @@ public class TaskClaimService {
                     c.setReleasedBy(me);
                     c.setReleaseReason("admin_force_release");
                     claimRepo.save(c);
+                    auditExplicit("task_force_release", targetType, targetKey);
                 });
     }
 
@@ -176,6 +189,13 @@ public class TaskClaimService {
         return claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
                 .filter(TaskClaim::isActive)
                 .map(c -> toView(c, me));
+    }
+
+    /** 通用任务认领用户操作显式审计：targetId = targetType/targetKey。 */
+    private void auditExplicit(String action, String targetType, String targetKey) {
+        currentUser.get().ifPresent(u -> audit.logExplicit(
+                u.getId(), u.getLoginAccount(), action, "task_claims",
+                targetType + "/" + targetKey, "success"));
     }
 
     String claimantName(UUID employeeId) {

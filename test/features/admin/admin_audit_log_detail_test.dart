@@ -119,16 +119,19 @@ void main() {
     await tester.tap(find.textContaining('production_execution_segments'));
     await tester.pumpAndSettle();
 
-    // 一句话摘要 + 逐字段"具体变更" + 中文结果。
-    //（详情头部副标题与概览大字会同时展示这句摘要，所以至少出现一次）
+    // 叙事卡：标题 + 谁 + 何时/在哪 chips + 大字动作句 + 具体变更（字段名 + 新旧值胶囊）。
     expect(find.text('这次操作做了什么'), findsOneWidget);
     expect(
       find.text('修改生产执行分段：状态：READY → DISPATCHED'),
       findsWidgets,
     );
     expect(find.text('具体变更'), findsOneWidget);
-    expect(find.text('状态：READY → DISPATCHED'), findsOneWidget);
+    expect(find.text('状态'), findsWidgets);
+    expect(find.text('READY'), findsWidgets);
+    expect(find.text('DISPATCHED'), findsWidgets);
     expect(find.text('成功'), findsWidgets);
+    expect(find.text('planner'), findsWidgets);
+    expect(find.text('排查线索'), findsOneWidget);
   });
 
   testWidgets('risk metric card drills down to risky operations', (

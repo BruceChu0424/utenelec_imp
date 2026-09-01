@@ -46,13 +46,14 @@
 | 模具资料 `/basicinfo/mould` | 分类名称/编号 | 模具名称、编号、存放位置、备注；分页完整收集 `categoryId` | 当前分类子树 + 同一关键词；V272 未分类模具定位真实系统根 |
 | 客户资料 `/basicinfo/client` | 分类名称/编号 | 客户名称、编号、全称、联系人、手机；分页完整收集 `categoryId` | 当前分类子树 + 同一关键词；V272 未分类客户定位真实系统根，仍受客户 owner 可见范围约束 |
 | 供应商资料 `/basicinfo/supplier` | 分类名称/编号 | 供应商编号、名称、描述、联系人、法人、地区、手机；分页完整收集 `categoryId` | 当前分类子树 + 同一关键词；V272 未分类供应商定位真实系统根 |
-| 即时库存 `/stock/instant-inventory` | 货品分类名称/编号 | 货品名称、编号、型号、客户型号；`GET /api/stock/instant-inventory/search-category-ids` | 当前分类子树或未分类全局结果 + 同一关键词；定位与右表都只排除软删除货品 |
 | 部门管理 `/department` | 部门名称/编号 | 员工姓名、工号（员工接口还支持车牌）；分页完整收集 `departmentId` | 当前部门子树 + 同一员工关键词 |
 | 我的部门 `/profile/me/department` | 授权分支内部门名称/编号 | 安全花名册姓名、工号；只读取分支根花名册一次并本地定位 | 当前部门子树 + 同一员工关键词；绝不调用全员员工接口 |
 | 应收应付总览 `/finance/report/overview` | 客户/供应商分类名称、编号 | 往来单位名称、编号；分页读取 `GET /api/finance/reports/ar-ap/party-locations` | `categoryType/categoryId + keyword` 组合查询；V272 正常未分类往来单位定位真实系统根，空/树外 ID 仅作公司级防御回退 |
 | `UtenGoodsPicker` | 当前 scope 内分类名称/编号 | scope 内货品字段；受限分页 + 轻量分类 ID 定位 | 跨可见分类的当前结果页；点击相关分支后按该子树 + 同词过滤 |
 | `UtenClientPicker` | 客户分类名称/编号 | 客户字段；分页完整收集 `categoryId` | 跨分类当前结果页，或相关分类子树 + 同词过滤 |
 | `DepartmentEmployeePicker` | 部门名称/编号 | 员工姓名/工号；分页完整定位 | 跨部门分页结果，或相关部门子树 + 同词过滤 |
+
+即时库存页 2026-09-01 布局简化（分类分段工具栏替代左树+统一搜索）后退出本契约，专用定位端点 `search-category-ids` 后端保留未删。
 
 货品定位端点每次最多接受 32 个 `categoryRootIds`；页面根数超过上限时按 32 个一组取并集。无效根必须零命中，不能退化成全库。`UtenGoodsPicker` 还会校验右侧每条结果的 `categoryId` 属于当前可见树，避免旧服务端忽略 scope 时越界展示。
 
@@ -62,7 +63,6 @@
 
 - 货品定位要求 `goods:view`；`GoodsService` 的 owner 隔离仅在 `UTEN_GOODS_OWNER_SCOPE_ENABLED=true` 时启用，默认关闭。货品资料页仅排除 stub，选择器同时排除禁用和 stub；货品/库存分类树还分别需要页面组合中的 `material_category:view`。
 - 模具、客户、供应商资料沿用各自主档查看权限；客户结果继续受 owner 可见范围约束。
-- 即时库存定位与右表都要求 `stock:view`，并共享“仅排除 `is_deleted`”口径。
 - 部门管理的树/员工列表分别使用 `department:view`、`employee:view`；没有 `employee:view` 时统一框只搜部门节点，不发员工请求。员工选择器专用最小树 `GET /api/org/departments/employee-picker-tree` 只要求 `employee:view`，仅返回定位字段，不扩大部门管理权限。
 - “我的部门”只使用 `/api/my-department/tree` 与 `/api/my-department/roster`，服务端限制在本人所在大部门分支，并只返回安全花名册字段。
 - 应收应付分类定位要求 `finance_report:view`，服务层与公司级总览一致继续要求 `finance:view:all`；不能借用受客户 owner 范围裁剪的主档搜索。

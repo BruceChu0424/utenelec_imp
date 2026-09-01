@@ -17,6 +17,12 @@
 
 四个主 Tab 为工作台、通知、我的、设置。`UtenSlidingTabView` 让四页常驻并用 `Offstage` 隐藏非当前页，因此滚动位置和页面状态在切换及进入业务子页后仍保留。
 
+导航角标（`badgeCounts`，红圆数字，compact 胶囊与 medium+ Rail 同款渲染）：
+**工作台** Tab 挂总待办角标 = 工作台各模块卡角标之和（`workbenchTotalTodoCountProvider`，
+`module_badge_sum.dart`，与卡片徽标同源同口径；常驻 watch 使 autoDispose 计数源保持存活，
+更新时机 = `refreshGlobalBadges`（返回工作台 / 新通知到达）与各 60s 轮询 notifier）；
+**通知** Tab 挂未读角标（60s 轮询 / 切前台 / 新通知到达联动）。
+
 `Offstage` 只负责隐藏并保留子树，不会自动停止 ticker，也不能作为焦点边界。外壳在业务子页覆盖主 Tab 时用外层 `TickerMode(enabled: false)` 停止整组动画；`UtenSlidingTabView` 再把祖先有效值、当前主 Tab 路由和转场参与状态合并，静止时仅当前页推进，转场时仅来源页与目标页推进。未参与转场或被业务子页覆盖的保活页同时使用 `ExcludeFocus`，不得继续接收键盘焦点；恢复可见后沿用原 State 和滚动位置。
 
 - compact 点导航或横滑相邻 Tab 时，转场位置与胶囊高亮同步；

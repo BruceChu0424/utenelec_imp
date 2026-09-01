@@ -1,11 +1,13 @@
 # 采购 / 委外 IQC 合格待入库任务页
 
-> 列表路由：`/warehouse/iqc-stock-ins`；详情路由：`/warehouse/iqc-stock-ins/{receiptType}/{receiptId}`
+> 列表路由：`/warehouse/iqc-stock-ins`（2026-09-01 起重定向到合并页 `/warehouse/quality-results`）；详情路由：`/warehouse/iqc-stock-ins/{receiptType}/{receiptId}`（深链保留）
 > 上游：采购收货 / 委外进仓审核 → IQC 待检隔离 → 品质 `PASS`
 > 下游：仓库确认实际入库 → 库存流水 / 可用库存 → 物料分析与生产齐套
+> **2026-09-01 合并**：本页列表与「IQC 不合格实物退回」合并为[品质部检查结果](品质部检查结果页.md)；
+> 本文档的权威数量、事务边界、红冲与验收章节继续作为合并页的库存合同有效
 > 状态：V446 与关联后端 / Flutter 均为**本地源码候选**；目标数据库迁移、历史对账、真实岗位 UAT、
 > 备份恢复演练、签名发布和部署回读均未完成，当前生产结论为 **NO-GO**
-> 最后更新：2026-08-31
+> 最后更新：2026-09-01
 
 ## 一、为什么必须分成两步
 
@@ -47,11 +49,12 @@
 
 ### 3.1 任务列表
 
-- 当前接口只投影仍有剩余量的任务；筛选为采购 / 委外和关键字，关键字覆盖收货单、
-  供应商、目标仓和货品；
+- 2026-09-01 起列表由合并页「品质部检查结果」提供（`/warehouse/quality-results`）：
+  旧 `/warehouse/iqc-stock-ins` 列表与 `/count` API 已删除，筛选为采购/委外、作业状态
+  和关键字（覆盖收货单、供应商、目标仓和货品）；
 - 列表按收货单聚合显示作业状态、来源类型、收货单号、收货日期、供应商 / 委外商、
-  目标仓、待入库货品行数、品质放行切片数和最近放行时间，不跨货品拼出无单位数量合计；
-- 完成任务不留在待办列表，但通知深链或历史链接仍可打开同一详情，读取只读入库历史；
+  目标仓、品质结论行数、待入库切片数和待退回笔数，不跨货品拼出无单位数量合计；
+- 完成任务不留在待办列表（已完结分段可查），通知深链仍可打开同一详情，读取只读入库历史；
 - 首次加载、刷新旧数据、失败重试、空态和无权限必须区分；通知和角标只触发刷新，不作为任务真相。
 
 ### 3.2 入库详情
@@ -60,6 +63,11 @@
 - 仓库填写本次实际入库基本量，默认等于当前合格待入库量，可改小但不得超量；
 - 实际库位必须作为本次入库事实保存。货品主档 `stock_place` 只可作为“当前建议库位”，
   不能冒充历史库位快照；
+- **库位学习（V451）**：确认成功后，本次库位按「仓库×货品×颜色」写入
+  `warehouse_goods_place_preferences`（来源 `IQC_STOCK_IN`），并在与主档不同时回写
+  `goods.stock_place`。下一次同维度待入库的库位输入框自动带出上次实际确认的库位；
+  同一维度本次出现多个不同库位时不学习；幂等重放不重复计数；
+  详见[迁移说明 66](../数据迁移/71-IQC入库库位学习.md)；
 - 支持同一 PASS 分批入库。每次提交都有独立幂等键、并发字段
   `expectedRemainingBaseQty`、本次 `baseQty`、操作者和时间；服务端必须在锁内重读余量并做精确 CAS；
 - 批量确认必须先校验完整集合，任一行版本、状态、仓库或数量变化时整批回滚，不能由客户端循环单行接口伪装成功。
@@ -119,9 +127,9 @@
 - 仓库待入库查看 / 确认：使用独立仓库权限
   `warehouse_iqc_stock_in:view`、`warehouse_iqc_stock_in:confirm`；
 - 页面右上角“权限设置”只显示本页相关权限，仓库确认权不得由品质 PASS 权自动推导；
-- 同一员工不得对同一 PASS 切片同时执行品质放行和仓库确认；服务端会给出明确冲突，数据库再次兜底。
-  当前 API、Flutter 和数据库均不预留同人例外字段或超级管理员绕过；单维护人测试也必须使用相互独立的
-  品质与仓库身份完成本链，无法满足时该动态验收保持 **NO-GO**。
+- 同一员工对同一 PASS 切片先后执行品质放行与仓库确认：自 2026-09-01 起不再硬性拒绝
+  （单人维护场景需要同人闭环）；详情接口保留 `containsOwnRelease` 标记，前端在确认前给出
+  醒目复核提示，审计上仍可追溯放行人与确认人是否同一员工。
 
 ## 八、关联页面与后置覆盖
 
@@ -157,13 +165,29 @@ V446 改变了 `PASS` 的库存副作用，数据库与应用版本不能混跑�
 禁止滚动混跑、蓝绿期间新旧 JAR 同时写库，也禁止在 V446 已应用后用旧 JAR 作为回滚手段。
 失败时保持写入停止，按备份恢复或新前向迁移修复；不得执行 `flyway repair`、改写 V446 字节或让旧程序继续写 PASS 库存。
 
-## 十、Flutter 源码候选（2026-08-31）
+## 十、Flutter / 后端源码候选（2026-09-01 合并后收口）
 
-- 列表 / 详情：`warehouse_iqc_stock_in_page.dart`、`warehouse_iqc_stock_in_detail_page.dart`；
-- 模型 / 网关：`warehouse_iqc_stock_in.dart`、`warehouse_iqc_stock_in_repository.dart`；
-- 角标：`warehouseIqcStockInPendingCountProvider`，接入仓库 Hub、工作台仓库总角标和新通知刷新；
-- 详情支持选择部分 PASS 切片、填写小于余量的本次实收、实际库位必填、稳定幂等键；
-  服务端返回 `CONFLICT` 时刷新权威余量但保留数量、库位和选择状态，要求操作人重新核对；
-- `completed=true` 的深链显示入库数量、实际库位、确认人和确认时间，不再把已完成误报为不存在。
+- 合并页列表 / 详情：`warehouse_quality_results_page.dart`（模型 / 网关：
+  `warehouse_quality_result.dart`、`warehouse_quality_result_repository.dart`）；
+- 详情合并明细表（2026-09-01 下午起）：`warehouse_quality_merged_table.dart` 基于
+  UtenEditableGrid「只选不编」模式，检查结果与放行待入库一表打通（勾选 | 判定 | 货品 |
+  库位 | 三数量 | 待入库余量含本次实收 | 检验状态 | 放行信息）；
+- 旧详情深链页 `warehouse_iqc_stock_in_detail_page.dart` / `warehouse_iqc_return_detail_page.dart`
+  已删除：待入库详情深链同参重定向到合并页详情，退回案件 id 深链回合并页列表；
+  前端只读网关 `detail()` 与 `WarehouseIqcStockInTaskDetail` 模型一并移除；
+- 旧列表页 `warehouse_iqc_stock_in_page.dart`、旧角标 provider / 组件与网关 `list` 方法
+  已删除；角标统一为 `warehouseQualityResultPendingCountProvider`；
+- 后端旧 `GET /warehouse/iqc-stock-ins`（列表）与 `/count` 已删除；保留详情读（深链与
+  E2E 契约）、单张与批量 `batch-confirm`（1–20 张收货单 / 1–300 条明细，整批同事务，
+  任一冲突整批回滚）；
+- 读路径性能（V448）：聚合 CTE 先按类型收窄再 JOIN scope 聚合，判定列走覆盖/部分索引，
+  角标只做 EXISTS 计数，详情单据直查 + `deriveWorkStatus` 与 `STATUS_CASE` 同口径；
+  单据读路径（详情切片/明细/放行人判断与确认加锁查询 `passSlices`）不再对
+  `procurement_iqc_stock_in_batch_items` 做全表 GROUP BY，改按事件 `LEFT JOIN LATERAL`
+  点查 V448 覆盖索引，办理耗时与全库数据量解耦（2026-09-01 下午修复）；
+- 库位学习（V451）：`ProcurementIqcStockInService.rememberConfirmedPlaces` 在新鲜确认
+  事务内 upsert 偏好（`source_kind='IQC_STOCK_IN'`）并回写主档 `stock_place`；
+  迁移契约见 `WarehouseGoodsPlacePreferenceIqcSourceMigrationContractTest`，
+  行为回归见 `FullChainEndToEndTest#concurrency_idempotentIqcStockInDoesNotDoubleCountStock`。
 
 以上仍是共享工作树源码候选，不代表目标数据库已迁移、真实通知已送达或仓库多账号 UAT 已完成。

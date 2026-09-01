@@ -11,6 +11,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -385,25 +386,36 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                       ),
                       const SizedBox(height: UtenSpacing.s16),
                       _filterLabel('方向'),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          _dirChip('全部', null),
-                          _dirChip('应收', 'AR'),
-                          _dirChip('应付', 'AP'),
+                      // 全平台统一筛选工具条：方向分段（纯分类无搜索）。
+                      UtenFilterToolbar<String?>(
+                        segments: const [
+                          UtenFilterSegment<String?>(value: null, label: '全部'),
+                          UtenFilterSegment<String?>(value: 'AR', label: '应收'),
+                          UtenFilterSegment<String?>(value: 'AP', label: '应付'),
                         ],
+                        selected: _direction,
+                        onSelectionChanged: (v) {
+                          setState(() {
+                            _direction = v;
+                            _partyId = null;
+                          });
+                          _load(1);
+                        },
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                       _filterLabel('状态'),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          _settledChip('全部', null),
-                          _settledChip('未清', false),
-                          _settledChip('已清', true),
+                      // 全平台统一筛选工具条：清结状态分段（纯分类无搜索）。
+                      UtenFilterToolbar<bool?>(
+                        segments: const [
+                          UtenFilterSegment<bool?>(value: null, label: '全部'),
+                          UtenFilterSegment<bool?>(value: false, label: '未清'),
+                          UtenFilterSegment<bool?>(value: true, label: '已清'),
                         ],
+                        selected: _settled,
+                        onSelectionChanged: (v) {
+                          setState(() => _settled = v);
+                          _load(1);
+                        },
                       ),
                     ],
                   ),
@@ -465,33 +477,6 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
           letterSpacing: 0.4,
         ),
       ),
-    );
-  }
-
-  Widget _dirChip(String label, String? value) {
-    final selected = _direction == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) {
-        setState(() {
-          _direction = value;
-          _partyId = null;
-        });
-        _load(1);
-      },
-    );
-  }
-
-  Widget _settledChip(String label, bool? value) {
-    final selected = _settled == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) {
-        setState(() => _settled = value);
-        _load(1);
-      },
     );
   }
 }

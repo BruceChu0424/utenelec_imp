@@ -30,6 +30,7 @@ import '../inputs/uten_field_message.dart';
 import '../../shared/models/paged_result.dart';
 import '../forms/link_quantity_validator.dart';
 import '../inputs/uten_dropdown_field.dart';
+import '../inputs/uten_search_bar.dart';
 import 'uten_adaptive_panel.dart';
 import 'uten_editable_grid.dart';
 
@@ -552,16 +553,9 @@ class _UtenDocLinkPickerSheetState<D, I, N>
           child: Row(
             children: [
               Expanded(
-                child: TextField(
+                child: UtenSearchBar(
                   controller: _keywordCtl,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                    hintText: '搜索单据号', // TODO(l10n): 补 arb
-                    isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
+                  hint: '搜索单据号', // TODO(l10n): 补 arb
                   onChanged: _onKeywordChanged,
                 ),
               ),

@@ -8,9 +8,9 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -751,60 +751,31 @@ class _FinanceSalesOrderConfirmationPageState
   }
 
   Widget _filters(ThemeData theme) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < UtenBreakpoints.mediumStart;
-        final tabs = SegmentedButton<bool>(
-          key: const Key('sales-order-finance-tabs'),
-          segments: const [
-            ButtonSegment(
-              value: false,
-              label: Text('待确认'),
-              icon: Icon(Icons.pending_actions_rounded, size: 18),
-            ),
-            ButtonSegment(
-              value: true,
-              label: Text('已驳回'),
-              icon: Icon(Icons.undo_rounded, size: 18),
-            ),
-          ],
-          selected: {_showRejected},
-          onSelectionChanged: _batchBusy
-              ? null
-              : (selection) => _switchTab(selection.first),
-        );
-        final search = UtenSearchBar(
-          key: const Key('sales-order-finance-search'),
-          initialValue: _keyword,
-          hint: '搜索单号 / 客户 / 业务员',
-          onInputChanged: _invalidateSearchRequest,
-          onChanged: _applyKeyword,
-        );
-        if (compact) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Align(alignment: Alignment.centerLeft, child: tabs),
-              const SizedBox(height: UtenSpacing.s8),
-              search,
-            ],
-          );
-        }
-        return Row(
-          children: [
-            tabs,
-            const SizedBox(width: UtenSpacing.s12),
-            SizedBox(width: 360, child: search),
-            const Spacer(),
-            Text(
-              '单击选择 · 双击查看详情',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        );
+    // 全平台统一筛选工具条：分段 + 胶囊搜索框（窄屏自动换行）。
+    // 整批提交期间不响应分段切换（原 onSelectionChanged 置空的语义收进回调守卫）。
+    return UtenFilterToolbar<bool>(
+      segmentsKey: const Key('sales-order-finance-tabs'),
+      searchKey: const Key('sales-order-finance-search'),
+      compactBreakpoint: UtenBreakpoints.mediumStart,
+      segments: const [
+        UtenFilterSegment(value: false, label: '待确认'),
+        UtenFilterSegment(value: true, label: '已驳回'),
+      ],
+      selected: _showRejected,
+      onSelectionChanged: (value) {
+        if (_batchBusy) return;
+        _switchTab(value);
       },
+      searchHint: '搜索单号 / 客户 / 业务员',
+      initialSearchValue: _keyword,
+      onSearchInputChanged: _invalidateSearchRequest,
+      onSearchChanged: _applyKeyword,
+      trailing: Text(
+        '单击选择 · 双击查看详情',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 

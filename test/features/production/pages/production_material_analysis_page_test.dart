@@ -3045,6 +3045,8 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       await tester.enterText(search, '外箱依赖');
+      // UtenSearchBar 内置 300ms 防抖：先推进时间让过滤生效，再等帧稳定。
+      await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
 
       expect(find.text('筛选命中 1 条；保留上级后共 2 条 / 全部 3 条'), findsOneWidget);

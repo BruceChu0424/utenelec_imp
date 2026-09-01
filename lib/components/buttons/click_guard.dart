@@ -28,6 +28,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_tokens.dart';
 
 /// 防连点小工具。状态机：idle → busy → idle。
 ///
@@ -151,7 +152,7 @@ class _UtenActionButtonState extends State<UtenActionButton> {
     final disabledBg = isDark ? UtenColors.slate700 : UtenColors.slate200;
     final disabledFg = isDark ? UtenColors.slate500 : UtenColors.slate400;
     final enabled = !_guard.isBusy;
-    final radius = BorderRadius.circular(10);
+    final radius = BorderRadius.circular(UtenRadius.control);
 
     return Semantics(
       button: true,

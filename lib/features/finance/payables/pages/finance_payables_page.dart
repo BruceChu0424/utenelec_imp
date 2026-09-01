@@ -9,6 +9,7 @@ import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
 import '../../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../../components/layout/uten_filter_toolbar.dart';
 import '../../../../components/layout/uten_list_two_pane.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
@@ -733,39 +734,33 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
             child: Column(
               children: [
                 if (availableWorkspaces.length > 1) ...[
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SegmentedButton<_PayablesWorkspaceView>(
-                      segments: [
-                        if (_canViewPayables)
-                          const ButtonSegment(
-                            value: _PayablesWorkspaceView.payables,
-                            icon: Icon(Icons.account_balance_wallet_outlined),
-                            label: Text('应付台账'),
-                          ),
-                        if (_canViewLossClaims)
-                          ButtonSegment(
-                            value: _PayablesWorkspaceView.lossClaims,
-                            icon: const Icon(Icons.gavel_outlined),
-                            label: Text(
-                              '委外超耗责任'
-                              '${(_result?.summary.pendingLossCases ?? 0) > 0 ? ' (${_result!.summary.pendingLossCases})' : ''}',
-                            ),
-                          ),
-                        if (_canViewSupplierSettlements)
-                          const ButtonSegment(
-                            value: _PayablesWorkspaceView.supplierSettlements,
-                            icon: Icon(Icons.calendar_month_outlined),
-                            label: Text('月结批次'),
-                          ),
-                      ],
-                      selected: {_workspace},
-                      onSelectionChanged: (selection) => setState(() {
-                        _workspace = selection.single;
-                        _selectedIds = <String>{};
-                        _selectedItemsById.clear();
-                      }),
-                    ),
+                  // 全平台统一筛选工具条：工作区分段（无搜索框的纯分段形态）。
+                  // 委外超耗责任挂红圆计数徽章（pendingLossCases，0/null 不显示）。
+                  UtenFilterToolbar<_PayablesWorkspaceView>(
+                    segments: [
+                      if (_canViewPayables)
+                        const UtenFilterSegment(
+                          value: _PayablesWorkspaceView.payables,
+                          label: '应付台账',
+                        ),
+                      if (_canViewLossClaims)
+                        UtenFilterSegment(
+                          value: _PayablesWorkspaceView.lossClaims,
+                          label: '委外超耗责任',
+                          count: _result?.summary.pendingLossCases,
+                        ),
+                      if (_canViewSupplierSettlements)
+                        const UtenFilterSegment(
+                          value: _PayablesWorkspaceView.supplierSettlements,
+                          label: '月结批次',
+                        ),
+                    ],
+                    selected: _workspace,
+                    onSelectionChanged: (value) => setState(() {
+                      _workspace = value;
+                      _selectedIds = <String>{};
+                      _selectedItemsById.clear();
+                    }),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                 ],

@@ -10,6 +10,7 @@
 //   showCompanyRoot 参数及相关分支）。
 import 'package:flutter/material.dart';
 
+import '../../../components/inputs/uten_search_bar.dart';
 import '../models/uten_tree_node.dart';
 
 /// 树的选择语义。
@@ -344,17 +345,11 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
         if (widget.showSearch)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: TextField(
+            // 本地过滤：_searchCtl 的监听器随每次输入（含内置清除按钮）刷新 _query。
+            child: UtenSearchBar(
               key: widget.searchFieldKey,
               controller: _searchCtl,
-              decoration: InputDecoration(
-                hintText: widget.searchHint,
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                isDense: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
+              hint: widget.searchHint,
             ),
           ),
         if (widget.externalSearchLoading)

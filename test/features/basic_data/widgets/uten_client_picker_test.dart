@@ -33,7 +33,7 @@ void main() {
     );
 
     await tester.enterText(
-      find.byKey(const Key('uten-client-picker-search')),
+      _searchEditable(),
       '远洋',
     );
     await tester.pump(const Duration(milliseconds: 301));
@@ -54,10 +54,7 @@ void main() {
     await tester.tap(find.text('海外客户(OVERSEAS)'));
     await tester.pumpAndSettle();
     expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('uten-client-picker-search')))
-          .controller
-          ?.text,
+      tester.widget<TextField>(_searchTextField()).controller?.text,
       '远洋',
     );
     expect(clientRepository.listKeywords.last, '远洋');
@@ -84,7 +81,7 @@ void main() {
 
     await _openPicker(tester);
     await tester.enterText(
-      find.byKey(const Key('uten-client-picker-search')),
+      _searchEditable(),
       '海外客户',
     );
     await tester.pump(const Duration(milliseconds: 301));
@@ -104,10 +101,7 @@ void main() {
     await tester.tap(find.text('海外客户(OVERSEAS)'));
     await tester.pumpAndSettle();
     expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('uten-client-picker-search')))
-          .controller
-          ?.text,
+      tester.widget<TextField>(_searchTextField()).controller?.text,
       '海外客户',
     );
     expect(clientRepository.listKeywords.last, isNull);
@@ -124,7 +118,7 @@ void main() {
 
     await _openPicker(tester);
     await tester.enterText(
-      find.byKey(const Key('uten-client-picker-search')),
+      _searchEditable(),
       '集团',
     );
     await tester.pump(const Duration(milliseconds: 301));
@@ -147,7 +141,7 @@ void main() {
 
     await _openPicker(tester);
     await tester.enterText(
-      find.byKey(const Key('uten-client-picker-search')),
+      _searchEditable(),
       '含占位',
     );
     await tester.pump(const Duration(milliseconds: 301));
@@ -177,7 +171,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.enterText(
-      find.byKey(const Key('uten-client-picker-search')),
+      _searchEditable(),
       '远洋',
     );
     await tester.pump(const Duration(milliseconds: 301));
@@ -239,6 +233,17 @@ Finder _compactPickerSheet(Size surfaceSize) => find.byWidgetPredicate(
       widget.width == null &&
       widget.height != null &&
       (widget.height! - surfaceSize.height * 0.85).abs() < 0.01,
+);
+
+/// 统一搜索已换成 UtenSearchBar：key 在组件上，输入/取控件须定位其内部输入框。
+Finder _searchEditable() => find.descendant(
+  of: find.byKey(const Key('uten-client-picker-search')),
+  matching: find.byType(EditableText),
+);
+
+Finder _searchTextField() => find.descendant(
+  of: find.byKey(const Key('uten-client-picker-search')),
+  matching: find.byType(TextField),
 );
 
 class _PickerHarness extends ConsumerStatefulWidget {

@@ -9,6 +9,7 @@
 // - 部门管理页：mode=none + showCompanyRoot=true + 全部可点 + trailingBuilder
 import 'package:flutter/material.dart';
 
+import '../../../components/inputs/uten_search_bar.dart';
 import '../models/department_node.dart';
 
 /// 树的选择语义。
@@ -394,17 +395,10 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
         if (widget.showSearch)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: TextField(
+            child: UtenSearchBar(
               key: widget.searchFieldKey,
               controller: _searchCtl,
-              decoration: InputDecoration(
-                hintText: widget.searchHint,
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                isDense: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
+              hint: widget.searchHint,
             ),
           ),
         if (widget.externalSearchLoading)

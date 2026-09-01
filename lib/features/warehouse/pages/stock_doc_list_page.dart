@@ -1,7 +1,8 @@
 // 仓库单据列表页（按 docType 参数化）：标题行 + 状态筛选 + 主档表格（tap→详情）。
 //
 // 与 basic_data/pages/color_page.dart 同款布局：UtenAppBar + UtenContentContainer +
-// 标题行(Icon+label+(N)+搜索+新建) + 状态 ChoiceChip Wrap + Expanded(MasterDataTableView)。
+// 标题行(Icon+label+(N)+新建) + DocKpiBar 状态卡条 + 筛选侧栏(UtenFilterToolbar/
+// UtenSearchBar) + Expanded(MasterDataTableView)。
 // 文档页无 facet → 表头渲染纯标签（MasterDataTableView 在 facets 为空时自动降级）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +15,7 @@ import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -257,19 +259,40 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                           ],
                         ),
                       ),
-                      // 桌面：左筛选侧栏（搜索）+ 右表格；手机：垂直堆叠
+                      // 桌面：左筛选侧栏（统一筛选工具条）+ 右表格；手机：垂直堆叠
                       Expanded(
                         child: UtenListTwoPane(
+                          // DRAW：出库进度分段（未出库/部分出库=「未完成领料单」）
+                          // 收进统一筛选工具条；其余单据类型仅保留搜索框。
                           filterPane: Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: UtenSpacing.s4,
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: UtenSearchBar(
+                            child:
+                                widget.docType == StockDocType.draw
+                                ? UtenFilterToolbar<int?>(
+                                    segments: const [
+                                      UtenFilterSegment(value: null, label: '全部'),
+                                      UtenFilterSegment(value: 0, label: '未出库'),
+                                      UtenFilterSegment(
+                                        value: 1,
+                                        label: '部分出库',
+                                      ),
+                                      UtenFilterSegment(value: 2, label: '已出完'),
+                                    ],
+                                    selected: _issueStatus,
+                                    onSelectionChanged: (value) {
+                                      setState(() => _issueStatus = value);
+                                      _reload(1);
+                                    },
+                                    searchHint: '搜索单据号', // TODO(l10n): 补 arb
+                                    initialSearchValue: _list.keyword,
+                                    onSearchChanged: (v) {
+                                      _list.keyword = v;
+                                      _reload(1);
+                                    },
+                                  )
+                                : UtenSearchBar(
                                     hint: '搜索单据号', // TODO(l10n): 补 arb
                                     initialValue: _list.keyword,
                                     onChanged: (v) {
@@ -277,43 +300,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                                       _reload(1);
                                     },
                                   ),
-                                ),
-                                // DRAW：出库进度筛选（未出库/部分出库=「未完成领料单」）
-                                if (widget.docType == StockDocType.draw) ...[
-                                  const SizedBox(height: UtenSpacing.s8),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
-                                    children: [
-                                      for (final (label, value) in [
-                                        ('全部', null),
-                                        ('未出库', 0),
-                                        ('部分出库', 1),
-                                        ('已出完', 2),
-                                      ])
-                                        ChoiceChip(
-                                          label: Text(
-                                            label,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .labelMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w400,
-                                                ),
-                                          ),
-                                          selected: _issueStatus == value,
-                                          onSelected: (_) {
-                                            setState(
-                                              () => _issueStatus = value,
-                                            );
-                                            _reload(1);
-                                          },
-                                        ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
                           ),
                           tablePane: MasterDataTableView<StockDocListItem>(
                             // primary:true → 表体参与「KPI 卡折叠 → 表格内滚」联动。

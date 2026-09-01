@@ -8,9 +8,9 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -436,28 +436,7 @@ class _WarehouseArrivalExceptionsPageState
   }
 
   Widget _buildToolbar(PagedResult<ProcurementArrivalException> result) {
-    final mode = SegmentedButton<bool>(
-      key: const Key('warehouse-arrival-exception-mode'),
-      segments: const [
-        ButtonSegment(value: false, label: Text('进行中')),
-        ButtonSegment(value: true, label: Text('历史')),
-      ],
-      selected: {_history},
-      onSelectionChanged: (selection) => _switchHistory(selection.first),
-    );
-    final search = UtenSearchBar(
-      key: const Key('warehouse-arrival-exception-search'),
-      hint: '搜索收货单 / 订货单 / 货品 / 供应商',
-      initialValue: _keyword,
-      onInputChanged: (_) => _requestVersion++,
-      onChanged: _applySearch,
-    );
-    final count = Text(
-      '共 ${result.total} 条 · 单击多选，双击详情',
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
-    );
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -466,33 +445,26 @@ class _WarehouseArrivalExceptionsPageState
           label: _history
               ? '共有 ${result.total} 条历史到货异常'
               : '共有 ${result.total} 条进行中到货异常',
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth < 840) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: mode,
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    search,
-                    const SizedBox(height: UtenSpacing.s8),
-                    count,
-                  ],
-                );
-              }
-              return Row(
-                children: [
-                  mode,
-                  const SizedBox(width: UtenSpacing.s12),
-                  SizedBox(width: 360, child: search),
-                  const Spacer(),
-                  count,
-                ],
-              );
-            },
+          // 全平台统一筛选工具条：分段 + 胶囊搜索框（尾挂总数文案）。
+          child: UtenFilterToolbar<bool>(
+            segmentsKey: const Key('warehouse-arrival-exception-mode'),
+            searchKey: const Key('warehouse-arrival-exception-search'),
+            segments: const [
+              UtenFilterSegment(value: false, label: '进行中'),
+              UtenFilterSegment(value: true, label: '历史'),
+            ],
+            selected: _history,
+            onSelectionChanged: _switchHistory,
+            searchHint: '搜索收货单 / 订货单 / 货品 / 供应商',
+            initialSearchValue: _keyword,
+            onSearchInputChanged: (_) => _requestVersion++,
+            onSearchChanged: _applySearch,
+            trailing: Text(
+              '共 ${result.total} 条 · 单击多选，双击详情',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),

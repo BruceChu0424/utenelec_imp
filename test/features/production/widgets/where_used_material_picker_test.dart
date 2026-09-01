@@ -155,9 +155,9 @@ void main() {
     expect(api.queries, isEmpty);
 
     await tester.enterText(search, 'MAT-001');
-    await tester.pump(const Duration(milliseconds: 249));
+    await tester.pump(const Duration(milliseconds: 299));
     expect(api.queries, isEmpty);
-    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump(const Duration(milliseconds: 2));
     await tester.pumpAndSettle();
 
     expect(api.queries, hasLength(1));
@@ -172,26 +172,37 @@ void main() {
     expect(find.text('自动占位'), findsOneWidget);
     expect(find.text('已删除'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('where-used-material-clear')));
+    // UtenSearchBar 内置清除按钮（无独立 key，按搜索框内关闭图标定位）。
+    await tester.tap(
+      find.descendant(
+        of: search,
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('输入编号/名称开始搜索'), findsOneWidget);
     expect(find.text('历史螺丝(MAT-001)'), findsNothing);
     expect(api.queries, hasLength(1));
 
     await tester.enterText(search, 'NONE');
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
     expect(find.text('没有匹配的物料'), findsOneWidget);
     expect(find.text('请尝试更短的编号或名称，也可改用型号或规格。'), findsOneWidget);
     expect(find.textContaining('查看全部'), findsNothing);
     expect(api.queries, hasLength(2));
-    await tester.tap(find.byKey(const Key('where-used-material-clear')));
+    await tester.tap(
+      find.descendant(
+        of: search,
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('输入编号/名称开始搜索'), findsOneWidget);
     expect(api.queries, hasLength(2));
 
     await tester.enterText(search, 'MAT-001');
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
     expect(api.queries, hasLength(3));
 
@@ -232,14 +243,14 @@ void main() {
     await tester.enterText(search, 'MAT');
     await tester.pump(const Duration(milliseconds: 100));
     await tester.enterText(search, 'MAT-0');
-    await tester.pump(const Duration(milliseconds: 249));
+    await tester.pump(const Duration(milliseconds: 299));
     expect(api.queries, isEmpty);
-    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump(const Duration(milliseconds: 2));
     expect(api.queries, hasLength(1));
     expect(api.queries.last, containsPair('keyword', 'MAT-0'));
 
     await tester.enterText(search, 'MAT-001');
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 301));
     expect(api.queries, hasLength(2));
     expect(api.queries.last, containsPair('keyword', 'MAT-001'));
 
@@ -292,7 +303,7 @@ void main() {
       find.byKey(const Key('where-used-material-search')),
       'FREE-001',
     );
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
     expect(api.queries, hasLength(1));
@@ -346,7 +357,7 @@ void main() {
       find.byKey(const Key('where-used-material-search')),
       'MAT',
     );
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 301));
     await tester.tap(find.byKey(const Key('where-used-material-retry')));
     await tester.pumpAndSettle();
     expect(find.text('第 1 页物料(MAT-1)'), findsOneWidget);

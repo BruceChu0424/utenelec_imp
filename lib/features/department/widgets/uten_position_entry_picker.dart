@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -463,26 +464,12 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: TextField(
+            child: UtenSearchBar(
               key: const Key('uten-position-entry-search'),
               controller: _controller,
               autofocus: true,
-              textInputAction: TextInputAction.done,
+              hint: l10n.positionPickerSearchHint,
               onSubmitted: (_) => _confirm(),
-              decoration: InputDecoration(
-                hintText: l10n.positionPickerSearchHint,
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: l10n.positionPickerClear,
-                        onPressed: _clearDraft,
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
             ),
           ),
           Expanded(child: _listBody(l10n)),

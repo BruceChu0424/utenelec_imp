@@ -23,7 +23,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ChoiceChip, '应付'));
+    // 统一筛选工具条：方向分段（SegmentedButton<String?>）里的「应付」；
+    // 表格「方向」列也渲染「应付」，须限定在分段按钮内查找。
+    await tester.tap(
+      find.descendant(
+        of: find.byType(SegmentedButton<String?>),
+        matching: find.text('应付'),
+      ),
+    );
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<ArApLedgerItem>>(

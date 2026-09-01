@@ -1,8 +1,8 @@
 // 委外单据列表页（按 docType 参数化）。
 //
 // 复用采购列表布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
-// 过滤由本页自带的状态 ChoiceChip + 关键词搜索承担（facets 传空，表头降级为纯标签）。
+// (Icon+label+(N)+新建) + 状态筛选(UtenFilterToolbar 分段+搜索) + MasterDataTableView。
+// 过滤由本页自带的统一筛选工具条承担（facets 传空，表头降级为纯标签）。
 // 名称解析（委外商=supplier/仓库）通过复用采购的 MasterNameService。
 // 编辑按 edit 权限显隐「新建」；计划下达的申请只读查看，订货必须从任务中心选择申请明细后生成。
 import 'package:flutter/material.dart';
@@ -11,11 +11,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -270,7 +270,7 @@ class _SubcontractDocListPageState
                       ),
                     ],
                   ),
-                  // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
+                  // 桌面：左筛选侧栏（统一筛选工具条）+ 右表格；手机：垂直堆叠
                   body: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -279,67 +279,52 @@ class _SubcontractDocListPageState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: UtenSearchBar(
-                              hint: '搜索单据号',
-                              initialValue: _list.keyword,
-                              onChanged: (v) {
-                                _list.keyword = v;
-                                _reload(1);
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              _statusChip('全部', null),
-                              _statusChip(
-                                widget.docType == SubcontractDocType.application
+                          // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
+                          UtenFilterToolbar<int?>(
+                            segments: [
+                              const UtenFilterSegment(value: null, label: '全部'),
+                              UtenFilterSegment(
+                                value: kSubcontractStatusDraft,
+                                label: widget.docType ==
+                                        SubcontractDocType.application
                                     ? '尚未下达'
                                     : '草稿',
-                                kSubcontractStatusDraft,
                               ),
-                              _statusChip(
-                                widget.docType == SubcontractDocType.application
+                              UtenFilterSegment(
+                                value: kSubcontractStatusApproved,
+                                label: widget.docType ==
+                                        SubcontractDocType.application
                                     ? '计划已下达'
                                     : '已审',
-                                kSubcontractStatusApproved,
                               ),
-                              _statusChip('红冲', kSubcontractStatusReversed),
+                              const UtenFilterSegment(
+                                value: kSubcontractStatusReversed,
+                                label: '红冲',
+                              ),
                             ],
+                            selected: _statusFilter,
+                            onSelectionChanged: _onStatus,
+                            searchHint: '搜索单据号',
+                            initialSearchValue: _list.keyword,
+                            onSearchChanged: (v) {
+                              _list.keyword = v;
+                              _reload(1);
+                            },
                           ),
                           // 委外订货单：结案筛选（未完成=部分入库的委外单）
                           if (widget.docType == SubcontractDocType.order) ...[
                             const SizedBox(height: UtenSpacing.s8),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 4,
-                              children: [
-                                for (final (label, value) in [
-                                  ('全部', null),
-                                  ('未完成', false),
-                                  ('已结案', true),
-                                ])
-                                  ChoiceChip(
-                                    label: Text(
-                                      label,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .labelMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                    ),
-                                    selected: _closedFilter == value,
-                                    onSelected: (_) {
-                                      setState(() => _closedFilter = value);
-                                      _reload(1);
-                                    },
-                                  ),
+                            UtenFilterToolbar<bool?>(
+                              segments: const [
+                                UtenFilterSegment(value: null, label: '全部'),
+                                UtenFilterSegment(value: false, label: '未完成'),
+                                UtenFilterSegment(value: true, label: '已结案'),
                               ],
+                              selected: _closedFilter,
+                              onSelectionChanged: (value) {
+                                setState(() => _closedFilter = value);
+                                _reload(1);
+                              },
                             ),
                           ],
                         ],
@@ -415,12 +400,4 @@ class _SubcontractDocListPageState
     );
   }
 
-  Widget _statusChip(String label, int? value) {
-    final selected = _statusFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => _onStatus(value),
-    );
-  }
 }

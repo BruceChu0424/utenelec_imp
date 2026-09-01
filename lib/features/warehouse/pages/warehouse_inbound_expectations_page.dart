@@ -9,9 +9,9 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -391,89 +391,54 @@ class _WarehouseInboundExpectationsPageState
   }
 
   Widget _buildToolbar(PagedResult<InboundExpectation> result) {
-    final selected = _orderType == null
-        ? 'all'
-        : _orderType == ProcurementInboundOrderType.purchase
-        ? 'purchase'
-        : 'subcontract';
-    final segments = SegmentedButton<String>(
-      key: const Key('inbound-expectation-type-segments'),
-      segments: [
-        ButtonSegment(
-          value: 'all',
-          label: Text(_typeLabel('全部待到货', _typeCount(null))),
-        ),
-        ButtonSegment(
-          value: 'purchase',
-          label: Text(
-            _typeLabel(
-              '采购订货',
-              _typeCount(ProcurementInboundOrderType.purchase),
-            ),
-          ),
-        ),
-        ButtonSegment(
-          value: 'subcontract',
-          label: Text(
-            _typeLabel(
-              '委外订货',
-              _typeCount(ProcurementInboundOrderType.subcontract),
-            ),
-          ),
-        ),
-      ],
-      selected: {selected},
-      onSelectionChanged: (selection) {
-        _selectType(switch (selection.first) {
-          'purchase' => ProcurementInboundOrderType.purchase,
-          'subcontract' => ProcurementInboundOrderType.subcontract,
-          _ => null,
-        });
-      },
-    );
-    final search = UtenSearchBar(
-      key: const Key('inbound-expectation-search'),
-      hint: '搜索订货单号 / 供应商 / 货品',
-      initialValue: _keyword,
-      onInputChanged: (_) => _requestVersion++,
-      onChanged: _applyKeyword,
-    );
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Semantics(
           header: true,
           label: '共有 ${result.total} 张待到货订货单',
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth < 840) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: segments,
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    search,
-                  ],
-                );
-              }
-              return Row(
-                children: [
-                  segments,
-                  const SizedBox(width: UtenSpacing.s12),
-                  SizedBox(width: 360, child: search),
-                  const Spacer(),
-                  Text(
-                    '共 ${result.total} 张 · 单击选中，双击详情',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              );
-            },
+          // 全平台统一筛选工具条：分段(红圆计数徽章，计数取后端全量口径) + 胶囊搜索框。
+          child: UtenFilterToolbar<String>(
+            segmentsKey: const Key('inbound-expectation-type-segments'),
+            searchKey: const Key('inbound-expectation-search'),
+            segments: [
+              UtenFilterSegment(
+                value: 'all',
+                label: '全部待到货',
+                count: _typeCount(null),
+              ),
+              UtenFilterSegment(
+                value: 'purchase',
+                label: '采购订货',
+                count: _typeCount(ProcurementInboundOrderType.purchase),
+              ),
+              UtenFilterSegment(
+                value: 'subcontract',
+                label: '委外订货',
+                count: _typeCount(ProcurementInboundOrderType.subcontract),
+              ),
+            ],
+            selected: _orderType == null
+                ? 'all'
+                : _orderType == ProcurementInboundOrderType.purchase
+                ? 'purchase'
+                : 'subcontract',
+            onSelectionChanged: (value) => _selectType(switch (value) {
+              'purchase' => ProcurementInboundOrderType.purchase,
+              'subcontract' => ProcurementInboundOrderType.subcontract,
+              _ => null,
+            }),
+            searchHint: '搜索订货单号 / 供应商 / 货品',
+            initialSearchValue: _keyword,
+            onSearchInputChanged: (_) => _requestVersion++,
+            onSearchChanged: _applyKeyword,
+            trailing: Text(
+              '共 ${result.total} 张 · 单击选中，双击详情',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
@@ -497,9 +462,6 @@ class _WarehouseInboundExpectationsPageState
       ],
     );
   }
-
-  String _typeLabel(String label, int? count) =>
-      count == null ? '$label —' : '$label $count';
 
   List<MasterColumnDef<InboundExpectation>> get _columns => [
     MasterColumnDef(

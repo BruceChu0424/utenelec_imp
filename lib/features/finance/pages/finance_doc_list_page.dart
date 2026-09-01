@@ -1,7 +1,7 @@
 // 钱流单据列表页（按 docType 参数化，5 单据通用）。
 //
 // 复刻采购单据列表：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
+// (Icon+label+(N)+搜索+新建) + 状态筛选(UtenFilterToolbar 分段) + MasterDataTableView。
 // 名称解析（客户/供应商/账户）通过 FinanceNameService。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +14,7 @@ import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -264,15 +265,25 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                             ),
                           ),
                           const SizedBox(height: UtenSpacing.s12),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              _statusChip('全部', null),
-                              _statusChip('草稿', kFinanceStatusDraft),
-                              _statusChip('已审', kFinanceStatusApproved),
-                              _statusChip('红冲', kFinanceStatusReversed),
+                          // 全平台统一筛选工具条：单据状态分段（纯分类无搜索）。
+                          UtenFilterToolbar<int?>(
+                            segments: const [
+                              UtenFilterSegment<int?>(value: null, label: '全部'),
+                              UtenFilterSegment<int?>(
+                                value: kFinanceStatusDraft,
+                                label: '草稿',
+                              ),
+                              UtenFilterSegment<int?>(
+                                value: kFinanceStatusApproved,
+                                label: '已审',
+                              ),
+                              UtenFilterSegment<int?>(
+                                value: kFinanceStatusReversed,
+                                label: '红冲',
+                              ),
                             ],
+                            selected: _statusFilter,
+                            onSelectionChanged: _onStatus,
                           ),
                         ],
                       ),
@@ -327,15 +338,6 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _statusChip(String label, int? value) {
-    final selected = _statusFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => _onStatus(value),
     );
   }
 }

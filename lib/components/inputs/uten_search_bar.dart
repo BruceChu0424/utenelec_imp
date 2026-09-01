@@ -1,5 +1,15 @@
-// UtenSearchBar - 搜索栏（带清除 + 防抖）
-// 文档：docs/02-组件库/UtenSearchBar.md（待写）
+// UtenSearchBar - 搜索栏（带清除 + 防抖）——全平台唯一搜索框组件。
+// 文档：docs/02-组件库/UtenSearchBar.md
+//
+// 2026-09-01 全平台统一：搜索框只保留本组件一种形态——胶囊圆角
+//（半径远大于高度，RRect 自动收敛为高度一半，与 M3 SegmentedButton
+// StadiumBorder 分段导航条同形）。业务代码不得再手写搜索 TextField；
+// 圆角与高度也不另设参数，保证所有页面外观一致。
+//
+// 高度说明：M3 默认给 prefix/suffix 图标各 48×48 最小约束会把输入框顶高，
+// 此处显式收紧为内容驱动（约 43，随字号自然增高）；与分段导航条并排时的
+// 「严格同高」由 UtenFilterToolbar 用 IntrinsicHeight+stretch 结构保证，
+// 不在本组件里各自算高度（visualDensity 对两侧折减不一致，算不平）。
 
 import 'dart:async';
 
@@ -104,27 +114,50 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
       onChanged: _onChanged,
       onSubmitted: widget.onSubmitted,
       textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        hintText: widget.hint,
-        prefixIcon: Icon(
-          Icons.search_rounded,
-          size: 20,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        suffixIcon: _controller.text.isNotEmpty
-            ? IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18),
-                splashRadius: 16,
-                onPressed: _clear,
-              )
-            : null,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 12,
-        ),
-      ),
+      decoration: _decoration(theme),
       style: theme.textTheme.bodyMedium,
+    );
+  }
+
+  /// 胶囊形输入装饰（全平台唯一搜索框形态）：半径取远大于可能高度，
+  /// RRect 归一化后即高度一半的 stadium，颜色对齐 M3 SegmentedButton
+  ///（描边 outline、聚焦主色）。
+  ///
+  /// 高度为内容驱动：M3 默认给 prefix/suffix 图标各 48×48 最小约束（会把
+  /// 输入框顶高、且与分段条折减不一致），此处显式收紧到 32——图标不再
+  /// 撑高度；contentPadding 与文本行高决定最终高度，字号放大自然增高。
+  InputDecoration _decoration(ThemeData theme) {
+    OutlineInputBorder border(Color color, [double width = 1]) =>
+        OutlineInputBorder(
+          borderRadius: BorderRadius.circular(999),
+          borderSide: BorderSide(color: color, width: width),
+        );
+    return InputDecoration(
+      hintText: widget.hint,
+      prefixIcon: Icon(
+        Icons.search_rounded,
+        size: 20,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+      prefixIconConstraints: const BoxConstraints(minWidth: 40, minHeight: 32),
+      suffixIcon: _controller.text.isNotEmpty
+          ? IconButton(
+              icon: const Icon(Icons.close_rounded, size: 18),
+              splashRadius: 16,
+              visualDensity: VisualDensity.compact,
+              onPressed: _clear,
+            )
+          : null,
+      suffixIconConstraints: const BoxConstraints(minWidth: 36, minHeight: 32),
+      isDense: true,
+      filled: true,
+      fillColor: theme.inputDecorationTheme.fillColor,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 10,
+      ),
+      enabledBorder: border(theme.colorScheme.outline),
+      focusedBorder: border(theme.colorScheme.primary, 2),
     );
   }
 }

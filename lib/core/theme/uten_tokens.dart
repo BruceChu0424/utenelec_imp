@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 ///
 /// 常用映射：
 /// - 小控件（标签、勾选框）：xs / sm
-/// - 按钮、输入框、Chip：md（主题为 10，介于 md 与 lg 之间，见主题文件）
+/// - 按钮、输入框、Chip 等表单级控件：control（10，全平台唯一控件圆角）
 /// - 卡片、面板：lg / xl（卡片主题默认 14，见 cardTheme）
 /// - 对话框、底部弹层：xxl
 /// - 徽章、胶囊：pill
@@ -25,8 +25,13 @@ abstract final class UtenRadius {
   /// 6 —— 小元素（Skeleton、小 Chip）
   static const double sm = 6;
 
-  /// 8 —— 中等元素（图标容器、Chip）
+  /// 8 —— 中等元素（图标容器）
   static const double md = 8;
+
+  /// 10 —— 表单级控件统一圆角：按钮、输入框、Chip、下拉等。
+  /// 2026-09-01 全平台圆角统一：主题（含深色）与所有按钮组件一律调用本值，
+  /// 业务代码不得再散落 8/10/12/14 等控件级硬编码。
+  static const double control = 10;
 
   /// 12 —— 较大元素（Toast、SnackBar、小卡片）
   static const double lg = 12;
@@ -48,6 +53,11 @@ abstract final class UtenRadius {
 
   /// [md] 的 BorderRadius 快捷形式
   static const BorderRadius mdAll = BorderRadius.all(Radius.circular(md));
+
+  /// [control] 的 BorderRadius 快捷形式（按钮、输入框、Chip）
+  static const BorderRadius controlAll = BorderRadius.all(
+    Radius.circular(control),
+  );
 
   /// [lg] 的 BorderRadius 快捷形式
   static const BorderRadius lgAll = BorderRadius.all(Radius.circular(lg));

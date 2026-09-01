@@ -1,8 +1,8 @@
 // 采购单据列表页（按 docType 参数化）。
 //
 // 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
-// 过滤由本页自带的状态 ChoiceChip + 关键词搜索承担（facets 传空，表头降级为纯标签）。
+// (Icon+label+(N)+新建) + 状态筛选(DocKpiBar 状态卡条，非 Chip 行) + MasterDataTableView。
+// 过滤由本页自带的 KPI 状态卡条 + 关键词搜索承担（facets 传空，表头降级为纯标签）。
 // 名称解析（供应商/仓库）通过 MasterNameService。编辑按 edit 权限显隐「新建」。
 // 分页/竞态/静默刷新状态机在共享 PagedListController（本页只留状态筛选与列定义）。
 import 'package:flutter/material.dart';

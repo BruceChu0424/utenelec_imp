@@ -1,6 +1,6 @@
 // 仓库报表页（仓库管理，stock_report:view）：
 //
-// 2 张卡（明细/汇总）共用本页，由 [kind] 区分；卡内用 ChoiceChip 切 7 类单据
+// 2 张卡（明细/汇总）共用本页，由 [kind] 区分；卡内用 UtenFilterToolbar 分段切 7 类单据
 // （调拨/其它入库/生产领料/生产退料/产成品进仓/产成品出仓/盘点）。**无其它出库/生产损耗**。
 //
 // 后端 GET /api/stock/reports/{docType}/{kind} 返回 ReportTableResponse：
@@ -28,6 +28,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -308,17 +309,14 @@ class _WarehouseReportTablePageState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _filterLabel('单据类型'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
+          // 全平台统一筛选工具条：7 类单据分段（纯分类无搜索）。
+          UtenFilterToolbar<WarehouseReportDocType>(
+            segments: [
               for (final t in WarehouseReportDocType.values)
-                ChoiceChip(
-                  label: Text(t.label),
-                  selected: t == _docType,
-                  onSelected: (_) => _changeDocType(t),
-                ),
+                UtenFilterSegment(value: t, label: t.label),
             ],
+            selected: _docType,
+            onSelectionChanged: _changeDocType,
           ),
           const SizedBox(height: UtenSpacing.s12),
           _filterLabel('日期范围'),

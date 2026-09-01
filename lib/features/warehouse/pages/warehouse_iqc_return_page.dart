@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -178,110 +178,58 @@ class _WarehouseIqcReturnPageState
   }
 
   Widget _toolbar(PagedResult<WarehouseIqcReturnTask> result) {
-    final search = UtenSearchBar(
-      key: const Key('warehouse-iqc-return-search'),
-      hint: '搜索收货单 / 订货单 / 供应商 / 货品 / 仓库',
-      initialValue: _keyword,
-      onInputChanged: (_) => _requestVersion++,
-      onChanged: _applySearch,
-    );
-    final filters = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    // 全平台统一筛选工具条：来源类型分段（+搜索）与实物退回状态分段各一条。
+    // 分段键沿用原 Chip 键前缀（原为每个 Chip 一个键，现为整组）。
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Semantics(
-          container: true,
-          label: '来源类型筛选',
-          child: Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              ChoiceChip(
-                label: const Text('全部来源'),
-                selected: _receiptType == null,
-                showCheckmark: false,
-                onSelected: (_) {
-                  setState(() => _receiptType = null);
-                  _load(1);
-                },
+        UtenFilterToolbar<WarehouseIqcReceiptType?>(
+          segmentsKey: const Key('warehouse-iqc-return-type'),
+          searchKey: const Key('warehouse-iqc-return-search'),
+          segments: [
+            const UtenFilterSegment(value: null, label: '全部来源'),
+            for (final type in WarehouseIqcReceiptType.values)
+              UtenFilterSegment(value: type, label: type.label),
+          ],
+          selected: _receiptType,
+          onSelectionChanged: (value) {
+            setState(() => _receiptType = value);
+            _load(1);
+          },
+          searchHint: '搜索收货单 / 订货单 / 供应商 / 货品 / 仓库',
+          initialSearchValue: _keyword,
+          onSearchInputChanged: (_) => _requestVersion++,
+          onSearchChanged: _applySearch,
+          trailing: Semantics(
+            liveRegion: true,
+            label: '共 ${result.total} 项实物退回任务',
+            child: Text(
+              '共 ${result.total} 项 · 双击查看退回凭证',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-              for (final type in WarehouseIqcReceiptType.values)
-                ChoiceChip(
-                  key: Key('warehouse-iqc-return-type-${type.apiValue}'),
-                  label: Text(type.label),
-                  selected: _receiptType == type,
-                  showCheckmark: false,
-                  onSelected: (_) {
-                    setState(() => _receiptType = type);
-                    _load(1);
-                  },
-                ),
-            ],
+            ),
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        Semantics(
-          container: true,
-          label: '实物退回状态筛选',
-          child: Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              for (final option in const <(String, String?)>[
-                ('全部状态', null),
-                ('待登记退回', WarehouseIqcPhysicalStatus.pendingReturn),
-                ('退回已登记', WarehouseIqcPhysicalStatus.returnRecorded),
-                ('来源已撤销', WarehouseIqcPhysicalStatus.voided),
-              ])
-                ChoiceChip(
-                  key: Key('warehouse-iqc-return-status-${option.$2 ?? 'all'}'),
-                  label: Text(option.$1),
-                  selected: _physicalStatus == option.$2,
-                  showCheckmark: false,
-                  onSelected: (_) {
-                    setState(() => _physicalStatus = option.$2);
-                    _load(1);
-                  },
-                ),
-            ],
-          ),
+        UtenFilterToolbar<String?>(
+          segmentsKey: const Key('warehouse-iqc-return-status'),
+          segments: [
+            for (final option in const <(String, String?)>[
+              ('全部状态', null),
+              ('待登记退回', WarehouseIqcPhysicalStatus.pendingReturn),
+              ('退回已登记', WarehouseIqcPhysicalStatus.returnRecorded),
+              ('来源已撤销', WarehouseIqcPhysicalStatus.voided),
+            ])
+              UtenFilterSegment(value: option.$2, label: option.$1),
+          ],
+          selected: _physicalStatus,
+          onSelectionChanged: (value) {
+            setState(() => _physicalStatus = value);
+            _load(1);
+          },
         ),
       ],
-    );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final summary = Semantics(
-          liveRegion: true,
-          label: '共 ${result.total} 项实物退回任务',
-          child: Text(
-            '共 ${result.total} 项 · 双击查看退回凭证',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        );
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (constraints.maxWidth < 720) ...[
-              search,
-              const SizedBox(height: UtenSpacing.s8),
-              filters,
-              const SizedBox(height: UtenSpacing.s8),
-              Align(alignment: Alignment.centerRight, child: summary),
-            ] else ...[
-              Row(
-                children: [
-                  SizedBox(width: 420, child: search),
-                  const Spacer(),
-                  summary,
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              filters,
-            ],
-          ],
-        );
-      },
     );
   }
 

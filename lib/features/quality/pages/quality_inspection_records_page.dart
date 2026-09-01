@@ -7,9 +7,9 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -239,11 +239,7 @@ class _QualityInspectionRecordsPageState
           builder: (context, constraints) {
             final compact = constraints.maxWidth < 840;
             final overview = _buildOverview(data, constraints.maxWidth);
-            final filters = _buildFilters(
-              allowedDomains,
-              compact,
-              constraints.maxWidth,
-            );
+            final filters = _buildFilters(allowedDomains);
             const hint = _InspectionRecordScopeHint();
             final inlineError = _error == null || _data == null
                 ? const SizedBox.shrink()
@@ -352,60 +348,36 @@ class _QualityInspectionRecordsPageState
     );
   }
 
-  Widget _buildFilters(
-    List<QualityInspectionRecordDomain> allowedDomains,
-    bool compact,
-    double availableWidth,
-  ) {
-    final domainSegments = SegmentedButton<QualityInspectionRecordDomain>(
-      key: const Key('quality-inspection-record-domain-filter'),
-      segments: [
-        for (final domain in allowedDomains)
-          ButtonSegment(
-            value: domain,
-            icon: Icon(
-              domain == QualityInspectionRecordDomain.iqc
-                  ? Icons.inventory_2_outlined
-                  : Icons.precision_manufacturing_outlined,
-            ),
-            label: Text(domain.label),
-          ),
-      ],
-      selected: {_domain!},
-      onSelectionChanged: (selection) => _selectDomain(selection.first),
-    );
+  Widget _buildFilters(List<QualityInspectionRecordDomain> allowedDomains) {
+    // 全平台统一筛选工具条：检验域分段 + 胶囊搜索框（尾挂总数文案）；
+    // 决定日期筛选保留在工具条下一行。
+    final theme = Theme.of(context);
     final range = _dateRange;
     final dateLabel = range == null
         ? '决定日期'
         : '${ChinaDateTime.formatDate(range.start)} 至 '
               '${ChinaDateTime.formatDate(range.end)}';
-    final search = SizedBox(
-      width: compact ? availableWidth : 360,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
-        child: UtenSearchBar(
-          key: const Key('quality-inspection-record-search'),
-          initialValue: _keyword,
-          hint: '搜索来源单号 / 计划 / 货品 / 供应商 / 检验员',
-          onChanged: _applyKeyword,
-        ),
-      ),
-    );
-    final dateButton = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 56),
-      child: OutlinedButton.icon(
-        key: const Key('quality-inspection-record-date-filter'),
-        onPressed: _pickDateRange,
-        icon: const Icon(Icons.date_range_outlined),
-        label: Text(dateLabel),
-      ),
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: domainSegments,
+        UtenFilterToolbar<QualityInspectionRecordDomain>(
+          segmentsKey: const Key('quality-inspection-record-domain-filter'),
+          searchKey: const Key('quality-inspection-record-search'),
+          segments: [
+            for (final domain in allowedDomains)
+              UtenFilterSegment(value: domain, label: domain.label),
+          ],
+          selected: _domain!,
+          onSelectionChanged: _selectDomain,
+          searchHint: '搜索来源单号 / 计划 / 货品 / 供应商 / 检验员',
+          initialSearchValue: _keyword,
+          onSearchChanged: _applyKeyword,
+          trailing: Text(
+            '共 ${_data?.total ?? 0} 条 · 双击查看完整证据',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         const SizedBox(height: UtenSpacing.s12),
         Wrap(
@@ -413,8 +385,15 @@ class _QualityInspectionRecordsPageState
           runSpacing: UtenSpacing.s12,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            search,
-            dateButton,
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: OutlinedButton.icon(
+                key: const Key('quality-inspection-record-date-filter'),
+                onPressed: _pickDateRange,
+                icon: const Icon(Icons.date_range_outlined),
+                label: Text(dateLabel),
+              ),
+            ),
             if (range != null)
               ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 48),
@@ -424,12 +403,6 @@ class _QualityInspectionRecordsPageState
                   label: const Text('清除日期'),
                 ),
               ),
-            Text(
-              '共 ${_data?.total ?? 0} 条 · 双击查看完整证据',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
           ],
         ),
       ],

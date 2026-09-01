@@ -1,7 +1,7 @@
 // 生产日报列表页（生产管理 / production_daily_report:view · 空结构保未来）。
 //
 // 老库 F_DateReport 从未启用（docs/数据迁移/23 §2.2），本期建空结构保未来启用零成本。
-// UI 完整但预期 0 行。结构与生产计划单列表页同构（MasterDataTableView + 状态 ChoiceChip）。
+// UI 完整但预期 0 行。结构与生产计划单列表页同构（MasterDataTableView + 状态分段工具条）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +12,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -200,14 +201,25 @@ class _ProductionDailyReportListPageState
                         bottom: UtenSpacing.s8,
                         left: UtenSpacing.s4,
                       ),
-                      child: Wrap(
-                        spacing: 6,
-                        children: [
-                          _statusChip('全部', null),
-                          _statusChip('草稿', kProductionStatusDraft),
-                          _statusChip('已审', kProductionStatusApproved),
-                          _statusChip('红冲', kProductionStatusReversed),
+                      // 全平台统一筛选工具条：状态分段（搜索框在上方标题行，不在此收口）。
+                      child: UtenFilterToolbar<int?>(
+                        segments: const [
+                          UtenFilterSegment(value: null, label: '全部'),
+                          UtenFilterSegment(
+                            value: kProductionStatusDraft,
+                            label: '草稿',
+                          ),
+                          UtenFilterSegment(
+                            value: kProductionStatusApproved,
+                            label: '已审',
+                          ),
+                          UtenFilterSegment(
+                            value: kProductionStatusReversed,
+                            label: '红冲',
+                          ),
                         ],
+                        selected: _statusFilter,
+                        onSelectionChanged: _onStatus,
                       ),
                     ),
                     Expanded(
@@ -243,12 +255,4 @@ class _ProductionDailyReportListPageState
     );
   }
 
-  Widget _statusChip(String label, int? value) {
-    final selected = _statusFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => _onStatus(value),
-    );
-  }
 }

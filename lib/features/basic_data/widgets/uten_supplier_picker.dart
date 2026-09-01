@@ -5,13 +5,12 @@
 // 布局与基础资料-供应商资料一致。数据请求 selectableOnly：仅「使用」状态的供应商
 // 进入分页（禁用商不显示，total 与 items 是同一数据库谓词下的权威结果）。
 // 头部带「添加供应商」（supplier:create 权限）：快捷新建入主档后自动选中该新商。
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -60,7 +59,6 @@ class _SupplierPickerSheet extends ConsumerStatefulWidget {
 class _SupplierPickerSheetState extends ConsumerState<_SupplierPickerSheet> {
   String? _selectedCategoryId;
   final _keywordCtl = TextEditingController();
-  Timer? _debounce;
   String _globalQuery = '';
   Set<String>? _visibleFilterIds;
   Set<String> _contentMatchCategoryIds = {};
@@ -92,12 +90,10 @@ class _SupplierPickerSheetState extends ConsumerState<_SupplierPickerSheet> {
   @override
   void dispose() {
     _keywordCtl.dispose();
-    _debounce?.cancel();
     super.dispose();
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
-    _debounce?.cancel();
     _requestVersion++;
     final keepKeyword =
         _globalQuery.isNotEmpty &&
@@ -115,16 +111,17 @@ class _SupplierPickerSheetState extends ConsumerState<_SupplierPickerSheet> {
     _reloadCategory();
   }
 
-  void _onKeywordChanged(String v) {
-    _debounce?.cancel();
+  /// 用户继续输入时立即让正在飞行的旧请求失效（UtenSearchBar 的 300ms 防抖期间
+  /// 旧结果不回写）；防抖到期后由 [_onKeywordChanged] 发起替换请求。
+  void _onKeywordInputChanged(String v) {
     _requestVersion++;
-    final query = v.trim();
     _globalItemsQuery = null;
     _globalItems = const [];
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-      _applyGlobalSearch(query);
-    });
+  }
+
+  void _onKeywordChanged(String v) {
+    if (!mounted) return;
+    _applyGlobalSearch(v.trim());
   }
 
   Future<void> _applyGlobalSearch(String query) async {
@@ -442,15 +439,10 @@ class _SupplierPickerSheetState extends ConsumerState<_SupplierPickerSheet> {
         context.breakpoint.isCompact ? 8 : 16,
         8,
       ),
-      child: TextField(
+      child: UtenSearchBar(
         controller: _keywordCtl,
-        decoration: InputDecoration(
-          prefixIcon: const Icon(Icons.search_rounded, size: 20),
-          prefixIconConstraints: const BoxConstraints(minWidth: 36),
-          hintText: '搜索分类/供应商',
-          isDense: true,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+        hint: '搜索分类/供应商',
+        onInputChanged: _onKeywordInputChanged,
         onChanged: _onKeywordChanged,
       ),
     );

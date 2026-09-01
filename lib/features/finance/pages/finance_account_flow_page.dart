@@ -1,6 +1,6 @@
 // 账户流水页 (S/Q/R)（finance_report:view）。
 //
-// 单独卡：报表类型 chip：
+// 单独卡：报表类型分段（UtenFilterToolbar）：
 //   · 帐户进出流水 (S)   → /finance/reports/account/statement?accountId&dateFrom&dateTo&keyword（滚动余额）
 //   · 银行存取明细 (Q)   → /finance/reports/bank/detail（M_Bank 老库 0 行，空表保结构）
 //   · 银行存取汇总 (R)   → /finance/reports/bank/summary（空表）
@@ -19,6 +19,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -285,26 +286,18 @@ class _FinanceAccountFlowPageState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _filterLabel('报表类型'),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                ChoiceChip(
-                  label: const Text('帐户进出流水'),
-                  selected: _view == _FlowView.statement,
-                  onSelected: (_) => _changeView(_FlowView.statement),
-                ),
-                ChoiceChip(
-                  label: const Text('银行存取明细'),
-                  selected: _view == _FlowView.bankDetail,
-                  onSelected: (_) => _changeView(_FlowView.bankDetail),
-                ),
-                ChoiceChip(
-                  label: const Text('银行存取汇总'),
-                  selected: _view == _FlowView.bankSummary,
-                  onSelected: (_) => _changeView(_FlowView.bankSummary),
+            // 全平台统一筛选工具条：报表类型分段（纯分类无搜索）。
+            UtenFilterToolbar<_FlowView>(
+              segments: const [
+                UtenFilterSegment(value: _FlowView.statement, label: '帐户进出流水'),
+                UtenFilterSegment(value: _FlowView.bankDetail, label: '银行存取明细'),
+                UtenFilterSegment(
+                  value: _FlowView.bankSummary,
+                  label: '银行存取汇总',
                 ),
               ],
+              selected: _view,
+              onSelectionChanged: _changeView,
             ),
             if (_view == _FlowView.statement) ...[
               const SizedBox(height: UtenSpacing.s12),

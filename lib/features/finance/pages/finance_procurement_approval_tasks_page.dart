@@ -8,9 +8,9 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -506,93 +506,57 @@ class _FinanceProcurementApprovalTasksPageState
   }
 
   Widget _buildToolbar(FinanceProcurementApprovalPage result) {
-    final selected = _orderType == null
-        ? 'all'
-        : _orderType == FinanceProcurementOrderType.purchase
-        ? 'purchase'
-        : 'subcontract';
-    final segments = SegmentedButton<String>(
-      key: const Key('finance-approval-type-segments'),
-      segments: [
-        ButtonSegment(
-          value: 'all',
-          label: Text(_typeLabel('全部待审', _typeCount(null))),
-        ),
-        ButtonSegment(
-          value: 'purchase',
-          label: Text(
-            _typeLabel(
-              '采购订货',
-              _typeCount(FinanceProcurementOrderType.purchase),
-            ),
-          ),
-        ),
-        ButtonSegment(
-          value: 'subcontract',
-          label: Text(
-            _typeLabel(
-              '委外订货',
-              _typeCount(FinanceProcurementOrderType.subcontract),
-            ),
-          ),
-        ),
-      ],
-      selected: {selected},
-      onSelectionChanged: (selection) {
-        _selectType(switch (selection.first) {
-          'purchase' => FinanceProcurementOrderType.purchase,
-          'subcontract' => FinanceProcurementOrderType.subcontract,
-          _ => null,
-        });
-      },
-    );
-    final search = UtenSearchBar(
-      key: const Key('finance-approval-search'),
-      initialValue: _keyword,
-      hint: '搜索订货单号 / 供应商 / 提交人',
-      onInputChanged: (_) => _requestVersion++,
-      onChanged: _applyKeyword,
-    );
+    // 全平台统一筛选工具条：分段(红圆计数徽章，计数取后端全量口径) + 胶囊搜索框。
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            if (constraints.maxWidth < 840) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: segments,
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  search,
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '单击选择，双击或长按查看订货详情',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              );
-            }
-            return Row(
-              children: [
-                segments,
-                const SizedBox(width: UtenSpacing.s12),
-                SizedBox(width: 360, child: search),
-                const Spacer(),
-                Text(
-                  '共 ${result.total} 笔 · 单击选择，双击或长按详情',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+        UtenFilterToolbar<String>(
+          segmentsKey: const Key('finance-approval-type-segments'),
+          searchKey: const Key('finance-approval-search'),
+          segments: [
+            UtenFilterSegment(
+              value: 'all',
+              label: '全部待审',
+              count: _typeCount(null),
+            ),
+            UtenFilterSegment(
+              value: 'purchase',
+              label: '采购订货',
+              count: _typeCount(FinanceProcurementOrderType.purchase),
+            ),
+            UtenFilterSegment(
+              value: 'subcontract',
+              label: '委外订货',
+              count: _typeCount(FinanceProcurementOrderType.subcontract),
+            ),
+          ],
+          selected: _orderType == null
+              ? 'all'
+              : _orderType == FinanceProcurementOrderType.purchase
+              ? 'purchase'
+              : 'subcontract',
+          onSelectionChanged: (value) => _selectType(switch (value) {
+            'purchase' => FinanceProcurementOrderType.purchase,
+            'subcontract' => FinanceProcurementOrderType.subcontract,
+            _ => null,
+          }),
+          searchHint: '搜索订货单号 / 供应商 / 提交人',
+          initialSearchValue: _keyword,
+          onSearchInputChanged: (_) => _requestVersion++,
+          onSearchChanged: _applyKeyword,
+          trailing: Builder(
+            builder: (context) {
+              final compact = MediaQuery.sizeOf(context).width < 840;
+              return Text(
+                compact
+                    ? '单击选择，双击或长按查看订货详情'
+                    : '共 ${result.total} 笔 · 单击选择，双击或长按详情',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
         const SizedBox(height: UtenSpacing.s8),
         Row(
@@ -615,9 +579,6 @@ class _FinanceProcurementApprovalTasksPageState
       ],
     );
   }
-
-  String _typeLabel(String label, int? count) =>
-      count == null ? '$label —' : '$label $count';
 
   List<MasterColumnDef<FinanceProcurementApprovalTask>> get _columns => [
     MasterColumnDef(

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/responsive/dialog_size.dart';
@@ -95,8 +96,6 @@ class _MaterialReallocationDialogBody extends StatefulWidget {
 
 class _MaterialReallocationDialogBodyState
     extends State<_MaterialReallocationDialogBody> {
-  static const _searchDelay = Duration(milliseconds: 300);
-
   final _formKey = GlobalKey<FormState>();
   final _searchController = TextEditingController();
   final _qtyController = TextEditingController();
@@ -107,7 +106,6 @@ class _MaterialReallocationDialogBodyState
   late ProductionMaterialAnalysisMaterial _sourceMaterial;
   final List<MaterialCrossReallocationCandidate> _candidates = [];
   MaterialCrossReallocationCandidate? _target;
-  Timer? _searchDebounce;
   int _page = 0;
   int _totalPages = 0;
   int _loadEpoch = 0;
@@ -130,7 +128,6 @@ class _MaterialReallocationDialogBodyState
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
     _searchController.dispose();
     _qtyController.dispose();
     _reasonController.dispose();
@@ -225,11 +222,7 @@ class _MaterialReallocationDialogBodyState
   }
 
   void _onSearchChanged(String _) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(
-      _searchDelay,
-      () => unawaited(_loadCandidates(reset: true)),
-    );
+    unawaited(_loadCandidates(reset: true));
   }
 
   void _selectCandidate(String? identity) {
@@ -502,16 +495,15 @@ class _MaterialReallocationDialogBodyState
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          key: const Key('cross-reallocation-search'),
-          controller: _searchController,
-          enabled: !_submitting,
-          onChanged: _onSearchChanged,
-          textInputAction: TextInputAction.search,
-          decoration: const InputDecoration(
-            labelText: '搜索接受计划',
-            hintText: '订单号、来源号或产品名称',
-            prefixIcon: Icon(Icons.search_rounded),
+        IgnorePointer(
+          // 提交期间不接受新的关键词检索（原 TextField enabled: !_submitting 语义，
+          // UtenSearchBar 无 enabled 参数，用指针拦截保持等价）。
+          ignoring: _submitting,
+          child: UtenSearchBar(
+            key: const Key('cross-reallocation-search'),
+            controller: _searchController,
+            hint: '订单号、来源号或产品名称',
+            onChanged: _onSearchChanged,
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),

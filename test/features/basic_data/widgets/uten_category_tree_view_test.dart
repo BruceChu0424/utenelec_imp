@@ -14,17 +14,14 @@ void main() {
       ]),
     );
 
-    await tester.enterText(find.byKey(const Key('category-tree-search')), '办公');
+    await tester.enterText(_searchEditable(), '办公');
     await tester.pump();
 
     expect(find.text('办公费用(A100)'), findsOneWidget);
     expect(find.text('差旅费用(B200)'), findsNothing);
     expect(find.text('费用(EXP)'), findsOneWidget);
 
-    await tester.enterText(
-      find.byKey(const Key('category-tree-search')),
-      'b200',
-    );
+    await tester.enterText(_searchEditable(), 'b200');
     await tester.pump();
 
     expect(find.text('差旅费用(B200)'), findsOneWidget);
@@ -100,6 +97,12 @@ Widget _treeApp(
       ),
     ),
   ),
+);
+
+/// 树内搜索已换成 UtenSearchBar：searchFieldKey 在组件上，输入须定位其内部输入框。
+Finder _searchEditable() => find.descendant(
+  of: find.byKey(const Key('category-tree-search')),
+  matching: find.byType(EditableText),
 );
 
 PaymentStyleNode _node(

@@ -80,7 +80,6 @@ import '../../features/warehouse/models/stock_doc.dart';
 import '../../features/warehouse/config/warehouse_document_history_config.dart';
 import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
 import '../../features/warehouse/pages/procurement_return_task_pages.dart';
-import '../../features/warehouse/pages/procurement_inspection_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
@@ -94,6 +93,7 @@ import '../../features/warehouse/pages/warehouse_document_history_list_page.dart
 import '../../features/warehouse/pages/production_finished_arrival_registration_page.dart';
 import '../../features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import '../../features/quality/pages/quality_task_center_page.dart';
+import '../../features/quality/pages/quality_pending_disposal_page.dart';
 import '../../features/quality/pages/quality_inspection_records_page.dart';
 import '../../features/quality/pages/production_fqc_inspections_page.dart';
 import '../../features/quality/models/quality_inspection_record.dart';
@@ -807,7 +807,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.warehouseInspections,
             name: 'warehouse-inspections',
-            builder: (_, _) => const ProcurementInspectionPage(),
+            builder: (_, _) => const QualityPendingDisposalPage(),
           ),
           // 单张收货单的待检明细处置页（extra 携带任务卡快照；深链直达时页面自行反查）。
           GoRoute(

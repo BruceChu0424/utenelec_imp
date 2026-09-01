@@ -11,7 +11,7 @@ import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/dashboard/widgets/module_badge_sum.dart';
 import 'package:uten_imp/features/quality/pages/quality_task_center_page.dart';
-import 'package:uten_imp/features/warehouse/pages/procurement_inspection_page.dart';
+import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.dart';
 import 'package:uten_imp/features/warehouse/providers/procurement_inbound_count_providers.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -188,7 +188,7 @@ void main() {
       routes: [
         GoRoute(
           path: RouteName.warehouseInspections,
-          builder: (_, _) => const ProcurementInspectionPage(),
+          builder: (_, _) => const QualityPendingDisposalPage(),
         ),
         GoRoute(
           path: RouteName.qualityTaskCenter,
@@ -276,14 +276,20 @@ void main() {
   testWidgets('type segments filter the queue by receipt type', (tester) async {
     await _pumpTaskCenter(tester, _twoTypeDispositionRepository());
 
-    await tester.tap(find.text('委外回厂 1'));
+    // 分段文本与表头筛选桶同名（如「委外回厂」），点击须限定在分段导航内。
+    Finder segmentText(String text) => find.descendant(
+      of: find.byType(SegmentedButton<String>),
+      matching: find.text(text),
+    );
+
+    await tester.tap(segmentText('委外回厂'));
     await tester.pumpAndSettle();
 
     expect(find.text('CJ20260822000001'), findsNothing);
     expect(find.text('WT20260823000002'), findsOneWidget);
 
     // 点「全部待检单」回到全部。
-    await tester.tap(find.text('全部待检单 2'));
+    await tester.tap(segmentText('全部待检单'));
     await tester.pumpAndSettle();
 
     expect(find.text('CJ20260822000001'), findsOneWidget);
@@ -312,7 +318,7 @@ void main() {
       routes: [
         GoRoute(
           path: RouteName.warehouseInspections,
-          builder: (_, _) => const ProcurementInspectionPage(),
+          builder: (_, _) => const QualityPendingDisposalPage(),
         ),
         GoRoute(
           path: '${RouteName.warehouseInspections}/:receiptType/:receiptId',
@@ -480,7 +486,7 @@ void main() {
     'IQC PASS refreshes the warehouse stock-in queue and keeps truthful copy',
     () {
       final source = File(
-        'lib/features/warehouse/pages/procurement_inspection_workbench_page.dart',
+        'lib/features/quality/pages/quality_pending_disposal_page.dart',
       ).readAsStringSync();
 
       expect(
@@ -591,7 +597,7 @@ Future<void> _pumpTaskCenter(
         ..._taskCenterOverrides(repository),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
-      child: const MaterialApp(home: ProcurementInspectionPage()),
+      child: const MaterialApp(home: QualityPendingDisposalPage()),
     ),
   );
   await tester.pumpAndSettle();

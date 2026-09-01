@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/theme/uten_anim.dart';
@@ -173,15 +174,10 @@ class _ReportablePlanLineSheetState
               child: Row(
                 children: [
                   Expanded(
-                    child: TextField(
+                    child: UtenSearchBar(
                       controller: _search,
-                      textInputAction: TextInputAction.search,
+                      hint: '计划号 / 产品 / 订单号 / 客户',
                       onSubmitted: (_) => _load(),
-                      decoration: const InputDecoration(
-                        labelText: '搜索',
-                        hintText: '计划号 / 产品 / 订单号 / 客户',
-                        prefixIcon: Icon(Icons.search_rounded),
-                      ),
                     ),
                   ),
                   const SizedBox(width: UtenSpacing.s8),

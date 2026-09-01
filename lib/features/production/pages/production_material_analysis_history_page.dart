@@ -1,11 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -75,7 +74,6 @@ class _ProductionMaterialAnalysisHistoryPageState
   };
 
   final _search = TextEditingController();
-  Timer? _searchDebounce;
   PagedResult<MaterialAnalysisListItem>? _page;
   PagedResult<SubcontractPreparationTask>? _preparationPage;
   late String _workspace;
@@ -100,7 +98,6 @@ class _ProductionMaterialAnalysisHistoryPageState
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -147,16 +144,8 @@ class _ProductionMaterialAnalysisHistoryPageState
     }
   }
 
-  void _searchChanged(String _) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-      if (mounted) _load();
-    });
-  }
-
   void _switchWorkspace(String value) {
     if (value == _workspace || _loading) return;
-    _searchDebounce?.cancel();
     _search.clear();
     setState(() {
       _workspace = value;
@@ -428,15 +417,13 @@ class _ProductionMaterialAnalysisHistoryPageState
       children: [
         SizedBox(
           width: compact ? double.infinity : 320,
-          child: TextField(
+          child: UtenSearchBar(
             key: const Key('analysis-history-search'),
             controller: _search,
-            onChanged: _searchChanged,
+            hint: preparation ? '搜索委外订货单或目标件' : '搜索需求编号、销售单号或产品',
             onSubmitted: (_) => _load(),
-            decoration: InputDecoration(
-              labelText: preparation ? '搜索委外订货单或目标件' : '搜索需求编号、销售单号或产品',
-              prefixIcon: const Icon(Icons.search_rounded),
-            ),
+            // 服务端检索：防抖由 UtenSearchBar 内置（300ms），停止输入后再加载。
+            onChanged: (_) => _load(),
           ),
         ),
         SizedBox(

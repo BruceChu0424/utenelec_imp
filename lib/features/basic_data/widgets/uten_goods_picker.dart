@@ -9,11 +9,10 @@
 // 与旧 sales_goods_picker / goods_picker_dialog（居中搜索框）的区别：带分类树浏览、
 // 返回完整 GoodsListItem（含 colorId/unitId 及展示名称；legacy 字段仅供历史只读显示），供调用方
 // 自动回填颜色/单位。
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -311,7 +310,6 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
 class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   String? _selectedCategoryId;
   final _keywordCtl = TextEditingController();
-  Timer? _debounce;
   String _query = '';
   Set<String>? _visibleFilterIds;
   bool _showingGlobalResults = false;
@@ -341,12 +339,10 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   @override
   void dispose() {
     _keywordCtl.dispose();
-    _debounce?.cancel();
     super.dispose();
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
-    _debounce?.cancel();
     _requestVersion++;
     final categoryKeyword = _keywordForCategoryBranch(node.id);
     setState(() {
@@ -359,9 +355,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     _reloadCategory(keyword: categoryKeyword);
   }
 
-  void _onKeywordChanged(String v) {
-    _debounce?.cancel();
-    // 输入一变化就让飞行中的旧请求失效；否则旧结果可能在 300ms 防抖期间回写。
+  /// 输入一变化就让飞行中的旧请求失效（UtenSearchBar 的 300ms 防抖期间旧结果不
+  /// 回写），并同步更新左侧树的命中过滤；防抖到期后由 [_onKeywordChanged] 检索。
+  void _onKeywordInputChanged(String v) {
     _requestVersion++;
     final query = v.trim();
     setState(() {
@@ -376,17 +372,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       _globalResolution = null;
       if (query.isNotEmpty) _loading = true;
     });
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-      _applySearch(query);
-    });
   }
 
-  void _clearSearch() {
-    _debounce?.cancel();
-    _requestVersion++;
-    _keywordCtl.clear();
-    _applySearch('');
+  void _onKeywordChanged(String v) {
+    if (!mounted) return;
+    _applySearch(v.trim());
   }
 
   Future<void> _applySearch(String query) async {
@@ -727,25 +717,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         context.breakpoint.isCompact ? 8 : 16,
         8,
       ),
-      child: TextField(
+      child: UtenSearchBar(
         key: const Key('uten-goods-picker-search'),
         controller: _keywordCtl,
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          prefixIcon: const Icon(Icons.search_rounded, size: 20),
-          prefixIconConstraints: const BoxConstraints(minWidth: 36),
-          suffixIcon: _keywordCtl.text.isEmpty
-              ? null
-              : IconButton(
-                  key: const Key('uten-goods-picker-search-clear'),
-                  tooltip: '清除搜索',
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  onPressed: _clearSearch,
-                ),
-          hintText: '搜索分类/货品名称或编号',
-          isDense: true,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+        hint: '搜索分类/货品名称或编号',
+        onInputChanged: _onKeywordInputChanged,
         onChanged: _onKeywordChanged,
       ),
     );

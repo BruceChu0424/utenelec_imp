@@ -1,6 +1,6 @@
 // 委外报表页（委外管理，subcontract_report:view）：
 //
-// 3 张卡（明细/汇总/出入状况）共用本页，由 [kind] 区分；明细/汇总卡内用 ChoiceChip 切 4 类单据
+// 3 张卡（明细/汇总/出入状况）共用本页，由 [kind] 区分；明细/汇总卡内用 UtenFilterToolbar 分段切 4 类单据
 // （进仓/退货/材料出/材料退）。出入状况表为综合报表（无单据类型切换）。
 // 布局镜像销售报表（sales_report_page.dart）。
 //
@@ -26,6 +26,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -327,17 +328,14 @@ class _SubcontractReportTablePageState
           // 明细/汇总卡内切单据类型；出入状况表无此切换。
           if (!_kind.isInOut) ...[
             _filterLabel('单据类型'),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
+            // 全平台统一筛选工具条：单据类型分段（纯分类无搜索）。
+            UtenFilterToolbar<SubcontractReportDocType>(
+              segments: [
                 for (final t in SubcontractReportDocType.values)
-                  ChoiceChip(
-                    label: Text(t.label),
-                    selected: t == _docType,
-                    onSelected: (_) => _changeDocType(t),
-                  ),
+                  UtenFilterSegment(value: t, label: t.label),
               ],
+              selected: _docType,
+              onSelectionChanged: _changeDocType,
             ),
             const SizedBox(height: UtenSpacing.s12),
           ],

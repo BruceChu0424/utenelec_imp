@@ -1,10 +1,9 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -71,10 +70,8 @@ class _WhereUsedMaterialPicker extends StatefulWidget {
 
 class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
   static const _pageSize = 50;
-  static const _debounceDuration = Duration(milliseconds: 250);
 
   final _keywordController = TextEditingController();
-  Timer? _debounce;
   _MaterialPage? _result;
   String _keyword = '';
   String? _error;
@@ -84,14 +81,14 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _keywordController.dispose();
     super.dispose();
   }
 
-  void _onKeywordChanged(String value) {
-    _debounce?.cancel();
-    final generation = ++_requestGeneration;
+  /// 每次键入同步复位状态并作废在途请求（防抖窗口内旧结果不回写）；
+  /// 真正的检索由 UtenSearchBar 内置 300ms 防抖回调（_onKeywordDebounced）发起。
+  void _onInputChanged(String value) {
+    ++_requestGeneration;
     final hasKeyword = value.trim().isNotEmpty;
     setState(() {
       _keyword = value;
@@ -100,12 +97,17 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
       _error = null;
       _loading = hasKeyword;
     });
-    if (!hasKeyword) return;
-    _debounce = Timer(_debounceDuration, () => _load(generation: generation));
+  }
+
+  void _onKeywordDebounced(String value) {
+    if (value.trim().isEmpty) {
+      _resetToSearchPrompt();
+      return;
+    }
+    _reload();
   }
 
   void _submitKeyword() {
-    _debounce?.cancel();
     _page = 1;
     if (_keyword.trim().isEmpty) {
       _resetToSearchPrompt();
@@ -116,11 +118,10 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
 
   void _clearKeyword() {
     _keywordController.clear();
-    _onKeywordChanged('');
+    _onInputChanged('');
   }
 
   void _reload() {
-    _debounce?.cancel();
     if (_keyword.trim().isEmpty) {
       _resetToSearchPrompt();
       return;
@@ -195,30 +196,14 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
               UtenSpacing.s16,
               UtenSpacing.s8,
             ),
-            child: TextField(
+            child: UtenSearchBar(
               key: const Key('where-used-material-search'),
               controller: _keywordController,
               autofocus: widget.autofocus,
-              textInputAction: TextInputAction.search,
-              onChanged: _onKeywordChanged,
+              hint: '编号 / 名称 / 型号 / 规格等',
+              onInputChanged: _onInputChanged,
+              onChanged: _onKeywordDebounced,
               onSubmitted: (_) => _submitKeyword(),
-              decoration: InputDecoration(
-                labelText: '搜索物料',
-                hintText: '编号 / 名称 / 型号 / 规格等',
-                helper: const UtenFieldMessage.helper(
-                  '搜索全部匹配货品，并标注当前直接 BOM、生产及委外证据',
-                ),
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _keyword.isEmpty
-                    ? null
-                    : IconButton(
-                        key: const Key('where-used-material-clear'),
-                        tooltip: '清除搜索',
-                        onPressed: _clearKeyword,
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                border: const OutlineInputBorder(),
-              ),
             ),
           ),
           if (_loading) const LinearProgressIndicator(minHeight: 2),

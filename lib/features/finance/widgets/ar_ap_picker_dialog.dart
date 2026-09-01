@@ -9,11 +9,10 @@
 //
 // 输入：direction（AR=客户应收 / AP=供应商应付）+ partyId（客户/供应商）。
 // 拉该往来方未清台账（settled=false）。
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -131,7 +130,6 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
 
   final _keywordCtl = TextEditingController();
   String _keyword = '';
-  Timer? _searchDebounce;
 
   /// 选中态 / 金额输入按台账行 id 持有：搜索过滤重建表格行时状态不丢。
   final Set<String> _selectedIds = {};
@@ -153,7 +151,6 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
   @override
   void dispose() {
     _keywordCtl.dispose();
-    _searchDebounce?.cancel();
     for (final c in _amtCtrls.values) {
       c.dispose();
     }
@@ -234,12 +231,10 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
     );
   }
 
-  void _onKeywordChanged(String v) {
+  /// 每次键入先同步更新关键词（供空态判断），检索交给 UtenSearchBar
+  /// 内置 300ms 防抖回调发起。
+  void _onKeywordInput(String v) {
     _keyword = v;
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 320), () {
-      if (mounted) _load();
-    });
   }
 
   void _toggleRow(_LedgerRow row, bool v) {
@@ -529,17 +524,11 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
           ),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final search = TextField(
+              final search = UtenSearchBar(
                 controller: _keywordCtl,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                  hintText: _isAr ? '搜索应收单号、发运单号、销售订单号或客户' : '搜索应付单号、关联单号或供应商',
-                  isDense: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                onChanged: _onKeywordChanged,
+                hint: _isAr ? '搜索应收单号、发运单号、销售订单号或客户' : '搜索应付单号、关联单号或供应商',
+                onInputChanged: _onKeywordInput,
+                onChanged: (_) => _load(),
               );
               final actions = Wrap(
                 spacing: UtenSpacing.s4,

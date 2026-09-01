@@ -143,6 +143,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.leadingGroups,
     this.selectable = false,
     this.idOf,
+    this.rowKeyOf,
     this.selectedIds = const <String>{},
     this.onSelectedIdsChanged,
   });
@@ -200,6 +201,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// item 引用相等（列表每次 build 重建对象；_BomRow / InstantInventoryRow 无 id 都会踩坑）。
   /// 无 id 的行传复合键，如 `(r) => '${r.goodsId}|${r.colorId}'`。
   final String? Function(T)? idOf;
+
+  /// 行→稳定键提取器，只影响 RepaintBoundary 的行 key（数据刷新时行复用），
+  /// 不参与勾选。混合队列里「部分行可勾选」时 idOf 对不可勾选行须返回 null
+  ///（勾选门控与 idOf 同源），此时用本参数给这些行保留稳定键，避免全部回落
+  /// 到下标键（筛选/刷新后 Selectable 复用性变差）。缺省沿用 idOf，行为不变。
+  final String? Function(T)? rowKeyOf;
 
   /// 多选选中集合（调用方拥有，单一真值源）。组件只读它判定勾选/高亮、只通过
   /// [onSelectedIdsChanged] 把"新集合"回交调用方，从不自行清空——故跨页天然保留。
@@ -1183,9 +1190,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                           return const SizedBox.shrink();
                         }
                         // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
-                        // 稳定 key：有业务 id 用 id（数据刷新时 Selectable 复用而非重建，
-                        // 降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
-                        final idKey = widget.idOf?.call(item);
+                        // 稳定 key：rowKeyOf 优先，缺省回落 idOf（数据刷新时 Selectable
+                        // 复用而非重建，降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
+                        final idKey =
+                            widget.rowKeyOf?.call(item) ??
+                            widget.idOf?.call(item);
                         final rowWidget = RepaintBoundary(
                           key: (idKey != null && idKey.isNotEmpty)
                               ? ValueKey('row:$idKey')

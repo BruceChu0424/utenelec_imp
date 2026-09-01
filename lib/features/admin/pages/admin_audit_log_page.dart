@@ -1891,6 +1891,8 @@ class _AuditViewModeSwitch extends StatelessWidget {
             label: sessionMode ? '当前按登录会话查看' : '当前按事件明细查看',
             child: SegmentedButton<bool>(
               key: const ValueKey('audit-view-mode'),
+              // 统一分段范式：选中只变背景色不出 ✓。
+              showSelectedIcon: false,
               segments: [
                 ButtonSegment<bool>(
                   value: true,

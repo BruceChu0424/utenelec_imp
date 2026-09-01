@@ -246,10 +246,14 @@ List<String>? requiredAnyPermFor(String location) {
       routePath.startsWith('${RouteName.warehouseSalesOutbound}/')) {
     return const [Perm.salesShipmentWarehouseWork];
   }
-  // 待检处置任务中心 + 单据处置页：同查看权限（处置动作由页面内 handle 权限把关）。
+  // 待检处置任务中心 + 单据处置页：IQC 或 FQC 任一查看权限即可进入
+  //（2026-09-01 FQC 并入待检处置；处置/决定动作仍由页面内各自动作权限把关）。
   if (location == RouteName.warehouseInspections ||
       location.startsWith('${RouteName.warehouseInspections}/')) {
-    return const [Perm.procurementInspectionView];
+    return const [
+      Perm.procurementInspectionView,
+      Perm.productionQualityInspectionView,
+    ];
   }
   // 品质任务中心：与待检处置同权限（查看检验任务）。
   if (location == RouteName.qualityTaskCenter) {

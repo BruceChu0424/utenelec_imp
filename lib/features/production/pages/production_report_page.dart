@@ -1,7 +1,7 @@
 // 生产报表页（生产管理 · production_report:view）：
 //
 // 2 张卡（明细/汇总）共用本页，由 [ProductionReportKind] 区分。生产计划只有一种单据
-// （不像销售 4 类），左栏用"状态"ChoiceChip（全部/已审/草稿/红冲）代替销售的单据类型。
+// （不像销售 4 类），左栏用"状态"UtenFilterToolbar 分段（全部/已审/草稿/红冲）代替销售的单据类型。
 //
 // 后端 GET /api/production/reports/plan/{detail|summary} 返回 ReportTableResponse：
 //   { columns:[{key,label,type,width}], rows:[{...显示就绪}], facets:{colKey:[{value,label,count}]},
@@ -26,6 +26,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -293,22 +294,16 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _filterLabel('单据状态'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
-              for (final s in const [
-                ['全部', null],
-                ['已审', 1],
-                ['草稿', 0],
-                ['红冲', -1],
-              ])
-                ChoiceChip(
-                  label: Text(s[0] as String),
-                  selected: _status == s[1],
-                  onSelected: (_) => _changeStatus(s[1] as int?),
-                ),
+          // 全平台统一筛选工具条：单据状态分段（纯分类无搜索）。
+          UtenFilterToolbar<int?>(
+            segments: const [
+              UtenFilterSegment<int?>(value: null, label: '全部'),
+              UtenFilterSegment<int?>(value: 1, label: '已审'),
+              UtenFilterSegment<int?>(value: 0, label: '草稿'),
+              UtenFilterSegment<int?>(value: -1, label: '红冲'),
             ],
+            selected: _status,
+            onSelectionChanged: _changeStatus,
           ),
           const SizedBox(height: UtenSpacing.s12),
           _filterLabel('日期范围'),

@@ -5,9 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -184,83 +184,35 @@ class _WarehouseIqcStockInPageState
   }
 
   Widget _toolbar(PagedResult<WarehouseIqcStockInTaskSummary> result) {
-    final search = UtenSearchBar(
-      key: const Key('warehouse-iqc-stock-in-search'),
-      hint: '搜索收货单 / 供应商 / 仓库 / 货品',
-      initialValue: _keyword,
-      onInputChanged: (_) => _requestVersion++,
-      onChanged: _applySearch,
-    );
-    final filters = Semantics(
-      container: true,
-      label: 'IQC 待入库来源类型筛选',
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        children: [
-          ChoiceChip(
-            key: const Key('warehouse-iqc-stock-in-type-all'),
-            label: const Text('全部来源'),
-            selected: _receiptType == null,
-            showCheckmark: false,
-            onSelected: (_) {
-              setState(() => _receiptType = null);
-              _load(1);
-            },
+    // 全平台统一筛选工具条：来源类型分段 + 胶囊搜索框。分段键沿用原 Chip 键
+    // 前缀 warehouse-iqc-stock-in-type（原为每个 Chip 一个键，现为整组）。
+    return UtenFilterToolbar<WarehouseIqcStockInReceiptType?>(
+      segmentsKey: const Key('warehouse-iqc-stock-in-type'),
+      searchKey: const Key('warehouse-iqc-stock-in-search'),
+      segments: [
+        const UtenFilterSegment(value: null, label: '全部来源'),
+        for (final type in WarehouseIqcStockInReceiptType.values)
+          UtenFilterSegment(value: type, label: type.label),
+      ],
+      selected: _receiptType,
+      onSelectionChanged: (value) {
+        setState(() => _receiptType = value);
+        _load(1);
+      },
+      searchHint: '搜索收货单 / 供应商 / 仓库 / 货品',
+      initialSearchValue: _keyword,
+      onSearchInputChanged: (_) => _requestVersion++,
+      onSearchChanged: _applySearch,
+      trailing: Semantics(
+        liveRegion: true,
+        label: '共 ${result.total} 张 IQC 合格待入库任务',
+        child: Text(
+          '共 ${result.total} 张 · 点击核对实物',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          for (final type in WarehouseIqcStockInReceiptType.values)
-            ChoiceChip(
-              key: Key('warehouse-iqc-stock-in-type-${type.apiValue}'),
-              label: Text(type.label),
-              selected: _receiptType == type,
-              showCheckmark: false,
-              onSelected: (_) {
-                setState(() => _receiptType = type);
-                _load(1);
-              },
-            ),
-        ],
-      ),
-    );
-    final summary = Semantics(
-      liveRegion: true,
-      label: '共 ${result.total} 张 IQC 合格待入库任务',
-      child: Text(
-        '共 ${result.total} 张 · 点击核对实物',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
-    );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 760) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              search,
-              const SizedBox(height: UtenSpacing.s8),
-              filters,
-              const SizedBox(height: UtenSpacing.s8),
-              Align(alignment: Alignment.centerRight, child: summary),
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                SizedBox(width: 420, child: search),
-                const Spacer(),
-                summary,
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            filters,
-          ],
-        );
-      },
     );
   }
 

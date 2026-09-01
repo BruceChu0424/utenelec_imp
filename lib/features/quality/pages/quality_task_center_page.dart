@@ -1,7 +1,9 @@
 // 品质管理部任务中心（hub）—— 品质侧任务统一入口。
 //
-// 首张卡「待检处置」：采购/委外收货单的 IQC 检验任务（角标=待检收货单张数，
-// 60s 轮询），点击进待检处置工作台；无 procurement_inspection:view 不显示该卡。
+// 2026-09-01 合并：首张卡「待检处置」同时收 IQC（采购/委外收货）与 FQC（自制
+// 产成品）——原「生产成品质检」独立卡取消，FQC 任务成为待检处置页内「自制产成品」
+// 分段。角标 = IQC 待检收货单张数 + FQC 待检任务数（红色圆数字徽章，与工作台
+// 品质卡同口径）；持有任一查看权限即显示该卡。
 // 待检处置已从仓库「预计到货任务中心」移交品质部——品质只登记质量结论；
 // 合格切片进入仓库「IQC 合格待入库」，仓库确认实物和库位后才增加库存。
 import 'package:flutter/material.dart';
@@ -10,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
@@ -19,10 +22,8 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../warehouse/providers/procurement_inbound_count_providers.dart';
-import '../../warehouse/widgets/procurement_inspection_pending_badge.dart';
 import '../../../shared/providers/production_fqc_pending_count_provider.dart';
-import '../widgets/production_fqc_pending_badge.dart';
+import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 
 class QualityTaskCenterPage extends ConsumerWidget {
   const QualityTaskCenterPage({super.key});
@@ -43,21 +44,13 @@ class QualityTaskCenterPage extends ConsumerWidget {
         superAdmin ||
         permissions.contains(Perm.productionQualityInspectionView);
     final taskEntries = <_QualityEntry>[
-      if (canViewInspection)
+      if (canViewInspection || canViewFqc)
         const _QualityEntry(
           icon: Icons.fact_check_outlined,
           label: '待检处置',
-          description: '采购/委外收货 IQC；合格后转仓库确认入库，不直接增加库存。',
+          description: '采购/委外收货 IQC 与自制产成品 FQC；合格后转仓库确认入库。',
           location: RouteName.warehouseInspections,
-          badge: ProcurementInspectionPendingBadge(showLabel: true),
-        ),
-      if (canViewFqc)
-        const _QualityEntry(
-          icon: Icons.rule_folder_outlined,
-          label: '生产成品质检',
-          description: '仓库完成送检登记后判定合格、部分合格或不合格。',
-          location: RouteName.productionFqcInspections,
-          badge: ProductionFqcPendingBadge(showLabel: true),
+          badge: _QualityDisposalPendingBadge(showLabel: true),
         ),
     ];
     final recordEntries = <_QualityEntry>[
@@ -186,4 +179,41 @@ class _QualityEntry {
   final String description;
   final String location;
   final Widget? badge;
+}
+
+/// 待检处置合并角标：IQC 待检收货单张数 + FQC 待检任务数（红色圆数字徽章）。
+///
+/// 与工作台「品质任务中心」卡角标同口径：任一来源失败显示可辨识的异常图标、
+/// 任一来源仍在加载时不展示半程合计——不把「未知」伪装成真实 0。
+/// 逻辑与 dashboard/widgets/quality_inspection_pending_badge.dart 一致
+///（quality→dashboard 无依赖边，组件留各自副本）。
+class _QualityDisposalPendingBadge extends ConsumerWidget {
+  const _QualityDisposalPendingBadge({this.showLabel = false});
+
+  final bool showLabel;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final iqc = ref.watch(procurementInspectionPendingCountProvider);
+    final fqc = ref.watch(productionFqcPendingCountProvider);
+    if (iqc.hasError || fqc.hasError) {
+      return Tooltip(
+        message: '品质待检数量加载失败，请进入待检处置后重试',
+        child: Icon(
+          Icons.sync_problem_outlined,
+          key: const ValueKey('quality-disposal-badge-error'),
+          size: 20,
+          color: Theme.of(context).colorScheme.error,
+          semanticLabel: '品质待检数量加载失败，请进入待检处置后重试',
+        ),
+      );
+    }
+    if (iqc.isLoading || fqc.isLoading) {
+      return const SizedBox.shrink();
+    }
+    return UtenNotificationBadge(
+      count: (iqc.valueOrNull ?? 0) + (fqc.valueOrNull ?? 0),
+      showLabel: showLabel,
+    );
+  }
 }

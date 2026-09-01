@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/inputs/uten_employee_picker.dart';
+import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/responsive/breakpoint.dart';
@@ -246,15 +247,9 @@ class _SalesOrderPickerSheetState
               child: Column(
                 children: [
                   // 生产视角：仅按单据号搜索；不暴露客户。
-                  TextField(
+                  UtenSearchBar(
                     controller: _keywordCtl,
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                      hintText: '搜索单据号',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
+                    hint: '搜索单据号',
                     onChanged: _onKeyword,
                   ),
                   const SizedBox(height: UtenSpacing.s12),

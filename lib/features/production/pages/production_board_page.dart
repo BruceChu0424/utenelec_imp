@@ -6,8 +6,6 @@
 //
 // 进度 = 完工入库量 ÷ 排产量（成品入库审核后即时反映）。
 // 路由：/production/schedule → Tab0；/production/progress → Tab1（旧两页合并，Hub 两卡片进不同 Tab）。
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -137,7 +136,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   DateTime? _deliverTo; // 交货日期范围筛选（至）
   final _searchCtrl = TextEditingController();
   String _keyword = '';
-  Timer? _debounce;
   bool _hasLoaded = false;
 
   /// 表头值筛选（当前仅 status：紧急/正常）。
@@ -174,7 +172,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -517,26 +514,13 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                 children: [
                   SizedBox(
                     width: 240,
-                    child: TextField(
+                    child: UtenSearchBar(
                       controller: _searchCtrl,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                        hintText: '搜索订单号 / 客户 / 货品',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
+                      hint: '搜索订单号 / 客户 / 货品',
+                      // 服务端筛选：防抖由 UtenSearchBar 内置（300ms），停止输入后再发请求。
                       onChanged: (v) {
-                        // 服务端筛选：400ms 防抖，避免逐字打请求
-                        _debounce?.cancel();
-                        _debounce = Timer(
-                          const Duration(milliseconds: 400),
-                          () {
-                            _keyword = v;
-                            _reload();
-                          },
-                        );
+                        _keyword = v;
+                        _reload();
                       },
                     ),
                   ),
@@ -1065,7 +1049,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   String? _workshop; // null=全部车间
   DateTime? _from; // 开单日期范围（从）
   DateTime? _to; // 开单日期范围（至）
-  Timer? _debounce;
   final Set<String> _expanded = {};
   bool _hasLoaded = false;
 
@@ -1112,7 +1095,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -1324,21 +1306,13 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   Widget _searchField() {
-    return TextField(
+    return UtenSearchBar(
       controller: _searchCtrl,
-      decoration: InputDecoration(
-        isDense: true,
-        prefixIcon: const Icon(Icons.search_rounded, size: 20),
-        hintText: '搜索计划单号 / 车间',
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-      ),
+      hint: '搜索计划单号 / 车间',
+      // 服务端筛选：防抖由 UtenSearchBar 内置（300ms），停止输入后再发请求。
       onChanged: (v) {
-        // 服务端筛选：400ms 防抖，避免逐字打请求
-        _debounce?.cancel();
-        _debounce = Timer(const Duration(milliseconds: 400), () {
-          _keyword = v;
-          _reload();
-        });
+        _keyword = v;
+        _reload();
       },
     );
   }

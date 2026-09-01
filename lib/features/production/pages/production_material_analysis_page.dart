@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -91,8 +92,6 @@ class _ProductionMaterialAnalysisPageState
   final _manualSourceRef = TextEditingController();
   final _manualQty = TextEditingController(text: '1');
   final _manualReason = TextEditingController();
-  Timer? _searchDebounce;
-  Timer? _bomSearchDebounce;
   Timer? _analysisPollTimer;
   bool _silentAnalysisReloadInFlight = false;
   GoodsListItem? _manualGoods;
@@ -388,8 +387,6 @@ class _ProductionMaterialAnalysisPageState
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
-    _bomSearchDebounce?.cancel();
     _analysisPollTimer?.cancel();
     _candidateSearch.dispose();
     _bomSearch.dispose();
@@ -490,13 +487,10 @@ class _ProductionMaterialAnalysisPageState
     }
   }
 
+  /// 候选搜索：防抖由 UtenSearchBar 内置（300ms），停止输入后再检索。
   void _searchCandidates(String value) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
-      _candidateKeyword = value.trim();
-      _loadCandidates(page: 1);
-    });
+    _candidateKeyword = value.trim();
+    _loadCandidates(page: 1);
   }
 
   bool _candidateSelected(MaterialAnalysisSalesCandidateLine line) =>
@@ -4162,13 +4156,10 @@ class _ProductionMaterialAnalysisPageState
     children: [
       SizedBox(
         width: context.breakpoint.isCompact ? double.infinity : 320,
-        child: TextField(
+        child: UtenSearchBar(
           controller: _candidateSearch,
+          hint: '搜索销售单号或货品',
           onChanged: _searchCandidates,
-          decoration: const InputDecoration(
-            labelText: '搜索销售单号或货品',
-            prefixIcon: Icon(Icons.search_rounded),
-          ),
         ),
       ),
       SizedBox(width: 260, child: _warehouseField()),
@@ -4739,32 +4730,11 @@ class _ProductionMaterialAnalysisPageState
             children: [
               SizedBox(
                 width: 300,
-                child: TextField(
+                child: UtenSearchBar(
                   key: const Key('material-bom-search'),
                   controller: _bomSearch,
-                  onChanged: _scheduleBomSearch,
-                  decoration: InputDecoration(
-                    labelText: '查找产品或物料',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: _bomKeyword.isEmpty
-                        ? null
-                        : IconButton(
-                            constraints: const BoxConstraints(
-                              minWidth: 48,
-                              minHeight: 48,
-                            ),
-                            tooltip: '清除查找',
-                            onPressed: () {
-                              _bomSearchDebounce?.cancel();
-                              setState(() {
-                                _bomSearch.clear();
-                                _bomKeyword = '';
-                                _bomProductVisibleLimit = _bomProductPageSize;
-                              });
-                            },
-                            icon: const Icon(Icons.clear_rounded),
-                          ),
-                  ),
+                  hint: '查找产品或物料',
+                  onChanged: _bomSearchChanged,
                 ),
               ),
               for (final mode in _BomViewMode.values)
@@ -4889,16 +4859,14 @@ class _ProductionMaterialAnalysisPageState
     );
   }
 
-  void _scheduleBomSearch(String value) {
-    _bomSearchDebounce?.cancel();
-    _bomSearchDebounce = Timer(const Duration(milliseconds: 250), () {
-      if (!mounted) return;
-      final keyword = value.trim().toLowerCase();
-      if (keyword == _bomKeyword) return;
-      setState(() {
-        _bomKeyword = keyword;
-        _bomProductVisibleLimit = _bomProductPageSize;
-      });
+  /// BOM 查找：防抖与清除按钮由 UtenSearchBar 内置；关键词变化才重算可见层。
+  ///（清除时本回调同样收到空串，与原手写清除按钮行为一致：清词 + 可见层归位。）
+  void _bomSearchChanged(String value) {
+    final keyword = value.trim().toLowerCase();
+    if (keyword == _bomKeyword) return;
+    setState(() {
+      _bomKeyword = keyword;
+      _bomProductVisibleLimit = _bomProductPageSize;
     });
   }
 

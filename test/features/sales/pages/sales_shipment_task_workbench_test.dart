@@ -5,8 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_shipment_audit_page.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.dart';
+import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
   testWidgets('finance task page defaults to pending and uses desktop table', (
@@ -38,33 +41,40 @@ void main() {
   testWidgets(
     'warehouse task page stays usable at 375px and filters work status',
     (tester) async {
-      final api = _ShipmentTaskApi(financeAudit: 1);
-      await _pump(
-        tester,
-        page: const WarehouseSalesOutboundPage(),
-        permission: Perm.salesShipmentWarehouseWork,
-        api: api,
-        size: const Size(375, 812),
+      // 页面已改走 /warehouse/sales-outbound 投影网关（不再查 /sales/shipments），
+      // 状态筛选也从 ChoiceChip 行换成统一筛选工具条分段。
+      final gateway = _OutboundGateway();
+      await tester.binding.setSurfaceSize(const Size(375, 812));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
+          ],
+          child: const MaterialApp(home: WarehouseSalesOutboundPage()),
+        ),
       );
+      await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('warehouse-sales-outbound-compact-list')),
+        find.byKey(const Key('warehouse-sales-outbound-table')),
         findsOneWidget,
       );
-      expect(find.text('查看详情'), findsOneWidget);
-      expect(api.shipmentQueries.first['financeAudit'], 1);
-      expect(api.shipmentQueries.first['status'], kSalesStatusDraft);
+      expect(find.text('SO-OUT-001'), findsOneWidget);
       expect(
-        api.shipmentQueries.first['warehouseWorkStatus'],
+        gateway.workStatuses.first,
         SalesWarehouseWorkStatus.pendingPick,
       );
 
-      await tester.tap(find.widgetWithText(ChoiceChip, '拣货中'));
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('warehouse-sales-outbound-status')),
+          matching: find.text('拣货中'),
+        ),
+      );
       await tester.pumpAndSettle();
 
-      expect(api.shipmentQueries.last['financeAudit'], 1);
-      expect(api.shipmentQueries.last['status'], kSalesStatusDraft);
-      expect(api.shipmentQueries.last['warehouseWorkStatus'], 'PICKING');
+      expect(gateway.workStatuses.last, 'PICKING');
       expect(tester.takeException(), isNull);
     },
   );
@@ -138,16 +148,52 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+class _OutboundGateway implements WarehouseSalesOutboundGateway {
+  final List<String?> workStatuses = <String?>[];
+
+  @override
+  Future<PagedResult<WarehouseSalesOutboundSummary>> list({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    String? warehouseWorkStatus,
+  }) async {
+    workStatuses.add(warehouseWorkStatus);
+    return PagedResult(
+      items: [
+        WarehouseSalesOutboundSummary.fromJson(const <String, dynamic>{
+          'id': 'shipment-1',
+          'billNo': 'SO-OUT-001',
+          'billDate': '2026-08-31',
+          'clientName': '客户甲',
+          'warehouseName': '一号仓',
+          'warehouseWorkStatus': 'PENDING_PICK',
+        }),
+      ],
+      page: page,
+      size: size,
+      total: 1,
+      totalPages: 1,
+    );
+  }
+
+  @override
+  Future<WarehouseSalesOutboundDetail> detail(String id) =>
+      throw UnimplementedError();
+
+  @override
+  Future<WarehouseSalesOutboundDetail> transition(
+    String id, {
+    required String targetStatus,
+    String? reason,
+  }) => throw UnimplementedError();
+}
+
 class _ShipmentTaskApi extends ApiClient {
-  _ShipmentTaskApi({
-    this.fail = false,
-    this.empty = false,
-    this.financeAudit = 0,
-  }) : super(Dio());
+  _ShipmentTaskApi({this.fail = false, this.empty = false}) : super(Dio());
 
   final bool fail;
   final bool empty;
-  final int financeAudit;
   final List<Map<String, dynamic>> shipmentQueries = [];
 
   @override
@@ -171,7 +217,7 @@ class _ShipmentTaskApi extends ApiClient {
                 'currencyId': 'currency-1',
                 'totalOriginal': 100,
                 'status': 0,
-                'financeAudit': financeAudit,
+                'financeAudit': 0,
                 'warehouseWorkStatus': 'PENDING_PICK',
               },
             ],

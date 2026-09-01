@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'uten_colors.dart';
+import 'uten_tokens.dart';
 
 ThemeData buildLightTheme() {
   // 浅色模式交互主色：统一使用深色模式下的 teal（青绿）系绿
@@ -226,7 +227,7 @@ ThemeData buildLightTheme() {
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
         textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
@@ -240,7 +241,7 @@ ThemeData buildLightTheme() {
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
         textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
@@ -252,7 +253,7 @@ ThemeData buildLightTheme() {
         overlayColor: UtenColors.teal600,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
         side: const BorderSide(color: UtenColors.borderStrong),
         textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
@@ -263,7 +264,7 @@ ThemeData buildLightTheme() {
         overlayColor: UtenColors.teal600,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         minimumSize: const Size(0, 40),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
         textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
@@ -271,7 +272,7 @@ ThemeData buildLightTheme() {
       style: IconButton.styleFrom(
         foregroundColor: UtenColors.textSecondary,
         minimumSize: const Size(40, 40),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
       ),
     ),
 
@@ -280,27 +281,27 @@ ThemeData buildLightTheme() {
       filled: true,
       fillColor: UtenColors.surface,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         borderSide: const BorderSide(color: UtenColors.borderStrong),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         borderSide: const BorderSide(color: UtenColors.borderStrong),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         borderSide: const BorderSide(color: UtenColors.teal700, width: 2),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         borderSide: const BorderSide(color: UtenColors.errorText),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         borderSide: const BorderSide(color: UtenColors.errorText, width: 2),
       ),
       disabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         borderSide: const BorderSide(color: UtenColors.border),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -319,7 +320,7 @@ ThemeData buildLightTheme() {
       height: 64,
       indicatorColor: UtenColors.teal100,
       indicatorShape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
       ),
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
@@ -342,7 +343,7 @@ ThemeData buildLightTheme() {
       elevation: 0,
       indicatorColor: UtenColors.teal100,
       indicatorShape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
       ),
       selectedIconTheme: const IconThemeData(
         color: UtenColors.teal600,
@@ -373,7 +374,7 @@ ThemeData buildLightTheme() {
         color: UtenColors.textSecondary,
       ),
       side: const BorderSide(color: UtenColors.border),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     ),
 
@@ -425,7 +426,7 @@ ThemeData buildLightTheme() {
       foregroundColor: Colors.white,
       elevation: 2,
       highlightElevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
       extendedTextStyle: const TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w600,

@@ -1,8 +1,8 @@
 // 生产计划单列表页（生产管理 / production_plan:view）。
 //
 // 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
-// 过滤由本页自带的状态 ChoiceChip + 关键词搜索 + 日期范围承担（facets 传空，表头降级为纯标签）。
+// (Icon+label+(N)+新建) + 状态筛选(UtenFilterToolbar 分段+搜索) + MasterDataTableView。
+// 过滤由本页自带的状态分段工具条 + 关键词搜索承担（facets 传空，表头降级为纯标签）。
 // 「新建」进入计划前物料分析，按 production_material_analysis:create 权限显隐。
 //
 // 路径写死（待用户在 route_names.dart 加 RouteName.production* 后替换）。
@@ -12,13 +12,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -328,38 +328,37 @@ class _ProductionPlanListPageState
                   ),
                   // 多选批量操作条由 MasterDataTableView.batchActionsBuilder 统一渲染
                   // （常驻、未选灰色禁用，与货品资料等主档页一致），见 _planBatchActions。
-                  // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
+                  // 桌面：左筛选侧栏（统一筛选工具条）+ 右表格；手机：垂直堆叠
                   body: UtenListTwoPane(
+                    // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: UtenSpacing.s4,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: UtenSearchBar(
-                              hint: '搜索单据号',
-                              initialValue: _list.keyword,
-                              onChanged: (v) {
-                                _list.keyword = v;
-                                _reload(1);
-                              },
-                            ),
+                      child: UtenFilterToolbar<int?>(
+                        segments: const [
+                          UtenFilterSegment(value: null, label: '全部'),
+                          UtenFilterSegment(
+                            value: kProductionStatusDraft,
+                            label: '草稿',
                           ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              _statusChip('全部', null),
-                              _statusChip('草稿', kProductionStatusDraft),
-                              _statusChip('已审', kProductionStatusApproved),
-                              _statusChip('红冲', kProductionStatusReversed),
-                            ],
+                          UtenFilterSegment(
+                            value: kProductionStatusApproved,
+                            label: '已审',
+                          ),
+                          UtenFilterSegment(
+                            value: kProductionStatusReversed,
+                            label: '红冲',
                           ),
                         ],
+                        selected: _statusFilter,
+                        onSelectionChanged: _onStatus,
+                        searchHint: '搜索单据号',
+                        initialSearchValue: _list.keyword,
+                        onSearchChanged: (v) {
+                          _list.keyword = v;
+                          _reload(1);
+                        },
                       ),
                     ),
                     tablePane: MasterDataTableView<ProductionPlanListItem>(
@@ -406,12 +405,4 @@ class _ProductionPlanListPageState
     );
   }
 
-  Widget _statusChip(String label, int? value) {
-    final selected = _statusFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => _onStatus(value),
-    );
-  }
 }

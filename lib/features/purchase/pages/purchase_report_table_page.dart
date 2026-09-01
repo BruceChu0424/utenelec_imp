@@ -1,7 +1,7 @@
 // 采购报表页（采购管理，purchase_report:view）：
 //
 // 镜像销售报表（sales_report_page）。3 张卡共用本页，由 [kind] 区分：
-//   · 明细（detail）/ 汇总（summary）：卡内 ChoiceChip 切 4 类单据（申请/订货/收货/退货）
+//   · 明细（detail）/ 汇总（summary）：卡内 UtenFilterToolbar 分段切 4 类单据（申请/订货/收货/退货）
 //   · 催料（expediting）：**独立**，无单据类型切换，直接查 /expediting
 //
 // 后端 GET /api/purchase/reports/{docType}/{detail|summary} 或 /api/purchase/reports/expediting
@@ -26,6 +26,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -316,17 +317,14 @@ class _PurchaseReportTablePageState
           // 催料是独立报表，无单据类型切换；明细/汇总才显示。
           if (!_kind.isStandalone) ...[
             _filterLabel('单据类型'),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
+            // 全平台统一筛选工具条：单据类型分段（纯分类无搜索）。
+            UtenFilterToolbar<PurchaseReportDocType>(
+              segments: [
                 for (final t in PurchaseReportDocType.values)
-                  ChoiceChip(
-                    label: Text(t.label),
-                    selected: t == _docType,
-                    onSelected: (_) => _changeDocType(t),
-                  ),
+                  UtenFilterSegment(value: t, label: t.label),
               ],
+              selected: _docType,
+              onSelectionChanged: _changeDocType,
             ),
             const SizedBox(height: UtenSpacing.s12),
           ],

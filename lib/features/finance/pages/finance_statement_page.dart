@@ -1,6 +1,6 @@
 // 往来对帐单页 (I/J/K/L/X)（finance_report:view）。
 //
-// 单独卡：side 切换 应收(客户)/应付(供应商) + 选往来单位 + 报表类型 chip：
+// 单独卡：side 分段切换 应收(客户)/应付(供应商) + 选往来单位 + 报表类型分段：
 //   · 流水对帐 (I 单客户 / K 单供应商)   → /finance/reports/statement/flow?partyId&side
 //   · 明细对帐 (J 单客户 / L 单供应商)   → /finance/reports/statement/detail?partyId&side
 //   · 年度对帐 (X 客户/供应商，按月)      → /finance/reports/statement/annual?partyId&side&year
@@ -20,6 +20,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -329,64 +330,26 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _filterLabel('方向'),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                ChoiceChip(
-                  label: const Text('应收(客户)'),
-                  selected: _side == 'AR',
-                  onSelected: (_) {
-                    setState(() {
-                      _side = 'AR';
-                      _partyId = null;
-                      _page = 1;
-                      _data = null;
-                    });
-                    _persistPrefs();
-                    _loadParties();
-                    _load();
-                  },
-                ),
-                ChoiceChip(
-                  label: const Text('应付(供应商)'),
-                  selected: _side == 'AP',
-                  onSelected: (_) {
-                    setState(() {
-                      _side = 'AP';
-                      _partyId = null;
-                      _page = 1;
-                      _data = null;
-                    });
-                    _persistPrefs();
-                    _loadParties();
-                    _load();
-                  },
-                ),
+            // 全平台统一筛选工具条：应收/应付分段（纯分类无搜索）。
+            UtenFilterToolbar<String>(
+              segments: const [
+                UtenFilterSegment(value: 'AR', label: '应收(客户)'),
+                UtenFilterSegment(value: 'AP', label: '应付(供应商)'),
               ],
+              selected: _side,
+              onSelectionChanged: _changeSide,
             ),
             const SizedBox(height: UtenSpacing.s12),
             _filterLabel('报表类型'),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                ChoiceChip(
-                  label: const Text('流水对帐'),
-                  selected: _view == _StmtView.flow,
-                  onSelected: (_) => _changeView(_StmtView.flow),
-                ),
-                ChoiceChip(
-                  label: const Text('明细对帐'),
-                  selected: _view == _StmtView.detail,
-                  onSelected: (_) => _changeView(_StmtView.detail),
-                ),
-                ChoiceChip(
-                  label: const Text('年度对帐'),
-                  selected: _view == _StmtView.annual,
-                  onSelected: (_) => _changeView(_StmtView.annual),
-                ),
+            // 全平台统一筛选工具条：报表类型分段（纯分类无搜索）。
+            UtenFilterToolbar<_StmtView>(
+              segments: const [
+                UtenFilterSegment(value: _StmtView.flow, label: '流水对帐'),
+                UtenFilterSegment(value: _StmtView.detail, label: '明细对帐'),
+                UtenFilterSegment(value: _StmtView.annual, label: '年度对帐'),
               ],
+              selected: _view,
+              onSelectionChanged: _changeView,
             ),
             const SizedBox(height: UtenSpacing.s12),
             _filterLabel(_side == 'AR' ? '客户' : '供应商'),
@@ -525,6 +488,21 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       _data = null;
     });
     _persistPrefs();
+    _load();
+  }
+
+  /// 方向切换（原两个 ChoiceChip 的 onSelected 内联逻辑，语义原样收拢）：
+  /// 换边即清往来单位（AR 客户表 ↔ AP 供应商表）并回第 1 页重查。
+  void _changeSide(String side) {
+    if (_side == side) return;
+    setState(() {
+      _side = side;
+      _partyId = null;
+      _page = 1;
+      _data = null;
+    });
+    _persistPrefs();
+    _loadParties();
     _load();
   }
 

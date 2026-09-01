@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_tokens.dart';
 
 class UtenImportButton extends StatelessWidget {
   const UtenImportButton({
@@ -39,7 +40,7 @@ class UtenImportButton extends StatelessWidget {
         textStyle: theme.textTheme.bodyLarge?.copyWith(
           fontWeight: FontWeight.w700,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
       ),
     );
   }

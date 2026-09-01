@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_tokens.dart';
 
 /// The shared Uten action button.
 ///
@@ -81,7 +82,7 @@ class UtenButton extends StatelessWidget {
         : enabledBorder == null
         ? null
         : colorScheme.outlineVariant;
-    final radius = BorderRadius.circular(10);
+    final radius = BorderRadius.circular(UtenRadius.control);
     final shape = RoundedRectangleBorder(
       borderRadius: radius,
       side: border == null ? BorderSide.none : BorderSide(color: border),

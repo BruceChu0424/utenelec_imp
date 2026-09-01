@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -192,73 +192,31 @@ class _WarehouseDocumentHistoryListPageState
   }
 
   Widget _toolbar(PagedResult<WarehouseDocumentHistorySummary> result) {
-    final search = UtenSearchBar(
-      key: Key('warehouse-history-search-${widget.type.segment}'),
-      hint: '搜索单号 / 来源单号 / 货品 / 仓库 / 往来单位',
-      initialValue: _keyword,
-      onInputChanged: _onSearchInput,
-      onChanged: _applySearch,
-    );
-    final statusFilters = Semantics(
-      container: true,
-      label: '单据状态筛选',
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        children: [
-          for (final option in widget.type.statusFilters)
-            ChoiceChip(
-              key: Key(
-                'warehouse-history-status-${widget.type.segment}-'
-                '${option.value ?? 'all'}',
-              ),
-              label: Text(option.label),
-              selected: _status == option.value,
-              showCheckmark: false,
-              onSelected: (_) => _selectStatus(option.value),
-            ),
-        ],
-      ),
-    );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final summary = Semantics(
-          liveRegion: true,
-          label: '共 ${result.total} 张${widget.type.documentLabel}',
-          child: Text(
-            '共 ${result.total} 张 · 双击打开仓库详情',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+    // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。分段键沿用原 Chip 键前缀
+    // warehouse-history-status-<segment>（原为每个 Chip 一个键，现为整组）。
+    return UtenFilterToolbar<String?>(
+      segmentsKey: Key('warehouse-history-status-${widget.type.segment}'),
+      searchKey: Key('warehouse-history-search-${widget.type.segment}'),
+      segments: [
+        for (final option in widget.type.statusFilters)
+          UtenFilterSegment(value: option.value, label: option.label),
+      ],
+      selected: _status,
+      onSelectionChanged: _selectStatus,
+      searchHint: '搜索单号 / 来源单号 / 货品 / 仓库 / 往来单位',
+      initialSearchValue: _keyword,
+      onSearchInputChanged: _onSearchInput,
+      onSearchChanged: _applySearch,
+      trailing: Semantics(
+        liveRegion: true,
+        label: '共 ${result.total} 张${widget.type.documentLabel}',
+        child: Text(
+          '共 ${result.total} 张 · 双击打开仓库详情',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-        );
-        if (constraints.maxWidth < 720) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              search,
-              const SizedBox(height: UtenSpacing.s8),
-              statusFilters,
-              const SizedBox(height: UtenSpacing.s8),
-              Align(alignment: Alignment.centerRight, child: summary),
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                SizedBox(width: 420, child: search),
-                const Spacer(),
-                summary,
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            statusFilters,
-          ],
-        );
-      },
+        ),
+      ),
     );
   }
 

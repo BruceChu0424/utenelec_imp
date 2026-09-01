@@ -1,6 +1,6 @@
 // 钱流明细/汇总报表页（finance_report:view）—— 镜像 sales_report_page。
 //
-// 一张卡（[cardId] = detail|summary）内用 ChoiceChip 切多个报表变体（应收/应付/收款/付款/费用/收入…），
+// 一张卡（[cardId] = detail|summary）内用 UtenFilterToolbar 分段切多个报表变体（应收/应付/收款/付款/费用/收入…），
 // 每个变体对应后端一个 endpoint（+ 固定参数如 direction=AR）。
 //
 // 后端 GET /api/finance/reports/{group}/{view} 返回 ReportTableResponse：
@@ -22,6 +22,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -344,17 +345,14 @@ class _FinanceReportTablePageState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _filterLabel('报表类型'),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
+            // 全平台统一筛选工具条：报表变体分段（纯分类无搜索）。
+            UtenFilterToolbar<int>(
+              segments: [
                 for (int i = 0; i < _card.variants.length; i++)
-                  ChoiceChip(
-                    label: Text(_card.variants[i].label),
-                    selected: i == _variantIndex,
-                    onSelected: (_) => _changeVariant(i),
-                  ),
+                  UtenFilterSegment(value: i, label: _card.variants[i].label),
               ],
+              selected: _variantIndex,
+              onSelectionChanged: _changeVariant,
             ),
             const SizedBox(height: UtenSpacing.s12),
             _filterLabel('日期范围'),

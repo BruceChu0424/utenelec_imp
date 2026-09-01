@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -147,17 +148,21 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
-                    // 筛选条
+                    // 筛选条：单据类型走统一筛选工具条分段；日期/查询保留原按钮行。
+                    UtenFilterToolbar<String>(
+                      segments: [
+                        for (final t in const ['ORDER', 'RECEIPT', 'RETURN'])
+                          UtenFilterSegment(value: t, label: _docLabel(t)),
+                      ],
+                      selected: _docType!,
+                      onSelectionChanged: (v) =>
+                          setState(() => _docType = v),
+                    ),
+                    const SizedBox(height: UtenSpacing.s8),
                     Wrap(
                       spacing: 12,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        for (final t in const ['ORDER', 'RECEIPT', 'RETURN'])
-                          ChoiceChip(
-                            label: Text(_docLabel(t)),
-                            selected: _docType == t,
-                            onSelected: (_) => setState(() => _docType = t),
-                          ),
                         TextButton.icon(
                           onPressed: () async {
                             final p = await showDatePicker(

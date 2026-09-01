@@ -7,13 +7,12 @@
 // 前端不用重复实现过滤——这正是本组件要替换掉的旧版 UtenDropdownField 平铺下拉缺的能力：
 // 旧下拉走 salesMasterNameServiceProvider 的 /clients/dict（同样已过滤，但只有 id/name，
 // 没有联系人/地址等客户资料，也不能按分类浏览）。
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -60,7 +59,6 @@ class _ClientPickerSheet extends ConsumerStatefulWidget {
 class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
   String? _selectedCategoryId;
   final _keywordCtl = TextEditingController();
-  Timer? _debounce;
   String _globalQuery = '';
   Set<String>? _visibleFilterIds;
   Set<String> _contentMatchCategoryIds = {};
@@ -92,12 +90,10 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
   @override
   void dispose() {
     _keywordCtl.dispose();
-    _debounce?.cancel();
     super.dispose();
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
-    _debounce?.cancel();
     _requestVersion++;
     final keepKeyword =
         _globalQuery.isNotEmpty &&
@@ -115,17 +111,17 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
     _reloadCategory();
   }
 
-  void _onKeywordChanged(String v) {
-    _debounce?.cancel();
-    // 用户继续输入时立即让正在飞行的旧请求失效，避免 300ms 防抖期间旧结果回写。
+  /// 用户继续输入时立即让正在飞行的旧请求失效（UtenSearchBar 的 300ms 防抖期间
+  /// 旧结果不回写）；防抖到期后由 [_onKeywordChanged] 发起替换请求。
+  void _onKeywordInputChanged(String v) {
     _requestVersion++;
-    final query = v.trim();
     _globalItemsQuery = null;
     _globalItems = const [];
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      if (!mounted) return;
-      _applyGlobalSearch(query);
-    });
+  }
+
+  void _onKeywordChanged(String v) {
+    if (!mounted) return;
+    _applyGlobalSearch(v.trim());
   }
 
   Future<void> _applyGlobalSearch(String query) async {
@@ -413,16 +409,11 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
         context.breakpoint.isCompact ? 8 : 16,
         8,
       ),
-      child: TextField(
+      child: UtenSearchBar(
         key: const Key('uten-client-picker-search'),
         controller: _keywordCtl,
-        decoration: InputDecoration(
-          prefixIcon: const Icon(Icons.search_rounded, size: 20),
-          prefixIconConstraints: const BoxConstraints(minWidth: 36),
-          hintText: '搜索分类/客户',
-          isDense: true,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+        hint: '搜索分类/客户',
+        onInputChanged: _onKeywordInputChanged,
         onChanged: _onKeywordChanged,
       ),
     );

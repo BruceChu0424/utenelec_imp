@@ -64,7 +64,12 @@ void main() {
       expect(keys.any(_commercialKey), isFalse);
 
       await tester.tap(
-        find.byKey(const Key('warehouse-history-status-purchase-receipts-1')),
+        // 状态筛选已从 ChoiceChip 行换成统一筛选工具条：分段键为原 Chip 键前缀
+        // （原为每 Chip 一键），按分段文字定位「已审核」（value '1'）。
+        find.descendant(
+          of: find.byKey(const Key('warehouse-history-status-purchase-receipts')),
+          matching: find.text('已审核'),
+        ),
       );
       await tester.pumpAndSettle();
       expect(gateway.statuses.last, '1');

@@ -1,6 +1,6 @@
 // 销售报表页（销售管理，sales_report:view）：
 //
-// 2 张卡（明细/汇总）共用本页，由 [kind] 区分；卡内用 ChoiceChip 切 4 类单据（订货/出货/退货/其它出货），
+// 2 张卡（明细/汇总）共用本页，由 [kind] 区分；卡内用 UtenFilterToolbar 分段切 4 类单据（订货/出货/退货/其它出货），
 // **无报价**（报价无报表）。
 //
 // 后端 GET /api/sales/reports/{docType}/{kind} 返回 ReportTableResponse：
@@ -29,6 +29,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -372,17 +373,14 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _filterLabel('单据类型'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
+          // 全平台统一筛选工具条：单据类型分段（纯分类无搜索）。
+          UtenFilterToolbar<SalesReportDocType>(
+            segments: [
               for (final t in SalesReportDocType.values)
-                ChoiceChip(
-                  label: Text(t.label),
-                  selected: t == _docType,
-                  onSelected: (_) => _changeDocType(t),
-                ),
+                UtenFilterSegment(value: t, label: t.label),
             ],
+            selected: _docType,
+            onSelectionChanged: _changeDocType,
           ),
           const SizedBox(height: UtenSpacing.s12),
           _filterLabel('日期范围'),

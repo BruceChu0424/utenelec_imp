@@ -26,17 +26,11 @@ void main() {
       findsOneWidget,
     );
     expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('uten-goods-picker-search')))
-          .decoration
-          ?.hintText,
+      tester.widget<TextField>(_searchTextField()).decoration?.hintText,
       '搜索分类/货品名称或编号',
     );
 
-    await tester.enterText(
-      find.byKey(const Key('uten-goods-picker-search')),
-      'G-',
-    );
+    await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
@@ -59,15 +53,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(goodsRepository.listCalls.last, ('section-b', 'G-'));
     expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('uten-goods-picker-search')))
-          .controller
-          ?.text,
+      tester.widget<TextField>(_searchTextField()).controller?.text,
       'G-',
     );
 
-    // 清除只退出搜索，保留当前位置并恢复分类列表。
-    await tester.tap(find.byKey(const Key('uten-goods-picker-search-clear')));
+    // 清除只退出搜索，保留当前位置并恢复分类列表（UtenSearchBar 内置清除按钮）。
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('uten-goods-picker-search')),
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(goodsRepository.listCalls.last, ('section-b', null));
     final clearedTree = tester
@@ -85,7 +81,7 @@ void main() {
     await tester.tap(find.byKey(const Key('open-goods-picker')));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const Key('uten-goods-picker-search')),
+      _searchEditable(),
       'RAW-001',
     );
     await tester.pump(const Duration(milliseconds: 301));
@@ -102,7 +98,7 @@ void main() {
     await tester.tap(find.byKey(const Key('open-goods-picker')));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const Key('uten-goods-picker-search')),
+      _searchEditable(),
       '分区',
     );
     await tester.pump(const Duration(milliseconds: 301));
@@ -117,10 +113,7 @@ void main() {
 
     expect(goodsRepository.listCalls.last, ('section-b', null));
     expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('uten-goods-picker-search')))
-          .controller
-          ?.text,
+      tester.widget<TextField>(_searchTextField()).controller?.text,
       '分区',
       reason: '分类词仍应保留在统一搜索框，只是不应下推为货品字段过滤',
     );
@@ -133,7 +126,7 @@ void main() {
     await tester.tap(find.byKey(const Key('open-goods-picker')));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const Key('uten-goods-picker-search')),
+      _searchEditable(),
       'G-',
     );
     await tester.pump(const Duration(milliseconds: 301));
@@ -171,14 +164,14 @@ void main() {
     await tester.tap(find.byKey(const Key('open-goods-picker')));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const Key('uten-goods-picker-search')),
+      _searchEditable(),
       '旧关键词',
     );
     await tester.pump(const Duration(milliseconds: 301));
     expect(goodsRepository.searchQueries, ['旧关键词']);
 
     await tester.enterText(
-      find.byKey(const Key('uten-goods-picker-search')),
+      _searchEditable(),
       'G-',
     );
     await tester.pump(const Duration(milliseconds: 301));
@@ -222,6 +215,17 @@ Finder _widePickerSheet() => find.byWidgetPredicate(
       widget is SizedBox &&
       widget.width == 720 &&
       widget.height == double.infinity,
+);
+
+/// 统一搜索已换成 UtenSearchBar：key 在组件上，输入/取控件须定位其内部输入框。
+Finder _searchEditable() => find.descendant(
+  of: find.byKey(const Key('uten-goods-picker-search')),
+  matching: find.byType(EditableText),
+);
+
+Finder _searchTextField() => find.descendant(
+  of: find.byKey(const Key('uten-goods-picker-search')),
+  matching: find.byType(TextField),
 );
 
 class _PickerHarness extends ConsumerWidget {

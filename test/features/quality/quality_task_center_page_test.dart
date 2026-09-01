@@ -47,7 +47,7 @@ void main() {
     expect(router, contains("name: 'quality-inspection-records'"));
   });
 
-  testWidgets('IQC-only permission shows IQC task and shared records entry', (
+  testWidgets('IQC-only permission shows the merged task and records entry', (
     tester,
   ) async {
     await _pumpTaskCenter(tester, {Perm.procurementInspectionView});
@@ -59,18 +59,18 @@ void main() {
     expect(find.text('查询与记录'), findsOneWidget);
   });
 
-  testWidgets('FQC-only permission shows FQC task and shared records entry', (
+  testWidgets('FQC-only permission still shows the merged task entry', (
     tester,
   ) async {
     await _pumpTaskCenter(tester, {Perm.productionQualityInspectionView});
 
-    expect(find.text('待检处置'), findsNothing);
-    expect(find.text('生产成品质检'), findsOneWidget);
+    expect(find.text('待检处置'), findsOneWidget);
+    expect(find.text('生产成品质检'), findsNothing);
     expect(find.text('检测记录'), findsOneWidget);
   });
 
   testWidgets(
-    'both quality permissions show both tasks and one records entry',
+    'both quality permissions show one merged task card and records entry',
     (tester) async {
       await _pumpTaskCenter(tester, {
         Perm.procurementInspectionView,
@@ -78,12 +78,24 @@ void main() {
       });
 
       expect(find.text('待检处置'), findsOneWidget);
-      expect(find.text('生产成品质检'), findsOneWidget);
+      expect(find.text('生产成品质检'), findsNothing);
       expect(find.text('检测记录'), findsOneWidget);
       expect(find.textContaining('检测记录页仅供只读查询'), findsOneWidget);
       expect(find.textContaining('撤销历史会完整保留'), findsOneWidget);
     },
   );
+
+  testWidgets('merged card badge sums IQC and FQC pending counts', (
+    tester,
+  ) async {
+    await _pumpTaskCenter(tester, {
+      Perm.procurementInspectionView,
+      Perm.productionQualityInspectionView,
+    }, iqcCount: 2, fqcCount: 3);
+
+    // 红圆数字徽章显示两域合计；单域数字 2/3 不应独立出现。
+    expect(find.text('5'), findsOneWidget);
+  });
 
   testWidgets('no quality permission shows a locked empty state only', (
     tester,
@@ -102,17 +114,19 @@ void main() {
 
 Future<void> _pumpTaskCenter(
   WidgetTester tester,
-  Set<String> permissions,
-) async {
+  Set<String> permissions, {
+  int iqcCount = 0,
+  int fqcCount = 0,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         procurementInspectionPendingCountProvider.overrideWith(
-          (ref) async => 0,
+          (ref) async => iqcCount,
         ),
-        productionFqcPendingCountProvider.overrideWith((ref) async => 0),
+        productionFqcPendingCountProvider.overrideWith((ref) async => fqcCount),
       ],
       child: const MaterialApp(home: QualityTaskCenterPage()),
     ),

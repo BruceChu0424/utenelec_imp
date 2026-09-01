@@ -8,6 +8,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -294,30 +295,36 @@ class _ProcurementIqcRejectionListPageState
     );
   }
 
+  /// 状态分段工具条：分段带真实计数徽章（与 counts 接口同源；计数为零不显徽章）。
+  /// 原「点击已选 Chip 取消筛选」由显式「全部」分段承担。
   Widget _buildCounts(ProcurementIqcRejectionCounts counts) {
-    final facts = <(String, int, String?)>[
-      ('待退回', counts.pendingReturn, 'PENDING_RETURN'),
-      ('已退回待财务', counts.returnRecorded, 'RETURN_RECORDED'),
-      ('财务异常', counts.financeException, 'FINANCE_EXCEPTION'),
-      ('终态', counts.terminal, 'TERMINAL'),
-    ];
-    return Wrap(
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s8,
-      children: [
-        for (final fact in facts)
-          Semantics(
-            button: true,
-            selected: _status == fact.$3,
-            label: '${fact.$1} ${fact.$2} 条',
-            child: ChoiceChip(
-              label: Text('${fact.$1}  ${fact.$2}'),
-              selected: _status == fact.$3,
-              onSelected: (_) =>
-                  _changeStatus(_status == fact.$3 ? null : fact.$3),
-            ),
-          ),
+    return UtenFilterToolbar<String?>(
+      segmentsKey: const Key('iqc-rejection-status-segments'),
+      segments: [
+        const UtenFilterSegment(value: null, label: '全部'),
+        UtenFilterSegment(
+          value: 'PENDING_RETURN',
+          label: '待退回',
+          count: counts.pendingReturn,
+        ),
+        UtenFilterSegment(
+          value: 'RETURN_RECORDED',
+          label: '已退回待财务',
+          count: counts.returnRecorded,
+        ),
+        UtenFilterSegment(
+          value: 'FINANCE_EXCEPTION',
+          label: '财务异常',
+          count: counts.financeException,
+        ),
+        UtenFilterSegment(
+          value: 'TERMINAL',
+          label: '终态',
+          count: counts.terminal,
+        ),
       ],
+      selected: _status,
+      onSelectionChanged: _changeStatus,
     );
   }
 

@@ -1,8 +1,8 @@
 // 销售单据列表页（按 docType 参数化）。
 //
 // 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
-// 过滤由本页自带的状态 ChoiceChip + 关键词搜索承担（facets 传空，表头降级为纯标签）。
+// (Icon+label+(N)+新建) + 状态筛选(UtenFilterToolbar 分段+搜索) + MasterDataTableView。
+// 过滤由本页自带的统一筛选工具条承担（facets 传空，表头降级为纯标签）。
 // 名称解析（客户/仓库）通过 SalesMasterNameService。编辑按 edit 权限显隐「新建」。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,11 +10,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -504,7 +504,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                           ],
                         ),
                       ),
-                      // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
+                      // 桌面：左筛选侧栏（统一筛选工具条）+ 右表格；手机：垂直堆叠
                       Expanded(
                         child: UtenListTwoPane(
                           filterPane: Padding(
@@ -514,27 +514,31 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: UtenSearchBar(
-                                    hint: '搜索单据号 / 客户',
-                                    initialValue: _list.keyword,
-                                    onChanged: (v) {
-                                      _list.keyword = v;
-                                      _reload(1);
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(height: UtenSpacing.s12),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  children: [
-                                    _statusChip('全部', null),
-                                    _statusChip('草稿', kSalesStatusDraft),
-                                    _statusChip('已审', kSalesStatusApproved),
-                                    _statusChip('红冲', kSalesStatusReversed),
+                                // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
+                                UtenFilterToolbar<int?>(
+                                  segments: const [
+                                    UtenFilterSegment(value: null, label: '全部'),
+                                    UtenFilterSegment(
+                                      value: kSalesStatusDraft,
+                                      label: '草稿',
+                                    ),
+                                    UtenFilterSegment(
+                                      value: kSalesStatusApproved,
+                                      label: '已审',
+                                    ),
+                                    UtenFilterSegment(
+                                      value: kSalesStatusReversed,
+                                      label: '红冲',
+                                    ),
                                   ],
+                                  selected: _statusFilter,
+                                  onSelectionChanged: _onStatus,
+                                  searchHint: '搜索单据号 / 客户',
+                                  initialSearchValue: _list.keyword,
+                                  onSearchChanged: (v) {
+                                    _list.keyword = v;
+                                    _reload(1);
+                                  },
                                 ),
                                 // 可发货置顶（工作台小项，仅订货单）：有预留单排前 + 交货日升序
                                 if (_isOrder) ...[
@@ -619,12 +623,4 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     ],
   };
 
-  Widget _statusChip(String label, int? value) {
-    final selected = _statusFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => _onStatus(value),
-    );
-  }
 }

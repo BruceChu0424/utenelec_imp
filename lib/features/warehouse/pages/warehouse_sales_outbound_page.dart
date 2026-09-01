@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -175,75 +175,39 @@ class _WarehouseSalesOutboundPageState
   }
 
   Widget _toolbar(PagedResult<WarehouseSalesOutboundSummary> result) {
-    final search = UtenSearchBar(
-      key: const Key('warehouse-sales-outbound-search'),
-      hint: '搜索出货单号 / 客户 / 仓库',
-      initialValue: _keyword,
-      onInputChanged: (_) => _requestVersion++,
-      onChanged: _applySearch,
-    );
-    final filters = Semantics(
-      container: true,
-      label: '仓库作业状态筛选',
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        children: [
-          for (final status in const [
-            WarehouseSalesOutboundStatus.pendingPick,
-            WarehouseSalesOutboundStatus.picking,
-            WarehouseSalesOutboundStatus.picked,
-            WarehouseSalesOutboundStatus.exception,
-          ])
-            ChoiceChip(
-              key: Key('warehouse-sales-outbound-status-$status'),
-              label: Text(WarehouseSalesOutboundStatus.label(status)),
-              selected: _status == status,
-              showCheckmark: false,
-              onSelected: (_) => _selectStatus(status),
-            ),
-        ],
-      ),
-    );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final summary = Semantics(
-          liveRegion: true,
-          label: '共 ${result.total} 项销售出库任务',
-          child: Text(
-            '共 ${result.total} 项 · 双击进入仓库详情',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+    // 全平台统一筛选工具条：仓库作业状态分段 + 胶囊搜索框。分段键沿用原
+    // Chip 键前缀 warehouse-sales-outbound-status（原为每个 Chip 一个键，现为整组）。
+    return UtenFilterToolbar<String>(
+      segmentsKey: const Key('warehouse-sales-outbound-status'),
+      searchKey: const Key('warehouse-sales-outbound-search'),
+      segments: [
+        for (final status in const [
+          WarehouseSalesOutboundStatus.pendingPick,
+          WarehouseSalesOutboundStatus.picking,
+          WarehouseSalesOutboundStatus.picked,
+          WarehouseSalesOutboundStatus.exception,
+        ])
+          UtenFilterSegment(
+            value: status,
+            label: WarehouseSalesOutboundStatus.label(status),
           ),
-        );
-        if (constraints.maxWidth < 720) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              search,
-              const SizedBox(height: UtenSpacing.s8),
-              filters,
-              const SizedBox(height: UtenSpacing.s8),
-              Align(alignment: Alignment.centerRight, child: summary),
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                SizedBox(width: 420, child: search),
-                const Spacer(),
-                summary,
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            filters,
-          ],
-        );
-      },
+      ],
+      selected: _status,
+      onSelectionChanged: _selectStatus,
+      searchHint: '搜索出货单号 / 客户 / 仓库',
+      initialSearchValue: _keyword,
+      onSearchInputChanged: (_) => _requestVersion++,
+      onSearchChanged: _applySearch,
+      trailing: Semantics(
+        liveRegion: true,
+        label: '共 ${result.total} 项销售出库任务',
+        child: Text(
+          '共 ${result.total} 项 · 双击进入仓库详情',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
     );
   }
 

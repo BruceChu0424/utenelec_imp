@@ -1,9 +1,8 @@
 name: Signed production release
 
 on:
-  push:
-    tags:
-      - "v*"
+  # ADR-060（2026-09-01）：现役发布链为 simple-release.yml（tag v* 自动触发）。
+  # 本旧链自动触发已退役，仅保留手动入口与全文作历史参考；引入第二维护者时再评估恢复。
   workflow_dispatch:
     inputs:
       confirm_initial_bootstrap:

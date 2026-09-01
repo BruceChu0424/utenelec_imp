@@ -1,5 +1,11 @@
 # Uten IMP 稳定运行与原子发布基线
 
+> **⚠️ 本目录已归档（2026-09-01，ADR-060）**：现役发布链是
+> [ADR-060 单维护者简化发布链](../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)
+> 与 [`deploy/simple/RUNBOOK.zh-CN.md`](simple/RUNBOOK.zh-CN.md)。本文件及其描述的重链
+> （离线签名、H01–H12、WORM/OIDC、NO-GO 门禁）仅作为未来引入第二维护者时的加固参考，
+> 不再具有操作效力。
+
 <!-- CURRENT-ERP-TEST-SERVER-SCOPE-20260812 -->
 > **当前执行范围（2026-08-15）**：本轮只建设公司内部 ERP 测试服务器，部署 PostgreSQL、Spring Boot
 > 后端和 Flutter ERP Web/Nginx；企业官网延期到独立云服务器。当前采用系统 NVMe 上独立 350 GiB

@@ -1,0 +1,43 @@
+# Uten IMP 后端（简化链 ADR-060）
+# 安装为 /etc/systemd/system/uten-imp.service
+[Unit]
+Description=Uten IMP backend
+After=network-online.target postgresql@16-main.service
+Wants=network-online.target
+Requires=postgresql@16-main.service
+StartLimitIntervalSec=10min
+StartLimitBurst=8
+
+[Service]
+Type=simple
+User=uten-imp
+Group=uten-imp
+# current 是指向 releases/<version> 的原子 symlink，禁止原位覆盖
+WorkingDirectory=/opt/uten-imp/current
+EnvironmentFile=/etc/uten-imp/server.env
+ExecStartPre=/usr/bin/pg_isready -q -h 127.0.0.1 -p 5432 -d uten_imp -t 10
+ExecStartPre=/usr/bin/test -L /opt/uten-imp/current
+ExecStartPre=/usr/bin/test -r /opt/uten-imp/current/server/uten-imp-server.jar
+# 迁移一律走独立 migrator JAR（updater 激活时执行），应用自身禁用 Flyway
+ExecStart=/usr/bin/java -Xms512m -Xmx4g -Dserver.address=127.0.0.1 -Dserver.port=8080 \
+  -Dspring.flyway.enabled=false -XX:+ExitOnOutOfMemoryError \
+  -jar /opt/uten-imp/current/server/uten-imp-server.jar
+SuccessExitStatus=143
+Restart=always
+RestartSec=5
+TimeoutStartSec=180s
+TimeoutStopSec=90
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

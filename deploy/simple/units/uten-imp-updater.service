@@ -1,0 +1,12 @@
+# 更新器 oneshot：下载/验签/暂存；纯代码版本自动激活
+# 安装为 /etc/systemd/system/uten-imp-updater.service
+[Unit]
+Description=Uten IMP release updater (check/stage/auto-activate code-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/uten-imp-updater check
+# root 必需：systemctl 控制 + current symlink 切换 + pg_dump
+TimeoutStartSec=25min

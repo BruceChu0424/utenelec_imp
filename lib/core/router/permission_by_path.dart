@@ -242,6 +242,12 @@ List<String>? requiredAnyPermFor(String location) {
       routePath.startsWith('${RouteName.warehouseIqcStockIns}/')) {
     return const [Perm.warehouseIqcStockInView];
   }
+  // 品质部检查结果（合并页）：两块仓库视图权限任一满足即可进入；
+  // 入库确认与登记退回动作仍由页面内各自动作权限把关。
+  if (routePath == RouteName.warehouseQualityResults ||
+      routePath.startsWith('${RouteName.warehouseQualityResults}/')) {
+    return const [Perm.warehouseIqcStockInView, Perm.warehouseIqcReturnView];
+  }
   if (routePath == RouteName.warehouseSalesOutbound ||
       routePath.startsWith('${RouteName.warehouseSalesOutbound}/')) {
     return const [Perm.salesShipmentWarehouseWork];
@@ -309,6 +315,29 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.procurementArrivalExceptions ||
       location.startsWith('${RouteName.procurementArrivalExceptions}/')) {
     return const [Perm.supplierReturnTaskView];
+  }
+  // 仓库任务中心三页（2026-09-01 重组）：页面任一业务域可看即可进入，
+  // 页内各分段再按各自权限显隐；动作权限（确认/审核/出仓等）仍由后端独立把关。
+  if (location == RouteName.warehouseOutboundTasks ||
+      location.startsWith('${RouteName.warehouseOutboundTasks}/')) {
+    return const [
+      Perm.salesShipmentWarehouseWork,
+      Perm.subcontractOutboundView,
+      Perm.stockDocView,
+    ];
+  }
+  if (location == RouteName.warehouseInboundTasks ||
+      location.startsWith('${RouteName.warehouseInboundTasks}/')) {
+    return const [
+      Perm.warehouseInboundView,
+      Perm.stockDocView,
+      Perm.warehousePurchaseReceiptHistoryView,
+      Perm.warehouseSubcontractReceiptHistoryView,
+    ];
+  }
+  if (location == RouteName.warehouseDrawTasks ||
+      location.startsWith('${RouteName.warehouseDrawTasks}/')) {
+    return const [Perm.stockDocView];
   }
   if (location.startsWith('/warehouse/')) {
     final authority = _documentRouteAuthority(
@@ -384,6 +413,9 @@ List<String>? requiredAnyPermFor(String location) {
   }
   if (location == RouteName.basicinfoPaymentStyle) {
     return const [Perm.paymentStyleView];
+  }
+  if (location == RouteName.basicinfoSettlementMethod) {
+    return const [Perm.settlementMethodView];
   }
 
   // 出货财务审核复用只读出货列表/详情：finance_shipment_audit 可查看并审核，

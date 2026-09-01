@@ -268,11 +268,13 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                             padding: const EdgeInsets.symmetric(
                               horizontal: UtenSpacing.s4,
                             ),
-                            child:
-                                widget.docType == StockDocType.draw
+                            child: widget.docType == StockDocType.draw
                                 ? UtenFilterToolbar<int?>(
                                     segments: const [
-                                      UtenFilterSegment(value: null, label: '全部'),
+                                      UtenFilterSegment(
+                                        value: null,
+                                        label: '全部',
+                                      ),
                                       UtenFilterSegment(value: 0, label: '未出库'),
                                       UtenFilterSegment(
                                         value: 1,
@@ -280,7 +282,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                                       ),
                                       UtenFilterSegment(value: 2, label: '已出完'),
                                     ],
-                                    selected: _issueStatus,
+                                    selected: {_issueStatus},
                                     onSelectionChanged: (value) {
                                       setState(() => _issueStatus = value);
                                       _reload(1);

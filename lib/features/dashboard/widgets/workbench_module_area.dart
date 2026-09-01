@@ -378,7 +378,8 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.warehouse,
         label: '仓库管理',
         location: RouteName.warehouse,
-        // 角标 = 预计到货待办 + 到货异常待办（与仓库管理 hub 任务中心同源）。
+        // 角标 = 三张任务中心卡角标之和（出库+入库+领料+品质结果；
+        // 与仓库管理 hub 任务中心同源）。
         badge: WorkbenchBadgeKind.warehouse,
       ),
       // 采购管理 → hub：任务中心(采购任务) / 采购管理 4 单据 / 采购报表。采购任务 = hub 内入口，本组不再单列。

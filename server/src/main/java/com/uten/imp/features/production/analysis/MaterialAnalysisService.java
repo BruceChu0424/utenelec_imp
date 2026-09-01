@@ -4391,7 +4391,7 @@ public class MaterialAnalysisService {
                 ) own ON TRUE
                 WHERE v.goods_id IN (:goodsIds)
                   AND w.is_deleted = FALSE AND w.is_accountable = TRUE
-                  AND (:warehouseId IS NULL OR v.warehouse_id = :warehouseId)
+                  AND (CAST(:warehouseId AS uuid) IS NULL OR v.warehouse_id = CAST(:warehouseId AS uuid))
                 ORDER BY v.warehouse_id, v.goods_id, v.color_id NULLS FIRST
                 """)
                 .setParameter("goodsIds", goodsIds)
@@ -4483,7 +4483,7 @@ public class MaterialAnalysisService {
                       AND o.status = 1 AND o.is_deleted = FALSE AND o.is_closed = FALSE
                       AND i.is_deleted = FALSE
                       AND COALESCE(i.deliver_date,o.deliver_date) IS NOT NULL
-                      AND (:warehouseId IS NULL OR o.warehouse_id = :warehouseId)
+                      AND (CAST(:warehouseId AS uuid) IS NULL OR o.warehouse_id = CAST(:warehouseId AS uuid))
                     UNION ALL
                     SELECT cap.external_document_type, cap.external_item_id,
                            cap.goods_id, cap.color_id, cap.unit_id,
@@ -4507,7 +4507,7 @@ public class MaterialAnalysisService {
                       AND o.status = 1 AND o.is_deleted = FALSE AND o.is_closed = FALSE
                       AND i.is_deleted = FALSE
                       AND COALESCE(i.deliver_date,o.deliver_date) IS NOT NULL
-                      AND (:warehouseId IS NULL OR o.warehouse_id = :warehouseId)
+                      AND (CAST(:warehouseId AS uuid) IS NULL OR o.warehouse_id = CAST(:warehouseId AS uuid))
                     UNION ALL
                     SELECT cap.external_document_type, cap.external_item_id,
                            cap.goods_id, cap.color_id, cap.unit_id,

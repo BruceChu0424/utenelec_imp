@@ -117,7 +117,7 @@ class UtenAdaptiveMeasurementInput extends StatelessWidget {
     required this.state,
     required this.itemLabel,
     this.enabled = true,
-    this.businessQuantityLabel = '业务量',
+    this.businessQuantityLabel = '数量',
     this.actualWeightLabel = '实际重量',
     this.businessQuantityRequired = true,
     this.actualWeightRequired = false,

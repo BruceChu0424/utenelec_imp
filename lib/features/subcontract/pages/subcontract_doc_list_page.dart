@@ -47,8 +47,12 @@ class _SubcontractDocListPageState
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
   String? _myLocation;
+  // 分类层级：状态=大类（上）、结案=小类（下，仅委外订货单，状态选中后解锁）。
+  // 进页面两行都不选（null=不过滤）。
   int? _statusFilter; // null=全部
+  bool _statusFilterSelected = false;
   bool? _closedFilter; // 结案筛选（仅委外订货单）：false=未完成 / true=已结案
+  bool _closedFilterSelected = false;
 
   @override
   void initState() {
@@ -90,7 +94,10 @@ class _SubcontractDocListPageState
       _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
 
   void _onStatus(int? s) {
-    setState(() => _statusFilter = s);
+    setState(() {
+      _statusFilter = s;
+      _statusFilterSelected = true;
+    });
     _reload(1);
   }
 
@@ -279,7 +286,8 @@ class _SubcontractDocListPageState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
+                          // 全平台统一筛选工具条：状态分段（大类）+ 胶囊搜索框。
+                          // 进页面不预选；选中后下方结案行解锁。
                           UtenFilterToolbar<int?>(
                             segments: [
                               const UtenFilterSegment(value: null, label: '全部'),
@@ -302,7 +310,9 @@ class _SubcontractDocListPageState
                                 label: '红冲',
                               ),
                             ],
-                            selected: _statusFilter,
+                            selected: _statusFilterSelected
+                                ? {_statusFilter}
+                                : const {},
                             onSelectionChanged: _onStatus,
                             searchHint: '搜索单据号',
                             initialSearchValue: _list.keyword,
@@ -311,18 +321,26 @@ class _SubcontractDocListPageState
                               _reload(1);
                             },
                           ),
-                          // 委外订货单：结案筛选（未完成=部分入库的委外单）
+                          // 委外订货单：结案筛选（未完成=部分入库的委外单）；
+                          // 小类行，状态未选时置灰锁定。
                           if (widget.docType == SubcontractDocType.order) ...[
                             const SizedBox(height: UtenSpacing.s8),
                             UtenFilterToolbar<bool?>(
+                              enabled: _statusFilterSelected,
                               segments: const [
                                 UtenFilterSegment(value: null, label: '全部'),
                                 UtenFilterSegment(value: false, label: '未完成'),
                                 UtenFilterSegment(value: true, label: '已结案'),
                               ],
-                              selected: _closedFilter,
+                              selected: _closedFilterSelected
+                                  ? {_closedFilter}
+                                  : const {},
                               onSelectionChanged: (value) {
-                                setState(() => _closedFilter = value);
+                                if (!_statusFilterSelected) return;
+                                setState(() {
+                                  _closedFilter = value;
+                                  _closedFilterSelected = true;
+                                });
                                 _reload(1);
                               },
                             ),

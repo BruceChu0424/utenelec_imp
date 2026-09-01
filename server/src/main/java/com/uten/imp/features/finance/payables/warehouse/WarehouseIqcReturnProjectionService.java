@@ -3,14 +3,10 @@ package com.uten.imp.features.finance.payables.warehouse;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.finance.payables.ProcurementIqcRejectionContracts.RecordReturnRequest;
 import com.uten.imp.features.finance.payables.ProcurementIqcRejectionService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,20 +16,17 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
-/** Warehouse-only projection and command adapter over the authoritative V440 case flow. */
+/**
+ * Warehouse-only projection and command adapter over the authoritative V440 case flow.
+ * The paged list projection retired with the 2026-09-01 merge into
+ * {@code WarehouseQualityResultService}; this adapter keeps the deep-link detail
+ * read and the return-voucher command.
+ */
 @Service
 public class WarehouseIqcReturnProjectionService {
-
-    private static final Set<String> RECEIPT_TYPES = Set.of("PURCHASE", "SUBCONTRACT");
-    private static final Set<String> PHYSICAL_STATUSES =
-            Set.of("PENDING_RETURN", "RETURN_RECORDED", "VOIDED");
 
     private final EntityManager entityManager;
     private final SecurityContextCurrentUser currentUser;
@@ -46,63 +39,6 @@ public class WarehouseIqcReturnProjectionService {
         this.entityManager = entityManager;
         this.currentUser = currentUser;
         this.rejectionService = rejectionService;
-    }
-
-    @Transactional(readOnly = true)
-    public PageResponse<WarehouseIqcReturnView> list(
-            String rawReceiptType,
-            String rawPhysicalStatus,
-            String keyword,
-            int page,
-            int size) {
-        String receiptType = receiptType(rawReceiptType);
-        String physicalStatus = physicalStatus(rawPhysicalStatus);
-        String normalizedKeyword = normalize(keyword);
-        PageRequest pageable = Pageables.of(page, size);
-        int safePage = pageable.getPageNumber() + 1;
-        int safeSize = pageable.getPageSize();
-        StringBuilder where = new StringBuilder(
-                " WHERE COALESCE(rejection.is_deleted,FALSE)=FALSE");
-        Map<String, Object> parameters = new LinkedHashMap<>();
-        if (receiptType != null) {
-            where.append(" AND rejection.receipt_type=:receiptType");
-            parameters.put("receiptType", receiptType);
-        }
-        if (physicalStatus != null) {
-            where.append("""
-                     AND (CASE
-                            WHEN rejection.return_recorded_at IS NOT NULL
-                              THEN 'RETURN_RECORDED'
-                            WHEN rejection.status='REVERSED' THEN 'VOIDED'
-                            ELSE 'PENDING_RETURN'
-                          END)=:physicalStatus
-                    """);
-            parameters.put("physicalStatus", physicalStatus);
-        }
-        if (normalizedKeyword != null) {
-            where.append(" AND (LOWER(rejection.receipt_bill_no) LIKE :keyword")
-                    .append(" OR LOWER(COALESCE(rejection.order_bill_no,'')) LIKE :keyword")
-                    .append(" OR LOWER(COALESCE(supplier.name,'')) LIKE :keyword")
-                    .append(" OR LOWER(COALESCE(goods.code,'')) LIKE :keyword")
-                    .append(" OR LOWER(COALESCE(goods.name,'')) LIKE :keyword)");
-            parameters.put("keyword", "%" + normalizedKeyword.toLowerCase(Locale.ROOT) + "%");
-        }
-        Query data = entityManager.createNativeQuery(selectSql() + fromSql() + where
-                + " ORDER BY rejection.created_at DESC,rejection.id DESC"
-                + " LIMIT :limit OFFSET :offset");
-        bind(data, parameters);
-        data.setParameter("limit", safeSize);
-        data.setParameter("offset", pageable.getOffset());
-        boolean canRecord = has(WarehouseIqcReturnPermissions.RECORD_RETURN);
-        List<WarehouseIqcReturnView> items = NativeQueryResults.objectArrayRows(data).stream()
-                .map(row -> view(row, canRecord))
-                .toList();
-
-        Query count = entityManager.createNativeQuery("SELECT COUNT(*)" + fromSql() + where);
-        bind(count, parameters);
-        long total = ((Number) count.getSingleResult()).longValue();
-        int totalPages = (int) ((total + safeSize - 1) / safeSize);
-        return new PageResponse<>(items, safePage, safeSize, total, totalPages);
     }
 
     @Transactional(readOnly = true)
@@ -225,38 +161,6 @@ public class WarehouseIqcReturnProjectionService {
         return currentUser.get()
                 .map(user -> user.isSuperAdmin() || user.getPermissions().contains(permission))
                 .orElse(false);
-    }
-
-    private static String receiptType(String value) {
-        String normalized = normalize(value);
-        if (normalized == null) return null;
-        normalized = normalized.toUpperCase(Locale.ROOT);
-        if (!RECEIPT_TYPES.contains(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "收货类型仅支持 PURCHASE/SUBCONTRACT");
-        }
-        return normalized;
-    }
-
-    private static String physicalStatus(String value) {
-        String normalized = normalize(value);
-        if (normalized == null) return null;
-        normalized = normalized.toUpperCase(Locale.ROOT);
-        if (!PHYSICAL_STATUSES.contains(normalized)) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "实物退回状态仅支持 PENDING_RETURN/RETURN_RECORDED/VOIDED");
-        }
-        return normalized;
-    }
-
-    private static String normalize(String value) {
-        if (value == null || value.isBlank()) return null;
-        return value.trim();
-    }
-
-    private static void bind(Query query, Map<String, Object> parameters) {
-        parameters.forEach(query::setParameter);
     }
 
     private static UUID uuid(Object value) {

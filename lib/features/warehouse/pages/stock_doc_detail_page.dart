@@ -744,7 +744,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                           ] else if (widget.docType == StockDocType.draw) ...[
                             MasterColumnDef(
                               key: 'qty',
-                              label: '业务量',
+                              label: '数量',
                               width: 90,
                               type: 'number',
                               value: (it) => (it.qty ?? 0).toStringAsFixed(2),
@@ -784,7 +784,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                           ] else
                             MasterColumnDef(
                               key: 'qty',
-                              label: '业务量',
+                              label: '数量',
                               width: 90,
                               type: 'number',
                               value: (it) => (it.qty ?? 0).toStringAsFixed(2),

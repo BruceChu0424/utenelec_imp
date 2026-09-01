@@ -2710,6 +2710,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get basicDataHubPaymentStyleSub => 'Six accounting classes';
 
   @override
+  String get basicDataHubSettlementMethod => 'Settlement methods';
+
+  @override
+  String get basicDataHubSettlementMethodSub =>
+      'Terms dictionary and payment-term rules';
+
+  @override
   String get impersonationSwitchPerson => 'Switch person';
 
   @override

@@ -223,7 +223,8 @@ void main() {
       () {
         for (final location in [
           RouteName.warehouseIqcStockIns,
-          RouteName.warehouseIqcStockInDetail('PURCHASE', 'receipt-1'),
+          // 旧 IQC 待入库详情深链（现重定向到合并页详情）仍按原路径鉴权。
+          '${RouteName.warehouseIqcStockIns}/PURCHASE/receipt-1',
         ]) {
           final required = requiredAnyPermFor(location);
           expect(required, const [Perm.warehouseIqcStockInView]);

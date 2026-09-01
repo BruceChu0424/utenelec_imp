@@ -137,7 +137,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   @override
   void initState() {
     super.initState();
-    // 明细行增删 → 重新挂载数量监听并刷新按单位分组的业务量。
+    // 明细行增删 → 重新挂载数量监听并刷新按单位分组的数量。
     _grid.addListener(_onGridRowsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
@@ -772,7 +772,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         // 物流/快递单号：一张出货单一个；订单详情聚合展示全部出货单的单号。
         if (_logisticsNo.text.trim().isNotEmpty)
           'logisticsNo': _logisticsNo.text.trim(),
-        // 物流件数是独立包装事实，不能由 kg/个/套等业务量相加推导。
+        // 物流件数是独立包装事实，不能由 kg/个/套等数量相加推导。
         'parcelCount': ?parcelCount,
       },
       if (_cfg.hasOutType && _outType.text.trim().isNotEmpty)
@@ -1323,7 +1323,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           amountUsesDiscount: _amountUsesDiscount,
                         ),
                         cloneRow: (r) => r.clone(),
-                        // 网格底部：业务量严格按单位 UUID 分组；金额仍可在同币种单据内汇总。
+                        // 网格底部：数量严格按单位 UUID 分组；金额仍可在同币种单据内汇总。
                         footer: Wrap(
                           alignment: WrapAlignment.end,
                           crossAxisAlignment: WrapCrossAlignment.center,
@@ -1333,7 +1333,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                             ValueListenableBuilder<double>(
                               valueListenable: _totalQtyNotifier,
                               builder: (_, _, _) => Text(
-                                '业务量 ${measurementTotalsText(_grid.rows.where((row) => row.goods != null).map((row) => MeasuredAmount(value: double.tryParse(row.qty.text.trim()) ?? 0, unitId: row.unitId, unitName: names.unitEntries[row.unitId])))}',
+                                '数量 ${measurementTotalsText(_grid.rows.where((row) => row.goods != null).map((row) => MeasuredAmount(value: double.tryParse(row.qty.text.trim()) ?? 0, unitId: row.unitId, unitName: names.unitEntries[row.unitId])))}',
                               ),
                             ),
                             ValueListenableBuilder<double>(

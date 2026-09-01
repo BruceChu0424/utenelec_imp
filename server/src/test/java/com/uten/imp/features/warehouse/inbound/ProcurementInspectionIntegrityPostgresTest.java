@@ -82,6 +82,7 @@ class ProcurementInspectionIntegrityPostgresTest {
     @Autowired private TransactionTemplate transactions;
     @Autowired private ProcurementInspectionService inspectionService;
     @Autowired private ProcurementIqcStockInService stockInService;
+    @Autowired private WarehouseQualityResultService qualityResultService;
     @Autowired private ProductionSupplyTransitionPort productionSupply;
     @Autowired private TxSessionVars tx;
 
@@ -286,7 +287,7 @@ class ProcurementInspectionIntegrityPostgresTest {
     }
 
     @Test
-    void employeeWhoReleasedPassCannotConfirmTheSameSlice() {
+    void employeeWhoReleasedPassCanStillConfirmInSoloMaintenance() {
         ReceiptFixture receipt = seedReceipt(
                 ProcurementInspectionPort.PURCHASE, 1, "10", "100");
         InspectionLine line = receipt.lines().getFirst();
@@ -298,16 +299,21 @@ class ProcurementInspectionIntegrityPostgresTest {
                 disposition("PASS", null, "same-actor-pass-0001"));
         UUID passEventId = passEventId(line.inspectionItemId());
 
+        // 单人维护：同人放行不再被硬拒；合并页详情保留 containsOwnRelease 标记
+        // 供前端复核提示，且允许动作照常开放。
         assertThat(stockInService.detail(receipt.type(), receipt.id()).allowedActions())
-                .doesNotContain("CONFIRM");
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> stockInService.confirm(
-                        receipt.type(), receipt.id(),
-                        stockInRequest(passEventId, "10", "10",
-                                "same-actor-stock-0001", "SAME-01")))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("同一员工不能同时完成");
-        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "0");
-        assertThat(stockInBatchCount(receipt.id())).isZero();
+                .contains("CONFIRM");
+        assertThat(qualityResultService.detail(receipt.type(), receipt.id())
+                .containsOwnRelease()).isTrue();
+        assertThat(qualityResultService.detail(receipt.type(), receipt.id())
+                .allowedActions()).contains("CONFIRM");
+
+        stockInService.confirm(
+                receipt.type(), receipt.id(),
+                stockInRequest(passEventId, "10", "10",
+                        "same-actor-stock-0001", "SAME-01"));
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "10");
+        assertThat(stockInBatchCount(receipt.id())).isEqualTo(1L);
     }
 
     @Test

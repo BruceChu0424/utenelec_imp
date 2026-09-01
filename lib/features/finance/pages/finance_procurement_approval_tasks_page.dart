@@ -42,7 +42,9 @@ class _FinanceProcurementApprovalTasksPageState
   int _requestVersion = 0;
 
   /// 类型筛选卡：null = 全部待审；否则只看采购/委外。
+  /// 进页面不预选（不选=不过滤），点分段后才算选中。
   FinanceProcurementOrderType? _orderType;
+  bool _typeSelected = false;
 
   /// 按类型计数（后端全量口径）；null = 尚未返回，卡片显示 '—'。
   Map<String, int>? _typeCounts;
@@ -65,9 +67,10 @@ class _FinanceProcurementApprovalTasksPageState
   }
 
   void _selectType(FinanceProcurementOrderType? type) {
-    if (_orderType == type) return;
+    if (_orderType == type && _typeSelected) return;
     setState(() {
       _orderType = type;
+      _typeSelected = true;
       _clearSelectionState();
     });
     _load(1);
@@ -101,11 +104,10 @@ class _FinanceProcurementApprovalTasksPageState
     _ => '显示财务审核组共享的采购和委外订货待审任务。',
   };
 
-  int? _typeCount(FinanceProcurementOrderType? type) {
+  int? _typeCount(FinanceProcurementOrderType type) {
     final counts = _typeCounts;
     if (counts == null) return null;
     return switch (type) {
-      null => counts.values.fold<int>(0, (a, b) => a + b),
       FinanceProcurementOrderType.purchase => counts['PURCHASE'] ?? 0,
       FinanceProcurementOrderType.subcontract => counts['SUBCONTRACT'] ?? 0,
       _ => 0,
@@ -514,11 +516,8 @@ class _FinanceProcurementApprovalTasksPageState
           segmentsKey: const Key('finance-approval-type-segments'),
           searchKey: const Key('finance-approval-search'),
           segments: [
-            UtenFilterSegment(
-              value: 'all',
-              label: '全部待审',
-              count: _typeCount(null),
-            ),
+            // 「全部待审」不挂徽章——徽章只挂各类型分段的待审数量。
+            const UtenFilterSegment(value: 'all', label: '全部待审'),
             UtenFilterSegment(
               value: 'purchase',
               label: '采购订货',
@@ -530,11 +529,15 @@ class _FinanceProcurementApprovalTasksPageState
               count: _typeCount(FinanceProcurementOrderType.subcontract),
             ),
           ],
-          selected: _orderType == null
-              ? 'all'
-              : _orderType == FinanceProcurementOrderType.purchase
-              ? 'purchase'
-              : 'subcontract',
+          selected: _typeSelected
+              ? {
+                  _orderType == null
+                      ? 'all'
+                      : _orderType == FinanceProcurementOrderType.purchase
+                      ? 'purchase'
+                      : 'subcontract',
+                }
+              : const {},
           onSelectionChanged: (value) => _selectType(switch (value) {
             'purchase' => FinanceProcurementOrderType.purchase,
             'subcontract' => FinanceProcurementOrderType.subcontract,

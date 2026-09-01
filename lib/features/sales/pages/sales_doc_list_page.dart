@@ -43,6 +43,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   SalesDocConfig get _cfg => SalesDocConfig.by(widget.docType);
   final _list = PagedListController<SalesDocListItem>();
   int? _statusFilter; // null=全部
+  bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
   // 订货工作台（业务链）：统计卡 + 激活卡钻取（null=不钻取）
   SalesOrderStats? _stats;
   String? _activeCard; // pending/production/shippable/monthDone
@@ -220,7 +221,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   }
 
   void _onStatus(int? s) {
-    setState(() => _statusFilter = s);
+    setState(() {
+      _statusFilter = s;
+      _statusFilterSelected = true;
+    });
     _reload(1);
   }
 
@@ -531,7 +535,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                                       label: '红冲',
                                     ),
                                   ],
-                                  selected: _statusFilter,
+                                  selected: _statusFilterSelected
+                                      ? {_statusFilter}
+                                      : const {},
                                   onSelectionChanged: _onStatus,
                                   searchHint: '搜索单据号 / 客户',
                                   initialSearchValue: _list.keyword,

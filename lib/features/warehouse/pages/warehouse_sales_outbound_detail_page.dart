@@ -14,6 +14,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_sales_outbound.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
+import '../providers/warehouse_count_refresh.dart';
 
 class WarehouseSalesOutboundDetailPage extends ConsumerStatefulWidget {
   const WarehouseSalesOutboundDetailPage({super.key, required this.id});
@@ -84,6 +85,8 @@ class _WarehouseSalesOutboundDetailPageState
           );
       if (!mounted) return;
       setState(() => _detail = updated);
+      // 交接出库会减少待出库角标；流转成功立即失效全部仓库任务计数。
+      invalidateWarehouseTaskCounts(ref);
       context.appSuccess('${action.label}已完成');
     } on ApiException catch (error) {
       if (!mounted) return;

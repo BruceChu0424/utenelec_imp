@@ -53,3 +53,15 @@ void popOrBackTo(BuildContext context, {required String defaultPath}) {
   }
   backTo(context, defaultPath: defaultPath);
 }
+
+/// 当前匹配路径；无 GoRouter 上下文（widget 测试直接 pump）时回退 [fallback]。
+///
+/// 「返回即刷新」onPageResume 需要页面的稳定 location；路由内即 matchedLocation，
+/// 测试环境没有路由就退回调用方已知的路由常量，注册不生效但不抛错。
+String currentLocationOr(BuildContext context, String fallback) {
+  try {
+    return GoRouterState.of(context).matchedLocation;
+  } catch (_) {
+    return fallback;
+  }
+}

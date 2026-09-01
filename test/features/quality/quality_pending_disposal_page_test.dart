@@ -74,9 +74,9 @@ void main() {
     expect(find.text(_reportNo), findsOneWidget);
     expect(_segmentText('自制产成品'), findsOneWidget);
 
-    // 分段红色圆数字徽章：全部 = 2 IQC + 1 FQC = 3；各类型 1。
-    expect(_segmentBadge('3'), findsOneWidget);
+    // 分段红色圆数字徽章只挂可办的类型分段（各 1）；「全部待检单」不挂徽章。
     expect(_segmentBadge('1'), findsNWidgets(3));
+    expect(_segmentBadge('3'), findsNothing);
 
     // 「自制产成品」分段只留 FQC 行。
     await tester.tap(_segmentText('自制产成品'));
@@ -175,8 +175,8 @@ void main() {
     expect(find.text('采购收货'), findsNothing);
     expect(find.text('委外回厂'), findsNothing);
     expect(_segmentText('自制产成品'), findsOneWidget);
-    // 全部徽章只统计 FQC（全部 + 自制产成品各一枚 1）。
-    expect(_segmentBadge('1'), findsNWidgets(2));
+    // 「全部待检单」不挂徽章；自制产成品徽章 1。
+    expect(_segmentBadge('1'), findsOneWidget);
     expect(find.text(_reportNo), findsOneWidget);
     // 无审批权限 → 不可选、无批量动作。
     expect(find.byKey(const Key('production-fqc-batch-pass-all')), findsNothing);

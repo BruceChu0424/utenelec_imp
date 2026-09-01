@@ -61,10 +61,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('SO-OUT-001'), findsOneWidget);
-      expect(
-        gateway.workStatuses.first,
-        SalesWarehouseWorkStatus.pendingPick,
-      );
+      expect(gateway.workStatuses.first, SalesWarehouseWorkStatus.pendingPick);
 
       await tester.tap(
         find.descendant(
@@ -149,6 +146,9 @@ Future<void> _pump(
 }
 
 class _OutboundGateway implements WarehouseSalesOutboundGateway {
+  @override
+  Future<int> pendingCount() async => 0;
+
   final List<String?> workStatuses = <String?>[];
 
   @override

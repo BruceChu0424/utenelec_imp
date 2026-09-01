@@ -351,7 +351,7 @@ class _FinanceReportTablePageState
                 for (int i = 0; i < _card.variants.length; i++)
                   UtenFilterSegment(value: i, label: _card.variants[i].label),
               ],
-              selected: _variantIndex,
+              selected: {_variantIndex},
               onSelectionChanged: _changeVariant,
             ),
             const SizedBox(height: UtenSpacing.s12),

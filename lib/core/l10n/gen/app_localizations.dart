@@ -5185,6 +5185,18 @@ abstract class AppLocalizations {
   /// **'资产负债等六大类'**
   String get basicDataHubPaymentStyleSub;
 
+  /// No description provided for @basicDataHubSettlementMethod.
+  ///
+  /// In zh, this message translates to:
+  /// **'结算方式'**
+  String get basicDataHubSettlementMethod;
+
+  /// No description provided for @basicDataHubSettlementMethodSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'结账字典·账期口径'**
+  String get basicDataHubSettlementMethodSub;
+
   /// No description provided for @impersonationSwitchPerson.
   ///
   /// In zh, this message translates to:

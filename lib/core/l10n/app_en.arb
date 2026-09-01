@@ -946,6 +946,8 @@
   "basicDataHubAccountSub": "Account & balances",
   "basicDataHubPaymentStyle": "Payment categories",
   "basicDataHubPaymentStyleSub": "Six accounting classes",
+  "basicDataHubSettlementMethod": "Settlement methods",
+  "basicDataHubSettlementMethodSub": "Terms dictionary and payment-term rules",
   "impersonationSwitchPerson": "Switch person",
   "impersonationEnterPasswordTitle": "Confirm switch person",
   "impersonationEnterPasswordHint": "For security, enter your login password. After that you can switch freely for 15 minutes without re-entering.",

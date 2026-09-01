@@ -908,7 +908,7 @@ migrate_production () {
 # Manifest-bound measurement profile suggestions. This must run only after all
 # physical document modules so the same target UUID facts are aggregated.
 migrate_measurement_profiles () {
-    echo "→ [计量学习] 汇总已审核业务量/实际重量证据并隔离异常..."
+    echo "→ [计量学习] 汇总已审核数量/实际重量证据并隔离异常..."
     run_sql migrate_measurement_profiles.sql
 }
 

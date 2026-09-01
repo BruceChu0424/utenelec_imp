@@ -12,6 +12,9 @@ abstract interface class WarehouseSalesOutboundGateway {
     String? warehouseWorkStatus,
   });
 
+  /// 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）。
+  Future<int> pendingCount();
+
   Future<WarehouseSalesOutboundDetail> detail(String id);
 
   Future<WarehouseSalesOutboundDetail> transition(
@@ -45,6 +48,14 @@ class WarehouseSalesOutboundRepository
     }
     final json = await api.get(_base, query: query);
     return PagedResult.fromJson(json, WarehouseSalesOutboundSummary.fromJson);
+  }
+
+  @override
+  Future<int> pendingCount() async {
+    final json = await api.get('$_base/count');
+    final count = json['count'] ?? json['total'] ?? json['pendingCount'];
+    if (count is num) return count.toInt();
+    throw const FormatException('销售出库待办计数响应格式不正确');
   }
 
   @override

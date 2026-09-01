@@ -43,7 +43,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
-import '../../warehouse/providers/warehouse_iqc_stock_in_count_provider.dart';
+import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../models/production_fqc_inspection.dart';
 import '../repositories/production_fqc_repository.dart';
@@ -78,7 +78,9 @@ class _QualityPendingDisposalPageState
   String _keyword = '';
 
   /// 类型筛选（分段按钮与表头筛选共用）：null = 全部；PURCHASE / SUBCONTRACT / FQC。
+  /// 进页面不预选（不选=不过滤），点分段后才算选中。
   String? _typeFilter;
+  bool _typeFilterSelected = false;
   int _page = 1;
   int _requestVersion = 0;
 
@@ -205,9 +207,10 @@ class _QualityPendingDisposalPageState
 
   /// 类型筛选（分段按钮与表头筛选共用这一个口径）：null = 全部待检。
   void _selectType(String? type) {
-    if (_typeFilter == type) return;
+    if (_typeFilter == type && _typeFilterSelected) return;
     setState(() {
       _typeFilter = type;
+      _typeFilterSelected = true;
       _page = 1;
     });
   }
@@ -569,11 +572,6 @@ class _QualityPendingDisposalPageState
     int? subcontractCount,
     int? fqcCount,
   ) {
-    // 全部 = 采购 + 委外 + 自制产成品三域之和；任一已授权域仍在加载（null）时
-    // 徽章不显示，不把半程合计伪装成最终数字（与工作台合并角标同口径）。
-    final int? totalCount = purchaseCount == null || fqcCount == null
-        ? null
-        : purchaseCount + (subcontractCount ?? 0) + fqcCount;
     final selected = switch (_typeFilter) {
       'PURCHASE' => 'purchase',
       'SUBCONTRACT' => 'subcontract',
@@ -587,11 +585,12 @@ class _QualityPendingDisposalPageState
           header: true,
           label: '共有 ${_rows.length} 条待检任务',
           // 全平台统一筛选工具条：分段(红圆计数徽章) + 胶囊搜索框。
+          // 「全部待检单」不挂徽章——徽章只挂各来源分段的可办数量。
           child: UtenFilterToolbar<String>(
             segmentsKey: const Key('iqc-type-segments'),
             searchKey: const Key('iqc-search'),
             segments: [
-              UtenFilterSegment(value: 'all', label: '全部待检单', count: totalCount),
+              const UtenFilterSegment(value: 'all', label: '全部待检单'),
               if (_canViewIqc) ...[
                 UtenFilterSegment(
                   value: 'purchase',
@@ -607,7 +606,7 @@ class _QualityPendingDisposalPageState
               if (_canViewFqc)
                 UtenFilterSegment(value: 'fqc', label: '自制产成品', count: fqcCount),
             ],
-            selected: selected,
+            selected: _typeFilterSelected ? {selected} : const {},
             onSelectionChanged: (value) => _selectType(switch (value) {
               'purchase' => 'PURCHASE',
               'subcontract' => 'SUBCONTRACT',
@@ -954,7 +953,7 @@ class _ProcurementInspectionDetailPageState
       await _load();
       ref.invalidate(procurementInspectionPendingCountProvider);
       if (action == 'PASS') {
-        ref.invalidate(warehouseIqcStockInPendingCountProvider);
+        ref.invalidate(warehouseQualityResultPendingCountProvider);
       }
       if (mounted) {
         UtenNotify.success(
@@ -1008,7 +1007,7 @@ class _ProcurementInspectionDetailPageState
       });
       await _load();
       ref.invalidate(procurementInspectionPendingCountProvider);
-      ref.invalidate(warehouseIqcStockInPendingCountProvider);
+      ref.invalidate(warehouseQualityResultPendingCountProvider);
       if (mounted) {
         UtenNotify.success(
           context,

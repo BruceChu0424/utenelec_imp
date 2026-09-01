@@ -1,10 +1,10 @@
 package com.uten.imp.features.warehouse.inbound;
 
-import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.TaskDetail;
-import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.TaskSummary;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,35 +13,22 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
 import java.util.UUID;
 
-/** Dedicated warehouse API; never returns purchase price, amount, currency or AP data. */
+/**
+ * Dedicated warehouse API; never returns purchase price, amount, currency or AP data.
+ * The paged queue list/count retired with the 2026-09-01 merge into
+ * /warehouse/quality-results; this surface keeps the deep-link detail read plus
+ * the single and batch confirmation commands.
+ */
 @RestController
 @RequestMapping("/api/warehouse/iqc-stock-ins")
 @RequiredArgsConstructor
 public class ProcurementIqcStockInController {
 
     private final ProcurementIqcStockInService service;
-
-    @GetMapping
-    @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')")
-    public PageResponse<TaskSummary> list(
-            @RequestParam(defaultValue = "") String keyword,
-            @RequestParam(defaultValue = "ALL") String receiptType,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "40") int size) {
-        return service.list(keyword, receiptType, page, size);
-    }
-
-    @GetMapping("/count")
-    @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')")
-    public Map<String, Long> count() {
-        return Map.of("count", service.countPending());
-    }
 
     @GetMapping("/{receiptType}/{receiptId}")
     @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')")
@@ -59,5 +46,14 @@ public class ProcurementIqcStockInController {
             @PathVariable UUID receiptId,
             @Valid @RequestBody ConfirmRequest request) {
         return service.confirm(receiptType, receiptId, request);
+    }
+
+    /** 跨收货单批量入库（品质部检查结果页多选办理）：整批同事务，任一冲突整批回滚。 */
+    @PostMapping("/batch-confirm")
+    @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')"
+            + " and hasAuthority('" + ProcurementIqcStockInPermissions.CONFIRM + "')")
+    public BatchConfirmResult batchConfirm(
+            @Valid @RequestBody BatchConfirmRequest request) {
+        return service.batchConfirm(request);
     }
 }

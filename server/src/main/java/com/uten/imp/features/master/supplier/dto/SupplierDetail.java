@@ -47,4 +47,6 @@ public class SupplierDetail {
     private Long version;            // 乐观锁版本（编辑回传）
     private UUID ownerEmployeeId;    // 业务员 UUID 真源
     private String ownerEmployeeName;
+    private UUID defaultSettlementMethodId;  // 默认结算方式 UUID（V452）
+    private String defaultSettlementMethodName;
 }

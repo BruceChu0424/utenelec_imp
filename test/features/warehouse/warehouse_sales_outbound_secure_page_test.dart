@@ -122,6 +122,9 @@ const _detailJson = <String, dynamic>{
 };
 
 class _SalesGateway implements WarehouseSalesOutboundGateway {
+  @override
+  Future<int> pendingCount() async => 0;
+
   _SalesGateway(this.summary, this.value);
 
   final WarehouseSalesOutboundSummary summary;

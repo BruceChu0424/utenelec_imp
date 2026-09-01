@@ -23,6 +23,7 @@ import '../../features/basic_data/pages/currency_page.dart';
 import '../../features/basic_data/pages/goods_detail_page.dart';
 import '../../features/basic_data/pages/mould_category_page.dart';
 import '../../features/basic_data/pages/payment_style_page.dart';
+import '../../features/basic_data/pages/settlement_method_page.dart';
 import '../../features/basic_data/pages/product_category_page.dart';
 import '../../features/basic_data/pages/supplier_category_page.dart';
 import '../../features/basic_data/pages/unit_page.dart';
@@ -74,8 +75,7 @@ import '../../features/purchase/pages/purchase_report_table_page.dart';
 import '../../features/purchase/config/purchase_report_config.dart';
 import '../../features/purchase/models/purchase_doc.dart';
 import '../../features/stock/pages/instant_inventory_page.dart';
-import '../../features/stock/pages/stock_balance_page.dart';
-import '../../features/stock/pages/stock_movement_page.dart';
+import '../../features/stock/pages/stock_item_detail_page.dart';
 import '../../features/warehouse/models/stock_doc.dart';
 import '../../features/warehouse/config/warehouse_document_history_config.dart';
 import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
@@ -83,10 +83,8 @@ import '../../features/warehouse/pages/procurement_return_task_pages.dart';
 import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
-import '../../features/warehouse/pages/warehouse_iqc_return_detail_page.dart';
-import '../../features/warehouse/pages/warehouse_iqc_return_page.dart';
-import '../../features/warehouse/pages/warehouse_iqc_stock_in_detail_page.dart';
-import '../../features/warehouse/pages/warehouse_iqc_stock_in_page.dart';
+import '../../features/warehouse/pages/warehouse_quality_results_page.dart';
+import '../../features/warehouse/pages/warehouse_quality_result_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_document_history_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_document_history_list_page.dart';
@@ -108,6 +106,9 @@ import '../../features/warehouse/pages/shelf_label_page.dart';
 import '../../features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart';
 import '../../features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
 import '../../features/warehouse/pages/warehouse_sales_outbound_page.dart';
+import '../../features/warehouse/pages/warehouse_outbound_task_center_page.dart';
+import '../../features/warehouse/pages/warehouse_inbound_task_center_page.dart';
+import '../../features/warehouse/pages/warehouse_draw_task_center_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
@@ -638,6 +639,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'basicinfo-payment-style',
             builder: (_, _) => const PaymentStylePage(),
           ),
+          GoRoute(
+            path: RouteName.basicinfoSettlementMethod,
+            name: 'basicinfo-settlement-method',
+            builder: (_, _) => const SettlementMethodPage(),
+          ),
 
           // —— 统一履约任务工作台（只从后端真实任务与动作单据读取）——
           GoRoute(
@@ -777,25 +783,37 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const PurchaseReportPage(),
           ),
 
-          // —— 库存查询（余额 + 流水）——
+          // —— 库存查询（即时库存为唯一入口；余额/流水并入库存详情页）——
+          // 旧「库存余额」页已并入：/stock/balance 重定向到即时库存（余额在库存详情页按货品查看）。
           GoRoute(
             path: RouteName.stockBalance,
             name: 'stock-balance',
-            builder: (_, _) => const StockBalancePage(),
+            redirect: (_, _) => RouteName.stockInstantInventory,
           ),
+          // 旧「出入库流水」页已并入库存详情页：带 goodsId 的旧深链（即时库存/货品详情/
+          // 物料反查）落到 /stock/item/:goodsId，无 goodsId 时回即时库存。
           GoRoute(
             path: RouteName.stockMovement,
             name: 'stock-movement',
-            // goodsId / warehouseId 查询参数：即时库存/余额/货品详情行点击带入过滤
-            builder: (_, state) => StockMovementPage(
-              goodsId: state.uri.queryParameters['goodsId'],
-              warehouseId: state.uri.queryParameters['warehouseId'],
-            ),
+            redirect: (_, state) {
+              final goodsId =
+                  state.uri.queryParameters['goodsId']?.trim() ?? '';
+              return goodsId.isEmpty
+                  ? RouteName.stockInstantInventory
+                  : RouteName.stockItemDetail(goodsId);
+            },
           ),
           GoRoute(
             path: RouteName.stockInstantInventory,
             name: 'stock-instant-inventory',
             builder: (_, _) => const InstantInventoryPage(),
+          ),
+          // 库存详情：即时库存双击货品行进入（各仓余额 + 出入库流水 + 受控余额调整）。
+          GoRoute(
+            path: '${RouteName.stockItemBase}/:goodsId',
+            name: 'stock-item-detail',
+            builder: (_, state) =>
+                StockItemDetailPage(goodsId: state.pathParameters['goodsId']!),
           ),
 
           // —— 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）——
@@ -819,18 +837,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               extra: s.extra,
             ),
           ),
+          // 旧「IQC 合格待入库」详情深链：合并页详情同参，直接重定向保旧链。
           GoRoute(
             path: '${RouteName.warehouseIqcStockIns}/:receiptType/:receiptId',
             name: 'warehouse-iqc-stock-in-detail',
-            builder: (_, state) => WarehouseIqcStockInDetailPage(
-              receiptType: state.pathParameters['receiptType']!,
-              receiptId: state.pathParameters['receiptId']!,
+            redirect: (_, state) => RouteName.warehouseQualityResultDetail(
+              state.pathParameters['receiptType'] ?? '',
+              state.pathParameters['receiptId'] ?? '',
             ),
           ),
+          // 旧「IQC 合格待入库」列表入口：合并进「品质部检查结果」，老链接/收藏重定向。
           GoRoute(
             path: RouteName.warehouseIqcStockIns,
             name: 'warehouse-iqc-stock-ins',
-            builder: (_, _) => const WarehouseIqcStockInPage(),
+            redirect: (_, _) => RouteName.warehouseQualityResults,
+          ),
+          GoRoute(
+            path: RouteName.warehouseQualityResults,
+            name: 'warehouse-quality-results',
+            builder: (_, _) => const WarehouseQualityResultsPage(),
+          ),
+          GoRoute(
+            path:
+                '${RouteName.warehouseQualityResults}/:receiptType/:receiptId',
+            name: 'warehouse-quality-result-detail',
+            builder: (_, state) => WarehouseQualityResultDetailPage(
+              receiptType: state.pathParameters['receiptType']!,
+              receiptId: state.pathParameters['receiptId']!,
+            ),
           ),
           GoRoute(
             path: RouteName.qualityTaskCenter,
@@ -930,16 +964,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               id: state.pathParameters['id']!,
             ),
           ),
+          // 旧「IQC 不合格实物退回」详情深链（按拒收案件 id，无法映射到收货单）：
+          // 重定向到合并列表；退回案件的登记入口在合并详情页内。
           GoRoute(
             path: '/warehouse/iqc-returns/:id',
             name: 'warehouse-iqc-return-detail',
-            builder: (_, state) =>
-                WarehouseIqcReturnDetailPage(id: state.pathParameters['id']!),
+            redirect: (_, _) => RouteName.warehouseQualityResults,
           ),
+          // 旧「IQC 不合格实物退回」列表入口：合并进「品质部检查结果」，重定向保旧链。
           GoRoute(
             path: RouteName.warehouseIqcReturns,
             name: 'warehouse-iqc-returns',
-            builder: (_, _) => const WarehouseIqcReturnPage(),
+            redirect: (_, _) => RouteName.warehouseQualityResults,
           ),
           GoRoute(
             path: RouteName.warehouseSalesOutbound,
@@ -974,6 +1010,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 state.pathParameters['type'],
               )!,
             ),
+          ),
+          // 仓库任务中心三页（2026-09-01 重组；静态段 tasks 必须先于 /warehouse/:code，
+          // 否则会被 :code/:id 单据路由吞掉）。
+          GoRoute(
+            path: RouteName.warehouseOutboundTasks,
+            name: 'warehouse-outbound-tasks',
+            builder: (_, _) => const WarehouseOutboundTaskCenterPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseInboundTasks,
+            name: 'warehouse-inbound-tasks',
+            builder: (_, _) => const WarehouseInboundTaskCenterPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseDrawTasks,
+            name: 'warehouse-draw-tasks',
+            builder: (_, _) => const WarehouseDrawTaskCenterPage(),
           ),
           GoRoute(
             path: '/warehouse/:code/new',

@@ -61,18 +61,13 @@ class WarehouseIqcReturnContractTest {
                 .getAnnotation(RequestMapping.class);
         assertThat(root.value()).containsExactly("/api/warehouse/iqc-returns");
 
-        Method list = WarehouseIqcReturnController.class.getDeclaredMethod(
-                "list", String.class, String.class, String.class, int.class, int.class);
         Method detail = WarehouseIqcReturnController.class.getDeclaredMethod(
                 "detail", UUID.class);
         Method action = WarehouseIqcReturnController.class.getDeclaredMethod(
                 "recordReturn", UUID.class, RecordReturnRequest.class);
-        assertThat(list.getAnnotation(GetMapping.class).value()).isEmpty();
         assertThat(detail.getAnnotation(GetMapping.class).value()).containsExactly("/{id}");
         assertThat(action.getAnnotation(PostMapping.class).value())
                 .containsExactly("/{id}/record-return");
-        assertThat(list.getAnnotation(PreAuthorize.class).value())
-                .isEqualTo("hasAuthority('warehouse_iqc_return:view')");
         assertThat(detail.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('warehouse_iqc_return:view')");
         assertThat(action.getAnnotation(PreAuthorize.class).value())

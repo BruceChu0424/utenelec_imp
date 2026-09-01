@@ -23,7 +23,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_finished_inbound_task.dart';
-import '../providers/production_finished_inbound_task_count_provider.dart';
+import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
 
 /// 生产报工审核后的仓库到货登记。
@@ -325,7 +325,7 @@ class _ProductionFinishedArrivalRegistrationPageState
       _validationError = null;
       _registrationCompletedThisSession = true;
     });
-    ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+    invalidateWarehouseTaskCounts(ref);
 
     if (!_rememberPlaces) {
       context.appSuccess('成品仓和库位已登记，已送品质部检查');

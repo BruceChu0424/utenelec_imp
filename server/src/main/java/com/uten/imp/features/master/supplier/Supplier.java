@@ -104,7 +104,10 @@ public class Supplier extends SoftDeletableEntity {
     private BigDecimal exchangeRate;    // CRate（疑似汇率，含义待确认）
     private Integer tday;               // TDay（结算天数）
     @Column(name = "price_style")
-    private Integer priceStyle;         // PStyle（价格样式）
+    private Integer priceStyle;         // PStyle（旧库快照；由 defaultSettlementMethodId 同步）
+    /** 默认结算方式 UUID 真源（V452）：采购/委外订货开单时的默认结账方式。 */
+    @Column(name = "default_settlement_method_id")
+    private UUID defaultSettlementMethodId;
 
     // ===== 状态 / 备注 =====
     private String status;              // Status（使用/禁用）

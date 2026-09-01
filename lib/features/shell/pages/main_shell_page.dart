@@ -3,7 +3,8 @@
 //
 // 断点策略：
 //   - compact（<600dp）：底部悬浮胶囊导航，4 项：工作台 / 通知 / 我的 / 设置，
-//     布局与 v3 完全一致（overlay 悬浮、不占布局空间）
+//     布局与 v3 完全一致（overlay 悬浮、不占布局空间）；工作台挂总待办角标
+//     （= 各模块卡角标之和，workbenchTotalTodoCountProvider）、通知挂未读角标
 //   - medium+（≥600dp）：全高左侧 NavigationRail（surface 底 + 右侧发丝边框），
 //     屏宽 ≥1280dp 时 extended 常驻标签，否则纯图标 + Tooltip；
 //     内容区套 UtenContentContainer（maxWidth 1600 居中），超宽屏不再无限拉宽
@@ -37,6 +38,8 @@ import '../../../core/router/route_names.dart';
 import '../../dashboard/pages/dashboard_page.dart';
 import '../../dashboard/providers/dashboard_overview_provider.dart';
 import '../../dashboard/providers/workbench_refresh.dart';
+import '../../dashboard/widgets/module_badge_sum.dart'
+    show workbenchTotalTodoCountProvider;
 import '../../notice/pages/notice_list_page.dart';
 import '../../notice/providers/notice_providers.dart';
 import '../../profile/pages/profile_page.dart';
@@ -189,6 +192,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
       l10n.navSettings,
     ];
     final unread = ref.watch(unreadNoticeCountProvider);
+    // 导航「工作台」Tab 角标 = 全部模块卡角标之和（与卡片同源；常驻 watch 使
+    // autoDispose 计数源保持存活，更新时机同 refreshGlobalBadges/60s 轮询）。
+    final workbenchTodos = ref.watch(workbenchTotalTodoCountProvider);
 
     final tabIndex = _exactTabIndex(location);
 
@@ -200,12 +206,18 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
 
     // compact 保留悬浮胶囊；medium+ 切换为左侧 Rail + 内容收敛
     final shell = context.breakpoint.isCompact
-        ? _buildCompactShell(tabIndex: tabIndex, labels: labels, unread: unread)
+        ? _buildCompactShell(
+            tabIndex: tabIndex,
+            labels: labels,
+            unread: unread,
+            workbenchTodos: workbenchTodos,
+          )
         : _buildRailShell(
             tabIndex: tabIndex,
             location: location,
             labels: labels,
             unread: unread,
+            workbenchTodos: workbenchTodos,
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
     return IdleTimeoutGuard(child: shell);
@@ -216,6 +228,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     required int? tabIndex,
     required List<String> labels,
     required int unread,
+    required int workbenchTodos,
   }) {
     return Scaffold(
       // 胶囊导航不随键盘升起；body 不被键盘压缩
@@ -268,7 +281,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
                 position: _position,
                 onTap: _onTabTap,
                 labels: labels,
-                badgeCounts: [0, unread, 0, 0],
+                badgeCounts: [workbenchTodos, unread, 0, 0],
               ),
             ),
           ),
@@ -283,6 +296,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     required String location,
     required List<String> labels,
     required int unread,
+    required int workbenchTodos,
   }) {
     return Scaffold(
       // 与 compact 保持一致：键盘弹起不压缩页面（桌面端影响可忽略）
@@ -298,7 +312,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
               selectedIndex: tabIndex ?? _capsuleIndex(location),
               onTap: _onTabTap,
               labels: labels,
-              badgeCounts: [0, unread, 0, 0],
+              badgeCounts: [workbenchTodos, unread, 0, 0],
             ),
             Expanded(
               // 超宽屏内容居中收敛（maxWidth 1600 + 响应式 gutter）；

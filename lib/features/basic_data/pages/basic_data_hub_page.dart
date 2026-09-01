@@ -101,6 +101,13 @@ class BasicDataHubPage extends ConsumerWidget {
                 location: RouteName.basicinfoPaymentStyle,
                 color: _C.teal,
               ),
+              _BasicResource(
+                icon: Icons.event_note_outlined,
+                label: l10n.basicDataHubSettlementMethod,
+                description: l10n.basicDataHubSettlementMethodSub,
+                location: RouteName.basicinfoSettlementMethod,
+                color: _C.green,
+              ),
             ]
             .where((resource) {
               if (superAdmin) return true;

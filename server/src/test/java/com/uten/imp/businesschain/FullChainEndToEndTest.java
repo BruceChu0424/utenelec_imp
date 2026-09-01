@@ -4912,6 +4912,19 @@ class FullChainEndToEndTest {
         assertEquals(firstStockIn.batchId(), replayedStockIn.batchId());
         assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(new BigDecimal("20")),
                 "同仓库入库幂等键重放不翻倍(仍 20，非 40)");
+
+        // V451 库位学习：首次确认落一行 IQC 来源偏好；幂等重放不重复学习/计数；
+        // 货品主档 stock_place 回写本次库位（货架目视化/即时库存同步的口径）。
+        Map<String, Object> learned = jdbc.queryForMap("""
+                select place, source_kind, selection_count, version
+                from warehouse_goods_place_preferences
+                where warehouse_id = ? and goods_id = ? and color_id is null
+                """, w.warehouseId(), h);
+        assertEquals("S30-A01", learned.get("place"));
+        assertEquals("IQC_STOCK_IN", learned.get("source_kind"));
+        assertEquals(1L, ((Number) learned.get("selection_count")).longValue());
+        assertEquals("S30-A01", jdbc.queryForObject(
+                "select stock_place from goods where id = ?", String.class, h));
     }
 
     @Test

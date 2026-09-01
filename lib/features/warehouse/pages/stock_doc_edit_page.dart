@@ -649,13 +649,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                   valueListenable: _grid.totalListenable,
                   builder: (_, _, _) => Text(
                     '盘盈亏：${measurementTotalsText(
-                      _grid.rows.map(
-                        (row) => MeasuredAmount(
-                          value: row.amountNotifier.value,
-                          unitId: row.unitId,
-                          unitName: row.unitName,
-                        ),
-                      ),
+                      _grid.rows.map((row) => MeasuredAmount(value: row.amountNotifier.value, unitId: row.unitId, unitName: row.unitName)),
                       emptyLabel: '0',
                     )}',
                     style: theme.textTheme.titleMedium?.copyWith(

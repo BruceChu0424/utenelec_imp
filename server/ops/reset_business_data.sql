@@ -1,12 +1,18 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（V443/V446；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（V443–V453；保留主档、人事、权限与治理证据）
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
---   · CLEAR 212/214/219 张：V443 为212张，V446新增两张 IQC 仓库入库事实表后为214张，V447新增五张交接事实表后为219张；
+--   · CLEAR 212/214/219 张：V443 为212张，V446新增两张 IQC 仓库入库事实表后为214张，V447新增五张交接事实表后为219张；V448–V450不新增父表；
+--     V448 只增合并页读路径索引、不新增业务表，CLEAR 维持 219 张；
+--     V449 只替换 V446 的 IQC 入库校验触发器函数（放开同人放行+确认限制），
+--     不新增业务表，CLEAR 维持 219 张；
+--     V451 只泛化库位学习表来源维度（IQC 确认入库也能学习库位），CLEAR 维持 219 张；
+--     V452 只给供应商加默认结算方式列/触发器与核对视图、V453 只登记结算方式
+--     管理页权限与权限面，均不新增业务表，CLEAR 维持 219 张；
 --     建议、任务认领和业务 outbox。
 --   · PRESERVE 95 张：V442 的四张单位/迁移计量治理证据表明确保留；PostGIS 扩展表不进入业务策略计数；其余为主档、人事、账号/权限、系统配置、Flyway、审计日志、
 --     人事附件、导入/迁移证据、编号终身占用和单调流水。账户主档保留，
@@ -552,6 +558,8 @@ DECLARE
     v443_business_table_count BIGINT;
     v446_business_table_count BIGINT;
     v447_business_table_count BIGINT;
+    v448_read_index_count BIGINT;
+    v451_place_source_count BIGINT;
     applied_migration_count BIGINT;
     applied_max_version INTEGER;
     unsafe_fk_edges TEXT;
@@ -697,10 +705,16 @@ BEGIN
     IF (applied_max_version, applied_migration_count) NOT IN (
         (443, 405),
         (446, 408),
-        (447, 409)
+        (447, 409),
+        (448, 410),
+        (449, 411),
+        (450, 412),
+        (451, 413),
+        (452, 414),
+        (453, 415)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408 或 V447/409 目录，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414 或 V453/415 目录，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -723,6 +737,58 @@ BEGIN
     IF v447_business_table_count = 5 AND v446_business_table_count <> 2 THEN
         RAISE EXCEPTION
             'V447 目录必须同时包含完整 V446 IQC 仓库入库事实表';
+    END IF;
+
+    -- V448 只增合并页读路径索引（品质部检查结果）；目录到 V448 时必须五个都在，
+    -- 且完整叠在 V446/V447 业务表之上，拒绝在部分应用的重置目录上运行。
+    SELECT count(*)
+    INTO v448_read_index_count
+    FROM pg_indexes
+    WHERE indexname IN (
+        'idx_procurement_inspection_items_quality_verdict',
+        'idx_procurement_inspection_events_pending_release',
+        'idx_procurement_iqc_stock_in_item_event_qty',
+        'idx_procurement_iqc_stock_in_item_batch',
+        'idx_procurement_iqc_rejection_pending_return'
+    );
+
+    IF applied_max_version >= 448 THEN
+        IF v448_read_index_count <> 5 THEN
+            RAISE EXCEPTION
+                'V448 合并页读路径索引缺失 %/5，拒绝在未完整应用 V448 的目录上重置',
+                v448_read_index_count;
+        END IF;
+        IF v446_business_table_count <> 2 OR v447_business_table_count <> 5 THEN
+            RAISE EXCEPTION
+                'V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表';
+        END IF;
+    END IF;
+
+    -- V451 只泛化库位学习表来源维度（kind + IQC 批次引用 + 互斥约束 + 索引），
+    -- 不新增业务表；目录到 V451 时必须四件齐全，拒绝在部分应用的重置目录上运行。
+    SELECT count(*)
+    INTO v451_place_source_count
+    FROM (
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = 'warehouse_goods_place_preferences'::regclass
+          AND attname = 'source_kind' AND NOT attisdropped
+        UNION ALL
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = 'warehouse_goods_place_preferences'::regclass
+          AND attname = 'source_iqc_batch_id' AND NOT attisdropped
+        UNION ALL
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'warehouse_goods_place_preference_source_chk'
+          AND conrelid = 'warehouse_goods_place_preferences'::regclass
+        UNION ALL
+        SELECT 1 FROM pg_indexes
+        WHERE indexname = 'idx_warehouse_goods_place_preference_iqc_batch'
+    ) artifacts;
+
+    IF applied_max_version >= 451 AND v451_place_source_count <> 4 THEN
+        RAISE EXCEPTION
+            'V451 库位学习来源泛化构件缺失 %/4，拒绝在未完整应用 V451 的目录上重置',
+            v451_place_source_count;
     END IF;
 
     IF preserve_count <> 95

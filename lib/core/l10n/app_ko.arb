@@ -913,6 +913,8 @@
   "basicDataHubAccountSub": "계정·잔액",
   "basicDataHubPaymentStyle": "수입·지급 유형",
   "basicDataHubPaymentStyleSub": "6개 회계과목",
+  "basicDataHubSettlementMethod": "결제 방식",
+  "basicDataHubSettlementMethodSub": "결제 방식·지급 기한",
   "impersonationSwitchPerson": "사용자 전환",
   "impersonationEnterPasswordTitle": "사용자 전환 확인",
   "impersonationEnterPasswordHint": "보안을 위해 로그인 비밀번호를 입력하세요. 통과 후 15분간 자유롭게 전환할 수 있습니다.",

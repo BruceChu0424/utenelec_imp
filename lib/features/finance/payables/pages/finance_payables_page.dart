@@ -755,7 +755,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                           label: '月结批次',
                         ),
                     ],
-                    selected: _workspace,
+                    selected: {_workspace},
                     onSelectionChanged: (value) => setState(() {
                       _workspace = value;
                       _selectedIds = <String>{};

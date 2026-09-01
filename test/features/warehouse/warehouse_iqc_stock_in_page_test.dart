@@ -4,14 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/feedback/uten_context_menu.dart';
-import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
-import 'package:uten_imp/features/warehouse/pages/warehouse_iqc_stock_in_detail_page.dart';
-import 'package:uten_imp/features/warehouse/pages/warehouse_iqc_stock_in_page.dart';
-import 'package:uten_imp/features/warehouse/providers/warehouse_iqc_stock_in_count_provider.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
+import 'package:uten_imp/features/warehouse/pages/warehouse_quality_results_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_iqc_stock_in_repository.dart';
+import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_result_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -19,21 +17,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('model parses amount-free task and confirm payload', () {
-    final summary = WarehouseIqcStockInTaskSummary.fromJson(_summaryJson);
-    expect(summary.receiptType, WarehouseIqcStockInReceiptType.purchase);
-    expect(summary.receiptId, 'receipt-1');
-    expect(summary.pendingSliceCount, 1);
-    expect(summary.statusLabel, contains('待仓库入库'));
-
-    final detail = WarehouseIqcStockInTaskDetail.fromJson(
-      _detailJson(remaining: 5),
-    );
-    expect(detail.canConfirm, isTrue);
-    expect(detail.qualityStatusLabel, '品质检验进行中');
-    expect(detail.items.single.placeHint, 'A-01');
-    expect(detail.items.single.releasedWeight, 2.5);
-
+  test('confirm payload trims place and carries no commercial fields', () {
     const command = WarehouseIqcStockInConfirmCommand(
       idempotencyKey: 'warehouse-key-1',
       items: [
@@ -59,45 +43,7 @@ void main() {
     );
   });
 
-  test(
-    'unknown receipt type fails closed instead of defaulting to purchase',
-    () {
-      final json = Map<String, dynamic>.from(_summaryJson)
-        ..['receiptType'] = 'FUTURE_RECEIPT_TYPE';
-
-      expect(
-        () => WarehouseIqcStockInTaskSummary.fromJson(json),
-        throwsFormatException,
-      );
-    },
-  );
-
-  test(
-    'count provider avoids the API without its exact view permission',
-    () async {
-      final gateway = _Gateway();
-      final container = ProviderContainer(
-        overrides: [
-          warehouseIqcStockInRepositoryProvider.overrideWithValue(gateway),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.procurementInspectionView,
-            Perm.procurementInspectionHandle,
-            Perm.warehouseInboundStockIn,
-          }),
-          isSuperAdminProvider.overrideWithValue(false),
-        ],
-      );
-      addTearDown(container.dispose);
-
-      expect(
-        await container.read(warehouseIqcStockInPendingCountProvider.future),
-        0,
-      );
-      expect(gateway.pendingCountCalls, 0);
-    },
-  );
-
-  test('queue route and badge participate in warehouse-wide refresh', () {
+  test('detail route, merged badge and warehouse-wide refresh stay wired', () {
     final hub = File(
       'lib/features/warehouse/pages/warehouse_hub_page.dart',
     ).readAsStringSync();
@@ -109,194 +55,86 @@ void main() {
     ).readAsStringSync();
     final router = File('lib/core/router/app_router.dart').readAsStringSync();
 
-    expect(hub, contains('WarehouseIqcStockInBadge'));
-    expect(hub, contains('Perm.warehouseIqcStockInView'));
-    expect(hub, contains('warehouseIqcStockInPendingCountProvider'));
-    expect(moduleBadge, contains('warehouseIqcStockInPendingCountProvider'));
-    expect(globalRefresh, contains('warehouseIqcStockInPendingCountProvider'));
+    // 2026-09-01 合并后：hub 卡改挂「品质部检查结果」徽章，旧列表路由重定向保链；
+    // 旧详情页已删除，深链重定向到合并页详情（同参）。
+    expect(hub, contains('WarehouseQualityResultBadge'));
+    expect(hub, contains('RouteName.warehouseQualityResults'));
+    // hub 的计数失效统一走 invalidateWarehouseTaskCounts（2026-09-01 下午起），
+    // 品质结果的 未完结总数 + 父分类（来源）分段计数 都在其中失效。
+    final countRefresh = File(
+      'lib/features/warehouse/providers/warehouse_count_refresh.dart',
+    ).readAsStringSync();
+    expect(hub, contains('invalidateWarehouseTaskCounts'));
+    expect(
+      countRefresh,
+      contains('warehouseQualityResultPendingCountProvider'),
+    );
+    expect(
+      countRefresh,
+      contains('warehouseQualityResultTypeCountsProvider'),
+    );
+    expect(moduleBadge, contains('warehouseQualityResultPendingCountProvider'));
+    expect(globalRefresh, contains('warehouseQualityResultPendingCountProvider'));
+    expect(moduleBadge, isNot(contains('warehouseIqcStockInPendingCountProvider')));
+    expect(globalRefresh, isNot(contains('warehouseIqcStockInPendingCountProvider')));
     expect(router, contains("name: 'warehouse-iqc-stock-ins'"));
     expect(router, contains("name: 'warehouse-iqc-stock-in-detail'"));
-  });
-
-  testWidgets('375px list exposes warehouse columns only', (tester) async {
-    _viewport(tester, const Size(375, 900));
-    final gateway = _Gateway();
-    final preferences = await SharedPreferences.getInstance();
-    await tester.pumpWidget(
-      _app(const WarehouseIqcStockInPage(), gateway, preferences),
-    );
-    await tester.pumpAndSettle();
-
-    final table = tester
-        .widget<MasterDataTableView<WarehouseIqcStockInTaskSummary>>(
-          find.byKey(const Key('warehouse-iqc-stock-in-table')),
-        );
-    final columnKeys = {for (final column in table.columns) column.key};
+    expect(router, contains("name: 'warehouse-quality-results'"));
+    expect(router, contains('RouteName.warehouseQualityResults'));
+    // 旧 IQC 待入库/退回详情页源码已删除，只剩重定向保链。
     expect(
-      columnKeys,
-      containsAll({
-        'status',
-        'billNo',
-        'supplierName',
-        'warehouseName',
-        'pendingSliceCount',
-      }),
+      File(
+        'lib/features/warehouse/pages/warehouse_iqc_stock_in_detail_page.dart',
+      ).existsSync(),
+      isFalse,
     );
-    expect(columnKeys.intersection(warehouseIqcStockInForbiddenKeys), isEmpty);
-    final rowMenu = table.rowMenuBuilder!(
-      WarehouseIqcStockInTaskSummary.fromJson(_summaryJson),
+    expect(
+      File(
+        'lib/features/warehouse/pages/warehouse_iqc_return_detail_page.dart',
+      ).existsSync(),
+      isFalse,
     );
-    expect(rowMenu.single, isA<UtenMenuItem>());
-    expect((rowMenu.single as UtenMenuItem).label, '查看入库详情');
-    expect(find.text('999999.99'), findsNothing);
-    expect(find.text('USD-SECRET'), findsNothing);
-    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'confirm requires local view and confirm plus server allowed action',
+    'merged quality-result list exposes status columns and batch entry only',
     (tester) async {
-      _viewport(tester, const Size(800, 900));
+      _viewport(tester, const Size(375, 900));
+      final gateway = _QualityGateway();
       final preferences = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        _qualityApp(const WarehouseQualityResultsPage(), gateway, preferences),
+      );
+      await tester.pumpAndSettle();
 
-      Future<void> verifyHidden({
-        required Set<String> permissions,
-        required bool serverAllowsConfirm,
-      }) async {
-        final gateway = _Gateway(serverAllowsConfirm: serverAllowsConfirm);
-        await tester.pumpWidget(
-          _app(
-            const WarehouseIqcStockInDetailPage(
-              receiptType: 'PURCHASE',
-              receiptId: 'receipt-1',
-            ),
-            gateway,
-            preferences,
-            permissions: permissions,
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const Key('warehouse-iqc-stock-in-confirm')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('warehouse-iqc-stock-in-select-pass-1')),
-          findsNothing,
-        );
-        if (permissions.contains(Perm.warehouseIqcStockInView) &&
-            permissions.contains(Perm.warehouseIqcStockInConfirm) &&
-            !serverAllowsConfirm) {
-          expect(find.textContaining('职责分离'), findsOneWidget);
-          expect(find.textContaining('另一名有权限的仓库人员'), findsOneWidget);
-        }
-        expect(gateway.confirmCalls, 0);
-        await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump();
-      }
-
-      await verifyHidden(
-        permissions: const {
-          Perm.warehouseIqcStockInView,
-          Perm.procurementInspectionHandle,
-          Perm.warehouseInboundStockIn,
-          Perm.stockDocEdit,
-        },
-        serverAllowsConfirm: true,
+      final table = tester.widget<MasterDataTableView<WarehouseQualityResultTask>>(
+        find.byKey(const Key('warehouse-quality-result-table')),
       );
-      await verifyHidden(
-        permissions: const {
-          Perm.warehouseIqcStockInView,
-          Perm.warehouseIqcStockInConfirm,
-        },
-        serverAllowsConfirm: false,
+      final columnKeys = {for (final column in table.columns) column.key};
+      expect(
+        columnKeys,
+        containsAll({
+          'workStatus',
+          'billNo',
+          'supplierName',
+          'warehouseName',
+          'pendingSliceCount',
+          'pendingReturnCount',
+        }),
       );
-      await verifyHidden(
-        permissions: const {Perm.warehouseIqcStockInConfirm},
-        serverAllowsConfirm: true,
-      );
+      expect(columnKeys.intersection(warehouseIqcStockInForbiddenKeys), isEmpty);
+      expect(find.text('等待检查结果'), findsWidgets);
+      expect(find.text('等待结果'), findsWidgets);
+      expect(find.text('999999.99'), findsNothing);
+      expect(find.text('USD-SECRET'), findsNothing);
+      expect(tester.takeException(), isNull);
     },
   );
-
-  testWidgets('partial confirm conflict refreshes facts and preserves input', (
-    tester,
-  ) async {
-    _viewport(tester, const Size(1000, 1000));
-    final gateway = _Gateway(conflictOnce: true);
-    final preferences = await SharedPreferences.getInstance();
-    await tester.pumpWidget(
-      _app(
-        const WarehouseIqcStockInDetailPage(
-          receiptType: 'PURCHASE',
-          receiptId: 'receipt-1',
-        ),
-        gateway,
-        preferences,
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    const quantityKey = Key('warehouse-iqc-stock-in-qty-pass-1');
-    const placeKey = Key('warehouse-iqc-stock-in-place-pass-1');
-    await tester.enterText(find.byKey(quantityKey), '3.5');
-    await tester.enterText(find.byKey(placeKey), 'B-02');
-    await tester.tap(find.byKey(const Key('warehouse-iqc-stock-in-confirm')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '确认入库'));
-    await tester.pumpAndSettle();
-
-    expect(gateway.detailCalls, greaterThanOrEqualTo(2));
-    expect(gateway.lastCommand?.items.single.baseQty, 3.5);
-    expect(gateway.lastCommand?.items.single.expectedRemainingBaseQty, 5);
-    expect(gateway.lastCommand?.items.single.place, 'B-02');
-    expect(
-      tester.widget<TextFormField>(find.byKey(quantityKey)).controller?.text,
-      '3.5',
-    );
-    expect(
-      tester.widget<TextFormField>(find.byKey(placeKey)).controller?.text,
-      'B-02',
-    );
-    expect(find.textContaining('已保留当前输入'), findsOneWidget);
-    expect(find.textContaining('刷新后的待入库余量 4'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('completed deep link keeps warehouse history read-only', (
-    tester,
-  ) async {
-    _viewport(tester, const Size(800, 900));
-    final gateway = _Gateway(completed: true);
-    final preferences = await SharedPreferences.getInstance();
-    await tester.pumpWidget(
-      _app(
-        const WarehouseIqcStockInDetailPage(
-          receiptType: 'PURCHASE',
-          receiptId: 'receipt-1',
-        ),
-        gateway,
-        preferences,
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('warehouse-iqc-stock-in-completed')), findsOne);
-    expect(find.text('当前合格切片已全部完成入库'), findsOneWidget);
-    expect(find.textContaining('实际库位 C-03'), findsOneWidget);
-    expect(find.textContaining('仓库员'), findsOneWidget);
-    expect(
-      find.byKey(const Key('warehouse-iqc-stock-in-confirm')),
-      findsNothing,
-    );
-    expect(find.text('999999.99'), findsNothing);
-    expect(find.text('USD-SECRET'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
 }
 
-Widget _app(
+Widget _qualityApp(
   Widget page,
-  WarehouseIqcStockInGateway gateway,
+  WarehouseQualityResultGateway gateway,
   SharedPreferences preferences, {
   Set<String> permissions = const {
     Perm.warehouseIqcStockInView,
@@ -305,7 +143,8 @@ Widget _app(
 }) {
   return ProviderScope(
     overrides: [
-      warehouseIqcStockInRepositoryProvider.overrideWithValue(gateway),
+      warehouseQualityResultRepositoryProvider.overrideWithValue(gateway),
+      warehouseIqcStockInRepositoryProvider.overrideWithValue(_FailingGateway()),
       sharedPreferencesProvider.overrideWithValue(preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
@@ -314,36 +153,16 @@ Widget _app(
   );
 }
 
-void _viewport(WidgetTester tester, Size size) {
-  tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = size;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
-}
-
-class _Gateway implements WarehouseIqcStockInGateway {
-  _Gateway({
-    this.conflictOnce = false,
-    this.completed = false,
-    this.serverAllowsConfirm = true,
-  });
-
-  final bool conflictOnce;
-  final bool completed;
-  final bool serverAllowsConfirm;
-  int detailCalls = 0;
-  int confirmCalls = 0;
-  int pendingCountCalls = 0;
-  WarehouseIqcStockInConfirmCommand? lastCommand;
-
+class _QualityGateway implements WarehouseQualityResultGateway {
   @override
-  Future<PagedResult<WarehouseIqcStockInTaskSummary>> list({
+  Future<PagedResult<WarehouseQualityResultTask>> list({
     int page = 1,
     int size = 40,
     WarehouseIqcStockInReceiptType? receiptType,
+    WarehouseQualityWorkStatus? workStatus,
     String? keyword,
   }) async => PagedResult(
-    items: [WarehouseIqcStockInTaskSummary.fromJson(_summaryJson)],
+    items: [WarehouseQualityResultTask.fromJson(_qualitySummaryJson)],
     page: page,
     size: size,
     total: 1,
@@ -351,48 +170,53 @@ class _Gateway implements WarehouseIqcStockInGateway {
   );
 
   @override
-  Future<int> pendingCount() async {
-    pendingCountCalls++;
-    return completed ? 0 : 1;
-  }
+  Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
+    WarehouseIqcStockInReceiptType? receiptType,
+    String? keyword,
+  }) async => const {
+    WarehouseQualityWorkStatus.waitingInspection: 1,
+    WarehouseQualityWorkStatus.allPassed: 0,
+    WarehouseQualityWorkStatus.partialPassed: 0,
+    WarehouseQualityWorkStatus.returnRequired: 0,
+    WarehouseQualityWorkStatus.completed: 0,
+  };
 
   @override
-  Future<WarehouseIqcStockInTaskDetail> detail(
+  Future<int> pendingCount() async => 1;
+
+  @override
+  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts() async => const {
+    WarehouseIqcStockInReceiptType.purchase: 1,
+    WarehouseIqcStockInReceiptType.subcontract: 0,
+  };
+
+  @override
+  Future<WarehouseQualityResultDetail> detail(
     String receiptType,
     String receiptId,
-  ) async {
-    detailCalls++;
-    return WarehouseIqcStockInTaskDetail.fromJson(
-      completed
-          ? _completedDetailJson
-          : _detailJson(
-              remaining: detailCalls > 1 ? 4 : 5,
-              serverAllowsConfirm: serverAllowsConfirm,
-            ),
-    );
-  }
+  ) async => WarehouseQualityResultDetail.fromJson(_qualityDetailJson);
 
+  @override
+  Future<WarehouseQualityBatchConfirmResult> batchConfirm(
+    WarehouseQualityBatchConfirmCommand command,
+  ) async => const WarehouseQualityBatchConfirmResult(
+    confirmedReceipts: 1,
+    confirmedItemCount: 1,
+    results: [],
+  );
+}
+
+/// 兜底网关：列表页误触单张确认接口时让测试失败（批量必须走批量接口）。
+class _FailingGateway implements WarehouseIqcStockInGateway {
   @override
   Future<WarehouseIqcStockInConfirmResult> confirm(
     String receiptType,
     String receiptId,
     WarehouseIqcStockInConfirmCommand command,
-  ) async {
-    confirmCalls++;
-    lastCommand = command;
-    if (conflictOnce && confirmCalls == 1) {
-      throw ApiException('CONFLICT', '品质放行待入库余量已变化');
-    }
-    return const WarehouseIqcStockInConfirmResult(
-      batchId: 'batch-1',
-      replayed: false,
-      confirmedCount: 1,
-      confirmedAt: '2026-08-31T10:30:00Z',
-    );
-  }
+  ) async => throw StateError('unexpected single confirm');
 }
 
-const Map<String, dynamic> _summaryJson = {
+const Map<String, dynamic> _qualitySummaryJson = {
   'receiptType': 'PURCHASE',
   'receiptId': 'receipt-1',
   'billNo': 'PR-001',
@@ -401,74 +225,30 @@ const Map<String, dynamic> _summaryJson = {
   'supplierName': '示例供应商',
   'warehouseId': 'warehouse-1',
   'warehouseName': '原料仓',
+  'workStatus': 'WAITING_INSPECTION',
   'goodsLineCount': 1,
-  'pendingSliceCount': 1,
-  'firstReleasedAt': '2026-08-31T09:00:00Z',
-  'lastReleasedAt': '2026-08-31T09:00:00Z',
-  'status': 'PENDING_STOCK_IN',
-};
-
-Map<String, dynamic> _detailJson({
-  required num remaining,
-  bool serverAllowsConfirm = true,
-}) => {
-  ..._summaryJson,
-  'qualityStatus': 'IN_PROGRESS',
-  'pendingSliceCount': 1,
-  'completed': false,
-  'allowedActions': serverAllowsConfirm ? ['CONFIRM'] : <String>[],
-  'items': [
-    {
-      'passEventId': 'pass-1',
-      'inspectionItemId': 'inspection-1',
-      'goodsId': 'goods-1',
-      'goodsCode': 'G-001',
-      'goodsName': '测试产品',
-      'colorName': '黑色',
-      'unitId': 'unit-1',
-      'unitName': '件',
-      'sourceOrderNo': 'PO-001',
-      'receivedBaseQty': 10,
-      'qualityPassedBaseQty': 5,
-      'warehouseStockedBaseQty': 0,
-      'releasedBaseQty': 5,
-      'stockedForReleaseBaseQty': 0,
-      'remainingBaseQty': remaining,
-      'releasedWeight': 2.5,
-      'weightUnitId': 'kg',
-      'weightUnitName': 'kg',
-      'placeHint': 'A-01',
-      'releaseNote': '抽检合格',
-      'releasedBy': '品质员',
-      'releasedAt': '2026-08-31T09:00:00Z',
-    },
-  ],
-  'history': <Map<String, dynamic>>[],
-};
-
-final Map<String, dynamic> _completedDetailJson = {
-  ..._summaryJson,
-  'qualityStatus': 'RESOLVED',
+  'passedLineCount': 0,
+  'failedLineCount': 0,
+  'openItemCount': 1,
   'pendingSliceCount': 0,
-  'completed': true,
+  'pendingReturnCount': 0,
+  'lastActivityAt': '2026-08-31T09:00:00Z',
+};
+
+Map<String, dynamic> get _qualityDetailJson => {
+  ..._qualitySummaryJson,
+  'qualityStatus': 'IN_PROGRESS',
+  'completed': false,
+  'containsOwnRelease': false,
   'allowedActions': <String>[],
   'items': <Map<String, dynamic>>[],
-  'history': [
-    {
-      'stockInItemId': 'stock-in-1',
-      'batchId': 'batch-1',
-      'passEventId': 'pass-1',
-      'goodsId': 'goods-1',
-      'goodsCode': 'G-001',
-      'goodsName': '测试产品',
-      'colorName': '黑色',
-      'unitName': '件',
-      'baseQty': 5,
-      'weight': 2.5,
-      'weightUnitName': 'kg',
-      'place': 'C-03',
-      'confirmedBy': '仓库员',
-      'confirmedAt': '2026-08-31T10:30:00Z',
-    },
-  ],
+  'history': <Map<String, dynamic>>[],
+  'rejections': <Map<String, dynamic>>[],
 };
+
+void _viewport(WidgetTester tester, Size size) {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}

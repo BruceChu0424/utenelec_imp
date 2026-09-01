@@ -1,19 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/warehouse/models/warehouse_iqc_return.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
-import 'package:uten_imp/features/warehouse/pages/warehouse_iqc_return_detail_page.dart';
-import 'package:uten_imp/features/warehouse/pages/warehouse_iqc_return_page.dart';
+import 'package:uten_imp/features/warehouse/pages/warehouse_quality_result_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.dart';
-import 'package:uten_imp/features/warehouse/repositories/warehouse_iqc_return_repository.dart';
+import 'package:uten_imp/features/warehouse/repositories/warehouse_iqc_stock_in_repository.dart';
+import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_result_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
+/// 可编辑表格控制器的偏好持久化需要 SharedPreferences（测试统一 mock）。
+late final SharedPreferences _sharedPrefs;
+
 void main() {
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    _sharedPrefs = await SharedPreferences.getInstance();
+  });
+
   testWidgets('sales list at 375px contains warehouse columns only', (
     tester,
   ) async {
@@ -21,6 +32,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_sharedPrefs),
           warehouseSalesOutboundRepositoryProvider.overrideWithValue(
             _SalesGateway(),
           ),
@@ -48,6 +60,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_sharedPrefs),
           warehouseSalesOutboundRepositoryProvider.overrideWithValue(
             _SalesGateway(),
           ),
@@ -69,51 +82,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('IQC list and detail expose physical return facts only', (
+  testWidgets('quality detail exposes physical return facts only', (
     tester,
   ) async {
     _viewport(tester);
-    final gateway = _IqcGateway();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          warehouseIqcReturnRepositoryProvider.overrideWithValue(gateway),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.procurementIqcRejectionRecordReturn,
-          }),
-        ],
-        child: const MaterialApp(home: WarehouseIqcReturnPage()),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final table = tester.widget<MasterDataTableView<WarehouseIqcReturnTask>>(
-      find.byKey(const Key('warehouse-iqc-return-table')),
-    );
-    expect({
-      for (final column in table.columns) column.key,
-    }, containsAll(<String>{'physicalReturnStatus', 'failedQuantity'}));
-    _expectNoCommercialText();
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          warehouseIqcReturnRepositoryProvider.overrideWithValue(gateway),
+          sharedPreferencesProvider.overrideWithValue(_sharedPrefs),
+          warehouseQualityResultRepositoryProvider.overrideWithValue(
+            _QualityGateway(),
+          ),
+          warehouseIqcStockInRepositoryProvider.overrideWithValue(
+            _FailingStockInGateway(),
+          ),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.procurementIqcRejectionRecordReturn,
           }),
         ],
         child: const MaterialApp(
-          home: WarehouseIqcReturnDetailPage(id: 'iqc-1'),
+          home: WarehouseQualityResultDetailPage(
+            receiptType: 'PURCHASE',
+            receiptId: 'receipt-1',
+          ),
         ),
       ),
     );
     await tester.pumpAndSettle();
-    expect(_selectableTextContaining('拒收产品'), findsWidgets);
-    expect(_selectableTextContaining('2.0000 件'), findsWidgets);
+    // 不合格退回案件在合并详情页内展示物理事实（货品/拒收数量/登记入口）。
+    expect(find.textContaining('拒收产品'), findsWidgets);
+    expect(find.textContaining('拒收 2 件'), findsOneWidget);
+    expect(find.text('登记退回'), findsOneWidget);
+    // 只读权限（无入库确认双权限）：不出确认底栏，明细表不渲染输入单元。
     expect(
-      find.byKey(const Key('warehouse-iqc-return-record')),
-      findsOneWidget,
+      find.byKey(const Key('warehouse-quality-detail-confirm')),
+      findsNothing,
     );
     _expectNoCommercialText();
     expect(tester.takeException(), isNull);
@@ -136,11 +139,6 @@ void _expectNoCommercialText() {
   }
 }
 
-Finder _selectableTextContaining(String value) => find.byWidgetPredicate(
-  (widget) => widget is SelectableText && (widget.data ?? '').contains(value),
-  skipOffstage: false,
-);
-
 bool _commercialKey(String key) {
   final value = key.toLowerCase();
   return value.contains('price') ||
@@ -160,6 +158,9 @@ void _viewport(WidgetTester tester) {
 }
 
 class _SalesGateway implements WarehouseSalesOutboundGateway {
+  @override
+  Future<int> pendingCount() async => 0;
+
   @override
   Future<PagedResult<WarehouseSalesOutboundSummary>> list({
     int page = 1,
@@ -185,30 +186,49 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
   }) async => _salesDetail;
 }
 
-class _IqcGateway implements WarehouseIqcReturnGateway {
+class _QualityGateway implements WarehouseQualityResultGateway {
   @override
-  Future<PagedResult<WarehouseIqcReturnTask>> list({
-    int page = 1,
-    int size = 20,
-    WarehouseIqcReceiptType? receiptType,
-    String? physicalStatus,
+  Future<WarehouseQualityResultDetail> detail(
+    String receiptType,
+    String receiptId,
+  ) async => WarehouseQualityResultDetail.fromJson(_qualityDetailJson);
+
+  @override
+  Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
+    WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
-  }) async => PagedResult(
-    items: [_iqcTask],
-    page: page,
-    size: size,
-    total: 1,
-    totalPages: 1,
-  );
+  }) async => throw StateError('unexpected status counts');
 
   @override
-  Future<WarehouseIqcReturnTask> detail(String id) async => _iqcTask;
+  Future<int> pendingCount() async => 1;
 
   @override
-  Future<WarehouseIqcReturnTask> recordReturn(
-    String id,
-    WarehouseIqcRecordReturnCommand command,
-  ) async => _iqcTask;
+  Future<Map<WarehouseIqcStockInReceiptType, int>> typeCounts() async =>
+      throw StateError('unexpected type counts');
+
+  @override
+  Future<WarehouseQualityBatchConfirmResult> batchConfirm(
+    WarehouseQualityBatchConfirmCommand command,
+  ) async => throw StateError('unexpected batch confirm');
+
+  @override
+  Future<PagedResult<WarehouseQualityResultTask>> list({
+    int page = 1,
+    int size = 40,
+    WarehouseIqcStockInReceiptType? receiptType,
+    WarehouseQualityWorkStatus? workStatus,
+    String? keyword,
+  }) async => throw StateError('unexpected list');
+}
+
+/// 兜底：只读权限场景不得触发单张确认。
+class _FailingStockInGateway implements WarehouseIqcStockInGateway {
+  @override
+  Future<WarehouseIqcStockInConfirmResult> confirm(
+    String receiptType,
+    String receiptId,
+    WarehouseIqcStockInConfirmCommand command,
+  ) async => throw StateError('unexpected single confirm');
 }
 
 final WarehouseSalesOutboundDetail _salesDetail =
@@ -235,25 +255,61 @@ final WarehouseSalesOutboundDetail _salesDetail =
       ],
     });
 
-final WarehouseIqcReturnTask _iqcTask = WarehouseIqcReturnTask.fromJson(
-  <String, dynamic>{
-    'id': 'iqc-1',
-    'receiptType': 'PURCHASE',
-    'receiptBillNo': 'PR-001',
-    'orderBillNo': 'PO-001',
-    'supplierName': '示例供应商',
-    'warehouseName': '一号仓',
-    'goodsCode': 'G-001',
-    'goodsName': '拒收产品',
-    'unitName': '件',
-    'failedQuantity': '2.0000',
-    'failedBaseQuantity': '2.0000',
-    'physicalReturnStatus': 'PENDING_RETURN',
-    'inspectionStatus': 'RESOLVED',
-    'version': 3,
-    'allowedActions': ['RECORD_RETURN'],
-    'failedAmountLocal': '999999.99',
-    'currencyCode': 'USD-SECRET',
-    'creditReference': 'CREDIT-SECRET',
-  },
-);
+/// 合并详情（含不合格退回案件）；注入商业字段证明解析端永不回显。
+final Map<String, dynamic> _qualityDetailJson = <String, dynamic>{
+  'workStatus': 'RETURN_REQUIRED',
+  'receiptType': 'PURCHASE',
+  'receiptId': 'receipt-1',
+  'billNo': 'PR-001',
+  'billDate': '2026-08-31',
+  'supplierId': 'supplier-1',
+  'supplierName': '示例供应商',
+  'warehouseId': 'warehouse-1',
+  'warehouseName': '一号仓',
+  'qualityStatus': 'RESOLVED',
+  'goodsLineCount': 1,
+  'passedLineCount': 0,
+  'failedLineCount': 1,
+  'openItemCount': 0,
+  'pendingSliceCount': 0,
+  'pendingReturnCount': 1,
+  'completed': false,
+  'containsOwnRelease': false,
+  'allowedActions': <String>[],
+  'lines': <Map<String, dynamic>>[
+    {
+      'inspectionItemId': 'inspection-1',
+      'goodsId': 'goods-1',
+      'goodsCode': 'G-001',
+      'goodsName': '拒收产品',
+      'unitName': '件',
+      'lineStatus': 'RESOLVED',
+      'receivedBaseQty': 2,
+      'passedBaseQty': 0,
+      'failedBaseQty': 2,
+      'warehouseStockedBaseQty': 0,
+      'pendingStockBaseQty': 0,
+      'failedAmountLocal': '999999.99',
+      'currencyCode': 'USD-SECRET',
+    },
+  ],
+  'items': <Map<String, dynamic>>[],
+  'history': <Map<String, dynamic>>[],
+  'rejections': <Map<String, dynamic>>[
+    {
+      'id': 'rejection-1',
+      'inspectionItemId': 'inspection-1',
+      'goodsId': 'goods-1',
+      'goodsCode': 'G-001',
+      'goodsName': '拒收产品',
+      'unitName': '件',
+      'failedQty': 2,
+      'physicalStatus': 'PENDING_RETURN',
+      'rowVersion': 3,
+      'canRecordReturn': true,
+      'failedAmountLocal': '999999.99',
+      'currencyCode': 'USD-SECRET',
+      'creditReference': 'CREDIT-SECRET',
+    },
+  ],
+};

@@ -262,7 +262,7 @@ void main() {
     try {
       await tester.pumpWidget(app(state));
 
-      expect(find.bySemanticsLabel(RegExp('铜材.*业务量单位个')), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('铜材.*数量单位个')), findsOneWidget);
       expect(find.bySemanticsLabel('铜材，补充实际重量'), findsOneWidget);
     } finally {
       semantics.dispose();

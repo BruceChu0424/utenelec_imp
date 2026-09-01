@@ -230,7 +230,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       ),
     EditableGridColumn<SubcontractGridRow>(
       key: 'qty',
-      label: arrivalMode ? '实到业务量' : '业务量',
+      label: arrivalMode ? '实到数量' : '数量',
       width: 96,
       numeric: true,
       required: true,

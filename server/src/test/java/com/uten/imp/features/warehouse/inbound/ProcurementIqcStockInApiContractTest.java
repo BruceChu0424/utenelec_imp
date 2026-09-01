@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ReleasedSlice;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.StockInHistoryItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.TaskDetail;
-import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.TaskSummary;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,7 +33,6 @@ class ProcurementIqcStockInApiContractTest {
     @Test
     void warehouseResponseContractsExposeNoCommercialField() throws Exception {
         List<Class<?>> responseTypes = List.of(
-                TaskSummary.class,
                 TaskDetail.class,
                 ReleasedSlice.class,
                 StockInHistoryItem.class,
@@ -81,18 +79,20 @@ class ProcurementIqcStockInApiContractTest {
                 .getAnnotation(RequestMapping.class);
         assertThat(mapping.value()).containsExactly("/api/warehouse/iqc-stock-ins");
 
-        Method list = ProcurementIqcStockInController.class.getDeclaredMethod(
-                "list", String.class, String.class, int.class, int.class);
         Method detail = ProcurementIqcStockInController.class.getDeclaredMethod(
                 "detail", String.class, UUID.class);
         Method confirm = ProcurementIqcStockInController.class.getDeclaredMethod(
                 "confirm", String.class, UUID.class,
                 ProcurementIqcStockInContracts.ConfirmRequest.class);
 
-        assertThat(list.getAnnotation(PreAuthorize.class).value())
-                .isEqualTo("hasAuthority('warehouse_iqc_stock_in:view')");
         assertThat(detail.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('warehouse_iqc_stock_in:view')");
+        // 2026-09-01 合并后旧列表/计数端点已删除：队列由 /warehouse/quality-results 提供。
+        assertThat(java.util.Arrays.stream(
+                        ProcurementIqcStockInController.class.getDeclaredMethods())
+                .map(java.lang.reflect.Method::getName)
+                .toList())
+                .doesNotContain("list", "count");
         assertThat(confirm.getAnnotation(PreAuthorize.class).value())
                 .contains("warehouse_iqc_stock_in:view")
                 .contains("warehouse_iqc_stock_in:confirm")

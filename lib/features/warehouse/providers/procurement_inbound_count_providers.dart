@@ -28,6 +28,18 @@ final warehouseArrivalExceptionCountProvider = FutureProvider.autoDispose<int>((
       .warehouseExceptionCount();
 });
 
+/// 预计到货分来源计数（PURCHASE/SUBCONTRACT → count）：入库任务中心
+/// 「采购入库 / 委外入库」分段徽章用（后端全量口径，60s 轮询）。
+final warehouseInboundExpectationTypeCountsProvider =
+    FutureProvider.autoDispose<Map<String, int>>((ref) async {
+      if (!_has(ref, Perm.warehouseInboundView)) return const {};
+      final timer = Timer(_pollInterval, ref.invalidateSelf);
+      ref.onDispose(timer.cancel);
+      return ref
+          .watch(procurementInboundRepositoryProvider)
+          .expectationTypeCounts();
+    });
+
 final financeArrivalExceptionCountProvider = FutureProvider.autoDispose<int>((
   ref,
 ) async {

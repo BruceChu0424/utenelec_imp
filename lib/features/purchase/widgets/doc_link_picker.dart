@@ -46,12 +46,23 @@ class LinkedItem {
   final double? unitRate;
 }
 
-/// 「从上游引入」的确认返回：所选明细 + 上游单据供应商 id（编辑页表头未选供应商时回填用）。
+/// 「从上游引入」的确认返回：所选明细 + 上游单据供应商 id（编辑页表头未选供应商时回填用）
+/// + 所选上游单据 id/单号（订货单引入行回填「申请来源」并支持点击跳申请详情）
+/// + 上游单据结账方式（下游收货/退货沿用来源快照预填；订货上游=申请时为 null）。
 class PurchaseLinkPickResult {
-  const PurchaseLinkPickResult({required this.items, this.supplierId});
+  const PurchaseLinkPickResult({
+    required this.items,
+    this.supplierId,
+    this.sourceDocId,
+    this.sourceDocNo,
+    this.settlementMethodId,
+  });
 
   final List<LinkedItem> items;
   final String? supplierId;
+  final String? sourceDocId;
+  final String? sourceDocNo;
+  final String? settlementMethodId;
 }
 
 /// 从 cfg 推断上游单据类型。退货同时可链收货/订货时优先收货。
@@ -145,6 +156,9 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
           return UtenDocLinkDetail<PurchaseDocItem>(
             partyId: detail.supplierId,
             items: detail.items,
+            docId: docId,
+            docNo: detail.billNo,
+            settlementMethodId: detail.settlementMethodId,
           );
         },
         itemFields: UtenDocLinkItemFields<PurchaseDocItem>(
@@ -175,6 +189,9 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
   if (raw == null) return null;
   return PurchaseLinkPickResult(
     supplierId: raw.partyId,
+    sourceDocId: raw.sourceDocId,
+    sourceDocNo: raw.sourceDocNo,
+    settlementMethodId: raw.settlementMethodId,
     items: raw.items
         .map(
           (d) => LinkedItem(

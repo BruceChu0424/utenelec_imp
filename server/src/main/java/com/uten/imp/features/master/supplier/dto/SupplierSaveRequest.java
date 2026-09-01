@@ -68,6 +68,20 @@ public class SupplierSaveRequest {
     // 财务
     private BigDecimal initTotal;// InitTotal（期初应付）
     private Integer tday;        // TDay（结算天数）
+    private UUID defaultSettlementMethodId; // 默认结算方式（UUID 真源；订货开单预填用）
+
+    @JsonIgnore
+    private boolean defaultSettlementMethodReferencePresent;
+
+    @JsonSetter("defaultSettlementMethodId")
+    public void setDefaultSettlementMethodId(UUID value) {
+        defaultSettlementMethodId = value;
+        defaultSettlementMethodReferencePresent = true;
+    }
+
+    public boolean hasDefaultSettlementMethodReference() {
+        return defaultSettlementMethodReferencePresent;
+    }
 
     // 状态
     private String status;       // Status（使用/禁用）

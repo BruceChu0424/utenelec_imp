@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
 import java.util.UUID;
 
 /** Warehouse-only sales outbound task API. */
@@ -38,6 +39,12 @@ public class WarehouseSalesOutboundController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return service.list(keyword, warehouseWorkStatus, page, size);
+    }
+
+    /** 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）。 */
+    @GetMapping("/count")
+    public Map<String, Long> pendingCount() {
+        return Map.of("count", service.pendingCount());
     }
 
     @GetMapping("/{id}")

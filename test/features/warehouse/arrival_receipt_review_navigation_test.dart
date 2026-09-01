@@ -277,11 +277,11 @@ void main() {
 
     // 断言 2：回任务中心并提示下一步。
     expect(find.text('预计到货任务中心'), findsOneWidget);
-    expect(find.textContaining('合格后请在“IQC 合格待入库”核对实物与库位'), findsOneWidget);
+    expect(find.textContaining('检查进度与结果请在「品质部检查结果」页查看'), findsWidgets);
     await tester.pumpAndSettle(const Duration(seconds: 5));
   });
 
-  testWidgets('已送检任务停在「待品质检验」步骤，无操作按钮只读跟进', (tester) async {
+  testWidgets('服务端仍返回纯等待品质行时，前端只读移交「品质部检查结果」跟进', (tester) async {
     tester.view.physicalSize = const Size(1400, 2000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -302,10 +302,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('已送检 · 待品质检验'), findsOneWidget);
+    expect(find.text('已送检 · 结果见「品质部检查结果」'), findsOneWidget);
     expect(
       find.ancestor(
-        of: find.text('已送检 · 待品质检验'),
+        of: find.text('已送检 · 结果见「品质部检查结果」'),
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is Container &&
@@ -335,7 +335,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.ancestor(
-        of: find.text('已送检 · 待品质检验'),
+        of: find.text('已送检 · 结果见「品质部检查结果」'),
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is Container &&
@@ -350,8 +350,8 @@ void main() {
     // 只读步骤：双击进详情，按钮禁用，不给仓库多余操作。
     await _doubleTapRow(tester, find.text('SC-PO-001'));
     await tester.pumpAndSettle();
-    expect(find.text('待品质检验(2)'), findsOneWidget);
-    expect(find.textContaining('合格后转仓库待入库任务，确认实物和库位后才入库存'), findsOneWidget);
+    expect(find.textContaining('已送检(2)'), findsOneWidget);
+    expect(find.textContaining('检查进度与结果请在「品质部检查结果」页查看'), findsWidgets);
     final button = tester.widget<UtenButton>(
       find.byKey(const Key('create-receipt-expectation-1')),
     );

@@ -14,6 +14,8 @@
 //
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
 // 保存组装 body 调 create/update，成功后跳详情。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -394,6 +396,37 @@ class _SubcontractDocEditPageState
       widget.docType == SubcontractDocType.returnDoc &&
       _grid.rows.any((row) => row.upstreamItemId != null);
 
+  /// 委外商确定后预填结算方式：上游单据带结算方式时优先（进仓/退货沿用来源
+  /// 快照），否则用供应商主档默认（V452）。仅预填启用中的方式；不替换单据
+  /// 必填校验，也不覆盖用户已选值；退货来源继承模式（字段隐藏）不预填。
+  Future<void> _prefillSettlementForSupplier(
+    String? supplierId,
+    String? upstreamSettlementId,
+  ) async {
+    if (!_cfg.hasSettlement || _commercialTermsInheritedFromSource) return;
+    if (_settlementMethodId != null) return;
+    if (supplierId == null || supplierId.isEmpty) return;
+    final candidate =
+        (upstreamSettlementId?.isNotEmpty ?? false)
+        ? upstreamSettlementId
+        : ref
+              .read(mn.masterNameServiceProvider)
+              .supplierDefaultSettlement(supplierId);
+    if (candidate == null || candidate.isEmpty) return;
+    try {
+      final methods = await ref.read(settlementMethodOptionsProvider.future);
+      if (!mounted) return;
+      // 默认/来源方式已停用或软删时不预填，避免下拉里出现死值。
+      if (!methods.any((m) => m.id == candidate)) return;
+      setState(() {
+        _settlementMethodId = candidate;
+        _settlementError = null;
+      });
+    } catch (_) {
+      // 字典暂不可用不预填；保存前必填校验仍兜底。
+    }
+  }
+
   /// 选货品范围：发料/材料退/损耗=材料；进仓/退货/订货/申请/询价=成品。
   UtenGoodsPickerScope get _pickerScope => switch (widget.docType) {
     SubcontractDocType.materialIssue ||
@@ -487,6 +520,7 @@ class _SubcontractDocEditPageState
       r.supplierId = picked.id;
     }
     setState(() {});
+    unawaited(_prefillSettlementForSupplier(picked.id, null));
   }
 
   /// 行级委外商选择：打开供应商滑入面板，选中后按多选范围落值
@@ -521,6 +555,8 @@ class _SubcontractDocEditPageState
       row.supplierId = value;
     }
     setState(() {});
+    // 新建订货单首行确定委外商后，顺手预填结算方式（未选时）。
+    unawaited(_prefillSettlementForSupplier(value, null));
   }
 
   /// 实物出入库单据（进仓/发料/退货/材料退）：按货品主档补全各行库位号
@@ -597,10 +633,12 @@ class _SubcontractDocEditPageState
           r.price.text.trim().isEmpty,
     );
     _grid.addRows(rows);
-    // 表头未选委外商 → 以上游单据委外商回填。
+    // 表头未选委外商 → 以上游单据委外商回填；结算方式未选时按上游单据结算方式
+    // （进仓/退货引入订货）或供应商默认（V452）预填。
     final sid = result.supplierId;
     if (_supplierId == null && sid != null && sid.isNotEmpty) {
       setState(() => _supplierId = sid);
+      unawaited(_prefillSettlementForSupplier(sid, result.settlementMethodId));
     }
     // 引入行后按「学习记忆」预填各货品上次委外订货的委外商（订货单行级必填）。
     await _prefillRememberedSuppliers();
@@ -1244,7 +1282,10 @@ class _SubcontractDocEditPageState
                     initialName: _supplierHeaderName(),
                     label: '委外商',
                     required: _cfg.supplierRequired,
-                    onChanged: (v) => setState(() => _supplierId = v),
+                    onChanged: (v) {
+                      setState(() => _supplierId = v);
+                      unawaited(_prefillSettlementForSupplier(v, null));
+                    },
                     onPick: () =>
                         showUtenSupplierPicker(context, ref, title: '选择委外商'),
                   ),

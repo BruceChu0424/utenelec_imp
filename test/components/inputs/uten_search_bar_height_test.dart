@@ -33,7 +33,7 @@ void main() {
                   UtenFilterSegment(value: 'all', label: '全部待检单'),
                   UtenFilterSegment(value: 'a', label: '类型A', count: 3),
                 ],
-                selected: 'all',
+                selected: const {'all'},
                 onSelectionChanged: (_) {},
                 searchHint: '搜索',
                 searchController: controller,

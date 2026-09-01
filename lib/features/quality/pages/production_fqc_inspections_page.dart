@@ -442,7 +442,7 @@ class _ProductionFqcInspectionsPageState
           const UtenFilterSegment(value: 'CANCELLED', label: '已取消'),
           const UtenFilterSegment(value: 'ALL', label: '全部'),
         ],
-        selected: _status,
+        selected: {_status},
         onSelectionChanged: _switchStatus,
         searchHint: '搜索报工单 / 生产计划 / 货品',
         initialSearchValue: _keyword,

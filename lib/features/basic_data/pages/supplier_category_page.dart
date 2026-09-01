@@ -33,7 +33,9 @@ import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/department_employee_picker.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
+import '../models/reference_method_option.dart';
 import '../models/supplier_node.dart';
+import '../repositories/reference_method_repository.dart';
 import '../repositories/supplier_category_repository.dart';
 import '../repositories/supplier_repository.dart';
 import '../repositories/master_status_repository.dart';
@@ -432,7 +434,10 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   // 供应商主档可编辑字段（与后端 SupplierSaveRequest 对齐）。
-  List<MasterFieldDef> _supplierFields(Map<String, String> iv) => [
+  List<MasterFieldDef> _supplierFields(
+    Map<String, String> iv,
+    List<ReferenceMethodOption> settlementMethods,
+  ) => [
     ...const <MasterFieldDef>[
       MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
       MasterFieldDef(
@@ -501,6 +506,24 @@ class _DetailPaneState extends State<_DetailPane> {
         type: MasterFieldType.integer,
         group: '财务',
       ),
+    ],
+    MasterFieldDef(
+      key: 'defaultSettlementMethodId',
+      label: '默认结算方式',
+      type: MasterFieldType.select,
+      options: [
+        for (final method in settlementMethods)
+          MasterSelectOption(
+            value: method.id,
+            label: method.code.isEmpty
+                ? method.name
+                : '${method.name} · ${method.code}',
+          ),
+      ],
+      group: '财务',
+      hint: '采购/委外订货开单时预填结账方式；不影响既有单据与应付',
+    ),
+    ...const <MasterFieldDef>[
       MasterFieldDef(
         key: 'status',
         label: '状态',
@@ -524,12 +547,46 @@ class _DetailPaneState extends State<_DetailPane> {
 
   // ---- 供应商 新建/编辑/删除 ----------------------------------------------
 
-  void _showSupplierCreate() {
+  bool _settlementOptionsLoading = false;
+
+  /// 加载启用中的结算方式（新建/编辑表单「默认结算方式」下拉用；范式同客户页）。
+  Future<List<ReferenceMethodOption>?> _loadSettlementMethods() async {
+    if (_settlementOptionsLoading) return null;
+    _settlementOptionsLoading = true;
+    final nav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final methods = await widget.ref
+          .read(referenceMethodRepositoryProvider)
+          .settlementMethods();
+      if (methods.isEmpty) {
+        if (mounted) context.appError('暂无可用结算方式，请先维护结算方式字典');
+        return null;
+      }
+      return methods;
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('加载结算方式失败，请重试');
+    } finally {
+      if (nav.canPop()) nav.pop();
+      _settlementOptionsLoading = false;
+    }
+    return null;
+  }
+
+  Future<void> _showSupplierCreate() async {
+    final settlementMethods = await _loadSettlementMethods();
+    if (!mounted || settlementMethods == null) return;
     const iv = <String, String>{};
     showMasterEditDialog(
       context: context,
       title: '新增供应商', // TODO(l10n): 补 arb
-      fields: _supplierFields(iv),
+      fields: _supplierFields(iv, settlementMethods),
       initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': widget.nodeId},
       readOnlyKeys: _canStatusMaster ? null : const {'status'},
@@ -550,7 +607,16 @@ class _DetailPaneState extends State<_DetailPane> {
     return true;
   }
 
-  void _showSupplierEdit(SupplierDetail d) {
+  Future<void> _showSupplierEdit(SupplierDetail d) async {
+    final settlementMethods = await _loadSettlementMethods();
+    if (!mounted || settlementMethods == null) return;
+    if (d.defaultSettlementMethodId != null &&
+        !settlementMethods.any(
+          (method) => method.id == d.defaultSettlementMethodId,
+        )) {
+      context.appError('当前默认结算方式已不可用，请先修复供应商结算方式关联');
+      return;
+    }
     final iv = <String, String>{
       'name': d.name ?? '',
       'code': d.code ?? '',
@@ -575,13 +641,14 @@ class _DetailPaneState extends State<_DetailPane> {
       'taxId': d.taxId ?? '',
       'initTotal': d.initTotal?.toString() ?? '',
       'tday': d.tday?.toString() ?? '',
+      'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
       'status': d.status ?? '',
       'remark': d.remark ?? '',
     };
     showMasterEditDialog(
       context: context,
       title: '编辑供应商', // TODO(l10n): 补 arb
-      fields: _supplierFields(iv),
+      fields: _supplierFields(iv, settlementMethods),
       initialValues: iv,
       fixedValues: {
         'categoryId': d.categoryId ?? widget.nodeId,
@@ -936,6 +1003,7 @@ class _DetailPaneState extends State<_DetailPane> {
       d.initTotal?.toStringAsFixed(2),
     ), // TODO(l10n): 补 arb
     MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
+    MasterDetailRow('默认结算方式', d.defaultSettlementMethodName), // TODO(l10n): 补 arb
     MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
     MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
     MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb

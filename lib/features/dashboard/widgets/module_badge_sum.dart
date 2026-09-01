@@ -14,7 +14,10 @@ import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
 import '../../warehouse/providers/production_draw_count_provider.dart';
-import '../../warehouse/providers/warehouse_iqc_stock_in_count_provider.dart';
+import '../../warehouse/providers/warehouse_sales_outbound_count_provider.dart';
+import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
+import '../../warehouse/repositories/warehouse_subcontract_outbound_repository.dart'
+    show warehouseSubcontractOutboundCountProvider;
 import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import 'quality_inspection_pending_badge.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
@@ -27,7 +30,7 @@ enum WorkbenchBadgeKind {
   hrTask, // HR 任务中心（今日转正/逾期转正/今日生日/今日周年）
   production, // 生产管理（待排产）
   rdTask, // 任务中心
-  warehouse, // 仓库管理（预计到货 + 到货异常）
+  warehouse, // 仓库管理（三张任务中心卡角标之和：出库+入库+领料+品质结果）
   purchase, // 采购管理（待分解 + 待采购完成）
   finance, // 钱流管理（订货审批 + 销售订单财务确认 + 超量到货审批）
   subcontract, // 委外管理（待退回供应商）
@@ -35,6 +38,21 @@ enum WorkbenchBadgeKind {
   qualityInspection, // 品质任务中心（IQC 待检收货单 + FQC 待检行）
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
+
+/// 导航「工作台」Tab 角标：全部模块卡角标（按种类去重）之和。
+///
+/// 与卡片/分组徽标同源同口径（单个来源加载中/失败按 0 计，不放大成异常态，
+/// 与通知 Tab 的未读角标同款红圆数字）。常驻 provider 被外壳导航 watch 后，
+/// autoDispose 计数源随之保持存活，由 refreshGlobalBadges（返回工作台 /
+/// 新通知到达）与各 60s 轮询 notifier 驱动更新。
+final workbenchTotalTodoCountProvider = Provider<int>((ref) {
+  var total = 0;
+  for (final kind in WorkbenchBadgeKind.values) {
+    if (kind == WorkbenchBadgeKind.none) continue;
+    total += _resolveCount(kind, ref.watch);
+  }
+  return total;
+});
 
 /// 工作台卡片角标；应放在 [UtenLazyMount] 内，避免首帧启动计数请求。
 class WorkbenchCardBadge extends ConsumerWidget {
@@ -55,7 +73,7 @@ class WorkbenchCardBadge extends ConsumerWidget {
       return QualityInspectionPendingBadge(size: size, showLabel: showLabel);
     }
     return UtenNotificationBadge(
-      count: _resolveCount(kind, ref),
+      count: _resolveCount(kind, ref.watch),
       size: size,
       showLabel: showLabel,
     );
@@ -84,7 +102,7 @@ class WorkbenchGroupBadge extends ConsumerWidget {
     }
     var total = 0;
     for (final kind in kinds) {
-      total += _resolveCount(kind, ref);
+      total += _resolveCount(kind, ref.watch);
     }
     return UtenNotificationBadge(
       count: total,
@@ -94,43 +112,51 @@ class WorkbenchGroupBadge extends ConsumerWidget {
   }
 }
 
-int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
+int _resolveCount(
+  WorkbenchBadgeKind kind,
+  T Function<T>(ProviderListenable<T> listenable) watch,
+) {
   switch (kind) {
     case WorkbenchBadgeKind.visitorHost:
-      return ref.watch(visitorHostPendingCountProvider);
+      return watch(visitorHostPendingCountProvider);
     case WorkbenchBadgeKind.visitorApproval:
-      return ref.watch(visitorPendingCountProvider);
+      return watch(visitorPendingCountProvider);
     case WorkbenchBadgeKind.hrReview:
-      return ref.watch(pendingReviewCountProvider);
+      return watch(pendingReviewCountProvider);
     case WorkbenchBadgeKind.hrTask:
-      return ref.watch(hrTaskCountProvider);
+      return watch(hrTaskCountProvider);
     case WorkbenchBadgeKind.production:
-      return ref.watch(productionPendingCountProvider).count;
+      return watch(productionPendingCountProvider).count;
     case WorkbenchBadgeKind.rdTask:
-      return ref.watch(rdTaskCountProvider);
+      return watch(rdTaskCountProvider);
     case WorkbenchBadgeKind.purchase:
-      return ref.watch(purchaseTaskCountProvider);
+      return watch(purchaseTaskCountProvider);
     case WorkbenchBadgeKind.warehouse:
-      return _sum(ref, [
+      // 仓库管理角标 = 三张任务中心卡角标之和（与 hub 任务中心同口径；
+      // 草稿不计入待办数）：出库（销售待出库 + 委外出仓）+ 入库（预计到货 +
+      // 到货异常 + 产成品待点收）+ 领料（待领任务）+ 品质部检查结果未完结任务数。
+      return _sum(watch, [
+        warehouseSalesOutboundPendingCountProvider,
+        warehouseSubcontractOutboundCountProvider,
         warehouseInboundExpectationCountProvider,
         warehouseArrivalExceptionCountProvider,
         warehouseProductionDrawPendingCountProvider,
         warehouseProductionFinishedInboundPendingCountProvider,
-        warehouseIqcStockInPendingCountProvider,
+        warehouseQualityResultPendingCountProvider,
       ]);
     case WorkbenchBadgeKind.finance:
-      return _sum(ref, [
+      return _sum(watch, [
         financeProcurementApprovalCountProvider,
         salesOrderFinanceConfirmationCountProvider,
         financeArrivalExceptionCountProvider,
       ]);
     case WorkbenchBadgeKind.subcontract:
       // 委外对齐采购：卡片徽标 = 委外任务台待办数（非到货退回数）。
-      return ref.watch(subcontractTaskCountProvider);
+      return watch(subcontractTaskCountProvider);
     case WorkbenchBadgeKind.sales:
-      return ref.watch(salesAttentionCountProvider).valueOrNull ?? 0;
+      return watch(salesAttentionCountProvider).valueOrNull ?? 0;
     case WorkbenchBadgeKind.qualityInspection:
-      return _sum(ref, [
+      return _sum(watch, [
         procurementInspectionPendingCountProvider,
         productionFqcPendingCountProvider,
       ]);
@@ -139,12 +165,17 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
   }
 }
 
-int _sum(WidgetRef ref, List<ProviderListenable<AsyncValue<int>>> providers) {
+int _sum(
+  T Function<T>(ProviderListenable<T> listenable) watch,
+  List<ProviderListenable<AsyncValue<int>>> providers,
+) {
   var total = 0;
   for (final provider in providers) {
-    total += ref
-        .watch(provider)
-        .when(data: (value) => value, error: (_, _) => 0, loading: () => 0);
+    total += watch(provider).when(
+      data: (value) => value,
+      error: (_, _) => 0,
+      loading: () => 0,
+    );
   }
   return total;
 }

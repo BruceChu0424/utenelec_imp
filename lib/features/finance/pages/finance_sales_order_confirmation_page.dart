@@ -761,7 +761,7 @@ class _FinanceSalesOrderConfirmationPageState
         UtenFilterSegment(value: false, label: '待确认'),
         UtenFilterSegment(value: true, label: '已驳回'),
       ],
-      selected: _showRejected,
+      selected: {_showRejected},
       onSelectionChanged: (value) {
         if (_batchBusy) return;
         _switchTab(value);

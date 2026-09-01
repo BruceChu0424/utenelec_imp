@@ -213,6 +213,9 @@ class MasterNameService extends MasterDictionaryService {
 
   /// 供应商状态（id → 使用/禁用；缺失视为启用，兼容旧后端未返回 status 的字典）。
   Map<String, String> _supplierStatus = {};
+
+  /// 供应商默认结算方式（id → settlement_methods.id；V452。订货开单预填用，可空）。
+  Map<String, String> _supplierDefaultSettlement = {};
   Map<String, String> _departments = {};
   Future<void>? _load;
 
@@ -233,6 +236,12 @@ class MasterNameService extends MasterDictionaryService {
         for (final entry in entries)
           if (entry['status'] != null)
             entry['id'] as String: entry['status'] as String,
+      };
+      _supplierDefaultSettlement = {
+        for (final entry in entries)
+          if (entry['defaultSettlementMethodId'] != null &&
+              (entry['defaultSettlementMethodId'] as String).isNotEmpty)
+            entry['id'] as String: entry['defaultSettlementMethodId'] as String,
       };
     } catch (_) {
       // 列表名称解析可降级。
@@ -269,6 +278,12 @@ class MasterNameService extends MasterDictionaryService {
   /// 供应商是否禁用（状态缺失视为启用）。
   bool isSupplierDisabled(String? id) =>
       id != null && _supplierStatus[id] == '禁用';
+
+  /// 供应商主档默认结算方式 id（V452；未维护返回 null）。仅作开单预填，
+  /// 单据保存/审核仍按各自必填与订单快照校验。
+  String? supplierDefaultSettlement(String? id) =>
+      id == null || id.isEmpty ? null : _supplierDefaultSettlement[id];
+
   Map<String, String> get departmentEntries => _departments;
 
   static Map<String, String> _flattenDeptTree(List<dynamic> nodes) {

@@ -47,12 +47,18 @@ class LinkedItem {
   final double? unitRate;
 }
 
-/// 「从上游引入」的确认返回：所选明细 + 上游单据委外商 id（编辑页表头未选委外商时回填用）。
+/// 「从上游引入」的确认返回：所选明细 + 上游单据委外商 id（编辑页表头未选委外商时回填用）
+/// + 上游单据结算方式（进仓/退货沿用来源快照预填；订货上游=申请时为 null）。
 class SubcontractLinkPickResult {
-  const SubcontractLinkPickResult({required this.items, this.supplierId});
+  const SubcontractLinkPickResult({
+    required this.items,
+    this.supplierId,
+    this.settlementMethodId,
+  });
 
   final List<LinkedItem> items;
   final String? supplierId;
+  final String? settlementMethodId;
 }
 
 /// 由 cfg 推断上游单据类型。退货/材料退双链时优先进仓/发料（更接近源头）。
@@ -183,6 +189,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
           return UtenDocLinkDetail<SubcontractDocItem>(
             partyId: detail.supplierId,
             items: detail.items,
+            settlementMethodId: detail.settlementMethodId,
           );
         },
         itemFields: UtenDocLinkItemFields<SubcontractDocItem>(
@@ -213,6 +220,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
   if (raw == null) return null;
   return SubcontractLinkPickResult(
     supplierId: raw.partyId,
+    settlementMethodId: raw.settlementMethodId,
     items: raw.items
         .map(
           (d) => LinkedItem(

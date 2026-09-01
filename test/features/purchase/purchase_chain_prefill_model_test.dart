@@ -34,4 +34,24 @@ void main() {
     expect(row.maxQty, 6);
     expect(row.qty.text, '6.0');
   });
+
+  test('order source column surfaces request lineage for imported rows', () {
+    final columns = purchaseGridColumns(
+      (_) async {},
+      showSource: true,
+    );
+    final source = columns.firstWhere((c) => c.key == 'source');
+    expect(source.label, '申请来源');
+
+    final row = PurchaseGridRow()
+      ..sourceRequestNo = 'CG20260901-001'
+      ..sourceRequestId = 'request-1';
+    addTearDown(row.dispose);
+    expect(source.textOf!(row), 'CG20260901-001');
+
+    // 手动添加的无来源行不显示单号（列内以「—」占位），不参与来源谱系。
+    final blank = PurchaseGridRow();
+    addTearDown(blank.dispose);
+    expect(source.textOf!(blank), '');
+  });
 }

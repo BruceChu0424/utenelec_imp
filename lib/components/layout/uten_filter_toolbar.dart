@@ -4,7 +4,16 @@
 // 一律用本组件呈现，不再手写各种筛选按钮、Chip 行或自成一套的分段样式——
 //
 // - 分段导航：胶囊 StadiumBorder、与搜索框结构化同高（IntrinsicHeight+stretch）、
-//   选中只变背景色不出 ✓ 图标；分段右侧可挂数量时用红色圆数字徽章
+//   选中只变背景色不出 ✓ 图标；
+// - 层级规则：大类分类（来源/方向/单据类型）在上、小类分类（状态）在下；
+//   小类行默认 [enabled]=false 置灰，选中大类后才由页面解锁；
+// - 默认不选：进页面 [selected] 传空集（不预选「全部」段），数据等价于不过滤；
+//   「全部」段保留为显式选项——SegmentedButton 点击已选段不会回调，选中后
+//   只能靠「全部」段回到全量视图；
+// - 视图切换例外：切换内容区的工具条（如应付工作区/报表变体）必须始终有
+//   选中项，不适用「默认不选」；
+// - 徽章口径：count 只挂在「看页面的用户需要下一步操作」的分段——「全部」、
+//   终态（已完结/终态/已决定）与「下一步是别人操作」的状态一律不挂
 //  （UtenSegmentBadgeLabel，count=null/0 不显示，>99 显 99+）；
 // - 搜索框：全平台唯一组件 UtenSearchBar（胶囊圆角 + 清除 + 300ms 防抖）；
 // - 响应式：宽屏一行（分段 | 搜索 | 弹性 | 尾部），窄屏（< [compactBreakpoint]）
@@ -32,6 +41,7 @@ class UtenFilterSegment<T> {
   final String label;
 
   /// 该分段的计数；null = 加载中/未知（徽章不显示，不把未知伪装成 0）。
+  /// 只有「本页用户可操作」的分段才应传非空计数（见组件头部徽章口径）。
   final int? count;
 }
 
@@ -41,6 +51,7 @@ class UtenFilterToolbar<T> extends StatelessWidget {
     required this.segments,
     required this.selected,
     required this.onSelectionChanged,
+    this.enabled = true,
     this.segmentsKey,
     this.searchKey,
     this.searchHint,
@@ -56,10 +67,16 @@ class UtenFilterToolbar<T> extends StatelessWidget {
   /// 分类分段（建议首段为「全部」）。
   final List<UtenFilterSegment<T>> segments;
 
-  /// 当前选中分段值（单选）。
-  final T selected;
+  /// 当前选中分段集合（单选）。空集 = 进页面未选任何分段（数据不过滤）；
+  /// 「全部」类分段只是显式选项，不再是默认选中态。
+  final Set<T> selected;
 
+  /// 点击某个分段时回调其值。SegmentedButton 单选点击已选段不会触发回调，
+  /// 因此不会出现空集回调。
   final ValueChanged<T> onSelectionChanged;
+
+  /// false = 整条置灰不可点（小类行在大类未选时的锁定态）。
+  final bool enabled;
 
   /// 分段按钮 key（页面既有测试/语义锚点透传，如 iqc-type-segments）。
   final Key? segmentsKey;
@@ -97,18 +114,25 @@ class UtenFilterToolbar<T> extends StatelessWidget {
       //（visualDensity 对两侧的折减不一致，minimumSize 各自算高度算不平，
       //  且本 SDK 版本的分段样式会丢弃 minimumSize）。
       showSelectedIcon: false,
+      // 进页面不预选（selected 空集）是官方支持形态，放开空选中断言。
+      emptySelectionAllowed: true,
       segments: [
         for (final segment in segments)
           ButtonSegment(
             value: segment.value,
+            enabled: enabled,
             label: UtenSegmentBadgeLabel(
               label: segment.label,
               count: segment.count,
             ),
           ),
       ],
-      selected: {selected},
-      onSelectionChanged: (selection) => onSelectionChanged(selection.first),
+      selected: selected,
+      onSelectionChanged: (selection) {
+        // 单选：SegmentedButton 点击已选段不会回调，这里恒非空。
+        // 整条置灰时各分段 disabled，不会进入此回调。
+        if (selection.isNotEmpty) onSelectionChanged(selection.first);
+      },
     );
     final showSearch = searchHint != null || searchController != null;
     final search = showSearch

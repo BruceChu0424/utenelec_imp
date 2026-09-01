@@ -70,6 +70,12 @@ public class WarehouseSalesOutboundProjectionService {
         return toDetail(requireWarehouseVisible(id));
     }
 
+    /** 待出库任务计数（出库任务中心/工作台角标），与列表同一读范围与仓库口径。 */
+    @Transactional(readOnly = true)
+    public long pendingCount() {
+        return shipments.countPendingWarehouseWork();
+    }
+
     @Transactional
     public WarehouseSalesOutboundDetail transition(
             UUID id,

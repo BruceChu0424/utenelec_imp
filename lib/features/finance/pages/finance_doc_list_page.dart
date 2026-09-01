@@ -46,6 +46,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
   /// 「返回即刷新」onPageResume 用，见 build。
   String? _myLocation;
   int? _statusFilter; // null=全部
+  bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
   String? _partyIdFilter;
   String? _accountIdFilter;
 
@@ -94,7 +95,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
       _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
 
   void _onStatus(int? s) {
-    setState(() => _statusFilter = s);
+    setState(() {
+      _statusFilter = s;
+      _statusFilterSelected = true;
+    });
     _reload(1);
   }
 
@@ -282,7 +286,9 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage> {
                                 label: '红冲',
                               ),
                             ],
-                            selected: _statusFilter,
+                            selected: _statusFilterSelected
+                                ? {_statusFilter}
+                                : const {},
                             onSelectionChanged: _onStatus,
                           ),
                         ],

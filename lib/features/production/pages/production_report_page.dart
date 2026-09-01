@@ -56,7 +56,9 @@ class ProductionReportPage extends ConsumerStatefulWidget {
 class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   late final ProductionReportKind _kind = widget.kind;
   // 状态过滤：null=全部 / 0=草稿 / 1=已审 / -1=红冲。
+  // 进页面不预选（不选=不过滤）；偏好回灌非空 status 时视为已选。
   int? _status;
+  bool _statusSelected = false;
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
   String _keyword = '';
@@ -94,6 +96,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     if (p.isEmpty) return;
     setState(() {
       _status = p.status;
+      _statusSelected = p.status != null;
       // 日期范围与 facet 筛选不回灌：进页始终用默认日期范围（上月今日..今日）
       // + 空 filters = 「时间范围内的全部」，避免历史持久化的过时日期范围或失效
       // 筛选值把新数据滤成空白（销售报表已踩此坑，见 sales_report_page.dart）。
@@ -170,9 +173,10 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   }
 
   void _changeStatus(int? s) {
-    if (s == _status) return;
+    if (s == _status && _statusSelected) return;
     setState(() {
       _status = s;
+      _statusSelected = true;
       _page = 1;
       _filters.clear();
       _data = null;
@@ -302,7 +306,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
               UtenFilterSegment<int?>(value: 0, label: '草稿'),
               UtenFilterSegment<int?>(value: -1, label: '红冲'),
             ],
-            selected: _status,
+            selected: _statusSelected ? {_status} : const {},
             onSelectionChanged: _changeStatus,
           ),
           const SizedBox(height: UtenSpacing.s12),

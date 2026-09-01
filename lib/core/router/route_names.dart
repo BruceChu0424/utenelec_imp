@@ -90,6 +90,7 @@ abstract final class RouteName {
   static const String basicinfoAccount = '/basicinfo/account';
   static const String basicinfoAccountDetail = '/basicinfo/account/:id';
   static const String basicinfoPaymentStyle = '/basicinfo/payment-style';
+  static const String basicinfoSettlementMethod = '/basicinfo/settlement-methods';
 
   // 工资条
   static const String payrollSlipList = '/payroll/slip';
@@ -192,6 +193,12 @@ abstract final class RouteName {
   static const String stockMovement = '/stock/movement';
   static const String stockInstantInventory = '/stock/instant-inventory';
 
+  /// 库存详情（即时库存双击进入）：该货品各仓余额 + 出入库流水 + 受控余额调整。
+  /// balance/movement 两页已并入（旧路由重定向保深链）。
+  static const String stockItemBase = '/stock/item';
+  static String stockItemDetail(String goodsId) =>
+      '$stockItemBase/${Uri.encodeComponent(goodsId.trim())}';
+
   // 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）。
   static const String warehouse = '/warehouse';
   static const String warehouseReport = '/warehouse/report';
@@ -215,11 +222,15 @@ abstract final class RouteName {
   static const String warehouseIqcReturns = '/warehouse/iqc-returns';
   static const String warehouseIqcStockIns = '/warehouse/iqc-stock-ins';
 
-  static String warehouseIqcStockInDetail(
+  /// 品质部检查结果（原 IQC 合格待入库 + IQC 不合格实物退回的合并任务中心）。
+  static const String warehouseQualityResults = '/warehouse/quality-results';
+
+  /// 品质检查结果详情完整页（列表双击进入；旧 IQC 待入库详情深链重定向至此）。
+  static String warehouseQualityResultDetail(
     String receiptType,
     String receiptId,
   ) =>
-      '$warehouseIqcStockIns/${Uri.encodeComponent(receiptType.trim().toUpperCase())}/'
+      '$warehouseQualityResults/${Uri.encodeComponent(receiptType.trim().toUpperCase())}/'
       '${Uri.encodeComponent(receiptId.trim())}';
 
   /// 仓库登记实际到货独立页（价格/币种对仓库不可见；extra 带 ProcurementReceiptPrefill）。
@@ -264,6 +275,18 @@ abstract final class RouteName {
 
   /// 财务已放行的销售出货仓库作业工作台（静态段须先于 /warehouse/:code）。
   static const String warehouseSalesOutbound = '/warehouse/sales-outbound';
+
+  // —— 仓库任务中心三页（2026-09-01 重组；静态段 tasks 须先于 /warehouse/:code）——
+  /// 出库任务中心：销售出库（待拣/拣货/已拣/异常/已出库历史）+ 委外出仓（任务/出仓
+  /// 历史）+ 其它出库 + 产成品出库（各自新建/历史）。
+  static const String warehouseOutboundTasks = '/warehouse/tasks/outbound';
+
+  /// 入库任务中心：采购入库（预计到货/到货异常/收货历史）+ 委外入库（预计到货/收货
+  /// 历史）+ 产成品入库（待点收任务/进仓单据）+ 其它入库（新建/历史）。
+  static const String warehouseInboundTasks = '/warehouse/tasks/inbound';
+
+  /// 生产领料任务中心：待领任务（履约备料）+ 领料单（新建/历史/出库进度）+ 生产退料。
+  static const String warehouseDrawTasks = '/warehouse/tasks/draw';
 
   static const String procurementArrivalExceptions =
       '/procurement/arrival-exceptions';
@@ -383,9 +406,6 @@ abstract final class RoutePath {
 
   static String warehouseDocumentHistoryDetail(String segment, String id) =>
       '/warehouse/history/$segment/$id';
-
-  static String warehouseIqcReturnDetail(String id) =>
-      '${RouteName.warehouseIqcReturns}/$id';
 
   static String warehouseSalesOutboundDetail(String id) =>
       '${RouteName.warehouseSalesOutbound}/$id';

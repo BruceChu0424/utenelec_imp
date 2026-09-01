@@ -22,7 +22,10 @@ import '../../finance/providers/sales_order_finance_confirmation_count_provider.
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/providers/production_draw_count_provider.dart';
 import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
-import '../../warehouse/providers/warehouse_iqc_stock_in_count_provider.dart';
+import '../../warehouse/providers/warehouse_sales_outbound_count_provider.dart';
+import '../../warehouse/providers/warehouse_quality_result_count_provider.dart';
+import '../../warehouse/repositories/warehouse_subcontract_outbound_repository.dart'
+    show warehouseSubcontractOutboundCountProvider;
 import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
 import '../../../shared/auth/pending_review_provider.dart';
@@ -47,11 +50,15 @@ void refreshGlobalBadges(WidgetRef ref) {
   ref.invalidate(financeProcurementApprovalCountProvider);
   ref.invalidate(salesOrderFinanceConfirmationCountProvider);
   ref.invalidate(financeArrivalExceptionCountProvider);
+  ref.invalidate(warehouseSalesOutboundPendingCountProvider);
+  ref.invalidate(warehouseSubcontractOutboundCountProvider);
   ref.invalidate(warehouseInboundExpectationCountProvider);
+  ref.invalidate(warehouseInboundExpectationTypeCountsProvider);
   ref.invalidate(warehouseArrivalExceptionCountProvider);
   ref.invalidate(warehouseProductionDrawPendingCountProvider);
   ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
-  ref.invalidate(warehouseIqcStockInPendingCountProvider);
+  ref.invalidate(warehouseQualityResultPendingCountProvider);
+  ref.invalidate(warehouseQualityResultTypeCountsProvider);
   ref.invalidate(procurementInspectionPendingCountProvider);
   ref.invalidate(productionFqcPendingCountProvider);
   ref.invalidate(

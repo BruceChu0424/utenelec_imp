@@ -39,11 +39,25 @@ import 'uten_editable_grid.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 
 /// 上游单据详情的归一化视图：往来方 id + 明细行（由配置方从领域模型转换）。
+///
+/// [docId]/[docNo] 为所选上游单据的 id/单号（可选）：配置方提供时随确认结果
+/// 带回，供编辑页在引入行上回填「来源单据」并支持点击跳转。
+/// [settlementMethodId]（可选）为上游单据的结账/结算方式：下游收货/进仓等沿用
+/// 来源快照的单据引入后预填（编辑页仍按各自必填校验兜底）。
 class UtenDocLinkDetail<I> {
-  const UtenDocLinkDetail({required this.partyId, required this.items});
+  const UtenDocLinkDetail({
+    required this.partyId,
+    required this.items,
+    this.docId,
+    this.docNo,
+    this.settlementMethodId,
+  });
 
   final String? partyId;
   final List<I> items;
+  final String? docId;
+  final String? docNo;
+  final String? settlementMethodId;
 }
 
 /// 勾选并校验通过的一行引入草稿（归一化，不含领域映射）。
@@ -70,12 +84,23 @@ class UtenDocLinkPickedItem {
 }
 
 /// 「从上游引入」的确认返回：所选明细 + 上游单据往来方 id
-///（编辑页表头未选往来方时回填用）。null 表示用户取消。
+///（编辑页表头未选往来方时回填用）+ 所选上游单据 id/单号
+///（可选，引入行回填来源单据用）+ 上游结账/结算方式（可选，下游沿用来源快照
+/// 的单据预填用）。null 表示用户取消。
 class UtenDocLinkPickResult<I> {
-  const UtenDocLinkPickResult({required this.items, this.partyId});
+  const UtenDocLinkPickResult({
+    required this.items,
+    this.partyId,
+    this.sourceDocId,
+    this.sourceDocNo,
+    this.settlementMethodId,
+  });
 
   final List<UtenDocLinkPickedItem> items;
   final String? partyId;
+  final String? sourceDocId;
+  final String? sourceDocNo;
+  final String? settlementMethodId;
 }
 
 /// 上游明细勾选行：持上游明细引用 + 选中态 + 本次数量控制器。
@@ -468,9 +493,15 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       context.appError('请修正标红的本次数量后再引入');
       return;
     }
-    Navigator.of(
-      context,
-    ).pop(UtenDocLinkPickResult<I>(items: out, partyId: _upDetail?.partyId));
+    Navigator.of(context).pop(
+      UtenDocLinkPickResult<I>(
+        items: out,
+        partyId: _upDetail?.partyId,
+        sourceDocId: _upDetail?.docId,
+        sourceDocNo: _upDetail?.docNo,
+        settlementMethodId: _upDetail?.settlementMethodId,
+      ),
+    );
   }
 
   // ---- build ------------------------------------------------------------

@@ -47,7 +47,7 @@ import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
-import '../providers/procurement_inbound_count_providers.dart';
+import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
 
 class WarehouseArrivalReceiptPage extends ConsumerStatefulWidget {
@@ -246,7 +246,7 @@ class _WarehouseArrivalReceiptPageState
             ? PurchaseDocConfig.by(PurchaseDocType.receipt).refreshKey
             : SubcontractDocConfig.by(SubcontractDocType.receipt).refreshKey,
       );
-      ref.invalidate(warehouseInboundExpectationCountProvider);
+      invalidateWarehouseTaskCounts(ref);
       // pop(登记结果) 让任务中心就地刷新并提示下一步；不再跳采购/委外收货单详情页——
       // 仓库流程全程不离开仓储模块（超收时任务中心引导到「到货异常任务中心」）。
       if (context.canPop()) {
@@ -478,7 +478,7 @@ class _WarehouseArrivalReceiptPageState
                           const SizedBox(width: UtenSpacing.s8),
                           Expanded(
                             child: Text(
-                              '表格可左右滑动；业务量、实际重量、库位、系列和物料编码可直接编辑。',
+                              '表格可左右滑动；数量、实际重量、库位、系列和物料编码可直接编辑。',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
@@ -523,7 +523,7 @@ class _WarehouseArrivalReceiptPageState
     return Semantics(
       container: true,
       label:
-          '请按实际到货业务量登记；需要重量统计的货品同时填写实称总重量。'
+          '请按实际到货数量登记；需要重量统计的货品同时填写实称总重量。'
           '超出财务批准剩余量时不会直接入库，'
           '系统会隔离并通知财务审核组共享处理。',
       child: Card(
@@ -543,7 +543,7 @@ class _WarehouseArrivalReceiptPageState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '请按实际到货业务量和实称重量登记',
+                      '请按实际到货数量和实称重量登记',
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
                         fontWeight: FontWeight.w700,
@@ -559,7 +559,7 @@ class _WarehouseArrivalReceiptPageState
                     ),
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '本页登记带单位的业务量、可选实称总重量与库位，不涉及价格与金额。'
+                      '本页登记带单位的数量、可选实称总重量与库位，不涉及价格与金额。'
                       '实到数量超过财务批准剩余量时仍可如实填写——超出部分不会入库、'
                       '不会生成应付，系统会自动隔离并通知财务审核组共享处理。',
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -842,7 +842,7 @@ class _WarehouseArrivalReceiptPageState
   }
 }
 
-/// 一行到货登记明细的本地状态（业务量 + 实际总重量 + 库位/系列/编码学习字段）。
+/// 一行到货登记明细的本地状态（数量 + 实际总重量 + 库位/系列/编码学习字段）。
 class _ArrivalReceiptLine extends EditableGridRow {
   _ArrivalReceiptLine(this.item, {required this.onChanged})
     : qty = TextEditingController(

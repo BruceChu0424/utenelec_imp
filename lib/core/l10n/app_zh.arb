@@ -956,6 +956,8 @@
   "basicDataHubAccountSub": "账户·期初·余额",
   "basicDataHubPaymentStyle": "收付款类别",
   "basicDataHubPaymentStyleSub": "资产负债等六大类",
+  "basicDataHubSettlementMethod": "结算方式",
+  "basicDataHubSettlementMethodSub": "结账字典·账期口径",
   "impersonationSwitchPerson": "切换人",
   "impersonationEnterPasswordTitle": "确认切换人",
   "impersonationEnterPasswordHint": "为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。",

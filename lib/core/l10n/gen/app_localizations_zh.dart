@@ -2655,6 +2655,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get basicDataHubPaymentStyleSub => '资产负债等六大类';
 
   @override
+  String get basicDataHubSettlementMethod => '结算方式';
+
+  @override
+  String get basicDataHubSettlementMethodSub => '结账字典·账期口径';
+
+  @override
   String get impersonationSwitchPerson => '切换人';
 
   @override

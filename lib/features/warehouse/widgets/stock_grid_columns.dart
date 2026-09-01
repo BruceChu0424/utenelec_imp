@@ -12,7 +12,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart';
 
 /// 仓库明细行。
-/// - 非盘点（isCheck=false）：填 [qty]（带单位的业务量）和可选 [weight]（本行实际总重量）。
+/// - 非盘点（isCheck=false）：填 [qty]（带单位的数量）和可选 [weight]（本行实际总重量）。
 /// - 盘点（isCheck=true）：填 [bookQty]（账面）+ [checkQty]（实盘）；
 ///   amountNotifier = 盘盈亏 = 实盘 - 账面（订阅两控制器自动重算）。
 class StockGridRow extends EditableGridRow with AmountRowMixin {
@@ -247,7 +247,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
     ] else ...[
       EditableGridColumn<StockGridRow>(
         key: 'qty',
-        label: '业务量',
+        label: '数量',
         width: 96,
         numeric: true,
         required: true,

@@ -296,7 +296,7 @@ class _FinanceAccountFlowPageState
                   label: '银行存取汇总',
                 ),
               ],
-              selected: _view,
+              selected: {_view},
               onSelectionChanged: _changeView,
             ),
             if (_view == _FlowView.statement) ...[

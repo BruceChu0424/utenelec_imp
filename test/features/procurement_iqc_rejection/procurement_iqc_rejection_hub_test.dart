@@ -23,18 +23,26 @@ void main() {
     expect(find.text('订货审批任务'), findsNothing);
   });
 
-  testWidgets('warehouse hub shows physical return task only with exact view', (
+  testWidgets('warehouse merged card covers return view, rejection-only not shown', (
     tester,
   ) async {
+    // 2026-09-01 合并：仓库 hub 只有「品质部检查结果」一张卡，任一仓库视图权限可见。
     await tester.pumpWidget(_app(const WarehouseHubPage(), const {}));
     await tester.pumpAndSettle();
-    expect(find.text('IQC 不合格实物退回'), findsNothing);
+    expect(find.text('品质部检查结果'), findsNothing);
 
+    await tester.pumpWidget(
+      _app(const WarehouseHubPage(), const {Perm.warehouseIqcReturnView}),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('品质部检查结果'), findsOneWidget);
+
+    // 只有拒收案件视图（财务/品质侧）不点亮仓库合并卡。
     await tester.pumpWidget(
       _app(const WarehouseHubPage(), const {Perm.procurementIqcRejectionView}),
     );
     await tester.pumpAndSettle();
-    expect(find.text('IQC 不合格实物退回'), findsOneWidget);
+    expect(find.text('品质部检查结果'), findsNothing);
   });
 }
 

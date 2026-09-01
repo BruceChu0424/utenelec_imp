@@ -77,8 +77,14 @@ abstract final class UtenRadius {
 /// 命名直接用数值（s4 / s8 / ...），与代码里的 EdgeInsets 数值一一对应，
 /// 减少"猜语义"成本。常用节奏：卡片内边距 16/20，元素间距 8/12，区块间距 24/32。
 abstract final class UtenSpacing {
+  /// 2 —— 微间距（Wrap 行距、行内小标签与文字）
+  static const double s2 = 2;
+
   /// 4 —— 紧凑元素间距（图标与文字、值与趋势行）
   static const double s4 = 4;
+
+  /// 6 —— 小间距（行内小标签内边距、Wrap 元素间距）
+  static const double s6 = 6;
 
   /// 8 —— 相关元素间距（标题与副标题、表单字段）
   static const double s8 = 8;

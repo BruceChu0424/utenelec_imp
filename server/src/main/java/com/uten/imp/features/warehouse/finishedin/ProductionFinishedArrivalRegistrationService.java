@@ -347,13 +347,15 @@ public class ProductionFinishedArrivalRegistrationService {
                             INSERT INTO warehouse_goods_place_preferences(
                                 id, warehouse_id, goods_id, color_id, place,
                                 selection_count, version,
-                                source_registration_id, source_registered_at,
+                                source_kind, source_registration_id,
+                                source_iqc_batch_id, source_registered_at,
                                 last_selected_by, last_selected_at,
                                 created_by, updated_by)
                             VALUES (
                                 gen_random_uuid(), :warehouseId, :goodsId,
                                 :colorId, :place, 1, 0,
-                                :registrationId, :registeredAt,
+                                'FINISHED_ARRIVAL', :registrationId,
+                                NULL, :registeredAt,
                                 :employeeId, now(), :actorId, :actorId)
                             ON CONFLICT ON CONSTRAINT
                                 warehouse_goods_place_preference_dimension_uk
@@ -362,15 +364,20 @@ public class ProductionFinishedArrivalRegistrationService {
                                 selection_count =
                                     warehouse_goods_place_preferences.selection_count + 1,
                                 version = warehouse_goods_place_preferences.version + 1,
+                                source_kind = EXCLUDED.source_kind,
                                 source_registration_id =
                                     EXCLUDED.source_registration_id,
+                                source_iqc_batch_id =
+                                    EXCLUDED.source_iqc_batch_id,
                                 source_registered_at = EXCLUDED.source_registered_at,
                                 last_selected_by = EXCLUDED.last_selected_by,
                                 last_selected_at = now(),
                                 updated_by = EXCLUDED.updated_by
                             WHERE (
                                 warehouse_goods_place_preferences.source_registered_at,
-                                warehouse_goods_place_preferences.source_registration_id
+                                COALESCE(
+                                    warehouse_goods_place_preferences.source_registration_id,
+                                    warehouse_goods_place_preferences.source_iqc_batch_id)
                             ) < (
                                 EXCLUDED.source_registered_at,
                                 EXCLUDED.source_registration_id

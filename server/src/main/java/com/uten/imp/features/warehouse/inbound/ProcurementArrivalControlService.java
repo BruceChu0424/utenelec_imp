@@ -65,40 +65,48 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private static final int EXPECTATION_KEYWORD_PARAMS = 4;
 
     /**
-     * 任务关联的已审核收货单仍有待检/部分待检明细（IQC 未放行完）的 EXISTS
-     * （采购+委外两段，按订货明细挂回任务）。预计到货列表/计数据此把
-     * 「已收满但品质未放行」的 CLOSED 任务继续留在仓库视野——收货审核即入
-     * IQC 隔离，合格放行才进可用库存；品质放行完任务才真正从任务中心消失。
+     * 预计到货任务中心可见口径（2026-09-01 起）：送检即移交品质——「已送检 · 待品质
+     * 检验」不再占用本页视野，改在「品质部检查结果」页以 等待检查结果/全部合格/
+     * 部分合格/全部不合格 跟踪。本页只保留仓库仍有活干的任务：还有可登记容量、
+     * 或挂着草稿收货单（待继续送检）、或有未结到货异常（待财务定案）。
+     * CLOSED 任务不再因等待品质而回流（原 PENDING_INSPECTION_EXISTS 口径已下线）。
      */
-    private static final String PENDING_INSPECTION_EXISTS = """
-            EXISTS (
-                SELECT 1 FROM inbound_expectation_items pending_item
-                JOIN purchase_receipt_items pending_purchase_ri
-                  ON pending_purchase_ri.order_item_id = pending_item.order_item_id
-                JOIN purchase_receipts pending_purchase_r
-                  ON pending_purchase_r.id = pending_purchase_ri.receipt_id
-                 AND pending_purchase_r.status = 1
-                 AND pending_purchase_r.is_deleted = FALSE
-                JOIN procurement_inspection_items pending_purchase_ins
-                  ON pending_purchase_ins.receipt_item_id = pending_purchase_ri.id
-                 AND pending_purchase_ins.receipt_type = 'PURCHASE'
-                 AND pending_purchase_ins.status IN ('PENDING','PARTIAL')
-                WHERE pending_item.expectation_id = expectation.id
-            ) OR EXISTS (
-                SELECT 1 FROM inbound_expectation_items pending_item
-                JOIN subcontract_receipt_items pending_sub_ri
-                  ON pending_sub_ri.order_item_id = pending_item.order_item_id
-                JOIN subcontract_receipts pending_sub_r
-                  ON pending_sub_r.id = pending_sub_ri.receipt_id
-                 AND pending_sub_r.status = 1
-                 AND pending_sub_r.is_deleted = FALSE
-                JOIN procurement_inspection_items pending_sub_ins
-                  ON pending_sub_ins.receipt_item_id = pending_sub_ri.id
-                 AND pending_sub_ins.receipt_type = 'SUBCONTRACT'
-                 AND pending_sub_ins.status IN ('PENDING','PARTIAL')
-                WHERE pending_item.expectation_id = expectation.id
-            )
-            """;
+    private static String warehouseWorkRemaining() {
+        return """
+                (expectation.status = 'OPEN' AND (
+                    EXISTS (
+                        SELECT 1 FROM inbound_expectation_items cap_item
+                        WHERE cap_item.expectation_id = expectation.id
+                          AND (%s) > 0
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM inbound_expectation_items draft_item
+                        JOIN purchase_receipt_items draft_purchase_ri
+                          ON draft_purchase_ri.order_item_id = draft_item.order_item_id
+                        JOIN purchase_receipts draft_purchase_r
+                          ON draft_purchase_r.id = draft_purchase_ri.receipt_id
+                         AND draft_purchase_r.status = 0
+                         AND draft_purchase_r.is_deleted = FALSE
+                        WHERE draft_item.expectation_id = expectation.id
+                    ) OR EXISTS (
+                        SELECT 1 FROM inbound_expectation_items draft_item
+                        JOIN subcontract_receipt_items draft_sub_ri
+                          ON draft_sub_ri.order_item_id = draft_item.order_item_id
+                        JOIN subcontract_receipts draft_sub_r
+                          ON draft_sub_r.id = draft_sub_ri.receipt_id
+                         AND draft_sub_r.status = 0
+                         AND draft_sub_r.is_deleted = FALSE
+                        WHERE draft_item.expectation_id = expectation.id
+                    ) OR EXISTS (
+                        SELECT 1 FROM inbound_expectation_items exc_item
+                        JOIN procurement_arrival_exceptions exc
+                          ON exc.order_item_id = exc_item.order_item_id
+                        WHERE exc_item.expectation_id = expectation.id
+                          AND exc.status NOT IN ('CLOSED','CANCELED')
+                    )
+                ))
+                """.formatted(currentReceivableQty("cap_item"));
+    }
 
     /**
      * 当前预计到货行还能登记的数量。采购和历史委外沿用财务快照；V436 新委外
@@ -979,10 +987,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN suppliers supplier ON supplier.id = expectation.supplier_id
                 LEFT JOIN warehouses warehouse ON warehouse.id = expectation.warehouse_id
                 LEFT JOIN employees owner ON owner.id = expectation.owner_employee_id
-                WHERE (expectation.status = 'OPEN'
-                       OR (expectation.status = 'CLOSED' AND (
-                """ + PENDING_INSPECTION_EXISTS + """
-                       )))
+                WHERE (
+                """ + warehouseWorkRemaining() + """
+                  )
                   AND (
                 """ + expectationVisible() + """
                   )
@@ -1197,15 +1204,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     /** 预计到货任务计数：类型 + 关键字（单号/供应商/货品编码或名称）双条件；口径与列表一致
-     * （OPEN + 「已收满但品质未放行」的 CLOSED——见 PENDING_INSPECTION_EXISTS）。 */
+     * （仅保留仓库仍有活干的 OPEN 任务——见 warehouseWorkRemaining）。 */
     private long countExpectations(String orderType, String keyword) {
         String normalizedType = normalizeOrderType(orderType);
         StringBuilder sql = new StringBuilder("""
                 SELECT COUNT(*) FROM inbound_expectations expectation
-                WHERE (expectation.status = 'OPEN'
-                       OR (expectation.status = 'CLOSED' AND (%s)))
+                WHERE (%s)
                   AND (%s)
-                """.formatted(PENDING_INSPECTION_EXISTS, expectationVisible()));
+                """.formatted(warehouseWorkRemaining(), expectationVisible()));
         List<Object> args = new ArrayList<>();
         if (!normalizedType.isEmpty()) {
             sql.append(" AND expectation.order_type = ?");
@@ -1229,11 +1235,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         jdbc.query("""
                 SELECT order_type, COUNT(*)
                 FROM inbound_expectations expectation
-                WHERE (expectation.status = 'OPEN'
-                       OR (expectation.status = 'CLOSED' AND (%s)))
+                WHERE (%s)
                   AND (%s)
                 GROUP BY order_type
-                """.formatted(PENDING_INSPECTION_EXISTS, expectationVisible()), (rs) -> {
+                """.formatted(warehouseWorkRemaining(), expectationVisible()), (rs) -> {
             counts.put(rs.getString(1), rs.getLong(2));
         });
         return counts;

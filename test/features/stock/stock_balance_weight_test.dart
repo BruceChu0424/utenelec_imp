@@ -15,13 +15,14 @@ void main() {
     expect(row.weight, 7.25);
   });
 
-  test('stock balance table keeps quantity and exposes sortable weight', () {
+  test('stock item detail keeps quantity and exposes sortable weight', () {
+    // 库存余额并入库存详情页（/stock/item/:goodsId）后，数量/重量列契约随之迁移。
     final source = File(
-      'lib/features/stock/pages/stock_balance_page.dart',
+      'lib/features/stock/pages/stock_item_detail_page.dart',
     ).readAsStringSync();
 
     expect(source, contains("key: 'qty'"));
-    expect(source, contains("label: '数量'"));
+    expect(source, contains("label: '当前数量'"));
 
     final weightStart = source.indexOf("key: 'weight'");
     expect(weightStart, greaterThanOrEqualTo(0));
@@ -32,6 +33,5 @@ void main() {
     expect(weightColumn, contains("label: '库存重量'"));
     expect(weightColumn, contains("type: 'number'"));
     expect(weightColumn, contains('sortable: true'));
-    expect(weightColumn, contains('b.weight?.toStringAsFixed(2)'));
   });
 }

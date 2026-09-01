@@ -367,7 +367,7 @@ class _QualityInspectionRecordsPageState
             for (final domain in allowedDomains)
               UtenFilterSegment(value: domain, label: domain.label),
           ],
-          selected: _domain!,
+          selected: {_domain!},
           onSelectionChanged: _selectDomain,
           searchHint: '搜索来源单号 / 计划 / 货品 / 供应商 / 检验员',
           initialSearchValue: _keyword,

@@ -489,9 +489,10 @@ void main() {
         'lib/features/quality/pages/quality_pending_disposal_page.dart',
       ).readAsStringSync();
 
+      // 2026-09-01 合并后：仓库队列角标统一为合并页可办计数（待入库+需退回）。
       expect(
         RegExp(
-          r'ref\.invalidate\(warehouseIqcStockInPendingCountProvider\)',
+          r'ref\.invalidate\(warehouseQualityResultPendingCountProvider\)',
         ).allMatches(source),
         hasLength(2),
       );

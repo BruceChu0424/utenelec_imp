@@ -51,11 +51,13 @@ void main() {
   });
 
   testWidgets('warehouse task center card opens its workbench', (tester) async {
+    // 2026-09-01 重组：拣货工作台并入「生产领料任务中心」的待领任务分段，
+    // hub 卡直连 /warehouse/tasks/draw。
     final router = _router(
       hubPath: RouteName.warehouse,
       hub: const WarehouseHubPage(),
-      workbenchPath: RouteName.operationsWarehouseWorkbench,
-      destinationLabel: '仓库工作台已打开',
+      workbenchPath: RouteName.warehouseDrawTasks,
+      destinationLabel: '生产领料任务中心已打开',
     );
     addTearDown(router.dispose);
 
@@ -80,10 +82,10 @@ void main() {
     await tester.tap(find.text('生产领料任务中心'));
     await tester.pumpAndSettle();
 
-    expect(find.text('仓库工作台已打开'), findsOneWidget);
+    expect(find.text('生产领料任务中心已打开'), findsOneWidget);
     _expectCurrentLocation(
       router,
-      RouteName.operationsWarehouseWorkbench,
+      RouteName.warehouseDrawTasks,
       RouteName.warehouse,
     );
   });
@@ -147,8 +149,8 @@ void main() {
     final router = _router(
       hubPath: RouteName.warehouse,
       hub: const WarehouseHubPage(),
-      workbenchPath: RouteName.operationsWarehouseWorkbench,
-      destinationLabel: '仓库工作台已打开',
+      workbenchPath: RouteName.warehouseDrawTasks,
+      destinationLabel: '生产领料任务中心已打开',
     );
     addTearDown(router.dispose);
 

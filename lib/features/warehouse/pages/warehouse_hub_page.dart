@@ -1,5 +1,17 @@
-// 仓库管理入口页（hub）—— 任务中心 + 出入库单据（含收货历史）+ 库存查询 + 仓库报表。
-// 卡片统一用 UtenHubCard（徽章恒在右上角；出入库/库存/报表 tile 无角标）。
+// 仓库管理入口页（hub）—— 2026-09-01 重组：
+//
+// 任务中心：出库任务中心 / 入库任务中心 / 生产领料任务中心 / 品质部检查结果
+//   （原「出入库单据」里的其它出库/产成品出库/其它入库/产成品进仓/领料/退料，
+//   以及销售出库、委外出仓、预计到货、到货异常、拣货、产成品入库任务全部按
+//   业务方向并入三张任务中心卡，卡上角标 = 各自分段待办之和）。
+// 出入库单据：保留无法按方向归并的仓库内部作业与特殊单据——仓库调拨、盘点、
+//   委外成品退货单、委外损耗单（采购/委外收货与出仓历史已并入对应任务中心）。
+// 库存查询：即时库存唯一入口（双击货品行进库存详情 = 各仓余额 + 出入库流水；
+//   原「库存余额」「出入库流水」两卡下线）+ 货架目视化清单。
+// 仓库报表：明细 / 汇总（不变）。
+//
+// 卡片统一 UtenHubCard（徽章恒在右上角）；显隐仍走 permission_by_path 同一份
+// any/all 契约（canOpen），与路由守卫一致。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -18,29 +30,17 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
-import '../providers/procurement_inbound_count_providers.dart';
-import '../providers/production_finished_inbound_task_count_provider.dart';
-import '../providers/production_draw_count_provider.dart';
-import '../providers/warehouse_iqc_stock_in_count_provider.dart';
-import '../widgets/procurement_inbound_badges.dart';
-import '../widgets/production_finished_inbound_pending_badge.dart';
-import '../widgets/production_draw_pending_badge.dart';
-import '../widgets/warehouse_subcontract_outbound_badge.dart';
-import '../widgets/warehouse_iqc_stock_in_badge.dart';
+import '../providers/warehouse_count_refresh.dart';
+import '../widgets/warehouse_quality_result_badge.dart';
+import '../widgets/warehouse_task_center_badges.dart';
 
 class WarehouseHubPage extends ConsumerWidget {
   const WarehouseHubPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 返回即刷新：重拉预计到货、到货异常和生产领料任务计数。
-    ref.onPageResume(RouteName.warehouse, () {
-      ref.invalidate(warehouseInboundExpectationCountProvider);
-      ref.invalidate(warehouseArrivalExceptionCountProvider);
-      ref.invalidate(warehouseProductionDrawPendingCountProvider);
-      ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
-      ref.invalidate(warehouseIqcStockInPendingCountProvider);
-    });
+    // 返回即刷新：重拉任务中心各计数（角标 = 分段之和，口径与工作台仓库卡一致）。
+    ref.onPageResume(RouteName.warehouse, () => invalidateWarehouseTaskCounts(ref));
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     // 权限门控（V305）：卡片按权限点显隐，权限管理授权后才可见。
@@ -55,7 +55,7 @@ class WarehouseHubPage extends ConsumerWidget {
           requiredAll.every(perms.contains);
     }
 
-    // 任务中心卡（含权限点）：预计到货 / 委外出仓 / 到货异常 / 拣货工作台。
+    // 任务中心卡：三张方向任务中心 + 品质部检查结果（角标 = 内部分段待办之和）。
     final taskEntries =
         <
               ({
@@ -63,102 +63,65 @@ class WarehouseHubPage extends ConsumerWidget {
                 String label,
                 String description,
                 String location,
-                String perm,
                 Widget? badge,
               })
             >[
-              (
-                icon: Icons.local_shipping_outlined,
-                label: '销售出库',
-                description: '仅处理财务已放行的销售出货，按待拣、拣货、已拣和异常推进',
-                location: RouteName.warehouseSalesOutbound,
-                perm: Perm.salesShipmentWarehouseWork,
-                badge: null,
-              ),
-              (
-                icon: Icons.local_shipping_outlined,
-                label: l10n.warehouseHubTaskExpected,
-                description: l10n.warehouseHubTaskExpectedSub,
-                location: RouteName.warehouseInboundExpectations,
-                perm: Perm.warehouseInboundView,
-                badge: const WarehouseInboundExpectationBadge(showLabel: true),
-              ),
-              (
-                icon: Icons.move_to_inbox_outlined,
-                label: 'IQC 合格待入库',
-                description: '品质放行后核对实物数量和实际库位，仓库确认后才增加可用库存',
-                location: RouteName.warehouseIqcStockIns,
-                perm: Perm.warehouseIqcStockInView,
-                badge: const WarehouseIqcStockInBadge(showLabel: true),
-              ),
-              (
-                icon: Icons.outbound_outlined,
-                // TODO(l10n): 补 arb —— 委外目标件出仓。
-                label: '委外出仓',
-                description: '备齐的订货目标件出仓给委外商加工',
-                location: RouteName.warehouseSubcontractOutbound,
-                perm: Perm.subcontractOutboundView,
-                badge: const WarehouseSubcontractOutboundBadge(showLabel: true),
-              ),
-              (
-                icon: Icons.warning_amber_rounded,
-                label: l10n.warehouseHubTaskException,
-                description: l10n.warehouseHubTaskExceptionSub,
-                location: RouteName.warehouseArrivalExceptions,
-                perm: Perm.warehouseInboundView,
-                badge: const WarehouseArrivalExceptionBadge(showLabel: true),
-              ),
-              (
-                icon: Icons.inventory_2_outlined,
-                label: l10n.warehouseHubTaskPicking,
-                description: l10n.warehouseHubTaskPickingSub,
-                location: RouteName.operationsWarehouseWorkbench,
-                perm: Perm.stockDocView,
-                badge: const WarehouseProductionDrawPendingBadge(
-                  showLabel: true,
+              if (canOpen(RouteName.warehouseOutboundTasks))
+                (
+                  icon: Icons.outbox_outlined,
+                  label: '出库任务中心',
+                  description: '销售出库（拣货/交接/历史）· 委外出仓 · 其它/产成品出库（新建+历史）',
+                  location: RouteName.warehouseOutboundTasks,
+                  badge: const WarehouseOutboundTaskBadge(showLabel: true),
                 ),
-              ),
-              (
-                icon: Icons.inventory_outlined,
-                label: '产成品入库任务',
-                description: '先登记成品仓与库位并送检，品质放行后再按实物完成最终点收',
-                location: RouteName.warehouseProductionFinishedInboundTasks,
-                perm: Perm.stockDocView,
-                badge: const WarehouseProductionFinishedInboundPendingBadge(
-                  showLabel: true,
+              if (canOpen(RouteName.warehouseInboundTasks))
+                (
+                  icon: Icons.inbox_outlined,
+                  label: '入库任务中心',
+                  description: '采购/委外到货与异常 · 产成品点收 · 其它入库（新建+历史）',
+                  location: RouteName.warehouseInboundTasks,
+                  badge: const WarehouseInboundTaskBadge(showLabel: true),
                 ),
-              ),
-              (
-                icon: Icons.assignment_return_outlined,
-                label: 'IQC 不合格实物退回',
-                description: '登记采购/委外拒收货品的真实退回凭证并跟踪实物状态',
-                location: RouteName.warehouseIqcReturns,
-                perm: Perm.warehouseIqcReturnView,
-                badge: null,
-              ),
+              if (canOpen(RouteName.warehouseDrawTasks))
+                (
+                  icon: Icons.construction_outlined,
+                  label: '生产领料任务中心',
+                  description: '待领任务 · 领料单（新建/历史/出库进度）· 生产退料',
+                  location: RouteName.warehouseDrawTasks,
+                  badge: const WarehouseDrawTaskBadge(showLabel: true),
+                ),
+              if (can(Perm.warehouseIqcStockInView) ||
+                  can(Perm.warehouseIqcReturnView))
+                (
+                  icon: Icons.fact_check_outlined,
+                  label: '品质部检查结果',
+                  description: '跟踪等待检查、全部/部分合格待入库与不合格退回；可批量确认入库',
+                  location: RouteName.warehouseQualityResults,
+                  badge: const WarehouseQualityResultBadge(showLabel: true),
+                ),
             ]
-            .where((e) => can(e.perm))
             .toList();
+
+    // 出入库单据（仓库内部作业与特殊单据）：调拨/盘点 + 委外成品退货/损耗历史。
+    // 其它六类原生单据与采购/委外收货出仓历史已并入三张任务中心卡。
+    final stockDocumentTypes = StockDocType.values
+        .where(
+          (type) =>
+              (type == StockDocType.transfer || type == StockDocType.check) &&
+              canOpen(RoutePath.stockDocList(type.code)),
+        )
+        .toList(growable: false);
+    final linkedDocEntries = _warehouseLinkedDocEntries
+        .where((e) => can(e.$5))
+        .toList();
+
     final stockQueryEntries = <_StockQueryEntry>[
       _StockQueryEntry(
         Icons.inventory_rounded,
         l10n.warehouseHubInventoryLive,
-        l10n.warehouseHubInventoryLiveSub,
+        '按分类/仓库/关键字聚合查询；双击货品行进入库存详情（各仓余额、出入库流水、受控调整）',
         RouteName.stockInstantInventory,
       ),
-      _StockQueryEntry(
-        Icons.inventory_2_outlined,
-        l10n.warehouseHubInventoryBalance,
-        l10n.warehouseHubInventoryBalanceSub,
-        RouteName.stockBalance,
-      ),
-      _StockQueryEntry(
-        Icons.swap_vert_rounded,
-        l10n.warehouseHubInventoryMovement,
-        l10n.warehouseHubInventoryMovementSub,
-        RouteName.stockMovement,
-      ),
-      // TODO(l10n): 补 arb —— 货架目视化清单（挂牌打印/导出）。
       const _StockQueryEntry(
         Icons.view_agenda_outlined,
         '货架目视化清单',
@@ -166,13 +129,7 @@ class WarehouseHubPage extends ConsumerWidget {
         RouteName.warehouseShelfLabels,
       ),
     ].where((entry) => canOpen(entry.location)).toList(growable: false);
-    final stockDocumentTypes = StockDocType.values
-        .where((type) => canOpen(RoutePath.stockDocList(type.code)))
-        .toList(growable: false);
-    // 采购/委外执行单历史卡（含权限点，V305 门控）。
-    final linkedDocEntries = _warehouseLinkedDocEntries
-        .where((e) => can(e.$5))
-        .toList();
+
     final reportKinds = WarehouseReportKind.values
         .where((kind) => canOpen(kind.route))
         .toList(growable: false);
@@ -195,17 +152,11 @@ class WarehouseHubPage extends ConsumerWidget {
             children: [
               // 任务中心：整组按权限显隐（无任何任务权限时不露空组标题）。
               if (taskEntries.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: UtenSpacing.s4,
-                    bottom: UtenSpacing.s8,
-                  ),
-                  child: Text(
-                    l10n.hubSectionTaskCenter,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                _sectionHeader(
+                  context,
+                  theme,
+                  l10n.hubSectionTaskCenter,
+                  '按业务方向归并的待办工作台；角标为各分段待办之和。',
                 ),
                 UtenResponsiveGrid(
                   itemCount: taskEntries.length,
@@ -224,35 +175,14 @@ class WarehouseHubPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: UtenSpacing.s20),
               ],
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: UtenSpacing.s4,
-                  bottom: UtenSpacing.s4,
-                ),
-                child: Text(
-                  l10n.warehouseHubSectionDocs,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: UtenSpacing.s4,
-                  bottom: UtenSpacing.s8,
-                ),
-                child: Text(
-                  l10n.warehouseHubSectionDocsDesc,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+              _sectionHeader(
+                context,
+                theme,
+                l10n.warehouseHubSectionDocs,
+                '仓库内部作业与特殊单据：调拨、盘点、委外成品退货与损耗；'
+                '出入仓执行类单据已并入任务中心，历史在对应分段查看。',
               ),
               UtenResponsiveGrid(
-                // 出入库单据卡进列表页（历史可查，列表内再新建）；前 9 张为仓库原生单据，
-                // 后 6 张挂采购/委外执行单历史——仓库侧执行出入仓后要能回来查单，不必去采购/委外模块。
-                // 委外四单（V304）：出仓/成品退/材料退/损耗的实际执行归仓库（V304 授权 SUB_WH）。
-                // 权限门控（V305）：无对应 view 权限的卡片不显示。
                 itemCount: stockDocumentTypes.length + linkedDocEntries.length,
                 spacing: UtenSpacing.s12,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 4),
@@ -277,29 +207,11 @@ class WarehouseHubPage extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: UtenSpacing.s20),
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: UtenSpacing.s4,
-                  bottom: UtenSpacing.s4,
-                ),
-                child: Text(
-                  l10n.warehouseHubSectionInventory,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: UtenSpacing.s4,
-                  bottom: UtenSpacing.s8,
-                ),
-                child: Text(
-                  l10n.warehouseHubSectionInventoryDesc,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+              _sectionHeader(
+                context,
+                theme,
+                l10n.warehouseHubSectionInventory,
+                l10n.warehouseHubSectionInventoryDesc,
               ),
               UtenResponsiveGrid(
                 itemCount: stockQueryEntries.length,
@@ -316,29 +228,11 @@ class WarehouseHubPage extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: UtenSpacing.s20),
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: UtenSpacing.s4,
-                  bottom: UtenSpacing.s4,
-                ),
-                child: Text(
-                  l10n.warehouseHubSectionReports,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: UtenSpacing.s4,
-                  bottom: UtenSpacing.s8,
-                ),
-                child: Text(
-                  l10n.warehouseHubSectionReportsDesc,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+              _sectionHeader(
+                context,
+                theme,
+                l10n.warehouseHubSectionReports,
+                l10n.warehouseHubSectionReportsDesc,
               ),
               UtenResponsiveGrid(
                 itemCount: reportKinds.length,
@@ -360,6 +254,38 @@ class WarehouseHubPage extends ConsumerWidget {
       ),
     );
   }
+
+  Widget _sectionHeader(
+    BuildContext context,
+    ThemeData theme,
+    String title,
+    String description,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: UtenSpacing.s4,
+        bottom: UtenSpacing.s8,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            description,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// 库存查询入口（仓库管理 hub「库存查询」分区）。
@@ -376,43 +302,15 @@ class _StockQueryEntry {
   final String location;
 }
 
-/// 仓库 hub 单据区外挂的采购/委外执行单历史入口（图标/标题/副标题/路由/所需权限点）。
-/// TODO(l10n): 补 arb。
+/// 仓库 hub 单据区保留的特殊单据入口（图标/标题/副标题/路由/所需权限点）。
+/// 采购/委外收货历史与出仓历史已并入任务中心，这里只留无法按方向归并的两类。
 const _warehouseLinkedDocEntries = <(IconData, String, String, String, String)>[
-  (
-    Icons.inbox_outlined,
-    '采购收货单',
-    '仓库实收、库位与品质状态历史',
-    RouteName.warehousePurchaseReceiptHistory,
-    Perm.warehousePurchaseReceiptHistoryView,
-  ),
-  (
-    Icons.move_to_inbox_outlined,
-    '委外进仓单',
-    '仓库实收、库位与品质状态历史',
-    RouteName.warehouseSubcontractReceiptHistory,
-    Perm.warehouseSubcontractReceiptHistoryView,
-  ),
-  (
-    Icons.outbound_outlined,
-    '委外出仓执行记录',
-    '目标件与材料的实物出仓历史',
-    RouteName.warehouseSubcontractOutboundHistory,
-    Perm.warehouseSubcontractOutboundHistoryView,
-  ),
   (
     Icons.undo_outlined,
     '委外成品退货单',
     '回厂成品退回委外商的实物历史',
     RouteName.warehouseSubcontractFinishedReturnHistory,
     Perm.warehouseSubcontractFinishedReturnHistoryView,
-  ),
-  (
-    Icons.assignment_return_outlined,
-    '委外材料退货单',
-    '委外商退回余料的实物历史',
-    RouteName.warehouseSubcontractMaterialReturnHistory,
-    Perm.warehouseSubcontractMaterialReturnHistoryView,
   ),
   (
     Icons.delete_sweep_outlined,
@@ -426,24 +324,14 @@ const _warehouseLinkedDocEntries = <(IconData, String, String, String, String)>[
 // 出入库单据卡标题/副标题本地化（StockDocType 枚举仍是中文 label，列表/编辑页在用）。
 String _stockDocTitle(StockDocType t, AppLocalizations l10n) => switch (t) {
   StockDocType.transfer => l10n.warehouseHubDocTransfer,
-  StockDocType.otherIn => l10n.warehouseHubDocOtherIn,
-  StockDocType.otherOut => l10n.warehouseHubDocOtherOut,
-  StockDocType.draw => l10n.warehouseHubDocDraw,
-  StockDocType.wdraw => l10n.warehouseHubDocWdraw,
-  StockDocType.finishedIn => l10n.warehouseHubDocFinishedIn,
-  StockDocType.finishedOut => l10n.warehouseHubDocFinishedOut,
   StockDocType.check => l10n.warehouseHubDocCheck,
+  _ => t.label,
 };
 
 String _stockDocSubtitle(StockDocType t, AppLocalizations l10n) => switch (t) {
   StockDocType.transfer => l10n.warehouseHubDocTransferSub,
-  StockDocType.otherIn => l10n.warehouseHubDocOtherInSub,
-  StockDocType.otherOut => l10n.warehouseHubDocOtherOutSub,
-  StockDocType.draw => l10n.warehouseHubDocDrawSub,
-  StockDocType.wdraw => l10n.warehouseHubDocWdrawSub,
-  StockDocType.finishedIn => l10n.warehouseHubDocFinishedInSub,
-  StockDocType.finishedOut => l10n.warehouseHubDocFinishedOutSub,
   StockDocType.check => l10n.warehouseHubDocCheckSub,
+  _ => '',
 };
 
 // 仓库报表卡标题/副标题本地化（按 WarehouseReportKind 枚举查）。

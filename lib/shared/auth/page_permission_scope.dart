@@ -70,6 +70,7 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
     return _accountScope;
   }
   if (path == '/basicinfo/payment-style') return _paymentStyleScope;
+  if (path == '/basicinfo/settlement-methods') return _settlementMethodScope;
 
   // 跨部门履约工作台与工程任务。
   if (path == '/operations/workbench/warehouse') {
@@ -146,6 +147,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _warehouseMasterScope,
   _accountScope,
   _paymentStyleScope,
+  _settlementMethodScope,
   _basicDataHubScope,
   _warehouseWorkbenchScope,
   _operationsPurchaseScope,
@@ -177,6 +179,10 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _subcontractOutboundScope,
   _warehouseSalesOutboundScope,
   _stockDocumentScope,
+  _warehouseOutboundTasksScope,
+  _warehouseInboundTasksScope,
+  _warehouseDrawTasksScope,
+  _stockItemScope,
   _procurementIqcRejectionScope,
   _procurementExceptionScope,
   _salesHubScope,
@@ -235,19 +241,29 @@ PagePermissionScope? _purchaseScopeFor(List<String> segments) {
 }
 
 PagePermissionScope? _stockScopeFor(List<String> segments) {
-  if (segments.length != 2) return null;
-  return switch (segments[1]) {
-    'balance' => _stockBalanceScope,
-    'movement' => _stockMovementScope,
-    'instant-inventory' => _instantInventoryScope,
-    _ => null,
-  };
+  if (segments.length == 2) {
+    return switch (segments[1]) {
+      'balance' => _stockBalanceScope,
+      'movement' => _stockMovementScope,
+      'instant-inventory' => _instantInventoryScope,
+      _ => null,
+    };
+  }
+  // 库存详情（即时库存双击进入）：/stock/item/:goodsId。
+  if (segments.length == 3 && segments[1] == 'item') return _stockItemScope;
+  return null;
 }
 
 PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
   if (segments.length == 1) return _warehouseHubScope;
   if (segments.length >= 3 && segments[1] == 'history') {
     return _warehouseHistoryScopes[segments[2]];
+  }
+  if (path == '/warehouse/quality-results' ||
+      _isDescendant(path, '/warehouse/quality-results')) {
+    // 合并页主动作是 IQC 入库确认：权限设置展示 stock-in 面（查看+确认）；
+    // 退回登记权限在 warehouse.iqc-return 面（旧退回深链仍可达）。
+    return _warehouseIqcStockInScope;
   }
   if (path == '/warehouse/iqc-returns' ||
       _isDescendant(path, '/warehouse/iqc-returns')) {
@@ -277,6 +293,19 @@ PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
   if (path == '/warehouse/sales-outbound' ||
       _isDescendant(path, '/warehouse/sales-outbound')) {
     return _warehouseSalesOutboundScope;
+  }
+  // 仓库任务中心三页（2026-09-01 重组；静态段 tasks 须先于库存单据 :code 段）。
+  if (path == '/warehouse/tasks/outbound' ||
+      _isDescendant(path, '/warehouse/tasks/outbound')) {
+    return _warehouseOutboundTasksScope;
+  }
+  if (path == '/warehouse/tasks/inbound' ||
+      _isDescendant(path, '/warehouse/tasks/inbound')) {
+    return _warehouseInboundTasksScope;
+  }
+  if (path == '/warehouse/tasks/draw' ||
+      _isDescendant(path, '/warehouse/tasks/draw')) {
+    return _warehouseDrawTasksScope;
   }
   if (!_stockDocumentCodes.contains(segments[1])) return null;
   return _isDocumentPath(segments) ? _stockDocumentScope : null;
@@ -472,6 +501,10 @@ const _paymentStyleScope = PagePermissionScope(
   surfaceKey: 'basic.payment-style',
   title: '收付款类别',
 );
+const _settlementMethodScope = PagePermissionScope(
+  surfaceKey: 'basic.settlement-method',
+  title: '结算方式',
+);
 
 const _basicDataHubScope = PagePermissionScope(
   surfaceKey: 'basic.hub',
@@ -586,11 +619,12 @@ const _warehouseSubcontractWasteHistoryScope = PagePermissionScope(
 );
 const _warehouseIqcReturnScope = PagePermissionScope(
   surfaceKey: 'warehouse.iqc-return',
-  title: '仓库 IQC 不合格实物退回',
+  title: 'IQC 不合格实物退回',
 );
 const _warehouseIqcStockInScope = PagePermissionScope(
   surfaceKey: 'warehouse.iqc-stock-in',
-  title: 'IQC 合格待入库',
+  // 2026-09-01 合并页：列表入口变为「品质部检查结果」，动作权限（查看+确认）不变。
+  title: '品质部检查结果 · IQC 入库',
 );
 const _warehouseHistoryScopes = <String, PagePermissionScope>{
   'purchase-receipts': _warehousePurchaseReceiptHistoryScope,
@@ -620,6 +654,22 @@ const _warehouseSalesOutboundScope = PagePermissionScope(
 const _stockDocumentScope = PagePermissionScope(
   surfaceKey: 'warehouse.stock-document',
   title: '库存单据',
+);
+const _warehouseOutboundTasksScope = PagePermissionScope(
+  surfaceKey: 'warehouse.outbound-tasks',
+  title: '出库任务中心',
+);
+const _warehouseInboundTasksScope = PagePermissionScope(
+  surfaceKey: 'warehouse.inbound-tasks',
+  title: '入库任务中心',
+);
+const _warehouseDrawTasksScope = PagePermissionScope(
+  surfaceKey: 'warehouse.draw-tasks',
+  title: '生产领料任务中心',
+);
+const _stockItemScope = PagePermissionScope(
+  surfaceKey: 'warehouse.stock-item',
+  title: '库存详情',
 );
 const _procurementIqcRejectionScope = PagePermissionScope(
   surfaceKey: 'procurement.iqc-rejection',

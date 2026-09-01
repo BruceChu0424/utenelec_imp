@@ -264,7 +264,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
     ),
     EditableGridColumn<SalesGridRow>(
       key: 'qty',
-      label: docType == SalesDocType.order ? '数量' : '业务量',
+      label: '数量',
       width: 96,
       numeric: true,
       required: true,

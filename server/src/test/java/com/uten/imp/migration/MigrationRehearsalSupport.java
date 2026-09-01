@@ -18,8 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Shared, fail-closed reconciliation rules for synthetic and real-clone migration rehearsals. */
 final class MigrationRehearsalSupport {
 
-    static final String CURRENT_HEAD_VERSION = "447";
-    static final int CURRENT_MIGRATION_COUNT = 409;
+    static final String CURRENT_HEAD_VERSION = "453";
+    static final int CURRENT_MIGRATION_COUNT = 415;
 
     /** Reviewed post-V238 system/evidence row-count mutations on pre-existing tables. */
     private static final Set<String> EXPECTED_ROW_COUNT_MUTATIONS = Set.of(
@@ -59,6 +59,17 @@ final class MigrationRehearsalSupport {
     }
 
     static void assertStableSnapshot(Snapshot before, Snapshot after) {
+        assertStableSnapshot(before, after, false);
+    }
+
+    /**
+     * [auditFreshStartExpected] 在回放窗口跨越 V425（审计日志全新开始，按管理者
+     * 决定 TRUNCATE audit_log/audit_log_archive 并重置自增）时必须为 true：
+     * 迁移后审计行数合法地小于迁移前，原「只增不减」断言失效，退化为
+     * 「不超过截断前峰值」的有界性检查。V425 之后起步的回放仍走原断言。
+     */
+    static void assertStableSnapshot(
+            Snapshot before, Snapshot after, boolean auditFreshStartExpected) {
         assertThat(after.tableRows().keySet())
                 .as("candidate migrations must not remove pre-existing business tables")
                 .containsAll(before.tableRows().keySet());
@@ -73,9 +84,16 @@ final class MigrationRehearsalSupport {
         assertThat(unexpected)
                 .as("candidate migrations changed row counts outside the reviewed allowlist")
                 .isEmpty();
-        assertThat(after.tableRows().get("audit_log"))
-                .as("migration audit evidence is append-only")
-                .isGreaterThanOrEqualTo(before.tableRows().get("audit_log"));
+        if (auditFreshStartExpected) {
+            assertThat(after.tableRows().get("audit_log"))
+                    .as("V425 audit fresh start truncates history; post-fresh-start "
+                            + "audit stays bounded by the pre-truncate peak")
+                    .isLessThanOrEqualTo(before.tableRows().get("audit_log"));
+        } else {
+            assertThat(after.tableRows().get("audit_log"))
+                    .as("migration audit evidence is append-only")
+                    .isGreaterThanOrEqualTo(before.tableRows().get("audit_log"));
+        }
         assertThat(after.userIdentity()).isEqualTo(before.userIdentity());
         assertThat(after.scopeRows()).containsExactlyEntriesOf(before.scopeRows());
         assertThat(after.paymentTotals()).isEqualTo(before.paymentTotals());

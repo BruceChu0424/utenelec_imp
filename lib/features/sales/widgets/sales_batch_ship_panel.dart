@@ -340,7 +340,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
               style: theme.textTheme.bodySmall,
               decoration: const InputDecoration(
                 isDense: true,
-                labelText: '本次业务量',
+                labelText: '本次数量',
                 border: OutlineInputBorder(),
               ),
             ),

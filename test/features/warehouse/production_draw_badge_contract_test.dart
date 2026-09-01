@@ -27,12 +27,9 @@ void main() {
           'ref.invalidate(warehouseProductionDrawPendingCountProvider);',
         ),
       );
-      expect(
-        warehouseHub,
-        contains(
-          'ref.invalidate(warehouseProductionDrawPendingCountProvider);',
-        ),
-      );
+      // 2026-09-01 下午起 hub 的计数失效统一走 invalidateWarehouseTaskCounts
+      //（内含领料待办失效），不再逐条写在 hub 里。
+      expect(warehouseHub, contains('invalidateWarehouseTaskCounts'));
       expect(
         RegExp(
           r'ref\.invalidate\(warehouseProductionDrawPendingCountProvider\);',
@@ -41,7 +38,16 @@ void main() {
         reason:
             'approve/issue/reverse flows must refresh the warehouse draw badge',
       );
-      expect(warehouseHub, contains('WarehouseProductionDrawPendingBadge'));
+      // 2026-09-01 重组：hub「生产领料任务中心」卡角标由
+      // WarehouseDrawTaskBadge 渲染（同 provider，任一加载中不显示半程合计）。
+      expect(warehouseHub, contains('WarehouseDrawTaskBadge'));
+      final taskCenterBadges = File(
+        'lib/features/warehouse/widgets/warehouse_task_center_badges.dart',
+      ).readAsStringSync();
+      expect(
+        taskCenterBadges,
+        contains('warehouseProductionDrawPendingCountProvider'),
+      );
     },
   );
 }

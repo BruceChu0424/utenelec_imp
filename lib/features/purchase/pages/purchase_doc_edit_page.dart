@@ -8,6 +8,8 @@
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
 // 明细改 Excel 表：货品/数量/单价→金额自动 + 添加行/添加多行 + 行尾删除 + sticky 表头。
 // 保存组装 body 调 create/update，成功后跳详情。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -118,7 +120,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
-  String? _sourceRequestBillNo;
   // 采购分解订货的并发认领会话（PURCHASE_DECOMPOSE，按申请 id 认领；他人占用时禁用保存）。
   TaskClaimSession? _decomposeClaim;
 
@@ -260,6 +261,16 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
             widget.docType == PurchaseDocType.returnDoc) {
           await _fillStockPlaces(rows);
         }
+        // 「申请来源」列回显：编辑既有订货单按单头来源申请回填
+        //（服务端仅在全单同源时给出；跨申请分解的旧单该列留空）。
+        if (widget.docType == PurchaseDocType.order &&
+            d.sourceRequestId != null) {
+          for (final row in rows) {
+            row
+              ..sourceRequestId = d.sourceRequestId
+              ..sourceRequestNo = d.sourceRequestNo;
+          }
+        }
         _grid.replaceAll(rows);
       } on ApiException catch (e) {
         if (mounted) context.appError(e.message);
@@ -346,6 +357,12 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         );
       }
       if (rows.isEmpty) throw StateError('所选采购申请明细缺少有效物料');
+      // 「申请来源」列自动回填：任务中心带单按申请行各自的来源单号/单据 id 填。
+      for (var i = 0; i < rows.length && i < open.length; i++) {
+        rows[i]
+          ..sourceRequestNo = open[i].sourceDocumentNo
+          ..sourceRequestId = open[i].sourceDocumentId;
+      }
       _grid.replaceAll(rows);
       // 引入申请行后按「学习记忆」预填各货品上次订货的供应商，减少逐行手选。
       await _prefillRememberedSuppliers();
@@ -357,11 +374,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
             ..sort();
       _deliverDate = dates.isEmpty ? null : dates.first;
       // 订货单不携带仓库（入库仓库到收货登记时再选），不预填申请行仓库。
-      _sourceRequestBillNo = open
-          .map((line) => line.sourceDocumentNo)
-          .where((number) => number.isNotEmpty)
-          .toSet()
-          .join('、');
       // 并发认领（PURCHASE_DECOMPOSE）：按所引入采购申请 id 认领，他人正在分解同一申请时禁用保存。
       // 仅 UX/防碰撞层；后端 decompositionPreview 守卫是正确性底线。认领失败 fail-open。
       final requestIds = open.map((e) => e.sourceDocumentId).toSet();
@@ -390,6 +402,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     }
     _supplierId = prefill.supplierId;
     _warehouseId = prefill.warehouseId;
+    unawaited(_prefillSettlementForSupplier(prefill.supplierId, null));
     if (prefill.purchaserId?.isNotEmpty == true) {
       _purchaserId = prefill.purchaserId;
       await _preloadEmployees([prefill.purchaserId]);
@@ -488,6 +501,36 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
 
   /// 批量设供应商弹窗的「新增供应商」由供应商滑入面板内置（supplier:create 权限）。
 
+  /// 供应商确定后预填结账方式：上游单据带结账方式时优先（收货/退货沿用来源
+  /// 快照），否则用供应商主档默认（V452）。仅预填启用中的方式；不替换单据
+  /// 必填校验，也不覆盖用户已选值。
+  Future<void> _prefillSettlementForSupplier(
+    String? supplierId,
+    String? upstreamSettlementId,
+  ) async {
+    if (!_cfg.hasSettlement || _settlementMethodId != null) return;
+    if (supplierId == null || supplierId.isEmpty) return;
+    final candidate =
+        (upstreamSettlementId?.isNotEmpty ?? false)
+        ? upstreamSettlementId
+        : ref
+              .read(masterNameServiceProvider)
+              .supplierDefaultSettlement(supplierId);
+    if (candidate == null || candidate.isEmpty) return;
+    try {
+      final methods = await ref.read(settlementMethodOptionsProvider.future);
+      if (!mounted) return;
+      // 默认/来源方式已停用或软删时不预填，避免下拉里出现死值。
+      if (!methods.any((m) => m.id == candidate)) return;
+      setState(() {
+        _settlementMethodId = candidate;
+        _settlementError = null;
+      });
+    } catch (_) {
+      // 字典暂不可用不预填；保存前必填校验仍兜底。
+    }
+  }
+
   /// 多选行统一设供应商（订货单表头不录供应商，行级必填）：打开供应商滑入面板
   /// （分类树+搜索+可内联新建）选一个，把同一供应商填到所有选中行；
   /// 保存时后端按行供应商拆单归集。
@@ -502,6 +545,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       r.supplierId = picked.id;
     }
     setState(() {});
+    unawaited(_prefillSettlementForSupplier(picked.id, null));
   }
 
   /// 行级供应商选择：打开供应商滑入面板，选中后按多选范围落值
@@ -624,6 +668,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       );
       rows.add(PurchaseGridRow.fromLinked(li, goods));
     }
+    // 「申请来源」列自动回填：本次引入所选上游单据（订货单上游=采购申请）的单号/id。
+    if (widget.docType == PurchaseDocType.order) {
+      for (final r in rows) {
+        r
+          ..sourceRequestId = result.sourceDocId
+          ..sourceRequestNo = result.sourceDocNo;
+      }
+    }
     if (widget.docType == PurchaseDocType.receipt ||
         widget.docType == PurchaseDocType.returnDoc) {
       await _fillStockPlaces(rows);
@@ -636,13 +688,24 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           r.price.text.trim().isEmpty,
     );
     _grid.addRows(rows);
-    // 表头未选供应商 → 以上游单据供应商回填。
+    // 表头未选供应商 → 以上游单据供应商回填；结账方式未选时按上游单据结账方式
+    // （收货/退货引入订货）或供应商默认（V452）预填。
     final sid = result.supplierId;
     if (_supplierId == null && sid != null && sid.isNotEmpty) {
       setState(() => _supplierId = sid);
+      unawaited(_prefillSettlementForSupplier(sid, result.settlementMethodId));
     }
     // 引入行后按「学习记忆」预填各货品上次订货的供应商（订货单行级必填）。
     await _prefillRememberedSuppliers();
+  }
+
+  /// 「申请来源」列点击：跳来源采购申请详情（申请为计划下达的只读事实页）。
+  void _openSourceRequest(PurchaseGridRow row) {
+    final id = row.sourceRequestId;
+    if (id == null || id.isEmpty) return;
+    context.push(
+      RoutePath.purchaseDocDetail(PurchaseDocType.request.pathSegment, id),
+    );
   }
 
   Future<void> _save() async {
@@ -986,8 +1049,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                       required: _cfg.supplierRequired,
                                       // 到货登记模式：供应商来自预计到货任务，锁定防手滑改坏来源关联。
                                       enabled: !_isArrivalMode,
-                                      onChanged: (v) =>
-                                          setState(() => _supplierId = v),
+                                      onChanged: (v) {
+                                        setState(() => _supplierId = v);
+                                        unawaited(
+                                          _prefillSettlementForSupplier(
+                                            v,
+                                            null,
+                                          ),
+                                        );
+                                      },
                                       onPick: () =>
                                           showUtenSupplierPicker(context, ref),
                                     ),
@@ -1122,58 +1192,34 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                           ),
                         ),
                       ),
-                      if (_sourceRequestBillNo != null) ...[
-                        const SizedBox(height: UtenSpacing.s8),
-                        Container(
-                          padding: const EdgeInsets.all(UtenSpacing.s8),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primaryContainer
-                                .withValues(alpha: .35),
-                            borderRadius: UtenRadius.smAll,
-                            border: Border.all(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: .35,
-                              ),
-                            ),
+                      // 并发认领被占用的提示独立常驻（引入总结横幅已由明细
+                      // 「申请来源」列取代：来源单号逐行展示、可点跳申请详情）。
+                      if (_decomposeClaim?.blocked ?? false)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: UtenSpacing.s8,
+                            bottom: UtenSpacing.s4,
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.link_rounded, size: 18),
+                              Icon(
+                                Icons.lock_outline,
+                                size: 18,
+                                color: theme.colorScheme.error,
+                              ),
                               const SizedBox(width: UtenSpacing.s8),
                               Expanded(
                                 child: Text(
-                                  '已从采购申请 $_sourceRequestBillNo 引入 ${_grid.length} 行；'
-                                  '请逐行选择供应商（勾选多行后在任一行选即批量填写）、'
-                                  '填写交货日期和价格后提交财务审核。',
+                                  '${_decomposeClaim?.blockedByName ?? '同事'}'
+                                  '正在分解此采购申请，保存已禁用，请稍后再试',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.error,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        if (_decomposeClaim?.blocked ?? false)
-                          Padding(
-                            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.lock_outline,
-                                  size: 18,
-                                  color: theme.colorScheme.error,
-                                ),
-                                const SizedBox(width: UtenSpacing.s8),
-                                Expanded(
-                                  child: Text(
-                                    '${_decomposeClaim?.blockedByName ?? '同事'}'
-                                    '正在分解此采购申请，保存已禁用，请稍后再试',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.error,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
                       const SizedBox(height: UtenSpacing.s12),
                       Row(
                         children: [
@@ -1252,6 +1298,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                               : null,
                           // 行内点选供应商 → 滑入面板（页面按多选范围落值联动）。
                           onPickSupplier: _pickRowSupplier,
+                          // 订货单：「申请来源」列——引入行自动回填来源申请单号，点击跳申请详情。
+                          showSource: widget.docType == PurchaseDocType.order,
+                          onOpenSource: _openSourceRequest,
                         ),
                         createBlankRow: () => PurchaseGridRow(),
                         // 到货登记模式：行来自预计到货任务（带订货明细关联），
@@ -1322,7 +1371,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     return Semantics(
       container: true,
       label:
-          '请按实际到货业务量登记；需要重量统计的货品同时填写实称总重量。'
+          '请按实际到货数量登记；需要重量统计的货品同时填写实称总重量。'
           '超出财务批准剩余量时不会直接入库，'
           '系统会隔离并通知财务审核组审批。',
       child: Card(
@@ -1342,7 +1391,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '请按实际到货业务量和实称重量登记',
+                      '请按实际到货数量和实称重量登记',
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
                         fontWeight: FontWeight.w700,
@@ -1399,7 +1448,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                     ],
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '请选择本次入库仓库，并按实际到货业务量和实称重量登记。'
+                      '请选择本次入库仓库，并按实际到货数量和实称重量登记。'
                       '如果实到数量超过财务批准剩余量，仍可如实填写。'
                       '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'
                       '并通知财务审核组审批——财务可批准实到数量进入后续流程，'

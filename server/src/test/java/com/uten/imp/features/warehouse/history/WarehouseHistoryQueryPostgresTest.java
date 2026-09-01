@@ -86,4 +86,31 @@ class WarehouseHistoryQueryPostgresTest {
                     type.name());
         }
     }
+
+    @Test
+    void nullStatusBindsAcrossAllListProjections() {
+        // 生产回形（2026-09-01 SQLState 42P18）：任务中心收货历史不带 status 时，
+        // PG 无法推断 null 参数类型——可选过滤必须先 CAST 再判 NULL。
+        for (WarehouseHistoryType type : WarehouseHistoryType.values()) {
+            MapSqlParameterSource parameters = new MapSqlParameterSource()
+                    .addValue("status", null)
+                    .addValue("keyword", "")
+                    .addValue("keyword_pattern", "%%")
+                    .addValue("limit", 20)
+                    .addValue("offset", 0);
+            assertEquals(
+                    0L,
+                    jdbc.queryForObject(
+                            WarehouseHistoryQueries.countSql(type),
+                            parameters,
+                            Long.class),
+                    type.name());
+            assertEquals(
+                    0,
+                    jdbc.queryForList(
+                            WarehouseHistoryQueries.listSql(type),
+                            parameters).size(),
+                    type.name());
+        }
+    }
 }

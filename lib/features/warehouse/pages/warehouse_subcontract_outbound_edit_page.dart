@@ -39,6 +39,7 @@ import '../../subcontract/models/subcontract_doc.dart';
 import '../../subcontract/repositories/subcontract_repository.dart';
 import '../models/subcontract_outbound.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart';
+import '../providers/warehouse_count_refresh.dart';
 
 class WarehouseSubcontractOutboundEditPage extends ConsumerStatefulWidget {
   const WarehouseSubcontractOutboundEditPage({super.key, required this.planId});
@@ -289,6 +290,7 @@ class _WarehouseSubcontractOutboundEditPageState
       final id = await _saveDraft(silent: false);
       if (!mounted) return;
       if (id != null) {
+        invalidateWarehouseTaskCounts(ref);
         context.appSuccess('出仓草稿已保存');
         context.pop(true);
       }
@@ -327,6 +329,7 @@ class _WarehouseSubcontractOutboundEditPageState
           .read(subcontractRepositoryProvider(SubcontractDocType.materialIssue))
           .approve(id);
       if (!mounted) return;
+      invalidateWarehouseTaskCounts(ref);
       context.appSuccess('委外目标件出仓已审核，可交委外商加工');
       context.pop(true);
     } on ApiException catch (error) {
@@ -382,6 +385,7 @@ class _WarehouseSubcontractOutboundEditPageState
           .read(warehouseSubcontractOutboundRepositoryProvider)
           .closePlan(widget.planId, reasonCtl.text.trim());
       if (!mounted) return;
+      invalidateWarehouseTaskCounts(ref);
       context.appSuccess('已关闭剩余出仓计划');
       context.pop(true);
     } on ApiException catch (error) {

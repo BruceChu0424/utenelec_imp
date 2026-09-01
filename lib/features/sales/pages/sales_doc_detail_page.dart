@@ -1519,7 +1519,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             ),
             MasterColumnDef(
               key: 'qty',
-              label: '业务量',
+              label: '数量',
               width: 90,
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),

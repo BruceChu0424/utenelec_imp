@@ -379,7 +379,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
               for (final t in SalesReportDocType.values)
                 UtenFilterSegment(value: t, label: t.label),
             ],
-            selected: _docType,
+            selected: {_docType},
             onSelectionChanged: _changeDocType,
           ),
           const SizedBox(height: UtenSpacing.s12),

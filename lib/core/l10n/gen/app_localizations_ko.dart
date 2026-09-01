@@ -2661,6 +2661,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get basicDataHubPaymentStyleSub => '6개 회계과목';
 
   @override
+  String get basicDataHubSettlementMethod => '결제 방식';
+
+  @override
+  String get basicDataHubSettlementMethodSub => '결제 방식·지급 기한';
+
+  @override
   String get impersonationSwitchPerson => '사용자 전환';
 
   @override

@@ -43,6 +43,12 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
 
   /// 来源单据编号谱系（到货登记=来源订货单号；与委外进仓口径一致，随行提交留痕）。
   String? sourceDocNo;
+
+  /// 申请来源（订货单明细列展示）：来源采购申请的单号 + 单据 id。
+  /// 任务中心带单新建/「从上游引入」时自动回填，点击单号跳申请详情；
+  /// 纯前端展示不随保存提交（订单行 sourceDocNo 谱系由服务端按申请行继承计划号）。
+  String? sourceRequestNo;
+  String? sourceRequestId;
   String? colorId;
   String? unitId;
   double? unitRate;
@@ -98,15 +104,19 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
 /// [onPickSupplier] 打开供应商滑入面板，页面按多选范围落值（联动填写）。
 /// [supplierRequired]：订货单行级供应商必填（表头不再录入）→ 列头红 * + 空值红字提示。
 /// [showStockPlace]（收货/退货实物单据）：货品列后加「库位号」只读列（主档带出，上架/拣货指引）。
+/// [showSource]+[onOpenSource]（订货单）：货品列后加「申请来源」只读列，引入行自动回填
+/// 来源申请单号；点击单号由 [onOpenSource] 跳申请详情（无来源 id 时退化为纯文本）。
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   Future<void> Function(PurchaseGridRow row) onPickGoods, {
   bool arrivalMode = false,
   bool showStockPlace = false,
+  bool showSource = false,
   Map<String, String> unitEntries = const {},
   Map<String, String> supplierEntries = const {},
   bool supplierRequired = false,
   String? headerSupplierId,
   Future<void> Function(PurchaseGridRow row)? onPickSupplier,
+  void Function(PurchaseGridRow row)? onOpenSource,
 }) {
   final showSupplier = !arrivalMode && supplierEntries.isNotEmpty;
   return [
@@ -149,6 +159,64 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         ),
       ),
     ),
+    if (showSource)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'source',
+        label: '申请来源',
+        width: 150,
+        textOf: (r) => r.sourceRequestNo ?? '',
+        cellBuilder: (context, row) {
+          final no = row.sourceRequestNo;
+          if (no == null || no.isEmpty) {
+            return Text(
+              '—',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            );
+          }
+          // 有来源单据 id 才可点跳详情；任务/接口未带回 id 时退化为纯文本谱系。
+          final canOpen =
+              row.sourceRequestId != null && row.sourceRequestId!.isNotEmpty;
+          final theme = Theme.of(context);
+          return InkWell(
+            onTap: canOpen && onOpenSource != null
+                ? () => onOpenSource(row)
+                : null,
+            borderRadius: BorderRadius.circular(4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      no,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: canOpen
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                        decoration: canOpen ? TextDecoration.underline : null,
+                        decorationColor: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  if (canOpen) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.open_in_new,
+                      size: 12,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     if (showStockPlace)
       EditableGridColumn<PurchaseGridRow>(
         key: 'stockPlace',

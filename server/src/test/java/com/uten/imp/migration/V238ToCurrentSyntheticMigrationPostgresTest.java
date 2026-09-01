@@ -83,7 +83,7 @@ class V238ToCurrentSyntheticMigrationPostgresTest {
         try (Connection connection = connection()) {
             assertThat(latestSuccessfulVersion(connection)).isEqualTo(CURRENT_HEAD_VERSION);
             Snapshot after = snapshot(connection);
-            assertStableSnapshot(before, after);
+            assertStableSnapshot(before, after, true);
             assertCurrentAuthority(connection);
         }
     }

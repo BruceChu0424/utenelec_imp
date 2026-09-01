@@ -74,11 +74,16 @@ void main() {
         'server/src/main/resources/db/migration/'
         'V446__iqc_release_warehouse_stock_in.sql',
       );
+      final v450 = File(
+        'server/src/main/resources/db/migration/'
+        'V450__warehouse_task_centers_and_stock_item_read_indexes.sql',
+      );
       expect(v328.existsSync(), isTrue);
       expect(v437.existsSync(), isTrue);
       expect(v440.existsSync(), isTrue);
       expect(v443.existsSync(), isTrue);
       expect(v446.existsSync(), isTrue);
+      expect(v450.existsSync(), isTrue);
       final source = v328.readAsStringSync();
       final seedStart = source.indexOf('INSERT INTO permission_surfaces');
       final seedEnd = source.indexOf(
@@ -92,7 +97,8 @@ void main() {
           '${v437.readAsStringSync()}\n'
           '${v440.readAsStringSync()}\n'
           '${v443.readAsStringSync()}\n'
-          '${v446.readAsStringSync()}';
+          '${v446.readAsStringSync()}\n'
+          '${v450.readAsStringSync()}';
       final surfaceKeys = {
         for (final path in _businessPaths())
           pagePermissionScopeFor(path)!.surfaceKey,
@@ -218,7 +224,11 @@ Iterable<String> _businessPaths() sync* {
     '/stock/balance',
     '/stock/movement',
     '/stock/instant-inventory',
+    '/stock/item/item-1',
     '/warehouse',
+    '/warehouse/tasks/outbound',
+    '/warehouse/tasks/inbound',
+    '/warehouse/tasks/draw',
     '/warehouse/inspections',
     '/warehouse/iqc-stock-ins',
     '/warehouse/iqc-stock-ins/PURCHASE/receipt-1',

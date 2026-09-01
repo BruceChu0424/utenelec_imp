@@ -130,9 +130,10 @@ final class WarehouseHistoryQueries {
 
     private static String where(WarehouseHistoryType type, boolean includeFilters) {
         String filters = includeFilters ? """
-                  AND (:status IS NULL OR h.status = :status)
+                  -- null 参数类型坑：可选过滤一律 CAST(:param AS 类型) IS NULL OR ...
+                  AND (CAST(:status AS smallint) IS NULL OR h.status = CAST(:status AS smallint))
                   AND (
-                       :keyword = ''
+                       CAST(:keyword AS text) = ''
                        OR LOWER(COALESCE(h.bill_no, '')) LIKE :keyword_pattern
                        OR LOWER(COALESCE(h.source_doc_no, '')) LIKE :keyword_pattern
                        OR LOWER(COALESCE(supplier.name, '')) LIKE :keyword_pattern

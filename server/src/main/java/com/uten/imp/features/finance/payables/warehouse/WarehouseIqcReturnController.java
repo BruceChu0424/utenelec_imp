@@ -1,7 +1,6 @@
 package com.uten.imp.features.finance.payables.warehouse;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
-import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.finance.payables.ProcurementIqcRejectionContracts.RecordReturnRequest;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -10,12 +9,15 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-/** Warehouse-only IQC physical-return API. */
+/**
+ * Warehouse-only IQC physical-return API.  The list projection retired with the
+ * 2026-09-01 merge into /warehouse/quality-results; this surface keeps only the
+ * deep-link detail read and the return-voucher command.
+ */
 @RestController
 @RequestMapping("/api/warehouse/iqc-returns")
 public class WarehouseIqcReturnController {
@@ -28,17 +30,6 @@ public class WarehouseIqcReturnController {
             AuditDetailViewRecorder auditViews) {
         this.service = service;
         this.auditViews = auditViews;
-    }
-
-    @GetMapping
-    @PreAuthorize("hasAuthority('" + WarehouseIqcReturnPermissions.VIEW + "')")
-    public PageResponse<WarehouseIqcReturnView> list(
-            @RequestParam(required = false) String receiptType,
-            @RequestParam(required = false) String physicalStatus,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.list(receiptType, physicalStatus, keyword, page, size);
     }
 
     @GetMapping("/{id}")

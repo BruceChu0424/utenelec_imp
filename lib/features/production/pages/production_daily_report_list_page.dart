@@ -37,6 +37,7 @@ class _ProductionDailyReportListPageState
     extends ConsumerState<ProductionDailyReportListPage> {
   final _list = PagedListController<ProductionDailyReportListItem>();
   int? _statusFilter;
+  bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
@@ -79,7 +80,10 @@ class _ProductionDailyReportListPageState
       _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
 
   void _onStatus(int? s) {
-    setState(() => _statusFilter = s);
+    setState(() {
+      _statusFilter = s;
+      _statusFilterSelected = true;
+    });
     _reload(1);
   }
 
@@ -218,7 +222,9 @@ class _ProductionDailyReportListPageState
                             label: '红冲',
                           ),
                         ],
-                        selected: _statusFilter,
+                        selected: _statusFilterSelected
+                            ? {_statusFilter}
+                            : const {},
                         onSelectionChanged: _onStatus,
                       ),
                     ),

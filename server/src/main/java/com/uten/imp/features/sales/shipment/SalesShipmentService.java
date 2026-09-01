@@ -168,6 +168,33 @@ public class SalesShipmentService {
                 page, size, p.getTotalElements(), p.getTotalPages());
     }
 
+    /**
+     * 仓库待出库计数（出库任务中心 / 工作台角标）：财务已放行、未驳回、未删除，
+     * 且仓库作业仍可推进（待拣/拣货中/已拣待交接/异常/历史遗留待办）——已交接出库、
+     * 已取消、已红冲不计。与 list() 使用同一读范围与谓词口径，只聚合未完结任务。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
+    public long countPendingWarehouseWork() {
+        var readScope = accessPolicy.scope(
+                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_WORK_AUTHORITY);
+        Specification<SalesShipment> spec = (root, q, cb) -> {
+            List<Predicate> ps = new ArrayList<>();
+            ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
+            ps.add(cb.equal(root.get("financeAudit"), (short) 1));
+            ps.add(cb.isFalse(root.get("rejected")));
+            ps.add(root.get("warehouseWorkStatus").in(
+                    SalesShipment.WORK_LEGACY_PENDING,
+                    SalesShipment.WORK_PENDING_PICK,
+                    SalesShipment.WORK_PICKING,
+                    SalesShipment.WORK_PICKED,
+                    SalesShipment.WORK_EXCEPTION));
+            return cb.and(ps.toArray(new Predicate[0]));
+        };
+        return shipmentRepo.count(spec);
+    }
+
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyAuthority('sales_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
     public ShipmentDetail detail(UUID id) {

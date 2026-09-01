@@ -7,6 +7,7 @@ import com.uten.imp.common.mastercode.CategoryCodeAllocation;
 import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.SettlementMethodReferenceResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -294,7 +295,9 @@ public class SupplierService {
                 cb.isFalse(root.get("deleted")),
                 cb.isFalse(root.get("internalWorkshop")));
         return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
-                .map(m -> new SupplierDictItem(m.getId(), m.getCode(), m.getName(), m.getStatus()))
+                .map(m -> new SupplierDictItem(
+                        m.getId(), m.getCode(), m.getName(), m.getStatus(),
+                        m.getDefaultSettlementMethodId()))
                 .toList();
     }
 
@@ -386,8 +389,29 @@ public class SupplierService {
         m.setTaxId(req.getTaxId());
         m.setInitTotal(req.getInitTotal());
         m.setTday(req.getTday());
+        applyDefaultSettlementMethod(req, m);
         m.setStatus(req.getStatus());
         m.setRemark(req.getRemark());
+    }
+
+    /**
+     * 默认结算方式 UUID 真源（V452，镜像 ClientService#applyDefaultSettlementMethod）：
+     * 传 null 显式清空时同步清掉旧库快照；DB 触发器 fn_sync_supplier_default_settlement_reference
+     * 另有一致性兜底（UUID 必须指向使用中的结算方式，price_style 由 UUID 同步）。
+     */
+    private void applyDefaultSettlementMethod(
+            SupplierSaveRequest req, Supplier supplier) {
+        if (!req.hasDefaultSettlementMethodReference()) return;
+        UUID id = req.getDefaultSettlementMethodId();
+        if (id == null) {
+            supplier.setDefaultSettlementMethodId(null);
+            supplier.setPriceStyle(null);
+            return;
+        }
+        var method = SettlementMethodReferenceResolver.resolve(
+                em, id, null, "供应商默认结算方式");
+        supplier.setDefaultSettlementMethodId(method.id());
+        supplier.setPriceStyle(method.legacyId());
     }
 
     private static CategoryCodeAllocation currentCodeAllocation(Supplier supplier) {
@@ -406,6 +430,9 @@ public class SupplierService {
     private SupplierDetail toDetail(Supplier m) {
         UUID categoryId = m.getCategory() == null ? null : m.getCategory().getId();
         String categoryName = m.getCategory() == null ? null : m.getCategory().getName();
+        String settlementMethodName = m.getDefaultSettlementMethodId() == null
+                ? null
+                : settlementMethodNames(List.of(m)).get(m.getDefaultSettlementMethodId());
         return new SupplierDetail(
                 m.getId(), m.getCode(), m.getName(), m.getStatus(), m.getPlace(),
                 m.getLinkman(), m.getLegacyId(),
@@ -414,7 +441,29 @@ public class SupplierService {
                 m.getAddress(), m.getEmail(), m.getWebsite(), m.getShipVia(), m.getShipAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getInitTotal(), m.getTday(),
                 m.getRemark(), m.getVersion(), m.getOwnerEmployeeId(),
-                employeeNameResolver.nameOf(m.getOwnerEmployeeId()));
+                employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
+                m.getDefaultSettlementMethodId(),
+                settlementMethodName);
+    }
+
+    private Map<UUID, String> settlementMethodNames(List<Supplier> suppliers) {
+        Set<UUID> ids = suppliers.stream()
+                .map(Supplier::getDefaultSettlementMethodId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        if (ids.isEmpty()) return Map.of();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT method.id, method.name
+                        FROM settlement_methods method
+                        WHERE method.id IN (:ids)
+                        """)
+                        .setParameter("ids", ids));
+        Map<UUID, String> names = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            names.put((UUID) row[0], row[1] == null ? null : row[1].toString());
+        }
+        return names;
     }
 
     private SupplierListItem toList(Supplier m) {

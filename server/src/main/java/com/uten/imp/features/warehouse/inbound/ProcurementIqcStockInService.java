@@ -8,16 +8,18 @@ import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
 import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmEntry;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmEntryResult;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.BatchConfirmResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ReleasedSlice;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.StockInHistoryItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.TaskDetail;
-import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.TaskSummary;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -37,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -54,46 +57,6 @@ public class ProcurementIqcStockInService {
     private static final Pattern IDEMPOTENCY_KEY =
             Pattern.compile("[A-Za-z0-9._:-]{8,128}");
 
-    private static final String PENDING_CTE = """
-            WITH event_stocked AS (
-                SELECT item.pass_event_id,
-                       SUM(item.base_qty) AS stocked_qty
-                FROM procurement_iqc_stock_in_batch_items item
-                GROUP BY item.pass_event_id
-            ), pending_release AS (
-                SELECT inspection.receipt_type,
-                       inspection.receipt_id,
-                       inspection.warehouse_id,
-                       inspection.id AS inspection_item_id,
-                       event.id AS pass_event_id,
-                       event.occurred_at,
-                       inspection.goods_id,
-                       event.base_qty - COALESCE(event_stocked.stocked_qty, 0)
-                           AS remaining_qty
-                FROM procurement_inspection_events event
-                JOIN procurement_inspection_items inspection
-                  ON inspection.id = event.inspection_item_id
-                LEFT JOIN event_stocked
-                  ON event_stocked.pass_event_id = event.id
-                WHERE event.action = 'PASS'
-                  AND event.requires_warehouse_stock_in = TRUE
-                  AND inspection.status <> 'REVERSED'
-                  AND event.base_qty > COALESCE(event_stocked.stocked_qty, 0)
-            ), receipt_header AS (
-                SELECT 'PURCHASE'::text AS receipt_type,
-                       receipt.id, receipt.bill_no, receipt.bill_date,
-                       receipt.supplier_id, receipt.warehouse_id
-                FROM purchase_receipts receipt
-                WHERE COALESCE(receipt.is_deleted, FALSE) = FALSE
-                UNION ALL
-                SELECT 'SUBCONTRACT'::text,
-                       receipt.id, receipt.bill_no, receipt.bill_date,
-                       receipt.supplier_id, receipt.warehouse_id
-                FROM subcontract_receipts receipt
-                WHERE COALESCE(receipt.is_deleted, FALSE) = FALSE
-            )
-            """;
-
     private final EntityManager em;
     private final StockService stockService;
     private final SecurityContextCurrentUser currentUser;
@@ -101,126 +64,6 @@ public class ProcurementIqcStockInService {
     private final ProductionSupplyTransitionPort purchaseSupply;
     private final ProductionSubcontractSupplyTransitionPort subcontractSupply;
     private final PreplanAnalysisPegPort preplanAnalysisPeg;
-
-    @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')")
-    public PageResponse<TaskSummary> list(
-            String keyword, String receiptType, int page, int size) {
-        int normalizedPage = Math.max(page, 1);
-        int normalizedSize = Math.min(Math.max(size, 1), 100);
-        String type = normalizeFilterType(receiptType);
-        String search = normalizeSearch(keyword);
-        String pattern = likePattern(search);
-
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery(PENDING_CTE + """
-                        SELECT pending.receipt_type,
-                               pending.receipt_id,
-                               header.bill_no,
-                               header.bill_date,
-                               header.supplier_id,
-                               supplier.name,
-                               pending.warehouse_id,
-                               warehouse.name,
-                               COUNT(DISTINCT pending.inspection_item_id),
-                               COUNT(DISTINCT pending.pass_event_id),
-                               MIN(pending.occurred_at),
-                               MAX(pending.occurred_at)
-                        FROM pending_release pending
-                        JOIN receipt_header header
-                          ON header.receipt_type = pending.receipt_type
-                         AND header.id = pending.receipt_id
-                        LEFT JOIN suppliers supplier
-                          ON supplier.id = header.supplier_id
-                        LEFT JOIN warehouses warehouse
-                          ON warehouse.id = pending.warehouse_id
-                        LEFT JOIN goods goods ON goods.id = pending.goods_id
-                        WHERE (:type = 'ALL' OR pending.receipt_type = :type)
-                          AND (
-                              :keyword = ''
-                              OR LOWER(COALESCE(header.bill_no, ''))
-                                   LIKE :pattern ESCAPE '\\'
-                              OR LOWER(COALESCE(supplier.name, ''))
-                                   LIKE :pattern ESCAPE '\\'
-                              OR LOWER(COALESCE(warehouse.name, ''))
-                                   LIKE :pattern ESCAPE '\\'
-                              OR LOWER(COALESCE(goods.code, ''))
-                                   LIKE :pattern ESCAPE '\\'
-                              OR LOWER(COALESCE(goods.name, ''))
-                                   LIKE :pattern ESCAPE '\\'
-                          )
-                        GROUP BY pending.receipt_type, pending.receipt_id,
-                                 header.bill_no, header.bill_date,
-                                 header.supplier_id, supplier.name,
-                                 pending.warehouse_id, warehouse.name
-                        ORDER BY MAX(pending.occurred_at) DESC,
-                                 header.bill_no, pending.receipt_id
-                        LIMIT :limit OFFSET :offset
-                        """)
-                .setParameter("type", type)
-                .setParameter("keyword", search)
-                .setParameter("pattern", pattern)
-                .setParameter("limit", normalizedSize)
-                .setParameter("offset", (normalizedPage - 1) * normalizedSize)
-                .getResultList();
-
-        long total = count(keyword, receiptType);
-        List<TaskSummary> items = rows.stream().map(row -> new TaskSummary(
-                str(row[0]), uuid(row[1]), str(row[2]), localDate(row[3]),
-                uuid(row[4]), str(row[5]), uuid(row[6]), str(row[7]),
-                number(row[8]).longValue(), number(row[9]).longValue(),
-                offsetDateTime(row[10]), offsetDateTime(row[11]),
-                "PENDING_STOCK_IN")).toList();
-        int totalPages = total == 0 ? 0
-                : (int) ((total + normalizedSize - 1) / normalizedSize);
-        return new PageResponse<>(
-                items, normalizedPage, normalizedSize, total, totalPages);
-    }
-
-    @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')")
-    public long countPending() {
-        return count("", "ALL");
-    }
-
-    private long count(String keyword, String receiptType) {
-        String type = normalizeFilterType(receiptType);
-        String search = normalizeSearch(keyword);
-        return number(em.createNativeQuery(PENDING_CTE + """
-                        SELECT COUNT(*)
-                        FROM (
-                            SELECT pending.receipt_type, pending.receipt_id
-                            FROM pending_release pending
-                            JOIN receipt_header header
-                              ON header.receipt_type = pending.receipt_type
-                             AND header.id = pending.receipt_id
-                            LEFT JOIN suppliers supplier
-                              ON supplier.id = header.supplier_id
-                            LEFT JOIN warehouses warehouse
-                              ON warehouse.id = pending.warehouse_id
-                            LEFT JOIN goods goods ON goods.id = pending.goods_id
-                            WHERE (:type = 'ALL' OR pending.receipt_type = :type)
-                              AND (
-                                  :keyword = ''
-                                  OR LOWER(COALESCE(header.bill_no, ''))
-                                       LIKE :pattern ESCAPE '\\'
-                                  OR LOWER(COALESCE(supplier.name, ''))
-                                       LIKE :pattern ESCAPE '\\'
-                                  OR LOWER(COALESCE(warehouse.name, ''))
-                                       LIKE :pattern ESCAPE '\\'
-                                  OR LOWER(COALESCE(goods.code, ''))
-                                       LIKE :pattern ESCAPE '\\'
-                                  OR LOWER(COALESCE(goods.name, ''))
-                                       LIKE :pattern ESCAPE '\\'
-                              )
-                            GROUP BY pending.receipt_type, pending.receipt_id
-                        ) task
-                        """)
-                .setParameter("type", type)
-                .setParameter("keyword", search)
-                .setParameter("pattern", likePattern(search))
-                .getSingleResult()).longValue();
-    }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')")
@@ -234,12 +77,9 @@ public class ProcurementIqcStockInService {
                 .map(this::toView)
                 .toList();
         List<StockInHistoryItem> history = history(type, receiptId);
-        UUID actorEmployeeId = currentUser.employeeId().orElse(null);
-        boolean containsOwnRelease = actorEmployeeId != null
-                && pendingSlices.stream().anyMatch(slice ->
-                actorEmployeeId.equals(slice.releasedByEmployeeId()));
-        boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM)
-                && !containsOwnRelease;
+        // 单人维护场景允许同人完成「品质放行 + 仓库确认」：不再阻断；同人复核提示
+        // 由合并页详情的 containsOwnRelease 标记承担（WarehouseQualityResultService）。
+        boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM);
         return new TaskDetail(
                 type, receiptId, str(header[0]), localDate(header[1]),
                 uuid(header[2]), str(header[3]), uuid(header[4]), str(header[5]),
@@ -256,6 +96,67 @@ public class ProcurementIqcStockInService {
         tx.bind();
         String type = normalizeReceiptType(receiptType);
         NormalizedCommand command = normalize(type, receiptId, request);
+        return confirmOne(type, receiptId, command);
+    }
+
+    /**
+     * 跨收货单批量入库（合并页多选后一键办理）：整批同事务——先按稳定顺序规范化全部
+     * 命令，再逐张执行；任一行版本、状态、仓库或数量变化时整批回滚，不允许客户端
+     * 循环单张接口伪装批量成功。已完成的幂等键安全重放并计入结果。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')"
+            + " and hasAuthority('" + ProcurementIqcStockInPermissions.CONFIRM + "')")
+    public BatchConfirmResult batchConfirm(BatchConfirmRequest request) {
+        tx.bind();
+        if (request == null || request.batches() == null
+                || request.batches().isEmpty() || request.batches().size() > 20) {
+            throw validation("批量入库必须包含 1 至 20 张收货单");
+        }
+        int totalItems = request.batches().stream()
+                .mapToInt(entry -> entry.items() == null ? 0 : entry.items().size())
+                .sum();
+        if (totalItems < 1 || totalItems > 300) {
+            throw validation("批量入库明细总数必须在 1 至 300 条之间");
+        }
+        // 稳定顺序（类型 + 收货单号）锁定，降低并发批量的死锁概率。
+        List<BatchConfirmEntry> ordered = request.batches().stream()
+                .sorted(Comparator
+                        .comparing((BatchConfirmEntry entry) ->
+                                normalizeReceiptType(entry.receiptType()))
+                        .thenComparing(entry -> entry.receiptId().toString()))
+                .toList();
+        Set<String> seenKeys = new HashSet<>();
+        Set<String> seenReceipts = new HashSet<>();
+        List<NormalizedBatch> commands = new ArrayList<>();
+        for (BatchConfirmEntry entry : ordered) {
+            String type = normalizeReceiptType(entry.receiptType());
+            if (!seenKeys.add(entry.idempotencyKey())) {
+                throw validation("批量入库中存在重复幂等键");
+            }
+            if (!seenReceipts.add(type + '|' + entry.receiptId())) {
+                throw validation("批量入库中同一收货单只能出现一次");
+            }
+            ConfirmRequest single = new ConfirmRequest(
+                    entry.idempotencyKey(), entry.items());
+            commands.add(new NormalizedBatch(
+                    type, entry.receiptId(), normalize(type, entry.receiptId(), single)));
+        }
+        List<BatchConfirmEntryResult> results = new ArrayList<>();
+        int confirmedItemCount = 0;
+        for (NormalizedBatch batch : commands) {
+            ConfirmResult result = confirmOne(
+                    batch.type(), batch.receiptId(), batch.command());
+            results.add(new BatchConfirmEntryResult(
+                    batch.type(), batch.receiptId(), result.batchId(),
+                    result.replayed(), result.confirmedCount(), result.confirmedAt()));
+            confirmedItemCount += result.confirmedCount();
+        }
+        return new BatchConfirmResult(results, results.size(), confirmedItemCount);
+    }
+
+    private ConfirmResult confirmOne(
+            String type, UUID receiptId, NormalizedCommand command) {
         UUID actorUserId = currentUser.requireId();
         UUID actorEmployeeId = currentUser.requireEmployeeId();
 
@@ -287,13 +188,6 @@ public class ProcurementIqcStockInService {
                 throw conflict("本次入库数量不得超过品质放行待入库余量");
             }
         }
-        if (command.items().stream()
-                .map(item -> locked.get(item.passEventId()))
-                .anyMatch(slice -> actorEmployeeId.equals(slice.releasedByEmployeeId()))) {
-            throw conflict("同一员工不能同时完成该品质放行与仓库入库确认，"
-                    + "请由另一名有权限的仓库人员处理");
-        }
-
         stockService.lockInventory(command.items().stream()
                 .map(item -> locked.get(item.passEventId()))
                 .map(slice -> new InventoryKey(slice.goodsId(), slice.colorId()))
@@ -358,7 +252,115 @@ public class ProcurementIqcStockInService {
                     type, receiptId, slice.inspectionItemId(), stockInItemId);
         }
         recalculateOrderClosure(type, receiptId);
+        rememberConfirmedPlaces(locked, command, batchId, now, actorUserId, actorEmployeeId);
         return new ConfirmResult(batchId, false, command.items().size(), now);
+    }
+
+    /**
+     * IQC 确认入库成功后的库位学习（V451）：
+     * - 仓库×货品×颜色 维度 upsert {@code warehouse_goods_place_preferences}
+     *   （source_kind=IQC_STOCK_IN），下次待入库 placeHint 自动带出本次库位；
+     * - 同一维度本次出现多个不同库位时不学习（与产成品到货登记同口径，防误记）；
+     * - 货品主档 {@code stock_place} 与本次不同才回写，让货架目视化清单、即时库存
+     *   等按主档展示库位的页面同步最新建议库位；
+     * - 幂等重放在 {@link #confirmOne} 开头已提前返回，不会重复学习或计数。
+     */
+    private void rememberConfirmedPlaces(
+            Map<UUID, PassSlice> locked, NormalizedCommand command,
+            UUID batchId, OffsetDateTime confirmedAt,
+            UUID actorUserId, UUID actorEmployeeId) {
+        Map<PlaceLearnDimension, LinkedHashSet<String>> places = new LinkedHashMap<>();
+        for (NormalizedItem item : command.items()) {
+            PassSlice slice = locked.get(item.passEventId());
+            places.computeIfAbsent(
+                    new PlaceLearnDimension(
+                            slice.warehouseId(), slice.goodsId(), slice.colorId()),
+                    ignored -> new LinkedHashSet<>())
+                    .add(item.place());
+        }
+        for (Map.Entry<PlaceLearnDimension, LinkedHashSet<String>> entry
+                : places.entrySet()) {
+            if (entry.getValue().size() != 1) {
+                continue;
+            }
+            String place = entry.getValue().iterator().next();
+            learnWarehousePreference(
+                    entry.getKey(), place, batchId, confirmedAt, actorUserId, actorEmployeeId);
+            learnGoodsMasterPlace(entry.getKey().goodsId(), place, actorUserId);
+        }
+    }
+
+    private void learnWarehousePreference(
+            PlaceLearnDimension dimension, String place, UUID batchId,
+            OffsetDateTime confirmedAt, UUID actorUserId, UUID actorEmployeeId) {
+        em.createNativeQuery("""
+                        INSERT INTO warehouse_goods_place_preferences(
+                            id, warehouse_id, goods_id, color_id, place,
+                            selection_count, version,
+                            source_kind, source_registration_id, source_iqc_batch_id,
+                            source_registered_at,
+                            last_selected_by, last_selected_at, created_by, updated_by)
+                        VALUES (
+                            gen_random_uuid(), :warehouseId, :goodsId, :colorId, :place,
+                            1, 0,
+                            'IQC_STOCK_IN', NULL, :batchId,
+                            :confirmedAt,
+                            :employeeId, now(), :userId, :userId)
+                        ON CONFLICT ON CONSTRAINT
+                            warehouse_goods_place_preference_dimension_uk
+                        DO UPDATE SET
+                            place = EXCLUDED.place,
+                            selection_count =
+                                warehouse_goods_place_preferences.selection_count + 1,
+                            version = warehouse_goods_place_preferences.version + 1,
+                            source_kind = EXCLUDED.source_kind,
+                            source_registration_id = EXCLUDED.source_registration_id,
+                            source_iqc_batch_id = EXCLUDED.source_iqc_batch_id,
+                            source_registered_at = EXCLUDED.source_registered_at,
+                            last_selected_by = EXCLUDED.last_selected_by,
+                            last_selected_at = now(),
+                            updated_by = EXCLUDED.updated_by
+                        WHERE (
+                            warehouse_goods_place_preferences.source_registered_at,
+                            COALESCE(
+                                warehouse_goods_place_preferences.source_registration_id,
+                                warehouse_goods_place_preferences.source_iqc_batch_id)
+                        ) < (
+                            EXCLUDED.source_registered_at,
+                            EXCLUDED.source_iqc_batch_id)
+                        """)
+                .setParameter("warehouseId", dimension.warehouseId())
+                .setParameter("goodsId", dimension.goodsId())
+                .setParameter("colorId", dimension.colorId())
+                .setParameter("place", place)
+                .setParameter("batchId", batchId)
+                .setParameter("confirmedAt", confirmedAt)
+                .setParameter("employeeId", actorEmployeeId)
+                .setParameter("userId", actorUserId)
+                .executeUpdate();
+    }
+
+    /** 主档库位回写：与到货登记 applyGoodsProfileHints 同口径——不同才更新，失败不阻断入库。 */
+    private void learnGoodsMasterPlace(UUID goodsId, String place, UUID actorUserId) {
+        em.createNativeQuery("""
+                        UPDATE goods
+                        SET stock_place = :place,
+                            version = version + 1,
+                            updated_at = now(),
+                            updated_by = :userId
+                        WHERE id = :goodsId
+                          AND is_deleted = FALSE
+                          AND COALESCE(NULLIF(BTRIM(stock_place), ''), '')
+                              IS DISTINCT FROM :place
+                        """)
+                .setParameter("place", place)
+                .setParameter("userId", actorUserId)
+                .setParameter("goodsId", goodsId)
+                .executeUpdate();
+    }
+
+    private record PlaceLearnDimension(
+            UUID warehouseId, UUID goodsId, UUID colorId) {
     }
 
     private void insertStockInItem(
@@ -446,12 +448,6 @@ public class ProcurementIqcStockInService {
         String lock = lockInspectionRows ? " FOR UPDATE OF inspection" : "";
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                        WITH event_stocked AS (
-                            SELECT item.pass_event_id,
-                                   COALESCE(SUM(item.base_qty), 0) AS stocked_qty
-                            FROM procurement_iqc_stock_in_batch_items item
-                            GROUP BY item.pass_event_id
-                        )
                         SELECT event.id,
                                inspection.id,
                                inspection.warehouse_id,
@@ -487,8 +483,11 @@ public class ProcurementIqcStockInService {
                         FROM procurement_inspection_events event
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = event.inspection_item_id
-                        LEFT JOIN event_stocked
-                          ON event_stocked.pass_event_id = event.id
+                        LEFT JOIN LATERAL (
+                            SELECT COALESCE(SUM(item.base_qty), 0) AS stocked_qty
+                            FROM procurement_iqc_stock_in_batch_items item
+                            WHERE item.pass_event_id = event.id
+                        ) event_stocked ON TRUE
                         LEFT JOIN goods ON goods.id = inspection.goods_id
                         LEFT JOIN colors color ON color.id = inspection.color_id
                         LEFT JOIN units source_unit
@@ -776,22 +775,6 @@ public class ProcurementIqcStockInService {
         return type;
     }
 
-    private static String normalizeFilterType(String value) {
-        if (value == null || value.isBlank() || "ALL".equalsIgnoreCase(value)) {
-            return "ALL";
-        }
-        return normalizeReceiptType(value);
-    }
-
-    private static String normalizeSearch(String value) {
-        return value == null ? "" : value.strip().toLowerCase(Locale.ROOT);
-    }
-
-    private static String likePattern(String value) {
-        return "%" + value.replace("\\", "\\\\")
-                .replace("%", "\\%").replace("_", "\\_") + "%";
-    }
-
     private static BigDecimal quantity(BigDecimal value, String label) {
         if (value == null || value.signum() <= 0) {
             throw validation(label + "必须大于 0");
@@ -867,6 +850,12 @@ public class ProcurementIqcStockInService {
             String idempotencyKey,
             String requestHash,
             List<NormalizedItem> items) {
+    }
+
+    private record NormalizedBatch(
+            String type,
+            UUID receiptId,
+            NormalizedCommand command) {
     }
 
     private record ExistingBatch(

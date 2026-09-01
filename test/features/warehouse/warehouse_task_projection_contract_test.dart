@@ -67,13 +67,6 @@ void main() {
         'reason': '包装破损',
       });
 
-      await iqc.list(
-        receiptType: WarehouseIqcReceiptType.purchase,
-        physicalStatus: WarehouseIqcPhysicalStatus.pendingReturn,
-        keyword: ' G-001 ',
-      );
-      expect(api.lastPath, '/warehouse/iqc-returns');
-      expect(api.lastQuery, containsPair('physicalStatus', 'PENDING_RETURN'));
       await iqc.recordReturn(
         'iqc-1',
         const WarehouseIqcRecordReturnCommand(

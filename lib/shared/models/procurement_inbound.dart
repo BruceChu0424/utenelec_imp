@@ -192,7 +192,9 @@ class InboundExpectation {
   /// 未结到货异常数（超量被隔离，待财务定案）：任务卡的「超量待财务」步骤。
   final int openArrivalExceptions;
 
-  /// 流水线当前步骤（优先级：超量待财务 > 待送检 > 待品质 > 待登记 > 不可登记）。
+  /// 流水线当前步骤（优先级：超量待财务 > 待送检 > 待登记 > 不可登记）。
+  /// 2026-09-01 起「已送检 · 待品质检验」不再占用本页：送检即移交品质，
+  /// 改在「品质部检查结果」页以 等待检查结果/全部合格/部分合格/全部不合格 跟踪。
   InboundArrivalStep get arrivalStep {
     if (openArrivalExceptions > 0) {
       return InboundArrivalStep.excessPendingFinance;
@@ -200,12 +202,9 @@ class InboundExpectation {
     if (draftReceiptIds.isNotEmpty) {
       return InboundArrivalStep.draftPendingInspection;
     }
-    if (pendingInspectionReceipts > 0) {
-      return InboundArrivalStep.awaitingQuality;
-    }
     if (canCreateReceipt) return InboundArrivalStep.readyToRegister;
     if (awaitingReceiptReview) return InboundArrivalStep.draftPendingInspection;
-    return InboundArrivalStep.blocked;
+    return InboundArrivalStep.awaitingQuality;
   }
 
   /// 还可登记量 = 当前服务端释放容量 − 已登记待审核量。

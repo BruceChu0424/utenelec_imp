@@ -5,7 +5,7 @@
 // 分段。角标 = IQC 待检收货单张数 + FQC 待检任务数（红色圆数字徽章，与工作台
 // 品质卡同口径）；持有任一查看权限即显示该卡。
 // 待检处置已从仓库「预计到货任务中心」移交品质部——品质只登记质量结论；
-// 合格切片进入仓库「IQC 合格待入库」，仓库确认实物和库位后才增加库存。
+// 合格切片进入仓库「品质部检查结果」合并页，仓库确认实物和库位后才增加库存。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

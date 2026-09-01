@@ -323,7 +323,7 @@ class _PurchaseReportTablePageState
                 for (final t in PurchaseReportDocType.values)
                   UtenFilterSegment(value: t, label: t.label),
               ],
-              selected: _docType,
+              selected: {_docType},
               onSelectionChanged: _changeDocType,
             ),
             const SizedBox(height: UtenSpacing.s12),

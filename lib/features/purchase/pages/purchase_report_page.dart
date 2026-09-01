@@ -154,7 +154,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                         for (final t in const ['ORDER', 'RECEIPT', 'RETURN'])
                           UtenFilterSegment(value: t, label: _docLabel(t)),
                       ],
-                      selected: _docType!,
+                      selected: {_docType!},
                       onSelectionChanged: (v) =>
                           setState(() => _docType = v),
                     ),

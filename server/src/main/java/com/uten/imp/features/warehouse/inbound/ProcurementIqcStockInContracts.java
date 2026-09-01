@@ -21,22 +21,6 @@ public final class ProcurementIqcStockInContracts {
     private ProcurementIqcStockInContracts() {
     }
 
-    public record TaskSummary(
-            String receiptType,
-            @JsonSerialize(using = ToStringSerializer.class) UUID receiptId,
-            String billNo,
-            LocalDate billDate,
-            @JsonSerialize(using = ToStringSerializer.class) UUID supplierId,
-            String supplierName,
-            @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
-            String warehouseName,
-            long goodsLineCount,
-            long pendingSliceCount,
-            OffsetDateTime firstReleasedAt,
-            OffsetDateTime lastReleasedAt,
-            String status) {
-    }
-
     public record TaskDetail(
             String receiptType,
             @JsonSerialize(using = ToStringSerializer.class) UUID receiptId,
@@ -115,6 +99,37 @@ public final class ProcurementIqcStockInContracts {
     }
 
     public record ConfirmResult(
+            @JsonSerialize(using = ToStringSerializer.class) UUID batchId,
+            boolean replayed,
+            int confirmedCount,
+            OffsetDateTime confirmedAt) {
+    }
+
+    /** 跨收货单批量入库：整批同事务，先校验全部集合再执行，任一冲突整批回滚。 */
+    public record BatchConfirmRequest(
+            @NotEmpty @Size(max = 20) List<@Valid BatchConfirmEntry> batches) {
+    }
+
+    public record BatchConfirmEntry(
+            @NotBlank String receiptType,
+            @NotNull @JsonSerialize(using = ToStringSerializer.class) UUID receiptId,
+            @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
+            @NotEmpty @Size(max = 100) List<@Valid ConfirmItem> items) {
+    }
+
+    public record BatchConfirmResult(
+            List<BatchConfirmEntryResult> results,
+            int confirmedReceipts,
+            int confirmedItemCount) {
+
+        public BatchConfirmResult {
+            results = results == null ? List.of() : List.copyOf(results);
+        }
+    }
+
+    public record BatchConfirmEntryResult(
+            String receiptType,
+            @JsonSerialize(using = ToStringSerializer.class) UUID receiptId,
             @JsonSerialize(using = ToStringSerializer.class) UUID batchId,
             boolean replayed,
             int confirmedCount,

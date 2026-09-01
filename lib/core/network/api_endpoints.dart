@@ -68,7 +68,8 @@ abstract final class ApiEndpoints {
   static const warehouseArrivalExceptionBatchStockIn =
       '/warehouse/inbound/arrival-exceptions/batch-stock-in';
   static const warehouseIqcStockIns = '/warehouse/iqc-stock-ins';
-  static const warehouseIqcStockInCount = '$warehouseIqcStockIns/count';
+  static const warehouseIqcStockInBatchConfirm =
+      '$warehouseIqcStockIns/batch-confirm';
   static String warehouseIqcStockInDetail(
     String receiptType,
     String receiptId,
@@ -79,6 +80,21 @@ abstract final class ApiEndpoints {
     String receiptType,
     String receiptId,
   ) => '${warehouseIqcStockInDetail(receiptType, receiptId)}/confirm';
+
+  // 品质部检查结果合并页（原 IQC 合格待入库 + IQC 不合格实物退回）：
+  // 按收货单聚合 等待检查结果/全部合格待入库/部分合格/全部不合格需退回/已完结。
+  static const warehouseQualityResults = '/warehouse/quality-results';
+  static const warehouseQualityResultCount = '$warehouseQualityResults/count';
+  static const warehouseQualityResultTypeCounts =
+      '$warehouseQualityResults/type-counts';
+  static const warehouseQualityResultStatusCounts =
+      '$warehouseQualityResults/status-counts';
+  static String warehouseQualityResultDetail(
+    String receiptType,
+    String receiptId,
+  ) =>
+      '$warehouseQualityResults/${Uri.encodeComponent(receiptType.trim().toUpperCase())}/'
+      '${Uri.encodeComponent(receiptId.trim())}';
   static const productionFinishedInboundTasks =
       '/warehouse/production-finished-in/tasks';
   static const productionFinishedInboundTaskCount =
@@ -318,6 +334,12 @@ abstract final class ApiEndpoints {
   // terms and by finance receipt/payment instruments respectively.
   static const settlementMethods = '/master/reference-methods/settlement';
   static const financePaymentMethods = '/master/reference-methods/finance';
+
+  // 结算方式管理页（V453）：全量含禁用行与账期策略；账期维护。
+  static const settlementMethodsAdmin =
+      '/master/reference-methods/settlement-admin';
+  static String settlementMethodTerms(String id) =>
+      '/master/reference-methods/settlement/$id/terms';
 
   // 仓库主档（基础资料 / master-data）—— 扁平结构，无分类：分页 + 详情 + 字段 facet + 字典
   static const warehouses = '/master/warehouses';

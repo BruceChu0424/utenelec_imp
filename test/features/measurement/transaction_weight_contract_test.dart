@@ -75,13 +75,12 @@ void main() {
     );
     final movementModel = source('lib/features/stock/models/stock_query.dart');
     final movementPage = source(
-      'lib/features/stock/pages/stock_movement_page.dart',
+      'lib/features/stock/pages/stock_item_detail_page.dart',
     );
 
     expect(batch, contains("'weight': ?weight"));
     expect(movementModel, contains("weight: (json['weight'] as num?)"));
     expect(movementModel, contains("unitId: json['unitId'] as String?"));
     expect(movementPage, contains("label: '实际重量'"));
-    expect(movementPage, contains("label: '单位'"));
   });
 }

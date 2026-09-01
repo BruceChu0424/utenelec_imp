@@ -447,6 +447,8 @@ abstract final class Perm {
   static const paymentStyleMove = 'payment_style:move';
   static const paymentStyleReorder = 'payment_style:reorder';
   static const settlementMethodCreate = 'settlement_method:create';
+  static const settlementMethodView = 'settlement_method:view';
+  static const settlementMethodEdit = 'settlement_method:edit';
   static const salesQuoteCreate = 'sales_quote:create';
   static const salesQuoteDelete = 'sales_quote:delete';
   static const salesQuoteApprove = 'sales_quote:approve';
@@ -677,6 +679,7 @@ abstract final class Perm {
     paymentStyleMove,
     paymentStyleReorder,
     settlementMethodCreate,
+    settlementMethodEdit,
     salesQuoteCreate,
     salesQuoteDelete,
     salesQuoteApprove,

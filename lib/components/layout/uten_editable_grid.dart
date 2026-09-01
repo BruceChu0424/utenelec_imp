@@ -307,6 +307,19 @@ class UtenEditableGridController<T extends EditableGridRow>
     notifyListeners();
   }
 
+  /// 批量置选/取消一组行（行级门控 + controller 模式的表头全选用）；其余行不动。
+  void setSelected(Iterable<T> rows, bool selected) {
+    var changed = false;
+    for (final row in rows) {
+      if (selected) {
+        changed = _selected.add(row) || changed;
+      } else {
+        changed = _selected.remove(row) || changed;
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
   void selectAll() {
     if (_rows.every(_selected.contains)) {
       _selected.clear();
@@ -406,7 +419,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     super.key,
     required this.controller,
     required this.columns,
-    required this.createBlankRow,
+    this.createBlankRow,
     this.footer,
     this.showRowDelete = true,
     this.showAddRow = true,
@@ -417,13 +430,21 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.deleteConfirmLabel = '确认删除该行明细？',
     this.cloneRow,
     this.batchActionsBuilder,
-  });
+    this.selectable = false,
+    this.canSelectRow,
+    this.selectedOf,
+    this.onRowSelect,
+    this.rowColor,
+  }) : assert(
+         !showAddRow || createBlankRow != null,
+         'showAddRow=true 必须提供 createBlankRow（「添加行」按钮需要构造空行）',
+       );
 
   final UtenEditableGridController<T> controller;
   final List<EditableGridColumn<T>> columns;
 
-  /// 构造一个空行（"添加行"/"添加多行"用）。
-  final T Function() createBlankRow;
+  /// 构造一个空行（"添加行"/"添加多行"用）。showAddRow=false 的只选/只读场景可省。
+  final T Function()? createBlankRow;
 
   /// 表尾（通常放合计：ValueListenableBuilder(controller.totalListenable)）。null=不显示。
   final Widget? footer;
@@ -451,6 +472,28 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     UtenEditableGridController<T> controller,
   )?
   batchActionsBuilder;
+
+  /// 是否显示行首选选列（与 [showAddRow] 解耦）：任务办理表只要勾选 + 个别可编辑
+  /// 单元、不要增删行操作条时置 true。编辑模式（showAddRow）天然隐含选列。
+  final bool selectable;
+
+  /// 行级可选门控：返回 false 的行复选框禁用、表头全选跳过（如无待办量的行不可勾）。
+  /// 编辑模式不传时全行可选（原语义）。
+  final bool Function(T row)? canSelectRow;
+
+  /// 外部受控选中判定：非空时行复选框与表头三态全选都读它（单一真值源在调用方，
+  /// 如行 model 的 selected 字段），controller 内部选中集不再参与本模式。
+  final bool Function(T row)? selectedOf;
+
+  /// 外部受控切换回调（与 [selectedOf] 配对）：复选框/全选把新值回交调用方。
+  final void Function(T row, bool next)? onRowSelect;
+
+  /// 行语义底色（按行数据定，如不合格=浅红）；null = 默认斑马纹。选中行统一用
+  /// 高亮色覆盖，避免颜色叠加后文字对比不足（与 MasterDataTableView.rowColor 同款语义）。
+  final Color? Function(T row)? rowColor;
+
+  /// 是否渲染行首选选列。
+  bool get _showSelect => showAddRow || selectable;
 
   @override
   State<UtenEditableGrid<T>> createState() => _UtenEditableGridState<T>();
@@ -795,7 +838,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   double get _totalWidth =>
-      (widget.showAddRow ? _selectColWidth : 0) +
+      (widget._showSelect ? _selectColWidth : 0) +
       _widths.fold(0.0, (s, w) => s + w) +
       (widget.showRowDelete ? _deleteColWidth : 0);
 
@@ -813,11 +856,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
     super.dispose();
   }
 
-  /// 表头全选 checkbox（批量模式表头首列；读写由 controller 驱动）。
+  /// 表头全选 checkbox（批量模式表头首列；读写由 controller 或外部受控回调驱动）。
   Widget _selectAllHeader(ThemeData theme) {
-    final c = widget.controller;
-    final all = c.allSelected;
-    final some = !all && c.selectedCount > 0;
+    final targets = _selectableRows();
+    final selected = _rowIsSelected;
+    final all = targets.isNotEmpty && targets.every(selected);
+    final some = !all && targets.any(selected);
     return SizedBox(
       width: _selectColWidth,
       child: DecoratedBox(
@@ -828,10 +872,51 @@ class _UtenEditableGridState<T extends EditableGridRow>
         child: Checkbox(
           value: all ? true : (some ? null : false),
           tristate: true,
-          onChanged: (_) => c.selectAll(),
+          onChanged: targets.isEmpty ? null : (_) => _toggleSelectAllRows(targets, all),
         ),
       ),
     );
+  }
+
+  /// 参与全选的行（canSelectRow 门控后；无门控 = 全部行）。
+  List<T> _selectableRows() {
+    final test = widget.canSelectRow;
+    final rows = widget.controller.rows;
+    return test == null ? rows : rows.where(test).toList();
+  }
+
+  /// 行选中判定：外部受控（selectedOf）优先，否则读 controller 内部选中集。
+  bool Function(T row) get _rowIsSelected =>
+      widget.selectedOf ?? widget.controller.isSelected;
+
+  /// 行复选框切换回调：外部受控模式回交调用方（带翻转后的新值），
+  /// 否则走 controller.toggleSelect（不可选行返回 null → 复选框禁用）。
+  VoidCallback? _rowOnSelect(T row) {
+    if (widget.canSelectRow != null && widget.canSelectRow!(row) == false) {
+      return null;
+    }
+    final external = widget.onRowSelect;
+    if (external != null) {
+      return () => external(row, !_rowIsSelected(row));
+    }
+    return () => widget.controller.toggleSelect(row);
+  }
+
+  /// 表头三态全选：目标行已全选 → 全部取消；否则全部选中。外部受控模式逐行回调；
+  /// controller 模式且带行级门控时批量置集（一次通知），无门控保持原 selectAll 语义。
+  void _toggleSelectAllRows(List<T> targets, bool allSelected) {
+    final external = widget.onRowSelect;
+    if (external != null) {
+      for (final row in targets) {
+        external(row, !allSelected);
+      }
+      return;
+    }
+    if (widget.canSelectRow == null) {
+      widget.controller.selectAll();
+      return;
+    }
+    widget.controller.setSelected(targets, !allSelected);
   }
 
   @override
@@ -886,10 +971,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
                             row: rows[i],
                             columns: widget.columns,
                             widths: _widths,
-                            showSelect: widget.showAddRow,
-                            isSelected: widget.controller.isSelected(rows[i]),
-                            onSelect: () =>
-                                widget.controller.toggleSelect(rows[i]),
+                            showSelect: widget._showSelect,
+                            isSelected: _rowIsSelected(rows[i]),
+                            onSelect: _rowOnSelect(rows[i]),
+                            rowTint: widget.rowColor?.call(rows[i]),
                             showDelete: widget.showRowDelete,
                             deleteColWidth: _deleteColWidth,
                             divider: divider,
@@ -918,12 +1003,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
             if (widget.showAddRow)
               _AddRowBar(
                 onAddOne: () =>
-                    widget.controller.addRow(widget.createBlankRow()),
+                    widget.controller.addRow(widget.createBlankRow!()),
                 onAddMany: () async {
                   final n = await _showAddRowsDialog(context);
                   if (n != null && n > 0) {
                     widget.controller.addRows(
-                      List.generate(n, (_) => widget.createBlankRow()),
+                      List.generate(n, (_) => widget.createBlankRow!()),
                     );
                   }
                 },
@@ -1076,7 +1161,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
               width: total,
               child: Row(
                 children: [
-                  if (widget.showAddRow) _selectAllHeader(theme),
+                  if (widget._showSelect) _selectAllHeader(theme),
                   for (var i = 0; i < widget.columns.length; i++)
                     SizedBox(
                       width: _widths[i],
@@ -1225,6 +1310,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     this.selectColWidth = 44,
     this.isSelected = false,
     this.onSelect,
+    this.rowTint,
     this.confirmDelete = true,
     this.deleteConfirmLabel = '确认删除该行明细？',
   });
@@ -1241,7 +1327,12 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
   final bool showSelect;
   final double selectColWidth;
   final bool isSelected;
+
+  /// 选中框切换；null（含行级门控判定不可选）时复选框禁用。
   final VoidCallback? onSelect;
+
+  /// 行语义底色；null = 斑马纹。选中行统一高亮覆盖。
+  final Color? rowTint;
 
   /// 删除前确认弹窗。
   final bool confirmDelete;
@@ -1255,7 +1346,8 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       decoration: BoxDecoration(
         color: isSelected
             ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
-            : (isOdd ? theme.colorScheme.surfaceContainerLowest : null),
+            : (rowTint
+                  ?? (isOdd ? theme.colorScheme.surfaceContainerLowest : null)),
         border: Border(bottom: divider),
       ),
       child: Row(

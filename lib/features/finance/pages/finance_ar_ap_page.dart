@@ -54,10 +54,14 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   String? _error;
   final _loadRequests = LatestRequestGuard();
   String _keyword = '';
+  // 分类层级：方向=大类（上）、清结状态=小类（下，方向选中后解锁）。
+  // 进页面两行都不选（null=不过滤）。
   String? _direction; // null=全部 / AR / AP
+  bool _directionSelected = false;
   String? _sourceDocType;
   String? _partyId;
   bool? _settled; // null=全部 / false=未清 / true=已清
+  bool _settledSelected = false;
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
   String? _sortKey;
   bool _sortAsc = true;
@@ -386,17 +390,19 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                       ),
                       const SizedBox(height: UtenSpacing.s16),
                       _filterLabel('方向'),
-                      // 全平台统一筛选工具条：方向分段（纯分类无搜索）。
+                      // 全平台统一筛选工具条：方向分段（大类，纯分类无搜索）。
+                      // 进页面不预选；选中后下方状态行解锁。
                       UtenFilterToolbar<String?>(
                         segments: const [
                           UtenFilterSegment<String?>(value: null, label: '全部'),
                           UtenFilterSegment<String?>(value: 'AR', label: '应收'),
                           UtenFilterSegment<String?>(value: 'AP', label: '应付'),
                         ],
-                        selected: _direction,
+                        selected: _directionSelected ? {_direction} : const {},
                         onSelectionChanged: (v) {
                           setState(() {
                             _direction = v;
+                            _directionSelected = true;
                             _partyId = null;
                           });
                           _load(1);
@@ -404,16 +410,21 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                       _filterLabel('状态'),
-                      // 全平台统一筛选工具条：清结状态分段（纯分类无搜索）。
+                      // 全平台统一筛选工具条：清结状态分段（小类，方向未选时置灰）。
                       UtenFilterToolbar<bool?>(
+                        enabled: _directionSelected,
                         segments: const [
                           UtenFilterSegment<bool?>(value: null, label: '全部'),
                           UtenFilterSegment<bool?>(value: false, label: '未清'),
                           UtenFilterSegment<bool?>(value: true, label: '已清'),
                         ],
-                        selected: _settled,
+                        selected: _settledSelected ? {_settled} : const {},
                         onSelectionChanged: (v) {
-                          setState(() => _settled = v);
+                          if (!_directionSelected) return;
+                          setState(() {
+                            _settled = v;
+                            _settledSelected = true;
+                          });
                           _load(1);
                         },
                       ),

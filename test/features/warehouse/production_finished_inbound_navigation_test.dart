@@ -74,6 +74,9 @@ void main() {
       await tester.tap(
         find.byKey(const Key('production-finished-inbound-refresh')),
       );
+      // 2026-09-01 起正文抽成 View：加载态经 onLoadingChanged 回传独立页 AppBar，
+      // 置灰在第二帧生效（tap 帧 + post-frame 加载帧）。
+      await tester.pump();
       await tester.pump();
       expect(api.taskRequestCount, 2);
       expect(

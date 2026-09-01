@@ -1,7 +1,8 @@
 // 生产日报明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
-// 日报只记录生产数量事实。客户端单价/金额不是计件工资权威，已从操作界面移除。
-// DailyGridRow：货品(选择)/完工申报量；颜色/单位选货品后自动回填（只读）；
+// 日报记录非金额生产计量事实：完工申报量及可选实际总重量。
+// 客户端单价/金额不是计件工资权威，已从操作界面移除。
+// DailyGridRow：货品(选择)/完工申报量/实际重量；颜色/单位选货品后自动回填（只读）；
 // 精确来源子任务 + 完结标记 + 备注。
 import 'package:flutter/material.dart';
 
@@ -18,6 +19,7 @@ class DailyGridRow extends EditableGridRow {
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
   final TextEditingController qty = TextEditingController(); // 完工量
+  final TextEditingController weight = TextEditingController(); // 本行实际总重量
   final TextEditingController planNo = TextEditingController(); // 关联生产计划号
   final TextEditingController remark = TextEditingController();
 
@@ -71,13 +73,14 @@ class DailyGridRow extends EditableGridRow {
     unitIdNotifier.dispose();
     finalNotifier.dispose();
     qty.dispose();
+    weight.dispose();
     planNo.dispose();
     remark.dispose();
     super.dispose();
   }
 }
 
-/// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 完工申报量 /
+/// 生产日报明细列：货品（点选）/ 颜色（只读）/ 单位（只读）/ 完工申报量 / 实际重量 /
 /// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入。
 List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   required Future<void> Function(DailyGridRow row) onPickGoods,
@@ -156,6 +159,18 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
+      ),
+    ),
+    EditableGridColumn<DailyGridRow>(
+      key: 'weight',
+      label: '实际重量',
+      width: 112,
+      numeric: true,
+      cellBuilder: (context, row) => TextField(
+        controller: row.weight,
+        textAlign: TextAlign.right,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(isDense: true, hintText: '可选'),
       ),
     ),
     EditableGridColumn<DailyGridRow>(

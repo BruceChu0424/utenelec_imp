@@ -1222,7 +1222,7 @@ public class ProductionExecutionReadinessService
                                                     WHEN inspection.status IN (
                                                         'PARTIAL', 'RESOLVED')
                                                     THEN inspection
-                                                        .passed_base_qty
+                                                        .warehouse_stocked_base_qty
                                                     ELSE 0
                                                 END
                                                     - COALESCE((
@@ -1293,7 +1293,7 @@ public class ProductionExecutionReadinessService
                                                     WHEN inspection.status IN (
                                                         'PARTIAL', 'RESOLVED')
                                                     THEN inspection
-                                                        .passed_base_qty
+                                                        .warehouse_stocked_base_qty
                                                     ELSE 0
                                                 END
                                                     - COALESCE((

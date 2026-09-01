@@ -484,6 +484,15 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       // 待检量>0 = 采购/委外已收货但 IQC 未放行（货在待检隔离区，不在库存内）。
       value: (r) => _num(r.pendingQty),
     ),
+    MasterColumnDef(
+      key: 'pendingStockInQty',
+      label: '合格待入库',
+      width: 120,
+      type: 'number',
+      sortable: true,
+      // 品质 PASS 只形成仓库任务；仓库确认前不进入库存数量。
+      value: (r) => _num(r.pendingStockInQty),
+    ),
     if (canViewCost)
       MasterColumnDef(
         key: 'costAmount',

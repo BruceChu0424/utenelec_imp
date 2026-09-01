@@ -91,6 +91,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
+  final _taxRate = TextEditingController(text: '0');
   DateTime _billDate = ChinaDateTime.today();
   String? _supplierId;
   String? _warehouseId;
@@ -132,6 +133,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     _billNo.dispose();
     _remark.dispose();
     _rate.dispose();
+    _taxRate.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
     _decomposeClaim
@@ -220,6 +222,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         _currencyId = d.currencyId;
         _settlementMethodId = d.settlementMethodId;
         _rate.text = d.exchangeRate?.toString() ?? '1';
+        if (d.taxRate != null) _taxRate.text = d.taxRate.toString();
         _applicantId = d.applicantId;
         _purchaserId = d.purchaserId;
         _senderId = d.senderId;
@@ -242,12 +245,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
             // 优先级与 _linkItemKey 一致（receipt > order > request），保证 round-trip。
             ..upstreamItemId = upstreamItemId
             ..colorId = it.colorId
-            ..unitId = it.unitId;
+            ..unitId = it.unitId
+            ..unitRate = it.unitRate;
           // 订货单一单一商：明细不落供应商 id，编辑回显按单头供应商回填各行。
           if (widget.docType == PurchaseDocType.order) {
             row.supplierId = d.supplierId;
           }
           row.qty.text = it.qty?.toString() ?? '';
+          row.weight.text = it.weight?.toString() ?? '';
           row.price.text = it.price?.toString() ?? '';
           rows.add(row);
         }
@@ -331,6 +336,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           upstreamItemId: item.sourceItemId,
           colorId: item.colorId,
           unitId: item.unitId,
+          unitRate: item.unitRate,
         );
         rows.add(
           PurchaseGridRow.fromLinked(
@@ -405,6 +411,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         ..sourceDocNo = prefill.orderBillNo
         ..colorId = item.colorId
         ..unitId = item.unitId
+        ..unitRate = item.unitRate.toDouble()
         ..approvedQty = item.approvedRemainingQty;
       // 预填批准剩余量但不设置 maxQty；仓库必须能如实填写超量实到数，
       // 是否隔离由服务端审核动作权威判定。
@@ -440,6 +447,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
       ..colorId = g.colorId
       ..unitId = g.unitId
+      ..unitRate = 1
       ..stockPlaceNotifier.value = g.stockPlace;
     // 订货单：换货品后按「学习记忆」预填该货品上次订货的供应商（不覆盖已选值）。
     if (widget.docType == PurchaseDocType.order) {
@@ -681,6 +689,26 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       context.appError('请选择结账方式');
       return;
     }
+    double exchangeRate = 1;
+    double taxRate = 0;
+    if (_cfg.hasCurrency) {
+      if (_currencyId == null) {
+        context.appError('请选择币种');
+        return;
+      }
+      final parsedRate = double.tryParse(_rate.text.trim());
+      if (parsedRate == null || parsedRate <= 0) {
+        context.appError('汇率必须大于 0');
+        return;
+      }
+      final parsedTax = double.tryParse(_taxRate.text.trim());
+      if (parsedTax == null || parsedTax < 0 || parsedTax > 100) {
+        context.appError('税率必须填写 0 至 100 之间的百分比');
+        return;
+      }
+      exchangeRate = parsedRate;
+      taxRate = parsedTax;
+    }
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
@@ -696,6 +724,12 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         return;
       }
       final price = double.tryParse(r.price.text);
+      final weightText = r.weight.text.trim();
+      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
+        context.appError('${r.goods!.name} 的实际重量必须大于 0');
+        return;
+      }
       if (widget.docType == PurchaseDocType.order &&
           (price == null || price < 0)) {
         context.appError('请填写${r.goods!.name}的有效采购单价');
@@ -707,13 +741,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         if (price case final price?) ...{
           'price': price,
           'amountOriginal': qty * price,
-          'amountLocal': qty * price,
+          'amountLocal': qty * price * exchangeRate,
         },
         if (r.upstreamItemId != null) ..._linkItemKey(r.upstreamItemId!),
         // 来源单据编号谱系（到货登记=来源订货单号），与委外进仓口径一致。
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
+        if (r.unitRate != null) 'unitRate': r.unitRate,
+        'weight': ?weight,
         // 订货单：明细级供应商（为空时后端按表头供应商回落）；保存时按供应商拆单。
         if (widget.docType == PurchaseDocType.order && r.supplierId != null)
           'supplierId': r.supplierId,
@@ -728,7 +764,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         'warehouseId': _warehouseId,
       if (_cfg.hasDepartment) 'departmentId': _departmentId,
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
-      if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
+      if (_cfg.hasCurrency) 'exchangeRate': exchangeRate,
+      if (_cfg.hasCurrency) 'taxRate': taxRate,
       if (_cfg.hasSettlement && _settlementMethodId != null)
         'settlementMethodId': _settlementMethodId,
       if (_cfg.hasApplicant && _applicantId != null)
@@ -990,6 +1027,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                       _currencyId,
                                       names.currencyEntries,
                                       (v) => setState(() => _currencyId = v),
+                                      required: true,
                                     ),
                                     TextField(
                                       controller: _rate,
@@ -999,6 +1037,16 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                           ),
                                       decoration: const InputDecoration(
                                         labelText: '汇率',
+                                      ),
+                                    ),
+                                    TextField(
+                                      controller: _taxRate,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: const InputDecoration(
+                                        labelText: '税率(%)',
                                       ),
                                     ),
                                   ],
@@ -1181,6 +1229,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                         columns: purchaseGridColumns(
                           _pickGoods,
                           arrivalMode: _isArrivalMode,
+                          unitEntries: names.unitEntries,
                           // 收货/退货是实物出入库单据：显示库位号列（主档带出，上架/拣货指引）。
                           showStockPlace:
                               widget.docType == PurchaseDocType.receipt ||
@@ -1273,7 +1322,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     return Semantics(
       container: true,
       label:
-          '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
+          '请按实际到货业务量登记；需要重量统计的货品同时填写实称总重量。'
+          '超出财务批准剩余量时不会直接入库，'
           '系统会隔离并通知财务审核组审批。',
       child: Card(
         color: theme.colorScheme.tertiaryContainer,
@@ -1292,7 +1342,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '请按实际到货数量登记',
+                      '请按实际到货业务量和实称重量登记',
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
                         fontWeight: FontWeight.w700,
@@ -1349,7 +1399,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                     ],
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '请选择本次入库仓库，并按实际到货数量登记。'
+                      '请选择本次入库仓库，并按实际到货业务量和实称重量登记。'
                       '如果实到数量超过财务批准剩余量，仍可如实填写。'
                       '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'
                       '并通知财务审核组审批——财务可批准实到数量进入后续流程，'

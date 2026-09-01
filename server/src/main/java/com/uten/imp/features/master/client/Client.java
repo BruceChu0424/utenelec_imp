@@ -4,6 +4,8 @@ import com.uten.imp.common.domain.SoftDeletableEntity;
 import com.uten.imp.features.master.clientcategory.ClientCategory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -116,6 +118,10 @@ public class Client extends SoftDeletableEntity {
     private Integer tday;               // TDay（结算天数）
     @Column(name = "default_settlement_method_id")
     private UUID defaultSettlementMethodId; // UUID 真源；price_style 仅旧库快照
+    /** 月结/现金/定金客户标签；只作人工审核分类，不代表真实到账。 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "sales_payment_type", length = 20)
+    private ClientSalesPaymentType salesPaymentType;
     @Column(name = "price_style")
     private Integer priceStyle;         // PStyle（结账方式 legacy shadow）
     @Column(name = "zj_id")
@@ -131,6 +137,6 @@ public class Client extends SoftDeletableEntity {
     private String remark;              // Remark（备注）
 
     /** 铺底额（元）：应收管控下限；应收汇总表「超出铺底额」= 应收余额−铺底额。 */
-    @Column(name = "credit_floor", precision = 18, scale = 4)
-    private java.math.BigDecimal creditFloor;
+    @Column(name = "credit_floor", nullable = false, precision = 18, scale = 4)
+    private java.math.BigDecimal creditFloor = java.math.BigDecimal.ZERO;
 }

@@ -46,7 +46,6 @@ import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
-import '../../../shared/models/procurement_inbound.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
@@ -64,12 +63,10 @@ class SubcontractDocEditPage extends ConsumerStatefulWidget {
     required this.docType,
     this.id,
     this.applicationItemIds = const [],
-    this.receiptPrefill,
   });
   final SubcontractDocType docType;
   final String? id; // null=新建
   final List<String> applicationItemIds;
-  final ProcurementReceiptPrefill? receiptPrefill;
 
   @override
   ConsumerState<SubcontractDocEditPage> createState() =>
@@ -93,6 +90,8 @@ class _SubcontractDocEditPageState
   // 保证进仓审核「币种/汇率/结算方式与订单快照一致」校验不断链。
   final _rate = TextEditingController(text: '1');
   final _taxRate = TextEditingController();
+  String? _currencyError;
+  String? _taxRateError;
   final _bStyle = TextEditingController();
   final _totalWeight = TextEditingController();
   // 损耗建议索赔金额（本币）：仅供后续责任决定，不自动扣款或冲应付。
@@ -127,6 +126,10 @@ class _SubcontractDocEditPageState
   @override
   void initState() {
     super.initState();
+    if (widget.docType == SubcontractDocType.order && widget.id == null) {
+      // 财务提交必须冻结明确税率；0 表示明确免税/零税率，不用 null 猜测。
+      _taxRate.text = '0';
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -170,9 +173,6 @@ class _SubcontractDocEditPageState
       }
       // 币种默认人民币（订货/进仓/退货等有币种的单据）。
       _prefillDefaultCurrency();
-    }
-    if (widget.id == null && widget.docType == SubcontractDocType.receipt) {
-      _prefillReceiptFromExpectation();
     }
     if (widget.id == null && widget.docType == SubcontractDocType.order) {
       await _prefillFromApplication();
@@ -390,56 +390,9 @@ class _SubcontractDocEditPageState
     }
   }
 
-  void _prefillReceiptFromExpectation() {
-    final prefill = widget.receiptPrefill;
-    if (prefill == null) return;
-    if (prefill.orderType != ProcurementInboundOrderType.subcontract) {
-      context.appError('预计到货来源与委外进仓单不一致，请返回任务中心重试');
-      return;
-    }
-    _supplierId = prefill.supplierId;
-    _warehouseId = prefill.warehouseId;
-    final rows = <SubcontractGridRow>[];
-    for (final item in prefill.items) {
-      if (item.orderItemId.isEmpty ||
-          item.goodsId.isEmpty ||
-          item.approvedRemainingQty <= 0) {
-        continue;
-      }
-      final row = SubcontractGridRow(sourceLocked: true)
-        ..goods = GoodsOption(
-          id: item.goodsId,
-          code: item.goodsCode,
-          name: item.goodsName,
-        )
-        ..upstreamItemId = item.orderItemId
-        ..colorId = item.colorId
-        ..unitId = item.unitId
-        ..unitRate = item.unitRate.toDouble()
-        ..sourceDocNo = prefill.orderBillNo
-        ..approvedQty = item.approvedRemainingQty;
-      // 预填批准剩余量但不设置 maxQty；仓库必须能如实登记实到超量，
-      // 是否隔离由服务端审核动作权威判定。
-      row.qty.text = procurementQty(item.approvedRemainingQty);
-      // 到货登记不录价：订货单价随行携带（价格列隐藏），服务端审核时权威重算金额。
-      if (item.unitPrice != null) {
-        row.price.text = procurementQty(item.unitPrice!);
-      }
-      rows.add(row);
-    }
-    if (rows.isNotEmpty) {
-      // 到货登记模式列已收窄（库位号列隐藏），此处仍补缓存：保存后详情页直接可显。
-      _fillStockPlaces(rows);
-      _grid.replaceAll(rows);
-    }
-  }
-
-  /// 预计到货「登记实际到货」模式：新建进仓单且带任务中心预填。
-  /// 标题/明细列/表单锁定都按到货登记场景呈现（只登记实到数量，不管价格）。
-  bool get _isArrivalMode =>
-      widget.id == null &&
-      widget.docType == SubcontractDocType.receipt &&
-      widget.receiptPrefill != null;
+  bool get _commercialTermsInheritedFromSource =>
+      widget.docType == SubcontractDocType.returnDoc &&
+      _grid.rows.any((row) => row.upstreamItemId != null);
 
   /// 选货品范围：发料/材料退/损耗=材料；进仓/退货/订货/申请/询价=成品。
   UtenGoodsPickerScope get _pickerScope => switch (widget.docType) {
@@ -688,6 +641,26 @@ class _SubcontractDocEditPageState
       }
       if (rowSuppliers.length == 1) _supplierId = rowSuppliers.first;
     }
+    if (widget.docType == SubcontractDocType.order && _currencyId == null) {
+      setState(() => _currencyError = '请选择币种');
+      context.appError('请选择委外订货币种');
+      return;
+    }
+    final taxRateText = _taxRate.text.trim();
+    final taxRateError = validateSubcontractTaxRate(
+      taxRateText,
+      required: widget.docType == SubcontractDocType.order,
+    );
+    if (_cfg.hasTaxRate &&
+        !_commercialTermsInheritedFromSource &&
+        taxRateError != null) {
+      setState(() => _taxRateError = taxRateError);
+      context.appError(taxRateError);
+      return;
+    }
+    final parsedTaxRate = taxRateText.isEmpty
+        ? null
+        : double.tryParse(taxRateText);
     if (_cfg.settlementRequired) {
       final methodsState = ref.read(settlementMethodOptionsProvider);
       if (methodsState.isLoading) {
@@ -741,7 +714,14 @@ class _SubcontractDocEditPageState
         context.appError(priceError);
         return;
       }
-      final w = double.tryParse(r.weight.text);
+      final weightText = r.weight.text.trim();
+      final w = weightText.isEmpty ? null : double.tryParse(weightText);
+      if (_cfg.itemHasWeight &&
+          weightText.isNotEmpty &&
+          (w == null || w <= 0)) {
+        context.appError('${r.goods!.name} 的实际重量必须大于 0');
+        return;
+      }
       final ending = double.tryParse(r.endingQty.text);
       final std = double.tryParse(r.standardQty.text);
       final wr = double.tryParse(r.wasteRate.text);
@@ -779,9 +759,14 @@ class _SubcontractDocEditPageState
       if (_cfg.hasSupplier && _supplierId != null) 'supplierId': _supplierId,
       if (_cfg.hasWarehouse && _warehouseId != null)
         'warehouseId': _warehouseId,
-      if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
-      if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
-      if (_cfg.hasTaxRate) 'taxRate': double.tryParse(_taxRate.text),
+      if (_cfg.hasCurrency &&
+          !_commercialTermsInheritedFromSource &&
+          _currencyId != null)
+        'currencyId': _currencyId,
+      if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)
+        'exchangeRate': double.tryParse(_rate.text) ?? 1,
+      if (_cfg.hasTaxRate && !_commercialTermsInheritedFromSource)
+        'taxRate': parsedTaxRate,
       if (_cfg.hasPurchaser && _purchaserId != null)
         'purchaserId': _purchaserId,
       if (_cfg.hasSender && _senderId != null) 'senderId': _senderId,
@@ -794,7 +779,9 @@ class _SubcontractDocEditPageState
         'totalWeight': double.tryParse(_totalWeight.text),
       if (_cfg.hasDeductAmount)
         'deductAmount': double.tryParse(_deductAmount.text),
-      if (_cfg.hasSettlement && _settlementMethodId != null)
+      if (_cfg.hasSettlement &&
+          !_commercialTermsInheritedFromSource &&
+          _settlementMethodId != null)
         'settlementMethodId': _settlementMethodId,
       'items': itemsBody,
     };
@@ -898,11 +885,7 @@ class _SubcontractDocEditPageState
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(
-        title: _isArrivalMode
-            ? '登记实际到货 · ${_cfg.label}'
-            : widget.id == null
-            ? '新建${_cfg.label}'
-            : '编辑${_cfg.label}',
+        title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
         ),
@@ -930,13 +913,8 @@ class _SubcontractDocEditPageState
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     children: [
                       if (widget.id == null &&
-                          widget.docType == SubcontractDocType.order &&
-                          _sourceApplicationBillNo != null) ...[
+                          widget.docType == SubcontractDocType.order) ...[
                         _orderSourceBanner(theme),
-                        const SizedBox(height: UtenSpacing.s12),
-                      ],
-                      if (widget.docType == SubcontractDocType.receipt) ...[
-                        _receiptArrivalBanner(theme),
                         const SizedBox(height: UtenSpacing.s12),
                       ],
                       if (_cfg.approvalBlockedReason != null) ...[
@@ -954,9 +932,7 @@ class _SubcontractDocEditPageState
                             ),
                           ),
                           const Spacer(),
-                          if (_cfg.hasUpstreamLink &&
-                              // 到货登记模式：明细只能来自该预计到货任务，不允许再引入。
-                              !_isArrivalMode)
+                          if (_cfg.hasUpstreamLink)
                             UtenImportButton(
                               label: '从上游引入',
                               onPressed: _importFromUpstream,
@@ -999,7 +975,9 @@ class _SubcontractDocEditPageState
                         columns: subcontractGridColumns(
                           _pickGoods,
                           _cfg,
-                          arrivalMode: _isArrivalMode,
+                          unitEntries: ref
+                              .watch(mn.masterNameServiceProvider)
+                              .unitEntries,
                           // 订货单：明细可逐行选委外商，保存时按委外商自动拆单。
                           // 选项与表头同口径：只列启用供应商（行内已引用的禁用商补显）。
                           supplierEntries:
@@ -1020,10 +998,7 @@ class _SubcontractDocEditPageState
                           onPickSupplier: _pickRowSupplier,
                         ),
                         createBlankRow: () => SubcontractGridRow(),
-                        // 到货登记模式：行来自预计到货任务（带订货明细关联），
-                        // 不允许添加无来源行；行尾删除保留（部分到货=该行本次不收）。
                         // V304：订货单放开手工行（委外自建订货单，无申请来源）。
-                        showAddRow: !_isArrivalMode,
                       ),
                     ],
                   ),
@@ -1091,120 +1066,24 @@ class _SubcontractDocEditPageState
     );
   }
 
-  Widget _receiptArrivalBanner(ThemeData theme) {
-    final source = widget.receiptPrefill?.orderBillNo;
-    // 权威订货单 id：有则编号可点跳订货详情，无则只展示编号（谱系仍可读）。
-    final sourceOrderId = widget.receiptPrefill?.orderId;
-    return Semantics(
-      container: true,
-      label:
-          '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
-          '系统会隔离并通知财务审核组共享处理。',
-      child: Card(
-        color: theme.colorScheme.tertiaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.fact_check_outlined,
-                color: theme.colorScheme.onTertiaryContainer,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '请按实际到货数量登记',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: theme.colorScheme.onTertiaryContainer,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (source?.isNotEmpty == true) ...[
-                      const SizedBox(height: UtenSpacing.s4),
-                      // 来源订货单：编号可点跳订货详情（展示编号而非 id；
-                      // 任务不带权威 id 时退化为纯文本谱系）。
-                      InkWell(
-                        onTap: sourceOrderId == null
-                            ? null
-                            : () => context.push(
-                                RoutePath.subcontractDocDetail(
-                                  'orders',
-                                  sourceOrderId,
-                                ),
-                              ),
-                        borderRadius: BorderRadius.circular(4),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '来源订货单：',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onTertiaryContainer,
-                              ),
-                            ),
-                            Flexible(
-                              child: Text(
-                                source!,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onTertiaryContainer,
-                                  fontWeight: FontWeight.w700,
-                                  decoration: sourceOrderId == null
-                                      ? null
-                                      : TextDecoration.underline,
-                                  decorationColor:
-                                      theme.colorScheme.onTertiaryContainer,
-                                ),
-                              ),
-                            ),
-                            if (sourceOrderId != null) ...[
-                              const SizedBox(width: UtenSpacing.s4),
-                              Icon(
-                                Icons.open_in_new,
-                                size: 14,
-                                color: theme.colorScheme.onTertiaryContainer,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      '请选择本次入库仓库，并按实际到货数量登记。'
-                      '如果实到数量超过财务批准剩余量，仍可如实填写。'
-                      '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'
-                      '并通知财务审核组共享处理——财务可批准实到数量进入后续流程，'
-                      '或要求退货(生成供应商退货任务)。',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onTertiaryContainer,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _orderSourceBanner(ThemeData theme) {
     final ready = _orderSourceReady;
+    final source = _sourceApplicationBillNo?.trim();
+    final fromMaterialAnalysis =
+        source?.isNotEmpty == true || widget.applicationItemIds.isNotEmpty;
     final background = ready
         ? theme.colorScheme.primaryContainer
         : theme.colorScheme.errorContainer;
     final foreground = ready
         ? theme.colorScheme.onPrimaryContainer
         : theme.colorScheme.onErrorContainer;
-    final source = _sourceApplicationBillNo?.trim();
     return Semantics(
       container: true,
-      label: ready ? '已从委外任务中心带入计划下达申请，可逐行选择委外商并填写单价' : '必须先从委外任务中心选择计划下达申请',
+      label: !ready
+          ? '必须先从委外任务中心选择计划下达申请'
+          : fromMaterialAnalysis
+          ? '已从物料分析带入委外申请，可逐行选择委外商并填写单价'
+          : '直接委外下单，服务端将在财务批准后逐行判断前置自制和目标件出仓',
       child: Card(
         color: background,
         child: Padding(
@@ -1222,7 +1101,11 @@ class _SubcontractDocEditPageState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      ready ? '已带入计划下达申请' : '请先选择委外申请明细',
+                      !ready
+                          ? '请先选择委外申请明细'
+                          : fromMaterialAnalysis
+                          ? '物料分析下达委外'
+                          : '直接委外下单',
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: foreground,
                         fontWeight: FontWeight.w700,
@@ -1230,11 +1113,14 @@ class _SubcontractDocEditPageState
                     ),
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      ready
-                          ? '来源：${source?.isNotEmpty == true ? source : '计划下达申请'}。'
-                                '每一行都保留原申请来源；可减少本次委外数量，剩余数量会继续留在任务中心。'
-                                '勾选多行后在任一行选委外商即批量填写。'
-                          : '委外订货单不能手工空白新建。请回到任务中心选择需要分解的申请明细。',
+                      !ready
+                          ? '来源申请未加载完整。请回到委外任务中心重新选择需要分解的申请明细。'
+                          : fromMaterialAnalysis
+                          ? '来源：${source?.isNotEmpty == true ? source : '物料分析委外申请'}。'
+                                '每一行保留不可变申请来源；可减少本次委外数量，剩余数量继续留在任务中心。'
+                          : '直接录入需要外发加工的目标件。财务批准后服务端逐行判断：'
+                                '无子层级先核对并预留目标件合格库存，再通知仓库出仓；'
+                                '有子层级先向计划部生成前置自制待办，完成领料、生产报工、FQC 和成品入仓后再通知仓库。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: foreground,
                       ),
@@ -1358,15 +1244,12 @@ class _SubcontractDocEditPageState
                     initialName: _supplierHeaderName(),
                     label: '委外商',
                     required: _cfg.supplierRequired,
-                    // 到货登记模式：委外商来自预计到货任务，锁定防手滑改坏来源关联。
-                    enabled: !_isArrivalMode,
                     onChanged: (v) => setState(() => _supplierId = v),
                     onPick: () =>
                         showUtenSupplierPicker(context, ref, title: '选择委外商'),
                   ),
                 if (_cfg.hasWarehouse)
-                  // 到货登记模式也不锁仓：入库仓库在进仓时确定，
-                  // 预计到货任务可能不再携带仓库（订货单不带仓库）。
+                  // 回厂新建已经迁到仓库独立登记页；这里仅服务其余单据或既有草稿编辑。
                   _dropdown(
                     '仓库',
                     _warehouseId,
@@ -1374,15 +1257,24 @@ class _SubcontractDocEditPageState
                     (v) => setState(() => _warehouseId = v),
                     required: _cfg.warehouseRequired,
                   ),
-                if (_cfg.hasCurrency)
+                if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)
                   _dropdown(
                     '币种',
                     _currencyId,
                     names.currencyEntries,
-                    (v) => setState(() => _currencyId = v),
+                    (v) => setState(() {
+                      _currencyId = v;
+                      _currencyError = null;
+                    }),
+                    required: widget.docType == SubcontractDocType.order,
+                    allowClear: widget.docType != SubcontractDocType.order,
+                    errorMessage: _currencyError,
+                    helperMessage: widget.docType == SubcontractDocType.order
+                        ? '财务批准后冻结为委外订单币种快照'
+                        : null,
                   ),
                 // 结算方式紧跟币种（与采购订货单表头次序一致）。
-                if (_cfg.hasSettlement)
+                if (_cfg.hasSettlement && !_commercialTermsInheritedFromSource)
                   _dropdown(
                     '结算方式',
                     _settlementMethodId,
@@ -1398,14 +1290,29 @@ class _SubcontractDocEditPageState
                         ? '财务批准后冻结为委外订单结算快照'
                         : null,
                   ),
-                if (_cfg.hasTaxRate)
+                if (_cfg.hasTaxRate && !_commercialTermsInheritedFromSource)
                   TextField(
                     controller: _taxRate,
+                    onChanged: (_) {
+                      if (_taxRateError != null) {
+                        setState(() => _taxRateError = null);
+                      }
+                    },
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(labelText: '税率(%)'),
+                    decoration: InputDecoration(
+                      labelText: widget.docType == SubcontractDocType.order
+                          ? '税率(%)*'
+                          : '税率(%)',
+                      helperText: widget.docType == SubcontractDocType.order
+                          ? '必填，允许 0；财务批准后冻结，范围 0–100'
+                          : '范围 0–100',
+                      errorText: _taxRateError,
+                    ),
                   ),
+                if (_commercialTermsInheritedFromSource)
+                  const Text('币种、税率与结算方式继承来源订货/回厂快照，本页只读且不重复提交。'),
                 // 人员字段（按 config 显隐）
                 if (_cfg.hasPurchaser)
                   _employeePicker(

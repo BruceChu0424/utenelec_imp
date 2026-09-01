@@ -169,7 +169,8 @@ class FinancePaymentSettlementTest {
                 mock(com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard.class),
                 paymentRepo, lineRepo, ledgerRepo, tx,
                 currentUser, names, em, numbers, access, glPostingService,
-                accountFlowLedger);
+                accountFlowLedger,
+                mock(com.uten.imp.features.finance.payables.SupplierPayableHoldGuard.class));
     }
 
     @Test

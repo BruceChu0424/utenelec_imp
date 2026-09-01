@@ -91,8 +91,30 @@ class WarehouseArrivalRegistrationIdempotencyTest {
                 .matches("[0-9a-f]{64}");
     }
 
+    @Test
+    void canonicalHashIncludesOptionalActualTotalWeight() {
+        WarehouseArrivalRegisterRequest left = request(
+                "arrival-retry-key-005", "同一内容", new BigDecimal("5"),
+                new BigDecimal("2.5000"));
+        WarehouseArrivalRegisterRequest same = request(
+                "arrival-retry-key-005", "同一内容", new BigDecimal("5.0"),
+                new BigDecimal("2.5"));
+        WarehouseArrivalRegisterRequest changed = request(
+                "arrival-retry-key-005", "同一内容", new BigDecimal("5"),
+                new BigDecimal("2.6"));
+
+        assertThat(WarehouseArrivalRegistrationService.requestHash(left))
+                .isEqualTo(WarehouseArrivalRegistrationService.requestHash(same))
+                .isNotEqualTo(WarehouseArrivalRegistrationService.requestHash(changed));
+    }
+
     private static WarehouseArrivalRegisterRequest request(
             String key, String remark, BigDecimal qty) {
+        return request(key, remark, qty, null);
+    }
+
+    private static WarehouseArrivalRegisterRequest request(
+            String key, String remark, BigDecimal qty, BigDecimal weight) {
         return new WarehouseArrivalRegisterRequest(
                 key,
                 "PURCHASE",
@@ -109,6 +131,7 @@ class WarehouseArrivalRegistrationIdempotencyTest {
                         null,
                         UUID.fromString("00000000-0000-0000-0000-000000000107"),
                         BigDecimal.ONE,
+                        weight,
                         "PO-001")));
     }
 

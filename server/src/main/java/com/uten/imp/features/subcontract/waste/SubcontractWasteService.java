@@ -338,7 +338,7 @@ public class SubcontractWasteService {
                 ts, StockService.TYPE_SUBCONTRACT_WASTE, StockService.SRC_SUBCONTRACT_WASTE,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲"));
+                direction < 0 ? null : "红冲", it.getWeight()));
     }
 
     private SubcontractLossClaimPort.ApprovedWaste toApprovedWaste(
@@ -504,7 +504,8 @@ public class SubcontractWasteService {
     }
 
     private boolean subcontractPriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewSubcontractWasteSuggestion();
     }
 
     private static WasteItemDto maskItemPrices(WasteItemDto it) {

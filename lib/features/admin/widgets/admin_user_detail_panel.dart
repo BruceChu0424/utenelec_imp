@@ -549,8 +549,34 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         _pendingGrants(data).contains(code);
   }
 
-  void _togglePerm(EffectivePermissions data, String code, bool value) {
-    _setPermissionCodes(data, [code], value);
+  Future<void> _togglePerm(
+    EffectivePermissions data,
+    AdminPermission permission,
+    bool value,
+  ) async {
+    if (value &&
+        !permission.bulkAssignable &&
+        !_isEffective(data, permission.code)) {
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '确认单项授权',
+        content: Text(
+          [
+            '“',
+            permission.name,
+            '”会开放',
+            permission.sensitivity == 'SENSITIVE_COMMERCIAL'
+                ? '商业敏感数据'
+                : '敏感能力',
+            '。该权限不会被批量授权带入，请确认该员工确需访问。',
+          ].join(),
+        ),
+        confirmLabel: '确认授权',
+        danger: true,
+      );
+      if (!mounted || confirmed != true) return;
+    }
+    _setPermissionCodes(data, [permission.code], value);
   }
 
   void _setPermissions(
@@ -617,6 +643,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           name: permission.name,
           actionType: permission.actionType,
           description: permission.description,
+          bulkAssignable: permission.bulkAssignable,
+          sensitivity: permission.sensitivity,
           nameStyle: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w600,
             color: revoked ? UtenColors.error : null,
@@ -659,7 +687,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           child: Switch(
             value: effective,
             onChanged: canEdit
-                ? (value) => _togglePerm(data, permission.code, value)
+                ? (value) => _togglePerm(data, permission, value)
                 : null,
           ),
         ),

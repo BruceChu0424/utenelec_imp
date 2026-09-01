@@ -13,7 +13,9 @@ public record PermissionDto(
         String actionType,
         String description,
         boolean active,
-        boolean assignable) {
+        boolean assignable,
+        boolean bulkAssignable,
+        String sensitivity) {
 
     public static PermissionDto of(Permission p) {
         return new PermissionDto(
@@ -25,7 +27,9 @@ public record PermissionDto(
                 normalizedActionType(p.getActionType()),
                 p.getDescription(),
                 p.isActive(),
-                p.isAssignable());
+                p.isAssignable(),
+                p.isBulkAssignable(),
+                p.getSensitivity());
     }
 
     private static String normalizedActionType(String value) {

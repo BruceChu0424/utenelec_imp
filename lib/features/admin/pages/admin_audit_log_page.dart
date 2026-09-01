@@ -42,7 +42,9 @@ import '../widgets/audit_query_scope.dart';
 import '../widgets/audit_session_card.dart';
 
 class AdminAuditLogPage extends ConsumerStatefulWidget {
-  const AdminAuditLogPage({super.key});
+  const AdminAuditLogPage({this.initialRequestId, super.key});
+
+  final String? initialRequestId;
 
   @override
   ConsumerState<AdminAuditLogPage> createState() => _AdminAuditLogPageState();
@@ -138,6 +140,24 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   @override
   void initState() {
     super.initState();
+    _scheduleInitialRequestInvestigation();
+  }
+
+  @override
+  void didUpdateWidget(covariant AdminAuditLogPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialRequestId != widget.initialRequestId) {
+      _scheduleInitialRequestInvestigation();
+    }
+  }
+
+  void _scheduleInitialRequestInvestigation() {
+    final requestId = widget.initialRequestId?.trim();
+    if (requestId == null || !_requestIdPattern.hasMatch(requestId)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _requestId == requestId) return;
+      _locateRequest(requestId);
+    });
   }
 
   Future<void> _load(int page, {bool silent = false}) async {
@@ -715,7 +735,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       'view_sales_shipment_detail_history' => '查看销售出货历史单据',
       'view_sales_other_shipment_detail_history' => '查看销售其他出库历史单据',
       'view_sales_return_detail_history' => '查看销售退货历史单据',
-      _ => '其他操作',
+      _ => '未登记操作名称',
     };
   }
 
@@ -802,102 +822,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         '${ChinaDateTime.formatDate(range.end)}';
   }
 
-  Future<_AuditDetailBundle> _loadDetailBundle(AuditLogEntry entry) async {
-    final repository = ref.read(auditLogRepositoryProvider);
-    final detail = await repository.detail(entry.id);
-    final requestId = detail.requestId?.trim();
-    if (requestId == null || !_requestIdPattern.hasMatch(requestId)) {
-      return _AuditDetailBundle(detail: detail);
-    }
-    try {
-      final relatedPage = await repository.list(
-        size: 100,
-        requestId: requestId,
-        activityOnly: false,
-      );
-      final databaseRows = relatedPage.items
-          .where((row) => row.eventSource == 'database' && row.id != detail.id)
-          .toList(growable: false);
-      const detailLimit = 24;
-      return _AuditDetailBundle(
-        detail: detail,
-        relatedChanges: databaseRows.take(detailLimit).toList(growable: false),
-        relatedChangesTruncated:
-            databaseRows.length > detailLimit ||
-            relatedPage.total > relatedPage.items.length,
-      );
-    } catch (_) {
-      return _AuditDetailBundle(
-        detail: detail,
-        relatedChangesError: '关联业务变化加载失败，可稍后重试打开详情。',
-      );
-    }
-  }
-
-  Future<void> _openDetail(AuditLogEntry entry) async {
-    final width = MediaQuery.sizeOf(context).width;
-    if (width < 720) {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (sheetContext) => FractionallySizedBox(
-          heightFactor: 0.92,
-          child: _AuditDetailPanel(
-            loader: () => _loadDetailBundle(entry),
-            onClose: () => Navigator.pop(sheetContext),
-            onLocateRequest: (requestId) {
-              Navigator.pop(sheetContext);
-              _locateRequest(requestId);
-            },
-          ),
-        ),
-      );
-      return;
-    }
-    final panelWidth = (width * 0.56).clamp(640.0, 900.0).toDouble();
-    await showGeneralDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: '关闭审计详情',
-      barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (dialogContext, _, _) => Align(
-        alignment: Alignment.centerRight,
-        child: Material(
-          color: Theme.of(context).colorScheme.surface,
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: const BorderRadius.horizontal(
-              left: Radius.circular(20),
-            ),
-            side: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-          child: SizedBox(
-            width: panelWidth,
-            height: double.infinity,
-            child: _AuditDetailPanel(
-              loader: () => _loadDetailBundle(entry),
-              onClose: () => Navigator.pop(dialogContext),
-              onLocateRequest: (requestId) {
-                Navigator.pop(dialogContext);
-                _locateRequest(requestId);
-              },
-            ),
-          ),
-        ),
-      ),
-      transitionBuilder: (_, animation, _, child) => SlideTransition(
-        position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-            .animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-            ),
-        child: child,
-      ),
-    );
-  }
+  Future<void> _openDetail(AuditLogEntry entry) => showAuditLogDetailViewer(
+    context: context,
+    ref: ref,
+    entry: entry,
+    onLocateRequest: _locateRequest,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -953,15 +883,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   slivers: [
-                    const SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.only(top: UtenSpacing.s12),
-                        child: _AuditCenterIntro(),
-                      ),
-                    ),
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.only(top: UtenSpacing.s12),
+                        padding: const EdgeInsets.only(top: UtenSpacing.s8),
                         child: AuditQueryScopeComposer(
                           selectedActor: _selectedActor,
                           anonymousMode: _anonymousMode,
@@ -1004,13 +928,6 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                         ),
                       ),
                     ),
-                    if (!_canLoad)
-                      const SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.only(top: UtenSpacing.s16),
-                          child: _AuditStartGuide(),
-                        ),
-                      ),
                     if (_canUseSessionView)
                       SliverToBoxAdapter(
                         child: Padding(
@@ -1278,146 +1195,6 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 }
 
-class _AuditCenterIntro extends StatelessWidget {
-  const _AuditCenterIntro();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final titleAndCopy = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '看清一次登录期间发生了什么',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w800,
-            height: 1.2,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Text(
-          '重点展示人员主动操作、敏感查看、失败和安全异常；成功的系统自动任务不会作为人员主活动铺在这里。',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            height: 1.55,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        const Wrap(
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          children: [
-            UtenStatusBadge(
-              label: '人员行为',
-              type: UtenStatusBadgeType.success,
-              icon: Icons.person_outline_rounded,
-            ),
-            UtenStatusBadge(
-              label: '按登录会话',
-              type: UtenStatusBadgeType.info,
-              icon: Icons.route_outlined,
-            ),
-            UtenStatusBadge(
-              label: '统一北京时间',
-              type: UtenStatusBadgeType.info,
-              icon: Icons.schedule_rounded,
-            ),
-          ],
-        ),
-      ],
-    );
-    final retention = Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.inventory_2_outlined,
-            size: 20,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '按在线留存范围查询',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '到期日志进入冷归档；具体期限与归档说明见页面底部。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    return Semantics(
-      container: true,
-      label: '审计中心说明：按人员登录会话查看人工操作，全部时间为北京时间，系统自动成功任务不作为人员主活动。',
-      child: UtenCard(
-        elevation: UtenCardElevation.low,
-        padding: const EdgeInsets.all(UtenSpacing.s20),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final icon = Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                borderRadius: UtenRadius.xlAll,
-              ),
-              child: Icon(
-                Icons.admin_panel_settings_outlined,
-                size: 28,
-                color: theme.colorScheme.onPrimaryContainer,
-              ),
-            );
-            if (constraints.maxWidth < 760) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(alignment: Alignment.centerLeft, child: icon),
-                  const SizedBox(height: UtenSpacing.s12),
-                  titleAndCopy,
-                  const SizedBox(height: UtenSpacing.s16),
-                  retention,
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                icon,
-                const SizedBox(width: UtenSpacing.s16),
-                Expanded(child: titleAndCopy),
-                const SizedBox(width: UtenSpacing.s24),
-                SizedBox(width: 280, child: retention),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-/// 日志保留策略提示文案（读公共设置；失败时退化为通用说明，不阻塞页面）。
 final _auditRetentionHintProvider = FutureProvider.autoDispose<String>((
   ref,
 ) async {
@@ -1485,166 +1262,6 @@ class _AuditRetentionHint extends ConsumerWidget {
         ),
       ),
       orElse: () => const SizedBox.shrink(),
-    );
-  }
-}
-
-class _AuditStartGuide extends StatelessWidget {
-  const _AuditStartGuide();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return UtenCard(
-      variant: UtenCardVariant.outlined,
-      padding: const EdgeInsets.all(UtenSpacing.s20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.route_outlined, color: theme.colorScheme.primary),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  '一次调查，只走三步',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const UtenStatusBadge(
-                label: '未查询',
-                type: UtenStatusBadgeType.info,
-                icon: Icons.visibility_off_outlined,
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '系统不会预先读取全部日志。确定调查范围后，先返回登录会话摘要，再进入独立页面查看完整时间线。',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              const steps = [
-                _AuditGuideStep(
-                  number: '01',
-                  title: '选择一个人',
-                  detail: '姓名用于识别，系统人员编号用于精确关联。',
-                  icon: Icons.person_search_outlined,
-                ),
-                _AuditGuideStep(
-                  number: '02',
-                  title: '限定北京时间',
-                  detail: '可看某一天，或最长连续 31 天。',
-                  icon: Icons.date_range_outlined,
-                ),
-                _AuditGuideStep(
-                  number: '03',
-                  title: '打开登录旅程',
-                  detail: '一张卡代表一次登录，点击进入独立时间线。',
-                  icon: Icons.timeline_rounded,
-                ),
-              ];
-              if (constraints.maxWidth < 720) {
-                return Column(
-                  children: [
-                    for (var index = 0; index < steps.length; index++) ...[
-                      steps[index],
-                      if (index < steps.length - 1)
-                        const SizedBox(height: UtenSpacing.s8),
-                    ],
-                  ],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var index = 0; index < steps.length; index++) ...[
-                    Expanded(child: steps[index]),
-                    if (index < steps.length - 1)
-                      const SizedBox(width: UtenSpacing.s8),
-                  ],
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AuditGuideStep extends StatelessWidget {
-  const _AuditGuideStep({
-    required this.number,
-    required this.title,
-    required this.detail,
-    required this.icon,
-  });
-
-  final String number;
-  final String title;
-  final String detail;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.lgAll,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: UtenRadius.mdAll,
-            ),
-            child: Icon(
-              icon,
-              size: 21,
-              color: theme.colorScheme.onPrimaryContainer,
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$number  $title',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: theme.colorScheme.primary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  detail,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -2271,7 +1888,7 @@ class _AuditViewModeSwitch extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final selector = Semantics(
-            label: sessionMode ? '当前按用户会话查看' : '当前按事件明细查看',
+            label: sessionMode ? '当前按登录会话查看' : '当前按事件明细查看',
             child: SegmentedButton<bool>(
               key: const ValueKey('audit-view-mode'),
               segments: [
@@ -2279,7 +1896,7 @@ class _AuditViewModeSwitch extends StatelessWidget {
                   value: true,
                   enabled: !loading,
                   icon: const Icon(Icons.login_rounded),
-                  label: const Text('用户会话'),
+                  label: const Text('登录会话'),
                 ),
                 ButtonSegment<bool>(
                   value: false,
@@ -2805,12 +2422,9 @@ class _AuditEventTile extends StatelessWidget {
             : object.isNotEmpty
             ? '$action · $object'
             : action);
-    final safeTargetName = AuditEventPresentation.safeBusinessReference(
-      entry.targetName,
-    );
+    final objectEvidence = auditEventObjectEvidence(entry);
     final detailBits = <String>[
-      if (salesViewNarrative == null && safeTargetName != null)
-        '对象 $safeTargetName',
+      ?objectEvidence,
       if (entry.pageLabel?.trim().isNotEmpty == true) '位置 ${entry.pageLabel}',
       if (entry.deviceLabel?.trim().isNotEmpty == true &&
           entry.deviceLabel != '未提供设备信息')
@@ -3364,6 +2978,125 @@ class _AuditPaginationState extends State<_AuditPagination> {
   }
 }
 
+/// Opens the one authoritative four-tab audit detail viewer.
+///
+/// Both the event list and the login-session timeline use this entry so an
+/// investigator always sees the same redacted before/after evidence, related
+/// database changes, device evidence and troubleshooting facts.
+Future<void> showAuditLogDetailViewer({
+  required BuildContext context,
+  required WidgetRef ref,
+  required AuditLogEntry entry,
+  ValueChanged<String>? onLocateRequest,
+}) async {
+  void locateRequest(BuildContext overlayContext, String requestId) {
+    Navigator.pop(overlayContext);
+    if (!context.mounted) return;
+    if (onLocateRequest != null) {
+      onLocateRequest(requestId);
+      return;
+    }
+    context.push(RoutePath.adminAuditInvestigation(requestId));
+  }
+
+  final width = MediaQuery.sizeOf(context).width;
+  if (width < 720) {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: 0.92,
+        child: _AuditDetailPanel(
+          loader: () => _loadSharedAuditDetailBundle(ref, entry),
+          onClose: () => Navigator.pop(sheetContext),
+          onLocateRequest: (requestId) =>
+              locateRequest(sheetContext, requestId),
+        ),
+      ),
+    );
+    return;
+  }
+  final panelWidth = (width * 0.56).clamp(640.0, 900.0).toDouble();
+  await showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: '关闭审计详情',
+    barrierColor: Colors.black54,
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (dialogContext, _, _) => SafeArea(
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Material(
+          color: Theme.of(dialogContext).colorScheme.surface,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: const BorderRadius.horizontal(
+              left: Radius.circular(20),
+            ),
+            side: BorderSide(
+              color: Theme.of(dialogContext).colorScheme.outlineVariant,
+            ),
+          ),
+          child: SizedBox(
+            width: panelWidth,
+            height: double.infinity,
+            child: _AuditDetailPanel(
+              loader: () => _loadSharedAuditDetailBundle(ref, entry),
+              onClose: () => Navigator.pop(dialogContext),
+              onLocateRequest: (requestId) =>
+                  locateRequest(dialogContext, requestId),
+            ),
+          ),
+        ),
+      ),
+    ),
+    transitionBuilder: (_, animation, _, child) => SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
+  );
+}
+
+Future<_AuditDetailBundle> _loadSharedAuditDetailBundle(
+  WidgetRef ref,
+  AuditLogEntry entry,
+) async {
+  final repository = ref.read(auditLogRepositoryProvider);
+  final detail = await repository.detail(entry.id);
+  final requestId = detail.requestId?.trim();
+  if (requestId == null ||
+      !_AdminAuditLogPageState._requestIdPattern.hasMatch(requestId)) {
+    return _AuditDetailBundle(detail: detail);
+  }
+  try {
+    final relatedPage = await repository.list(
+      size: 100,
+      requestId: requestId,
+      activityOnly: false,
+    );
+    final databaseRows = relatedPage.items
+        .where((row) => row.eventSource == 'database' && row.id != detail.id)
+        .toList(growable: false);
+    const detailLimit = 24;
+    return _AuditDetailBundle(
+      detail: detail,
+      relatedChanges: databaseRows.take(detailLimit).toList(growable: false),
+      relatedChangesTruncated:
+          databaseRows.length > detailLimit ||
+          relatedPage.total > relatedPage.items.length,
+    );
+  } catch (_) {
+    return _AuditDetailBundle(
+      detail: detail,
+      relatedChangesError: '关联业务变化加载失败，可稍后重试打开详情。',
+    );
+  }
+}
+
 class _AuditDetailBundle {
   const _AuditDetailBundle({
     required this.detail,
@@ -3775,14 +3508,31 @@ class _AuditStoryCard extends StatelessWidget {
   }
 
   static String? _objectText(AuditLogDetail detail) {
+    final label = detail.objectLabel?.trim().isNotEmpty == true
+        ? detail.objectLabel!
+        : _objectTypeLabel(detail.targetType);
+    final displayName = AuditEventPresentation.safeBusinessReference(
+      detail.targetDisplayName,
+    );
+    final businessCode = AuditEventPresentation.safeBusinessReference(
+      detail.targetBusinessCode,
+    );
+    final legacyCode = AuditEventPresentation.safeBusinessReference(
+      detail.targetLegacyCode,
+    );
+    if (displayName != null || businessCode != null || legacyCode != null) {
+      return [
+        if (label.isNotEmpty) label,
+        if (displayName != null && displayName != label) displayName,
+        if (businessCode != null) '业务编号 $businessCode',
+        if (legacyCode != null) '旧系统编号 $legacyCode',
+      ].join(' · ');
+    }
     final salesObject = AuditEventPresentation.salesViewObjectText(
       action: detail.action,
       targetName: detail.targetName,
     );
     if (salesObject != null) return salesObject;
-    final label = detail.objectLabel?.trim().isNotEmpty == true
-        ? detail.objectLabel!
-        : _objectTypeLabel(detail.targetType);
     final name = AuditEventPresentation.safeBusinessReference(
       detail.targetName,
     );
@@ -4424,17 +4174,34 @@ class _AuditRelatedChangeCardState
     final object = entry.objectLabel?.trim().isNotEmpty == true
         ? entry.objectLabel!.trim()
         : _objectTypeLabel(entry.targetType);
-    final name = entry.targetName?.trim();
+    final displayName = AuditEventPresentation.safeBusinessReference(
+      entry.targetDisplayName,
+    );
+    final businessCode = AuditEventPresentation.safeBusinessReference(
+      entry.targetBusinessCode,
+    );
+    final legacyCode = AuditEventPresentation.safeBusinessReference(
+      entry.targetLegacyCode,
+    );
+    final compatibleName = AuditEventPresentation.safeBusinessReference(
+      entry.targetName,
+    );
     final pageLabel = entry.pageLabel?.trim();
-    final title = name?.isNotEmpty == true
-        ? object.isNotEmpty
-              ? '$object · $name'
-              : name!
-        : object.isNotEmpty
-        ? object
-        : pageLabel?.isNotEmpty == true
-        ? pageLabel!
-        : '对象名称未记录的业务变化';
+    final structuredTitle = [
+      if (object.isNotEmpty) object,
+      if (displayName != null && displayName != object) displayName,
+      if (businessCode != null) '业务编号 $businessCode',
+      if (legacyCode != null) '旧系统编号 $legacyCode',
+      if (displayName == null &&
+          businessCode == null &&
+          legacyCode == null &&
+          compatibleName != null)
+        compatibleName,
+    ].join(' · ');
+    final fallbackTitle =
+        compatibleName ??
+        (pageLabel?.isNotEmpty == true ? pageLabel! : '对象名称与业务编号未记录的业务变化');
+    final title = structuredTitle.isNotEmpty ? structuredTitle : fallbackTitle;
     return UtenCard(
       padding: EdgeInsets.zero,
       child: ExpansionTile(
@@ -5035,7 +4802,7 @@ _DeviceEvidenceAssessment _assessDeviceEvidence({
     if (receipt.allAttempts.every((value) => value.serverRequestId == null)) {
       return const _DeviceEvidenceAssessment(
         _DeviceEvidenceState.partial,
-        '本机回执缺少服务器 Request ID',
+        '本机回执缺少服务器请求追踪号',
         '旧响应或中间网络设备没有回显关联编号；设备与本地操作仍可人工查看，但不能自动锁定具体请求尝试。',
       );
     }
@@ -5063,13 +4830,14 @@ _DeviceEvidenceAssessment _assessDeviceEvidence({
     return const _DeviceEvidenceAssessment(
       _DeviceEvidenceState.partial,
       '设备与操作信息一致，关联证据不完整',
-      '本机设备快照和请求字段一致，但旧响应没有完整回显服务器 Request ID。',
+      '本机设备快照和请求字段一致，但旧响应没有完整回显服务器请求追踪号。',
     );
   }
   return const _DeviceEvidenceAssessment(
     _DeviceEvidenceState.matched,
     '本机回执与服务器记录一致',
-    '安装标识、设备快照、操作 ID、服务器 Request ID 与可比请求字段一致。此结论表示记录一致，不是硬件身份认证。',
+    '安装标识、设备快照、本地操作编号、服务器请求追踪号与可比请求字段一致。'
+        '此结论表示记录一致，不是硬件身份认证。',
   );
 }
 
@@ -5291,7 +5059,7 @@ class _CorrelationCard extends StatelessWidget {
           const _EvidenceSectionTitle(
             icon: Icons.link_rounded,
             title: '操作关联编号与时间',
-            subtitle: '本地操作 ID 串联客户端回执；Request ID 串联服务器请求与数据库变更。',
+            subtitle: '本地操作编号串联客户端回执；请求追踪号串联服务器请求与数据库变更。',
           ),
           const SizedBox(height: UtenSpacing.s16),
           Wrap(
@@ -5299,10 +5067,10 @@ class _CorrelationCard extends StatelessWidget {
             runSpacing: UtenSpacing.s16,
             children: [
               _CopyableAuditFact(
-                label: '服务器 Request ID',
+                label: '服务器请求追踪号',
                 value: detail.requestId ?? '—',
               ),
-              _CopyableAuditFact(label: '本地操作 ID', value: eventId ?? '—'),
+              _CopyableAuditFact(label: '本地操作编号', value: eventId ?? '—'),
               _AuditFact(
                 label: '服务器记录时间',
                 value: _AdminAuditLogPageState._fmtTime(detail.createdAt),
@@ -5372,22 +5140,22 @@ class _LocalReceiptCard extends StatelessWidget {
         _normalizedTime(server?.clientEventAt),
         _normalizedTime(attempt.startedAt),
       ),
-      ('服务器 Request ID', detail.requestId, attempt.serverRequestId),
-      ('HTTP 方法', detail.httpMethod, attempt.method),
-      ('请求路径', detail.httpPath, attempt.path),
+      ('服务器请求追踪号', detail.requestId, attempt.serverRequestId),
       (
-        'HTTP 状态码',
-        detail.statusCode?.toString(),
-        attempt.statusCode?.toString(),
+        '请求方式',
+        _httpMethodLabel(detail.httpMethod),
+        _httpMethodLabel(attempt.method),
       ),
+      ('请求路径', detail.httpPath, attempt.path),
+      ('请求状态码', detail.statusCode?.toString(), attempt.statusCode?.toString()),
       (
         '请求结果',
         detail.statusCode == null
             ? null
             : detail.statusCode! >= 400
-            ? 'failure'
-            : 'success',
-        attempt.outcome,
+            ? '失败'
+            : '成功',
+        _requestOutcomeLabel(attempt.outcome),
       ),
     ];
     return UtenCard(
@@ -5442,14 +5210,17 @@ class _LocalReceiptCard extends StatelessWidget {
                     radius: 14,
                     child: Text('${entry.$1 + 1}'),
                   ),
-                  title: Text('${entry.$2.method} ${entry.$2.path}'),
+                  title: Text(
+                    '${_httpMethodLabel(entry.$2.method)} ${entry.$2.path}',
+                  ),
                   subtitle: SelectableText(
-                    'Request ID：${entry.$2.serverRequestId ?? '—'}\n'
+                    '请求追踪号：${entry.$2.serverRequestId ?? '—'}\n'
                     '开始：${_AdminAuditLogPageState._fmtTime(entry.$2.startedAt)} · '
                     '完成：${_AdminAuditLogPageState._fmtTime(entry.$2.completedAt)}',
                   ),
                   trailing: Text(
-                    '${entry.$2.statusCode ?? '—'} · ${entry.$2.outcome}',
+                    '${entry.$2.statusCode ?? '—'} · '
+                    '${_requestOutcomeLabel(entry.$2.outcome) ?? '结果未记录'}',
                   ),
                 ),
             ],
@@ -5461,13 +5232,17 @@ class _LocalReceiptCard extends StatelessWidget {
 }
 
 String? _physicalDeviceLabel(bool? value) => switch (value) {
-  true => 'physical',
-  false => 'emulator',
+  true => '实体设备',
+  false => '模拟环境',
   null => null,
 };
 
-String? _normalizedTime(String? value) =>
-    value == null ? null : DateTime.tryParse(value)?.toUtc().toIso8601String();
+String? _normalizedTime(String? value) => value == null
+    ? null
+    : DisplayDateTime.beijing(
+        value,
+        fallback: '时间格式无效',
+      ).replaceFirst('(北京)', '(北京时间)');
 
 class _CurrentDeviceCard extends StatelessWidget {
   const _CurrentDeviceCard({required this.profile});
@@ -5766,7 +5541,7 @@ class _AuditTechnicalTab extends StatelessWidget {
           child: ExpansionTile(
             key: const ValueKey('audit-technical-expansion'),
             title: const Text('展开技术排查数据'),
-            subtitle: const Text('包含操作关联编号、请求路径、原始编码和客户端标识'),
+            subtitle: const Text('包含操作关联编号、请求路径、中文对象类型和客户端标识'),
             children: [
               const Divider(height: 1),
               Padding(
@@ -5805,7 +5580,7 @@ class _AuditTechnicalTab extends StatelessWidget {
                         _AuditFact(label: '网络来源地址', value: detail.ip ?? '—'),
                         _AuditFact(
                           label: '请求方法',
-                          value: detail.httpMethod ?? '—',
+                          value: _httpMethodLabel(detail.httpMethod),
                         ),
                         _AuditFact(
                           label: '请求状态码',
@@ -5867,6 +5642,26 @@ String _sourceLabel(String value) => switch (value) {
   'security' => '安全层拒绝事件',
   _ => '业务显式事件',
 };
+
+String _httpMethodLabel(String? value) => switch (value?.trim().toUpperCase()) {
+  'GET' => '读取',
+  'POST' => '提交',
+  'PUT' => '整体更新',
+  'PATCH' => '局部更新',
+  'DELETE' => '删除',
+  'HEAD' => '读取响应信息',
+  _ => '请求方式未记录',
+};
+
+String? _requestOutcomeLabel(String? value) =>
+    switch (value?.trim().toLowerCase()) {
+      'success' || 'succeeded' => '成功',
+      'failure' || 'failed' => '失败',
+      'timeout' => '请求超时',
+      'cancelled' || 'canceled' => '已取消',
+      null || '' => null,
+      _ => '结果待核查',
+    };
 
 class _AuditDetailHeader extends StatelessWidget {
   const _AuditDetailHeader({

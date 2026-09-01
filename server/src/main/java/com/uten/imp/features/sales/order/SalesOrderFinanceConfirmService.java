@@ -202,7 +202,8 @@ public class SalesOrderFinanceConfirmService {
                        COALESCE(cur.code, ''), COALESCE(cur.name, ''),
                        COALESCE(sm.name, ''),
                        COALESCE(ar.bal, 0),
-                       c.credit, c.credit_floor,
+                       CASE WHEN c.legacy_id IS NULL THEN c.credit ELSE NULL END,
+                       c.credit_floor,
                        COALESCE(fc.full_name, ''), COALESCE(fr.full_name, '')
                 FROM sales_orders o
                 LEFT JOIN clients c ON c.id = o.client_id
@@ -227,7 +228,7 @@ public class SalesOrderFinanceConfirmService {
                        COALESCE(i.goods_name_snapshot, g.name, ''),
                        COALESCE(col.name, ''), COALESCE(u.name, ''),
                        COALESCE(i.client_model, ''),
-                       i.qty, i.price, i.discount, i.amount_original,
+                       i.qty, i.weight, i.price, i.discount, i.amount_original,
                        COALESCE(i.remark, '')
                 FROM sales_order_items i
                 LEFT JOIN goods g ON g.id = i.goods_id
@@ -249,7 +250,8 @@ public class SalesOrderFinanceConfirmService {
                     r[8] == null ? null : (BigDecimal) r[8],
                     r[9] == null ? null : (BigDecimal) r[9],
                     r[10] == null ? null : (BigDecimal) r[10],
-                    (String) r[11]));
+                    r[11] == null ? null : (BigDecimal) r[11],
+                    (String) r[12]));
         }
         BigDecimal outstanding = h[7] == null ? BigDecimal.ZERO : (BigDecimal) h[7];
         BigDecimal credit = (BigDecimal) h[8];

@@ -29,6 +29,12 @@ public class AuditLogRow {
     private final String action;
     private final String targetType;
     private final String targetId;
+    /** 对象可读名称或单据类型标签；仅从明确的名称/标题字段提取。 */
+    private final String targetDisplayName;
+    /** 业务编号、单号或账号编码；与名称分开提供。 */
+    private final String targetBusinessCode;
+    /** 明确记录的旧系统编号；未知时为空，不从其他字段猜测。 */
+    private final String targetLegacyCode;
     /** 从快照提取的对象可读名（单据号/名称/编码），取不到为空。 */
     private final String targetName;
     /** 请求路径翻译成的页面名（"哪个页面操作的"）。 */
@@ -64,6 +70,9 @@ public class AuditLogRow {
             String action,
             String targetType,
             String targetId,
+            String targetDisplayName,
+            String targetBusinessCode,
+            String targetLegacyCode,
             String targetName,
             String pageLabel,
             String ip,
@@ -104,6 +113,9 @@ public class AuditLogRow {
         this.action = action;
         this.targetType = targetType;
         this.targetId = targetId;
+        this.targetDisplayName = targetDisplayName;
+        this.targetBusinessCode = targetBusinessCode;
+        this.targetLegacyCode = targetLegacyCode;
         this.targetName = targetName;
         this.pageLabel = pageLabel;
         this.ip = ip;
@@ -145,6 +157,9 @@ public class AuditLogRow {
                 a.getAction(),
                 a.getTargetType(),
                 a.getTargetId(),
+                blankToNull(event.targetDisplayName()),
+                blankToNull(event.targetBusinessCode()),
+                blankToNull(event.targetLegacyCode()),
                 blankToNull(event.targetName()),
                 blankToNull(event.pageLabel()),
                 a.getIp(),

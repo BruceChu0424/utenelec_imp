@@ -29,9 +29,9 @@ public class WasteDetail
     private Short status;
     private boolean closed;
     private String sourceDocNo;
-    /** 损耗扣款金额（本币，V304）。 */
+    /** V304 历史/建议索赔金额；非现行会计事实。 */
     private BigDecimal deductAmount;
-    /** 扣款是否已立负应付（V304）。 */
+    /** V304 历史负应付标记；新单应为 false。 */
     private boolean deductPosted;
     private List<WasteItemDto> items;
     /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */

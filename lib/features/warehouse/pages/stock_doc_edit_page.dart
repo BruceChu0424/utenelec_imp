@@ -30,6 +30,7 @@ import '../../../shared/widgets/task_claim_handle.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../stock/repositories/stock_query_repository.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
@@ -196,6 +197,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
             row.checkQty.text = it.countQty?.toString() ?? '';
           } else {
             row.qty.text = it.qty?.toString() ?? '';
+            row.weight.text = it.weight?.toString() ?? '';
           }
           rows.add(row);
         }
@@ -376,6 +378,16 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
       if (r.colorId != null) m['colorId'] = r.colorId;
       if (r.unitId != null) m['unitId'] = r.unitId;
       m['unitRate'] = r.unitRate;
+      if (!_isCheck) {
+        final weightText = r.weight.text.trim();
+        if (weightText.isNotEmpty) {
+          final weight = double.tryParse(weightText);
+          if (weight == null || weight <= 0) {
+            return context.appError('${r.goods!.name} 的实际重量必须大于 0');
+          }
+          m['weight'] = weight;
+        }
+      }
       if (_isWdraw) {
         if (r.upstreamItemId == null) {
           return context.appError('生产退料必须逐行引用原领料明细');
@@ -635,8 +647,17 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
               if (_isCheck)
                 ValueListenableBuilder<double>(
                   valueListenable: _grid.totalListenable,
-                  builder: (_, total, _) => Text(
-                    '盘盈亏合计 ${total.toStringAsFixed(2)}',
+                  builder: (_, _, _) => Text(
+                    '盘盈亏：${measurementTotalsText(
+                      _grid.rows.map(
+                        (row) => MeasuredAmount(
+                          value: row.amountNotifier.value,
+                          unitId: row.unitId,
+                          unitName: row.unitName,
+                        ),
+                      ),
+                      emptyLabel: '0',
+                    )}',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),

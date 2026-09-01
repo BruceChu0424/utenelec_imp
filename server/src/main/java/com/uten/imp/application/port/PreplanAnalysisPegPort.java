@@ -53,17 +53,32 @@ public interface PreplanAnalysisPegPort {
     }
 
     /**
-     * IQC 单次 PASS 放行入库后调用：为本次放行的基本量尝试建立分析归属预留。
+     * 仓库确认 IQC PASS 放行量入库后调用：为本次实际入库基本量尝试建立分析归属预留。
      * 无来源分析（手工订货/计划包订货）或超出分析分摊量的部分静默跳过（留作公共现货）。
-     * 幂等键按处置事件生成，重放不产生重复行。
+     * 品质 PASS 事件保留来源谱系，warehouseStockInItemId 是可分次入库的幂等身份。
      */
-    void attributeInspectionPass(
+    void attributeInspectionStockIn(
+            String receiptType,
+            UUID receiptId,
+            UUID inspectionItemId,
+            UUID dispositionEventId,
+            UUID warehouseStockInItemId,
+            BigDecimal stockedBaseQty,
+            UUID warehouseId);
+
+    /** 旧测试/调用兼容；新业务必须传独立仓库入库项 UUID。 */
+    default void attributeInspectionPass(
             String receiptType,
             UUID receiptId,
             UUID inspectionItemId,
             UUID dispositionEventId,
             BigDecimal passedBaseQty,
-            UUID warehouseId);
+            UUID warehouseId) {
+        attributeInspectionStockIn(
+                receiptType, receiptId, inspectionItemId,
+                dispositionEventId, dispositionEventId,
+                passedBaseQty, warehouseId);
+    }
 
     /** 收货单红冲同事务调用：释放该收货单建立的全部分析归属预留（对称反向）。 */
     void releaseForReceipt(String receiptType, UUID receiptId);

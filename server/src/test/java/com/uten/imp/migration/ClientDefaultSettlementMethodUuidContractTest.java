@@ -83,7 +83,9 @@ class ClientDefaultSettlementMethodUuidContractTest {
         String sql = read("server/legacy_migration/migrate_client_data.sql");
 
         assertTrue(sql.contains("set_config('uten.legacy_reference_import', 'on', true)"));
-        assertTrue(sql.contains("default_settlement_method_id, price_style"));
+        assertTrue(sql.contains(
+                "default_settlement_method_id, sales_payment_type, price_style"));
+        assertTrue(sql.contains("credit, credit_floor"));
         assertTrue(sql.contains("LEFT JOIN settlement_matches"));
         assertTrue(sql.contains("client_default_settlement_migration_issues"));
     }

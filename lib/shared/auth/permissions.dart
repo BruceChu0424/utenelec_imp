@@ -69,6 +69,7 @@ abstract final class Perm {
   /// 采购订货单
   static const purchaseOrderView = 'purchase_order:view';
   static const purchaseOrderEdit = 'purchase_order:edit';
+  static const purchaseOrderPriceView = 'purchase_order:price:view';
   static const purchaseOrderSubmitFinance = 'purchase_order:submit_finance';
 
   /// 采购收货单
@@ -79,9 +80,11 @@ abstract final class Perm {
   /// 采购退货单
   static const purchaseReturnView = 'purchase_return:view';
   static const purchaseReturnEdit = 'purchase_return:edit';
+  static const purchaseReturnPriceView = 'purchase_return:price:view';
 
   /// 采购报表
   static const purchaseReportView = 'purchase_report:view';
+  static const purchaseReportPriceView = 'purchase_report:price:view';
 
   /// 查看全部采购单据（对象级授权；按制单人 maker_id 隔离，持此权限看全部）。
   static const purchaseViewAll = 'purchase:view:all';
@@ -188,10 +191,32 @@ abstract final class Perm {
 
   /// 财务批准后的预计到货及仓储异常只读任务。
   static const warehouseInboundView = 'warehouse_inbound:view';
+  static const warehousePurchaseReceiptHistoryView =
+      'warehouse_purchase_receipt_history:view';
+  static const warehouseSubcontractReceiptHistoryView =
+      'warehouse_subcontract_receipt_history:view';
+  static const warehouseSubcontractOutboundHistoryView =
+      'warehouse_subcontract_outbound_history:view';
+  static const warehouseSubcontractFinishedReturnHistoryView =
+      'warehouse_subcontract_finished_return_history:view';
+  static const warehouseSubcontractMaterialReturnHistoryView =
+      'warehouse_subcontract_material_return_history:view';
+  static const warehouseSubcontractWasteHistoryView =
+      'warehouse_subcontract_waste_history:view';
+  static const warehouseIqcReturnView = 'warehouse_iqc_return:view';
+  static const warehouseIqcStockInView = 'warehouse_iqc_stock_in:view';
+  static const warehouseIqcStockInConfirm = 'warehouse_iqc_stock_in:confirm';
 
   /// 采购/委外收货 IQC 待检查看与处置（处置还需 :handle）。
   static const procurementInspectionView = 'procurement_inspection:view';
   static const procurementInspectionHandle = 'procurement_inspection:handle';
+
+  /// 采购/委外 IQC 拒收闭环：查看、跨对象范围和金额字段分别授权。
+  static const procurementIqcRejectionView = 'procurement_iqc_rejection:view';
+  static const procurementIqcRejectionViewAll =
+      'procurement_iqc_rejection:view_all';
+  static const procurementIqcRejectionAmountView =
+      'procurement_iqc_rejection:amount:view';
   // ===== 实验室 =====
   static const labTestView = 'lab:test:view';
   static const labTestUpload = 'lab:test:upload';
@@ -228,9 +253,11 @@ abstract final class Perm {
   // ===== 委外管理（综合营销部）=====
   static const subcontractInquiryView = 'subcontract_inquiry:view';
   static const subcontractInquiryEdit = 'subcontract_inquiry:edit';
+  static const subcontractInquiryPriceView = 'subcontract_inquiry:price:view';
   static const subcontractApplicationView = 'subcontract_application:view';
   static const subcontractOrderView = 'subcontract_order:view';
   static const subcontractOrderEdit = 'subcontract_order:edit';
+  static const subcontractOrderPriceView = 'subcontract_order:price:view';
   static const subcontractOrderSubmitFinance =
       'subcontract_order:submit_finance';
   static const subcontractReceiptView = 'subcontract_receipt:view';
@@ -240,17 +267,22 @@ abstract final class Perm {
   static const subcontractMaterialIssueEdit = 'subcontract_material_issue:edit';
   static const subcontractReturnView = 'subcontract_return:view';
   static const subcontractReturnEdit = 'subcontract_return:edit';
+  static const subcontractReturnPriceView = 'subcontract_return:price:view';
   static const subcontractMaterialReturnView =
       'subcontract_material_return:view';
   static const subcontractMaterialReturnEdit =
       'subcontract_material_return:edit';
   static const subcontractWasteView = 'subcontract_waste:view';
   static const subcontractWasteEdit = 'subcontract_waste:edit';
+  static const subcontractWasteSuggestionView =
+      'subcontract_waste:suggestion:view';
   static const subcontractReportView = 'subcontract_report:view';
   static const subcontractReportExport = 'subcontract_report:export';
+  static const subcontractReportPriceView = 'subcontract_report:price:view';
+  static const subcontractPreparationView = 'subcontract_preparation:view';
+  static const subcontractPreparationStart = 'subcontract_preparation:start';
   // 委外出仓工作台（V305）：仓库 hub「委外出仓」任务中心显隐与拣货/审核操作。
   static const subcontractOutboundView = 'subcontract_outbound:view';
-  static const subcontractOutboundHandle = 'subcontract_outbound:handle';
 
   /// 查看全部委外单据（对象级授权；按制单人 maker_id 隔离，持此权限看全部）。
   static const subcontractViewAll = 'subcontract:view:all';
@@ -315,9 +347,8 @@ abstract final class Perm {
   static const financePostExecute = 'finance_post:execute';
   static const financeShipmentAudit = 'finance_shipment_audit';
 
-  /// 采购/委外订货单财务审批任务（ADR-027：财务部门持 review 权限的审核组均可审）。
+  /// 采购/委外订货单财务审批任务（V328：查看、批准、驳回独立授权）。
   static const financeOrderApprovalView = 'finance_order_approval:view';
-  static const financeOrderApprovalReview = 'finance_order_approval:review';
 
   /// 销售订货单财务确认（V294 闸门：确认后计划部才可见/可排产）。
   static const salesOrderFinanceView = 'sales_order_finance:view';
@@ -576,6 +607,14 @@ abstract final class Perm {
   static const salesReturnQualityDispose = 'sales_return_quality:dispose';
   static const supplierReturnTaskView = 'supplier_return_task:view';
   static const supplierReturnTaskComplete = 'supplier_return_task:complete';
+  static const procurementIqcRejectionRecordReturn =
+      'procurement_iqc_rejection:record_return';
+  static const procurementIqcRejectionConfirmCredit =
+      'procurement_iqc_rejection:confirm_credit';
+  static const procurementIqcRejectionCloseNoCredit =
+      'procurement_iqc_rejection:close_no_credit';
+  static const procurementIqcRejectionReverse =
+      'procurement_iqc_rejection:reverse';
   static const visitorVerify = 'visitor:verify';
   static const subcontractOutboundExecute = 'subcontract_outbound:execute';
   static const subcontractOutboundClose = 'subcontract_outbound:close';
@@ -716,7 +755,6 @@ abstract final class Perm {
     subcontractReceiptDelete,
     subcontractReceiptApprove,
     subcontractReceiptReverse,
-    subcontractMaterialIssueCreate,
     subcontractMaterialIssueDelete,
     subcontractMaterialIssueApprove,
     subcontractMaterialIssueReverse,
@@ -793,11 +831,17 @@ abstract final class Perm {
     salesReturnQualityDispose,
     supplierReturnTaskView,
     supplierReturnTaskComplete,
+    procurementIqcRejectionRecordReturn,
+    procurementIqcRejectionConfirmCredit,
+    procurementIqcRejectionCloseNoCredit,
+    procurementIqcRejectionReverse,
     visitorVerify,
     visitorCheckIn,
+    subcontractPreparationStart,
     subcontractOutboundExecute,
     subcontractOutboundClose,
     warehouseInboundStockIn,
+    warehouseIqcStockInConfirm,
   };
 }
 
@@ -850,14 +894,17 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.purchaseRequestView,
       Perm.purchaseOrderView,
       Perm.purchaseOrderEdit,
+      Perm.purchaseOrderPriceView,
       Perm.purchaseOrderSubmitFinance,
       Perm.purchaseReceiptView,
       Perm.purchaseReceiptEdit,
       Perm.purchaseReceiptPriceView,
       Perm.purchaseReturnView,
       Perm.purchaseReturnEdit,
+      Perm.purchaseReturnPriceView,
       Perm.purchaseReportView,
       Perm.purchaseReportExport,
+      Perm.purchaseReportPriceView,
       Perm.purchaseViewAll,
       Perm.currencyView,
       Perm.currencyEdit,
@@ -872,8 +919,24 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.stockReportView,
       Perm.stockReportExport,
       Perm.warehouseInboundView,
+      Perm.warehousePurchaseReceiptHistoryView,
+      Perm.warehouseSubcontractReceiptHistoryView,
+      Perm.warehouseSubcontractOutboundHistoryView,
+      Perm.warehouseSubcontractFinishedReturnHistoryView,
+      Perm.warehouseSubcontractMaterialReturnHistoryView,
+      Perm.warehouseSubcontractWasteHistoryView,
+      Perm.warehouseIqcReturnView,
+      Perm.warehouseIqcStockInView,
+      Perm.warehouseIqcStockInConfirm,
       Perm.procurementInspectionView,
       Perm.procurementInspectionHandle,
+      Perm.procurementIqcRejectionView,
+      Perm.procurementIqcRejectionViewAll,
+      Perm.procurementIqcRejectionAmountView,
+      Perm.procurementIqcRejectionRecordReturn,
+      Perm.procurementIqcRejectionConfirmCredit,
+      Perm.procurementIqcRejectionCloseNoCredit,
+      Perm.procurementIqcRejectionReverse,
       Perm.supplierReturnTaskView,
       Perm.supplierReturnTaskComplete,
       Perm.labTestView,
@@ -931,17 +994,24 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.salesViewAll,
       // 委外管理
       Perm.subcontractInquiryView, Perm.subcontractInquiryEdit,
+      Perm.subcontractInquiryPriceView,
       Perm.subcontractApplicationView,
       Perm.subcontractOrderView, Perm.subcontractOrderEdit,
+      Perm.subcontractOrderPriceView,
       Perm.subcontractOrderSubmitFinance,
       Perm.subcontractReceiptView, Perm.subcontractReceiptEdit,
       Perm.subcontractReceiptPriceView,
       Perm.subcontractMaterialIssueView, Perm.subcontractMaterialIssueEdit,
       Perm.subcontractReturnView, Perm.subcontractReturnEdit,
+      Perm.subcontractReturnPriceView,
       Perm.subcontractMaterialReturnView, Perm.subcontractMaterialReturnEdit,
       Perm.subcontractWasteView, Perm.subcontractWasteEdit,
+      Perm.subcontractWasteSuggestionView,
       Perm.subcontractReportView, Perm.subcontractReportExport,
-      Perm.subcontractOutboundView, Perm.subcontractOutboundHandle,
+      Perm.subcontractReportPriceView,
+      Perm.subcontractPreparationView, Perm.subcontractPreparationStart,
+      Perm.subcontractOutboundView,
+      Perm.subcontractOutboundExecute, Perm.subcontractOutboundClose,
       Perm.subcontractViewAll,
       // 生产管理
       Perm.productionPlanView, Perm.productionPlanEdit,
@@ -982,7 +1052,8 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.financePostExecute,
       Perm.financeShipmentAudit,
       Perm.financeOrderApprovalView,
-      Perm.financeOrderApprovalReview,
+      Perm.financeOrderApprovalApprove,
+      Perm.financeOrderApprovalReject,
       Perm.salesOrderFinanceView,
       Perm.salesOrderFinanceConfirm,
       Perm.arApLedgerView,

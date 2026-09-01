@@ -26,6 +26,18 @@ void main() {
       expect(detail?.surfaceKey, list?.surfaceKey);
       expect(detail?.title, list?.title);
     });
+
+    test('shipment task workbenches use exact cross-department surfaces', () {
+      final sales = pagePermissionScopeFor('/sales/shipments');
+      final finance = pagePermissionScopeFor('/finance/sales-shipment-audits');
+      final warehouse = pagePermissionScopeFor('/warehouse/sales-outbound');
+
+      expect(sales?.surfaceKey, 'sales.shipment');
+      expect(finance?.surfaceKey, 'finance.sales-shipment-audit');
+      expect(finance?.title, '出货财务审核');
+      expect(warehouse?.surfaceKey, 'warehouse.sales-outbound');
+      expect(warehouse?.title, '仓库销售出库');
+    });
   });
 
   group('pagePermissionScopeFor', () {
@@ -41,13 +53,33 @@ void main() {
       }
     });
 
-    test('every Flutter surface key exists in the V328 database seed', () {
-      final migration = File(
+    test('every Flutter surface key exists in an immutable migration seed', () {
+      final v328 = File(
         'server/src/main/resources/db/migration/'
         'V328__permission_catalog_action_taxonomy.sql',
       );
-      expect(migration.existsSync(), isTrue);
-      final source = migration.readAsStringSync();
+      final v437 = File(
+        'server/src/main/resources/db/migration/'
+        'V437__subcontract_permission_surfaces.sql',
+      );
+      final v440 = File(
+        'server/src/main/resources/db/migration/'
+        'V440__procurement_iqc_rejection_finance_closure.sql',
+      );
+      final v443 = File(
+        'server/src/main/resources/db/migration/'
+        'V443__sales_receivable_finance_release_and_client_payment_type.sql',
+      );
+      final v446 = File(
+        'server/src/main/resources/db/migration/'
+        'V446__iqc_release_warehouse_stock_in.sql',
+      );
+      expect(v328.existsSync(), isTrue);
+      expect(v437.existsSync(), isTrue);
+      expect(v440.existsSync(), isTrue);
+      expect(v443.existsSync(), isTrue);
+      expect(v446.existsSync(), isTrue);
+      final source = v328.readAsStringSync();
       final seedStart = source.indexOf('INSERT INTO permission_surfaces');
       final seedEnd = source.indexOf(
         '-- These are migration-only representations',
@@ -55,7 +87,12 @@ void main() {
       );
       expect(seedStart, isNonNegative);
       expect(seedEnd, greaterThan(seedStart));
-      final seed = source.substring(seedStart, seedEnd);
+      final seed =
+          '${source.substring(seedStart, seedEnd)}\n'
+          '${v437.readAsStringSync()}\n'
+          '${v440.readAsStringSync()}\n'
+          '${v443.readAsStringSync()}\n'
+          '${v446.readAsStringSync()}';
       final surfaceKeys = {
         for (final path in _businessPaths())
           pagePermissionScopeFor(path)!.surfaceKey,
@@ -172,6 +209,10 @@ Iterable<String> _businessPaths() sync* {
     '/operations/workbench/purchase',
     '/operations/workbench/subcontract',
     '/rd/tasks',
+    '/procurement/iqc-rejections',
+    '/procurement/iqc-rejections?source=warehouse',
+    '/procurement/iqc-rejections/case-1',
+    '/procurement/iqc-rejections/case-1?source=notice',
     '/procurement/arrival-exceptions',
     '/procurement/arrival-exceptions/exception-1',
     '/stock/balance',
@@ -179,6 +220,8 @@ Iterable<String> _businessPaths() sync* {
     '/stock/instant-inventory',
     '/warehouse',
     '/warehouse/inspections',
+    '/warehouse/iqc-stock-ins',
+    '/warehouse/iqc-stock-ins/PURCHASE/receipt-1',
     '/quality/task-center',
     '/warehouse/inbound/expectations',
     '/warehouse/inbound/arrival-exceptions',
@@ -189,6 +232,7 @@ Iterable<String> _businessPaths() sync* {
     '/warehouse/shelf-labels',
     '/warehouse/subcontract-outbound',
     '/warehouse/subcontract-outbound/plan-1',
+    '/warehouse/sales-outbound',
     '/sales',
     '/sales/report',
     '/sales/report/detail',
@@ -197,6 +241,7 @@ Iterable<String> _businessPaths() sync* {
     '/sales/progress',
     '/sales/progress/order-1',
     '/subcontract',
+    '/subcontract/preparations',
     '/subcontract/report',
     '/subcontract/report/detail',
     '/production',
@@ -222,6 +267,7 @@ Iterable<String> _businessPaths() sync* {
     '/finance/procurement-approvals',
     '/finance/sales-order-confirmations',
     '/finance/sales-order-confirmations/order-1',
+    '/finance/sales-shipment-audits',
     '/finance/procurement-arrival-exceptions',
     '/finance/procurement-arrival-exceptions/exception-1',
     '/finance/report',

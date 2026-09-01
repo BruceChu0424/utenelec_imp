@@ -621,6 +621,13 @@ class _FinanceSalesOrderReviewPageState
               value: (it) => _trimNum(it.qty),
             ),
             MasterColumnDef(
+              key: 'weight',
+              label: '实际重量',
+              width: 100,
+              type: 'number',
+              value: (it) => _trimNum(it.weight),
+            ),
+            MasterColumnDef(
               key: 'price',
               label: '单价',
               width: 110,

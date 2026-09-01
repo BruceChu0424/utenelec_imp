@@ -199,6 +199,28 @@ abstract final class RouteName {
   static const String warehouseReportSummary = '/warehouse/report/summary';
   static const String warehouseInboundExpectations =
       '/warehouse/inbound/expectations';
+  static const String warehouseDocumentHistory = '/warehouse/history';
+  static const String warehousePurchaseReceiptHistory =
+      '/warehouse/history/purchase-receipts';
+  static const String warehouseSubcontractReceiptHistory =
+      '/warehouse/history/subcontract-receipts';
+  static const String warehouseSubcontractOutboundHistory =
+      '/warehouse/history/subcontract-material-issues';
+  static const String warehouseSubcontractFinishedReturnHistory =
+      '/warehouse/history/subcontract-returns';
+  static const String warehouseSubcontractMaterialReturnHistory =
+      '/warehouse/history/subcontract-material-returns';
+  static const String warehouseSubcontractWasteHistory =
+      '/warehouse/history/subcontract-wastes';
+  static const String warehouseIqcReturns = '/warehouse/iqc-returns';
+  static const String warehouseIqcStockIns = '/warehouse/iqc-stock-ins';
+
+  static String warehouseIqcStockInDetail(
+    String receiptType,
+    String receiptId,
+  ) =>
+      '$warehouseIqcStockIns/${Uri.encodeComponent(receiptType.trim().toUpperCase())}/'
+      '${Uri.encodeComponent(receiptId.trim())}';
 
   /// 仓库登记实际到货独立页（价格/币种对仓库不可见；extra 带 ProcurementReceiptPrefill）。
   static const String warehouseArrivalReceiptNew =
@@ -219,8 +241,15 @@ abstract final class RouteName {
   static const String warehouseProductionFinishedInboundTasks =
       '/warehouse/production-finished-in/tasks';
 
+  /// 单张生产报工的成品仓/库位登记页；reportId 是不可变报工 UUID。
+  static const String warehouseProductionFinishedArrivalRegistrationBase =
+      '/warehouse/production-finished-in/arrival-registrations';
+  static const String warehouseProductionFinishedArrivalRegistration =
+      '$warehouseProductionFinishedArrivalRegistrationBase/:reportId';
+
   /// 品质管理部任务中心（待检处置等品质任务的统一入口）。
   static const String qualityTaskCenter = '/quality/task-center';
+  static const String qualityInspectionRecords = '/quality/inspection-records';
   static const String productionFqcInspections =
       '/quality/production-inspections';
 
@@ -233,8 +262,12 @@ abstract final class RouteName {
   static String warehouseSubcontractOutboundEdit(String planId) =>
       '/warehouse/subcontract-outbound/$planId';
 
+  /// 财务已放行的销售出货仓库作业工作台（静态段须先于 /warehouse/:code）。
+  static const String warehouseSalesOutbound = '/warehouse/sales-outbound';
+
   static const String procurementArrivalExceptions =
       '/procurement/arrival-exceptions';
+  static const String procurementIqcRejections = '/procurement/iqc-rejections';
   static const String financeArrivalExceptions =
       '/finance/procurement-arrival-exceptions';
 
@@ -251,6 +284,7 @@ abstract final class RouteName {
   // seg = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。
   static const String subcontract = '/subcontract';
   static const String subcontractReport = '/subcontract/report';
+  static const String subcontractPreparations = '/subcontract/preparations';
 
   // 生产管理（生产部）：hub + 调度 + 计划单 + 日报 + 4 报表入口。
   static const String production = '/production';
@@ -269,6 +303,10 @@ abstract final class RouteName {
   // 钱流管理（财税部）：hub + 5 单据 + AR/AP 台账 + 对账 + 支票 + 报表。
   // seg = receipts|payments|expenses|incomes|bank-transfers。
   static const String finance = '/finance';
+
+  /// 销售出货财务人工放行工作台。
+  static const String financeSalesShipmentAudit =
+      '/finance/sales-shipment-audits';
   static const String financeArAp = '/finance/ar-ap';
   static const String financePayables = '/finance/payables';
   static const String financeReconciliations = '/finance/reconciliations';
@@ -343,6 +381,15 @@ abstract final class RoutePath {
 
   static String payrollSlipDetail(String id) => '/payroll/slip/$id';
 
+  static String warehouseDocumentHistoryDetail(String segment, String id) =>
+      '/warehouse/history/$segment/$id';
+
+  static String warehouseIqcReturnDetail(String id) =>
+      '${RouteName.warehouseIqcReturns}/$id';
+
+  static String warehouseSalesOutboundDetail(String id) =>
+      '${RouteName.warehouseSalesOutbound}/$id';
+
   static String adminAuditSession(String sessionId, {int? snapshotAuditId}) {
     final path =
         '${RouteName.adminAuditLogs}/sessions/'
@@ -354,6 +401,11 @@ abstract final class RoutePath {
             queryParameters: {'snapshotAuditId': snapshotAuditId.toString()},
           ).toString();
   }
+
+  static String adminAuditInvestigation(String requestId) => Uri(
+    path: RouteName.adminAuditLogs,
+    queryParameters: {'requestId': requestId.trim()},
+  ).toString();
 
   /// 货品资料：新增 / 详情整页。[tab]：0=基本信息，1=组装信息，2=成本预算。
   static String basicinfoGoodsNew(String categoryId) =>
@@ -387,8 +439,40 @@ abstract final class RoutePath {
   static String stockWdrawNewFromDraw(String drawId) =>
       '/warehouse/WDRAW/new?drawId=$drawId';
 
+  static String warehouseProductionFinishedArrivalRegistration(
+    String reportId, {
+    String? returnTo,
+  }) {
+    final path =
+        '${RouteName.warehouseProductionFinishedArrivalRegistrationBase}/'
+        '${Uri.encodeComponent(reportId.trim())}';
+    final safeReturnTo = sanitizeReturnTo(
+      returnTo,
+      scope: ReturnToScope.employee,
+    );
+    return safeReturnTo == null
+        ? path
+        : Uri.parse(
+            path,
+          ).replace(queryParameters: {'returnTo': safeReturnTo}).toString();
+  }
+
   static String procurementArrivalException(String id) =>
       '/procurement/arrival-exceptions/$id';
+  static String procurementIqcRejections({String? source}) => Uri(
+    path: RouteName.procurementIqcRejections,
+    queryParameters: {
+      if (source?.trim().isNotEmpty == true) 'from': source!.trim(),
+    },
+  ).toString();
+  static String procurementIqcRejectionDetail(String id, {String? source}) =>
+      Uri(
+        path:
+            '${RouteName.procurementIqcRejections}/${Uri.encodeComponent(id)}',
+        queryParameters: {
+          if (source?.trim().isNotEmpty == true) 'from': source!.trim(),
+        },
+      ).toString();
   static String financeArrivalException(String id) =>
       '/finance/procurement-arrival-exceptions/$id';
 
@@ -418,6 +502,21 @@ abstract final class RoutePath {
   /// 生产计划单 / 日报表：新建 / 详情 / 编辑。
   static String productionMaterialAnalysisSummary(String analysisId) =>
       '/production/material-analyses/$analysisId/summary';
+  static String productionSubcontractPreparations({
+    String? planItemId,
+    String? sourceAnalysisId,
+    String? sourceMaterialLineId,
+  }) => Uri(
+    path: RouteName.subcontractPreparations,
+    queryParameters: {
+      if (planItemId?.trim().isNotEmpty == true)
+        'planItemId': planItemId!.trim(),
+      if (sourceAnalysisId?.trim().isNotEmpty == true)
+        'sourceAnalysisId': sourceAnalysisId!.trim(),
+      if (sourceMaterialLineId?.trim().isNotEmpty == true)
+        'sourceMaterialLineId': sourceMaterialLineId!.trim(),
+    },
+  ).toString();
   static String productionPlanNew() => '/production/plans/new';
   static String productionPlanDetail(String id) => '/production/plans/$id';
   static String productionPlanEdit(String id) => '/production/plans/$id/edit';

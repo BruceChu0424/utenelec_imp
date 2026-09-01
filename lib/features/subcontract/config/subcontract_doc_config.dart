@@ -1,12 +1,14 @@
-// 委外单据配置（8 单据差异声明，驱动 list/detail/edit 页）。
+// 委外单据配置（8 个显式业务页共享的底层字段、模型与动作能力声明）。
 //
-// 一套页面 ×8 配置，保证 UI 一致。委外 8 单据差异较大：
+// 各业务页有独立信息架构与责任头；配置只共享字段组件、仓储模型和精确权限，不把不同
+// 业务硬塞进同一采购式页面。委外 8 类单据差异如下：
 //  - 询价/申请：无供应商/币种/人员，仅货品+数量+单价；老库 0 行（结构建立），enabled=false 灰显。
 //  - 订货：供应商+币种+结算方式（必填）+采购员+交货日；财务批准后冻结结算快照；明细链到申请。
-//  - 进仓(收回成品)：供应商+币种+交货人+lastDate；明细链到订货；审核正向入库+立应付(ap_posted)。
+//  - 回厂进仓：供应商+币种+交货人+lastDate；明细链到订货；审核进入 IQC 隔离并立加工费 AP，
+//    IQC PASS 形成仓库待入库切片，仓库确认后才增加合格库存；FAIL 走正式退回/贷项反向。
 //  - 退货(成品退)：供应商+仓库(必)+币种+lastDate；明细链到进仓&订货；审核出库+反向立应付(ap_posted)。
-//  - 发料(材料出仓)：仓库(必)+经办人+交货日；无币种/单价(材料按成本)。新单缺冻结 BOM 快照
-//    与子件台账时禁止审核；历史已审单据保留只读/红冲兼容。
+//  - 出仓执行：新流由仓库专属任务出订货目标件；本配置承载生成的执行草稿与
+//    LEGACY_BOM_COMPONENT 历史单，无币种/单价。禁止从委外模块空白新建。
 //  - 材料退：仓库(必)+经办人+bStyle；无币种/单价；必须链到已审发料，审核入库并回写发料子件已退量。
 //  - 损耗：仓库(必)+经办人+总重；无币种/单价；明细含 ending/standard/waste_rate/cause；必须链到已审发料；
 //    审核只登记供应商处材料损耗，不重复扣公司库存；金额仅为建议索赔，不自动冲应付。
@@ -21,6 +23,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../shared/auth/document_permission_set.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/subcontract_doc.dart';
 
 const kSubcontractMaterialIssueHistoricalCompatibilityNote =
@@ -33,6 +36,7 @@ class SubcontractDocConfig {
     required this.shortLabel,
     required this.icon,
     required this.permissions,
+    this.commercialViewPerm,
     this.enabled = true,
     // 主表头
     this.hasSupplier = false,
@@ -86,6 +90,17 @@ class SubcontractDocConfig {
   final String shortLabel; // 进仓
   final IconData icon;
   final DocumentPermissionSet permissions;
+
+  /// Exact permission for commercial fields on this page. Null means this
+  /// document has no current commercial field to expose.
+  final String? commercialViewPerm;
+
+  bool canViewCommercial(Iterable<String> granted) {
+    final pagePermission = commercialViewPerm;
+    return pagePermission != null &&
+        (granted.contains(pagePermission) ||
+            granted.contains(Perm.financeViewAll));
+  }
 
   String get listPerm => permissions.view;
   String? get createPerm => permissions.create;
@@ -183,6 +198,7 @@ class SubcontractDocConfig {
     shortLabel: '询价',
     icon: Icons.help_outline_rounded,
     permissions: DocumentPermissionCatalog.subcontractInquiry,
+    commercialViewPerm: Perm.subcontractInquiryPriceView,
     enabled: false,
     hasSupplier: true,
     itemHasWeight: true,
@@ -208,6 +224,7 @@ class SubcontractDocConfig {
     shortLabel: '订货',
     icon: Icons.shopping_cart_checkout_outlined,
     permissions: DocumentPermissionCatalog.subcontractOrder,
+    commercialViewPerm: Perm.subcontractOrderPriceView,
     hasSupplier: true,
     supplierRequired: true,
     // 表头不录委外商：明细逐行必选（按行委外商拆单归集），减轻表头填写。
@@ -223,7 +240,10 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     linkToApplicationItem: true,
     showReceived: true,
-    approveEffect: '财务批准后订货单生效，并生成仓库预计到货任务。',
+    approveEffect:
+        '财务批准后订货单生效；服务端逐行判断目标件准备路线：'
+        '无子层级先预留合格库存并通知仓库出仓，有子层级先通知计划员完成前置自制、'
+        'FQC 和成品入仓，备齐后再通知仓库出仓。',
     // 管理卡片点进直达新建（与销售/采购一致）；明细经「从上游引入」从计划申请拉取。
     skipListOnCreate: true,
   );
@@ -235,6 +255,7 @@ class SubcontractDocConfig {
     shortLabel: '进仓',
     icon: Icons.inbox_outlined,
     permissions: DocumentPermissionCatalog.subcontractReceipt,
+    commercialViewPerm: Perm.subcontractReceiptPriceView,
     hasSupplier: true,
     // 进仓=委外成品回收入库，仓库必填（到货登记时确定入哪个仓库）。
     warehouseRequired: true,
@@ -251,12 +272,13 @@ class SubcontractDocConfig {
     linkToOrderItem: true,
     approveEffect:
         '审核后货品进入待检隔离(IQC，不入库存)：品质部在「品质任务中心→待检处置」'
-        '检验，合格放行后库存才增加；同时回写订货已收并立应付。单价按订货单自动带入，无需填写。',
+        '检验，合格后转仓库待入库任务；仓库确认实物和库位后库存才增加。'
+        '同时回写订货已收并立应付。单价按订货单自动带入，无需填写。',
     skipListOnCreate: true,
   );
 
-  /// 委外发料单（材料出仓→转供应商处保管；审核冻结 BOM 单耗并建供应商子件台账，
-  /// 回厂进仓按冻结单耗守恒消费：发出 = 消耗 + 退回 + 损耗 + 供应商期末结存）。
+  /// 委外出仓执行单。V436 新流出订货目标件并按 1:1 转委外商保管；
+  /// LEGACY_BOM_COMPONENT 历史单继续按冻结 BOM 子件单耗守恒解释。
   static const materialIssue = SubcontractDocConfig(
     type: SubcontractDocType.materialIssue,
     label: '委外发料单',
@@ -269,14 +291,16 @@ class SubcontractDocConfig {
     hasDeliverDate: true,
     itemHasPrice: false,
     itemHasWeight: true,
-    itemHasParent: true,
+    itemHasParent: true, // 仅历史 BOM 子件行使用；新流目标件行不据此推断层级
     itemHasBoxQty: true,
-    itemHasStockPlace: true, // 发料=材料出仓，拣货指引
+    itemHasStockPlace: true, // 目标件/历史子件出仓的拣货指引
     linkToOrderItem: true,
     showReturned: true,
     showWasted: true,
     showSupplierLedger: true,
-    approveEffect: '审核将材料出库(转供应商处保管)+ 冻结 BOM 单耗快照 + 建供应商子件台账；回厂按冻结单耗守恒消费。',
+    approveEffect:
+        '审核将服务端已放行的目标件出仓并转为委外商处保管；'
+        '历史 BOM 子件发料单继续按冻结子件单耗守恒。',
     skipListOnCreate: true,
   );
 
@@ -287,6 +311,7 @@ class SubcontractDocConfig {
     shortLabel: '退货',
     icon: Icons.undo_outlined,
     permissions: DocumentPermissionCatalog.subcontractReturn,
+    commercialViewPerm: Perm.subcontractReturnPriceView,
     hasSupplier: true,
     warehouseRequired: true,
     hasCurrency: true,
@@ -334,6 +359,7 @@ class SubcontractDocConfig {
     shortLabel: '损耗',
     icon: Icons.delete_sweep_outlined,
     permissions: DocumentPermissionCatalog.subcontractWaste,
+    commercialViewPerm: Perm.subcontractWasteSuggestionView,
     hasSupplier: true,
     warehouseRequired: true,
     hasWorker: true,

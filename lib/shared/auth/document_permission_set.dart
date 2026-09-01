@@ -161,7 +161,6 @@ abstract final class DocumentPermissionCatalog {
   );
   static const subcontractMaterialIssue = DocumentPermissionSet(
     view: Perm.subcontractMaterialIssueView,
-    create: Perm.subcontractMaterialIssueCreate,
     edit: Perm.subcontractMaterialIssueEdit,
     delete: Perm.subcontractMaterialIssueDelete,
     approve: Perm.subcontractMaterialIssueApprove,

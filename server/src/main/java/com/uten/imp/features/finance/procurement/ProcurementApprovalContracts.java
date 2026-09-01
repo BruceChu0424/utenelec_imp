@@ -34,15 +34,6 @@ public final class ProcurementApprovalContracts {
         }
     }
 
-    public record ApprovalDecisionRequest(
-            @NotNull @Min(1) Long expectedVersion) {
-    }
-
-    public record RejectionDecisionRequest(
-            @NotNull @Min(1) Long expectedVersion,
-            @NotBlank @Size(max = 1000) String reason) {
-    }
-
     /** 精确绑定一次待审 case，避免驳回重提后相同版本号误命中新 attempt。 */
     public record BatchDecisionItem(
             @NotNull UUID caseId,

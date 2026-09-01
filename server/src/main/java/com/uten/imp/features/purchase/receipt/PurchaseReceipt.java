@@ -15,8 +15,11 @@ import java.util.UUID;
 /**
  * 采购收货单主表（采购管理）。源 P_In。
  *
- * <p>审核（status 0→1）触发：库存入库（stock_movements/balances）+ 回写订货明细 received_qty + 结案重算。
- * 红冲（1→-1）反向冲销。明细 {@link PurchaseReceiptItem} 独立仓库管理（不走 @OneToMany，规避软删+cascade 坑）。
+ * <p>审核（status 0→1）只登记 IQC 待检隔离、回写实到量并形成采购 AP；不写可用库存。
+ * IQC PASS 只形成合格待入库切片并以品质净量重算订货结案；
+ * 仓库确认后才写可用库存，FAIL 永不入库存。
+ * 红冲（1→-1）须先满足质检/付款/抵销反向守卫。明细 {@link PurchaseReceiptItem}
+ * 独立仓库管理（不走 @OneToMany，规避软删+cascade 坑）。
  */
 @Getter
 @Setter

@@ -178,10 +178,12 @@ class PreplanStockEntitlementServiceTest {
                 .contains("WITH RECURSIVE entitlement_lineage")
                 .contains("current_positive.event_type IN (")
                 .contains("'RESTORE', 'MAKE_DELEGATE_IN'")
+                .contains("'SUBCONTRACT_HANDOFF_IN'")
                 .contains("current_positive.counter_event_id")
                 .contains("counter_negative.source_entitlement_event_id")
                 .contains("lineage.depth < 64")
-                .contains("positive.event_type IN ('RESTORE', 'MAKE_DELEGATE_IN')")
+                .contains("positive.event_type IN (")
+                .contains("'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT'")
                 .contains("'REALLOCATE_IN', 'PRIORITY_IN'");
     }
 

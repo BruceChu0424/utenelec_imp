@@ -12,7 +12,9 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_receipt_page.dart';
@@ -96,6 +98,20 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    final taskTable = tester.widget<MasterDataTableView<InboundExpectation>>(
+      find.byKey(const Key('inbound-expectation-task-table')),
+    );
+    expect(taskTable.selectable, isFalse);
+    expect(find.textContaining('单击选中，双击详情'), findsOneWidget);
+    expect(find.text('已选 0 项'), findsNothing);
+
+    // 没有安全批量登记命令：单击仅单选、不打开详情；双击仍沿用原业务链。
+    await tester.tap(find.text('SC-PO-001'));
+    await tester.pump();
+    expect(find.text('已选 1 项'), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    await tester.pump(const Duration(milliseconds: 400));
 
     // 任务中心：双击行打开到货详情，点「登记实际到货」进登记页。
     await _doubleTapRow(tester, find.text('SC-PO-001'));
@@ -261,7 +277,7 @@ void main() {
 
     // 断言 2：回任务中心并提示下一步。
     expect(find.text('预计到货任务中心'), findsOneWidget);
-    expect(find.textContaining('品质部检验合格后自动入库'), findsOneWidget);
+    expect(find.textContaining('合格后请在“IQC 合格待入库”核对实物与库位'), findsOneWidget);
     await tester.pumpAndSettle(const Duration(seconds: 5));
   });
 
@@ -287,11 +303,55 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('已送检 · 待品质检验'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('已送检 · 待品质检验'),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Container &&
+              widget.decoration is BoxDecoration &&
+              (widget.decoration as BoxDecoration).color ==
+                  UtenColors.warningBg,
+        ),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith(_TestSessionNotifier.new),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          procurementInboundRepositoryProvider.overrideWithValue(
+            DioProcurementInboundRepository(api),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          home: const WarehouseInboundExpectationsPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.ancestor(
+        of: find.text('已送检 · 待品质检验'),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Container &&
+              widget.decoration is BoxDecoration &&
+              (widget.decoration as BoxDecoration).color ==
+                  UtenColors.warning.withValues(alpha: 0.18),
+        ),
+      ),
+      findsOneWidget,
+    );
+
     // 只读步骤：双击进详情，按钮禁用，不给仓库多余操作。
     await _doubleTapRow(tester, find.text('SC-PO-001'));
     await tester.pumpAndSettle();
     expect(find.text('待品质检验(2)'), findsOneWidget);
-    expect(find.textContaining('检验合格后自动入库存，仓库无需操作'), findsOneWidget);
+    expect(find.textContaining('合格后转仓库待入库任务，确认实物和库位后才入库存'), findsOneWidget);
     final button = tester.widget<UtenButton>(
       find.byKey(const Key('create-receipt-expectation-1')),
     );

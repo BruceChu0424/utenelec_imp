@@ -437,7 +437,8 @@ public class GlPostingService {
                                 SELECT 1 FROM ar_ap_ledger ledger
                                 WHERE ledger.source_doc_type IN (
                                     'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
-                                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
+                                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE',
+                                    'PURCHASE_IQC_CREDIT','SUBCONTRACT_IQC_CREDIT')
                                   AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
                                   AND to_char(ledger.bill_date,'YYYY-MM')=:p
                                 UNION ALL
@@ -455,7 +456,8 @@ public class GlPostingService {
                                 SELECT 1 FROM ar_ap_ledger ledger
                                 WHERE ledger.source_doc_type IN (
                                     'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
-                                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
+                                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE',
+                                    'PURCHASE_IQC_CREDIT','SUBCONTRACT_IQC_CREDIT')
                                   AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
                                   AND to_char(ledger.bill_date,'YYYY-MM')=:p
                                 UNION ALL
@@ -517,7 +519,8 @@ public class GlPostingService {
                         WHERE ledger.source_doc_type IN (
                             'SALES_SHIPMENT', 'SALES_RETURN',
                             'PURCHASE_RECEIPT', 'PURCHASE_RETURN', 'SUBCONTRACT_RECEIPT',
-                            'SUBCONTRACT_RETURN', 'SUBCONTRACT_WASTE'
+                            'SUBCONTRACT_RETURN', 'SUBCONTRACT_WASTE',
+                            'PURCHASE_IQC_CREDIT', 'SUBCONTRACT_IQC_CREDIT'
                         )
                           AND ledger.status=1
                           AND COALESCE(ledger.is_deleted,false)=false
@@ -613,6 +616,7 @@ public class GlPostingService {
     /**
      * 采购/委外立帐：借 123 库存商品 / 贷 203 应付账款。
      * PURCHASE_RETURN、SUBCONTRACT_RETURN 使用负金额同向红字，分别抵减库存价值和应付余额。
+     * PURCHASE/SUBCONTRACT_IQC_CREDIT 是实物退回且财务确认供应商贷项后的专用红字。
      * SUBCONTRACT_WASTE 仅保留历史负应付兼容；新超耗使用独立异常损失和索赔投影。
      */
     private void postAp(String period) {
@@ -624,7 +628,8 @@ public class GlPostingService {
                 FROM ar_ap_ledger l
                 WHERE l.source_doc_type IN (
                     'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
-                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
+                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE',
+                    'PURCHASE_IQC_CREDIT','SUBCONTRACT_IQC_CREDIT')
                   AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
                 """;
         String entries = """
@@ -644,7 +649,8 @@ public class GlPostingService {
                 ) s123
                 WHERE l.source_doc_type IN (
                     'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
-                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
+                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE',
+                    'PURCHASE_IQC_CREDIT','SUBCONTRACT_IQC_CREDIT')
                   AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
                 UNION ALL
                 SELECT v.id, 2, s203.id, -1, l.amount_original_local, l.bill_date, v.period,
@@ -661,7 +667,8 @@ public class GlPostingService {
                 ) s203
                 WHERE l.source_doc_type IN (
                     'PURCHASE_RECEIPT','PURCHASE_RETURN','SUBCONTRACT_RECEIPT',
-                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE')
+                    'SUBCONTRACT_RETURN','SUBCONTRACT_WASTE',
+                    'PURCHASE_IQC_CREDIT','SUBCONTRACT_IQC_CREDIT')
                   AND l.status=1 AND l.is_deleted=false AND to_char(l.bill_date,'YYYY-MM') = :p
                 """;
         run(vouchers, period);

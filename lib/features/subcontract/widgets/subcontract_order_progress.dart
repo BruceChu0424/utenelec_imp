@@ -1,7 +1,7 @@
 // 委外订货单「全链路进度」区（V304 · 委外全链路重设计）。
 //
-// 委外模块只留订货单 + 进度：本区把 财务审批 → 材料出仓（仓库）→ 成品回厂/IQC →
-// 退货/损耗 → 供应商处材料台账 → 应付摘要 一次聚合展示；出仓/进仓单号可点击进
+// 委外模块只留订货单 + 进度：本区把 财务审批 → 目标件准备/出仓 → 加工回厂/IQC/仓库入库 →
+// 退货/损耗 → 委外商处货品台账 → 应付摘要 一次聚合展示；出仓/进仓单号可点击进
 // 对应只读详情（数据通用，委外视角不进入仓库作业页面）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -116,10 +116,10 @@ class _SubcontractOrderProgressSectionState
   }
 
   Widget _buildContent(ThemeData theme, SubcontractOrderProgress p) {
+    final permissions = ref.watch(currentPermissionsProvider);
     final canViewPrice =
-        ref
-            .watch(currentPermissionsProvider)
-            .contains(Perm.subcontractReceiptPriceView) &&
+        (permissions.contains(Perm.subcontractOrderPriceView) ||
+            permissions.contains(Perm.financeViewAll)) &&
         !p.priceMasked;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -134,7 +134,7 @@ class _SubcontractOrderProgressSectionState
             title: '成品回厂(进仓单)',
             docs: p.receipts,
             segment: 'receipts',
-            trailing: (d) => _iqcText(d.iqcStatus),
+            trailing: _receiptProgressText,
           ),
         ],
         if (p.returns.isNotEmpty) ...[
@@ -170,41 +170,69 @@ class _SubcontractOrderProgressSectionState
     );
   }
 
-  // 节点条：下单 → 财务审批 → 材料出仓 → 成品回厂 → 结案核销。
+  // 节点条：下单 → 财务审批 →（有子层时）前置自制 → 目标件出仓 →
+  // 加工回厂 → 品质检验 → 仓库确认入仓 → 结案。品质与入库不得合并推断。
   Widget _nodeStrip(ThemeData theme, SubcontractOrderProgress p) {
     final reversed = p.status == -1;
     final financeDone = p.financeCaseStatus == 'APPROVED' || p.status == 1;
-    final issuedTotal = p.materialLines.fold<double>(
-      0,
-      (a, b) => a + b.issuedQty,
-    );
-    final plannedTotal = p.materialLines.fold<double>(
-      0,
-      (a, b) => a + b.plannedQty,
-    );
-    final outboundDone =
-        !p.materialRequired ||
-        (plannedTotal > 0 &&
-            issuedTotal >= plannedTotal - 0.0001 &&
-            p.planStatus != 'OPEN');
-    final outboundCurrent =
-        financeDone && p.materialRequired && !outboundDone; // 出仓进行中
+    final preparationLines = p.materialLines
+        .where((line) => line.flowMode == 'MAKE_THEN_OUTBOUND')
+        .toList(growable: false);
+    final preparationDone =
+        preparationLines.isNotEmpty &&
+        preparationLines.every(
+          (line) =>
+              line.preparationStatus == 'READY_OUTBOUND' ||
+              line.preparationStatus == 'OUTBOUND_COMPLETE',
+        );
+    final outboundRelevant =
+        p.materialRequired || p.materialLines.isNotEmpty || p.issues.isNotEmpty;
+    final outboundDone = p.materialLines.isNotEmpty
+        ? p.materialLines.every(
+            (line) =>
+                line.preparationStatus == 'OUTBOUND_COMPLETE' ||
+                (line.remainingQty <= 0 && line.issuedQty > 0),
+          )
+        : p.issues.any((issue) => issue.status == 1);
+    final outboundCurrent = financeDone && outboundRelevant && !outboundDone;
     final receivedTotal = p.receipts
         .where((r) => r.status == 1)
         .fold<double>(0, (a, b) => a + (b.totalQty ?? 0));
-    final inboundDone =
+    final approvedReceipts = p.receipts
+        .where((receipt) => receipt.status == 1)
+        .toList(growable: false);
+    final receiptsFinalized = p.receipts.every(
+      (receipt) => receipt.status != 0,
+    );
+    final qualityDone =
         receivedTotal > 0 &&
-        p.receipts.every((r) => r.status != 0) &&
-        p.receipts.any((r) => r.status == 1 && r.iqcStatus == 'RESOLVED');
+        receiptsFinalized &&
+        approvedReceipts.isNotEmpty &&
+        approvedReceipts.every((receipt) => receipt.qualityResolved);
+    final warehouseStockInDone =
+        qualityDone &&
+        approvedReceipts.every((receipt) => receipt.warehouseStocked);
     final settled = p.supplierLedger.every((l) => l.supplierEnding <= 0.0001);
 
     final nodes = <_Node>[
       const _Node('下单', true),
       _Node('财务审批', financeDone),
-      if (p.materialRequired)
-        _Node('材料出仓', outboundDone, current: outboundCurrent),
-      _Node('成品回厂', inboundDone),
-      _Node('结案核销', inboundDone && settled),
+      if (preparationLines.isNotEmpty)
+        _Node(
+          '前置自制',
+          preparationDone,
+          current: financeDone && !preparationDone,
+        ),
+      if (outboundRelevant)
+        _Node('目标件出仓', outboundDone, current: outboundCurrent),
+      _Node('加工回厂', receivedTotal > 0),
+      _Node('品质检验', qualityDone, current: receivedTotal > 0 && !qualityDone),
+      _Node(
+        '仓库确认入仓',
+        warehouseStockInDone,
+        current: qualityDone && !warehouseStockInDone,
+      ),
+      _Node('结案核销', warehouseStockInDone && settled),
     ];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -272,12 +300,14 @@ class _SubcontractOrderProgressSectionState
   }
 
   Widget _materialSection(ThemeData theme, SubcontractOrderProgress p) {
-    if (!p.materialRequired) {
+    final hasOutboundPlan =
+        p.materialRequired || p.materialLines.isNotEmpty || p.issues.isNotEmpty;
+    if (!hasOutboundPlan) {
       return _sectionBox(
         theme,
-        title: '材料出仓',
+        title: '目标件出仓',
         child: Text(
-          '该订货无需发料(委外商自备料或未配置 BOM)',
+          '该历史订货尚未形成目标件出仓计划；不能据此认定“无 BOM 无需出仓”。',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -286,7 +316,7 @@ class _SubcontractOrderProgressSectionState
     }
     return _sectionBox(
       theme,
-      title: '材料出仓(仓库执行)',
+      title: '目标件准备与出仓',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -297,49 +327,158 @@ class _SubcontractOrderProgressSectionState
             )
           else if (p.planStatus == 'CANCELED')
             _hint(theme, '出仓计划已随订货红冲取消'),
-          if (p.materialLines.isNotEmpty)
-            Table(
-              columnWidths: const {
-                0: FlexColumnWidth(3),
-                1: FlexColumnWidth(2),
-                2: FlexColumnWidth(2),
-                3: FlexColumnWidth(2),
-              },
-              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-              children: [
-                _tableHead(theme, const ['材料(父件)', '计划量', '已出仓', '待出仓']),
-                for (final l in p.materialLines)
-                  TableRow(
-                    children: [
-                      _cell(
-                        theme,
-                        '${l.goodsCode ?? ''} ${l.goodsName ?? ''}'.trim(),
-                        sub:
-                            '父件 ${'${l.parentGoodsCode ?? ''} ${l.parentGoodsName ?? ''}'.trim()}'
-                            '${l.unitName != null ? ' · ${l.unitName}' : ''}',
-                      ),
-                      _cell(theme, _fmt(l.plannedQty)),
-                      _cell(theme, _fmt(l.issuedQty)),
-                      _cell(theme, _fmt(l.remainingQty)),
-                    ],
-                  ),
-              ],
-            ),
+          if (p.materialLines.isNotEmpty) ...[
+            for (var index = 0; index < p.materialLines.length; index++) ...[
+              _materialLineCard(theme, p.materialLines[index]),
+              if (index != p.materialLines.length - 1)
+                const SizedBox(height: UtenSpacing.s8),
+            ],
+          ],
           if (p.issues.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s8),
             _docSection(
               theme,
-              title: '出仓单',
+              title: '目标件出仓单',
               docs: p.issues,
               segment: 'material-issues',
               dense: true,
             ),
           ] else if (p.planStatus == 'OPEN')
-            _hint(theme, '出仓草稿生成中或待仓库拣货'),
+            _hint(theme, '未备齐的目标件不会进入仓库；已放行行正在等待生成出仓草稿或仓库拣货'),
         ],
       ),
     );
   }
+
+  Widget _materialLineCard(ThemeData theme, SubcontractMaterialPlanLine line) {
+    final target = '${line.goodsCode ?? ''} ${line.goodsName ?? ''}'.trim();
+    final legacyParent =
+        '${line.parentGoodsCode ?? ''} ${line.parentGoodsName ?? ''}'.trim();
+    final blocker = line.blocker?.trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(UtenSpacing.s8),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  target.isEmpty ? '未命名委外目标件' : target,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Text(
+                _preparationStatusLabel(line.preparationStatus),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            line.isLegacyBomComponent
+                ? '历史 BOM 子件发料'
+                      '${legacyParent.isEmpty ? '' : ' · 父件 $legacyParent'}'
+                : _flowModeLabel(line.flowMode),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s4),
+          Wrap(
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s4,
+            children: [
+              _quantityFact(theme, '目标量', line.plannedQty, line.unitName),
+              if (!line.isLegacyBomComponent)
+                _quantityFact(theme, '前置已完成', line.preparedQty, line.unitName),
+              _quantityFact(
+                theme,
+                '当前可出',
+                line.readyOutboundQty,
+                line.unitName,
+              ),
+              _quantityFact(theme, '已出仓', line.issuedQty, line.unitName),
+              _quantityFact(theme, '订单未出', line.remainingQty, line.unitName),
+            ],
+          ),
+          if (blocker != null && blocker.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              '阻断：$blocker',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (line.flowMode == 'MAKE_THEN_OUTBOUND' &&
+              (ref.read(isSuperAdminProvider) ||
+                  ref
+                      .read(currentPermissionsProvider)
+                      .contains(Perm.subcontractPreparationView))) ...[
+            const SizedBox(height: UtenSpacing.s4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => context.push(
+                  RoutePath.productionSubcontractPreparations(
+                    planItemId: line.planItemId,
+                  ),
+                ),
+                icon: const Icon(Icons.account_tree_outlined, size: 18),
+                label: Text(
+                  line.preparationStatus == 'ACTION_REQUIRED'
+                      ? '打开前置自制待办'
+                      : '查看前置自制进度',
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _quantityFact(
+    ThemeData theme,
+    String label,
+    double value,
+    String? unit,
+  ) => Text(
+    '$label ${_fmt(value)}${unit?.trim().isNotEmpty == true ? ' ${unit!.trim()}' : ''}',
+    style: theme.textTheme.bodySmall,
+  );
+
+  static String _flowModeLabel(String flowMode) => switch (flowMode) {
+    'DIRECT_OUTBOUND' => '无子层级 · 目标件库存放行后直接出仓',
+    'MAKE_THEN_OUTBOUND' => '有子层级 · 先完整自制、FQC 和入仓，再出仓',
+    'LEGACY_BOM_COMPONENT' => '历史 BOM 子件发料',
+    _ => '准备路线待确认',
+  };
+
+  static String _preparationStatusLabel(String status) => switch (status) {
+    'ACTION_REQUIRED' => '待计划员开始物料分析',
+    'IN_PREPARATION' || 'WAITING_PREPARATION' => '前置自制中',
+    'WAITING_FQC' => '等待品质检查',
+    'WAITING_INBOUND' => '等待自制件入仓',
+    'READY_OUTBOUND' || 'LEGACY_READY' => '已备齐，等待仓库出仓',
+    'OUTBOUND_COMPLETE' => '目标件已出仓',
+    'CANCELLED' => '已取消',
+    _ => '状态待确认',
+  };
 
   Widget _docSection(
     ThemeData theme, {
@@ -398,10 +537,16 @@ class _SubcontractOrderProgressSectionState
                     ),
                   ),
                   if (trailing?.call(d) != null)
-                    Text(
-                      trailing!(d)!,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                    Flexible(
+                      flex: 2,
+                      child: Text(
+                        trailing!(d)!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     )
                   else
@@ -427,7 +572,7 @@ class _SubcontractOrderProgressSectionState
   Widget _ledgerSection(ThemeData theme, SubcontractOrderProgress p) {
     return _sectionBox(
       theme,
-      title: '委外商处材料台账(守恒)',
+      title: '委外商处货品台账(守恒)',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -441,7 +586,7 @@ class _SubcontractOrderProgressSectionState
               5: FlexColumnWidth(2),
             },
             children: [
-              _tableHead(theme, const ['材料', '发出', '已消费', '已退', '损耗', '结存']),
+              _tableHead(theme, const ['货品', '发出', '已加工/消费', '已退', '损耗', '结存']),
               for (final l in p.supplierLedger)
                 TableRow(
                   children: [
@@ -463,9 +608,9 @@ class _SubcontractOrderProgressSectionState
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
               child: Text(
-                '结存处理方式：委外商退回余料(仓库开材料退货单)或按损耗核销'
-                '(损耗单可填建议索赔金额；该金额仅供后续财务责任决定参考，'
-                '不会自动扣款或冲应付)。',
+                '新流按目标件追踪发出、加工回厂、退回、损耗与结存；'
+                '历史 BOM 子件发料单仍按子件守恒解释。'
+                '未清结存必须由真实退回或损耗单核销，不能因回厂入仓自动抹平。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -596,12 +741,35 @@ class _SubcontractOrderProgressSectionState
     );
   }
 
-  String? _iqcText(String? iqcStatus) => switch (iqcStatus) {
-    'RESOLVED' => '质检已结案',
-    'PENDING' => '待品质检验',
-    'PARTIAL' => '质检部分完成',
-    _ => null,
-  };
+  String? _iqcText(String? iqcStatus) =>
+      switch (iqcStatus?.trim().toUpperCase()) {
+        'RESOLVED' => '质检已结案',
+        'PENDING' => '待品质检验',
+        'PARTIAL' => '质检部分完成',
+        _ => null,
+      };
+
+  String _receiptProgressText(SubcontractProgressDoc receipt) {
+    final status = switch (receipt.warehouseStockInStatus
+        ?.trim()
+        .toUpperCase()) {
+      'WAITING_QUALITY' => '等待品质检验',
+      'PENDING_STOCK_IN' => '合格待仓库入库',
+      'PARTIAL_STOCK_IN' => '仓库部分入库',
+      'STOCKED' => '仓库已确认入仓',
+      'REVERSED' => '入库已撤销',
+      _ => '仓库入库状态待回传',
+    };
+    final quantities = <String>[
+      if (receipt.iqcPassedBaseQty != null)
+        '合格 ${_fmt(receipt.iqcPassedBaseQty!)}',
+      if (receipt.warehouseStockedBaseQty != null)
+        '已入库 ${_fmt(receipt.warehouseStockedBaseQty!)}',
+      if (receipt.pendingStockInBaseQty != null)
+        '待入库 ${_fmt(receipt.pendingStockInBaseQty!)}',
+    ];
+    return [?_iqcText(receipt.iqcStatus), status, ...quantities].join(' · ');
+  }
 
   static String _fmt(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();

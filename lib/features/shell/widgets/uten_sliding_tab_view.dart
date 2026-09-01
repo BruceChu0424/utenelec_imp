@@ -192,8 +192,32 @@ class _UtenSlidingTabViewState extends State<UtenSlidingTabView>
     return Offset.zero;
   }
 
+  Widget _pageAt(int index, {required bool ancestorTickersEnabled}) {
+    final participatesInTransition = index == _to || index == _from;
+    final isActiveMainTab = widget.index != null && participatesInTransition;
+    return Positioned.fill(
+      child: ExcludeFocus(
+        // Offstage 保留 State 时也可能保留焦点；隐藏页不得继续接收键盘事件。
+        excluding: !isActiveMainTab,
+        child: TickerMode(
+          // 内层 TickerMode 会成为最近祖先，必须显式合并外层 Shell 的状态。
+          // 静止时只允许当前页推进；转场时允许来源页与目标页共同推进。
+          enabled: ancestorTickersEnabled && isActiveMainTab,
+          child: Offstage(
+            offstage: !participatesInTransition,
+            child: FractionalTranslation(
+              translation: _offsetFor(index),
+              child: widget.children[index],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final ancestorTickersEnabled = TickerMode.valuesOf(context).enabled;
     // 路由驱动：目标页码变化时，post-frame 启动转场（与旧 animateToPage 同模式，
     // 避免在 build 期操纵 AnimationController）。
     final idx = widget.index;
@@ -215,16 +239,7 @@ class _UtenSlidingTabViewState extends State<UtenSlidingTabView>
         return Stack(
           children: [
             for (var i = 0; i < widget.children.length; i++)
-              Positioned.fill(
-                child: Offstage(
-                  // 只渲染参与转场的两页（或静止时的 _to 一页）；其余隐藏但仍保活
-                  offstage: i != _to && i != _from,
-                  child: FractionalTranslation(
-                    translation: _offsetFor(i),
-                    child: widget.children[i],
-                  ),
-                ),
-              ),
+              _pageAt(i, ancestorTickersEnabled: ancestorTickersEnabled),
           ],
         );
       },

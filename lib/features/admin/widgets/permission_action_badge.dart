@@ -27,12 +27,16 @@ class PermissionTitleBlock extends StatelessWidget {
     required this.actionType,
     this.description,
     this.nameStyle,
+    this.bulkAssignable = true,
+    this.sensitivity = 'NORMAL',
   });
 
   final String name;
   final PermissionActionType actionType;
   final String? description;
   final TextStyle? nameStyle;
+  final bool bulkAssignable;
+  final String sensitivity;
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +52,20 @@ class PermissionTitleBlock extends StatelessWidget {
           children: [
             Text(name, style: nameStyle),
             PermissionActionBadge(actionType: actionType),
+            if (sensitivity == 'SENSITIVE_COMMERCIAL')
+              const UtenStatusBadge(
+                label: '商业敏感数据',
+                type: UtenStatusBadgeType.danger,
+                icon: Icons.lock_outline_rounded,
+                size: UtenStatusBadgeSize.small,
+              ),
+            if (!bulkAssignable)
+              const UtenStatusBadge(
+                label: '需单项授权',
+                type: UtenStatusBadgeType.warning,
+                icon: Icons.touch_app_outlined,
+                size: UtenStatusBadgeSize.small,
+              ),
           ],
         ),
         if (detail.isNotEmpty) ...[

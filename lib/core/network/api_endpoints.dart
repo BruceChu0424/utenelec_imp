@@ -9,6 +9,22 @@ abstract final class ApiEndpoints {
   static String documentScopeCapability(String scope) =>
       '/auth/me/document-scopes/${Uri.encodeComponent(scope)}';
 
+  // 货品×业务场景计量采集偏好；只读解析必须批量，避免明细行 N+1。
+  static const measurementProfilesResolveBatch =
+      '/measurement/profiles/resolve-batch';
+  static String measurementProfileOverride(
+    String goodsId,
+    String operationFamily,
+  ) =>
+      '/measurement/profiles/${Uri.encodeComponent(goodsId)}/'
+      '${Uri.encodeComponent(operationFamily)}/override';
+  static String measurementProfileClearOverride(
+    String goodsId,
+    String operationFamily,
+  ) =>
+      '/measurement/profiles/${Uri.encodeComponent(goodsId)}/'
+      '${Uri.encodeComponent(operationFamily)}/clear-override';
+
   // 工作台权限化聚合读模型
   static const dashboardOverview = '/dashboard/overview';
 
@@ -49,15 +65,43 @@ abstract final class ApiEndpoints {
       '/warehouse/inbound/arrival-exceptions';
   static const warehouseArrivalExceptionCount =
       '/warehouse/inbound/arrival-exceptions/count';
+  static const warehouseArrivalExceptionBatchStockIn =
+      '/warehouse/inbound/arrival-exceptions/batch-stock-in';
+  static const warehouseIqcStockIns = '/warehouse/iqc-stock-ins';
+  static const warehouseIqcStockInCount = '$warehouseIqcStockIns/count';
+  static String warehouseIqcStockInDetail(
+    String receiptType,
+    String receiptId,
+  ) =>
+      '$warehouseIqcStockIns/${Uri.encodeComponent(receiptType.trim().toUpperCase())}/'
+      '${Uri.encodeComponent(receiptId.trim())}';
+  static String warehouseIqcStockInConfirm(
+    String receiptType,
+    String receiptId,
+  ) => '${warehouseIqcStockInDetail(receiptType, receiptId)}/confirm';
   static const productionFinishedInboundTasks =
       '/warehouse/production-finished-in/tasks';
   static const productionFinishedInboundTaskCount =
       '/warehouse/production-finished-in/tasks/count';
+  static const productionFinishedInboundBatchConfirm =
+      '/stock/docs/finished-in/confirm-batch';
+  static String productionFinishedArrivalRegistration(String reportId) =>
+      '/warehouse/production-finished-in/arrival-registrations/$reportId';
+  static String productionFinishedArrivalPlaceSuggestions(String reportId) =>
+      '${productionFinishedArrivalRegistration(reportId)}/place-suggestions';
+  static String productionFinishedArrivalRememberPlaces(String reportId) =>
+      '${productionFinishedArrivalRegistration(reportId)}/remember-places';
   static const productionQualityInspections = '/production/quality-inspections';
   static const productionQualityInspectionCount =
       '/production/quality-inspections/count';
   static const productionQualityInspectionCapability =
       '/production/quality-inspections/capability';
+  static const productionQualityInspectionPassAll =
+      '/production/quality-inspections/decisions/pass-all';
+  static const productionQualityInspectionRecords =
+      '/production/quality-inspections/records';
+  static String productionQualityInspectionRecord(String recordId) =>
+      '$productionQualityInspectionRecords/$recordId';
   static const productionQualityReplenishments =
       '/production/quality-replenishments';
   static const productionQualityReplenishmentMaterialTasks =
@@ -91,6 +135,9 @@ abstract final class ApiEndpoints {
       '/procurement/inspection/pending-receipts';
   static const procurementInspectionPendingCount =
       '/procurement/inspection/pending-count';
+  static const procurementInspectionRecords = '/procurement/inspection/records';
+  static String procurementInspectionRecord(String recordId) =>
+      '$procurementInspectionRecords/$recordId';
   static String procurementInspectionItems(
     String receiptType,
     String receiptId,

@@ -38,16 +38,27 @@ class ProductionReportGeneratedDocumentUuidContractTest {
         String fqc = source(
                 "src/main/java/com/uten/imp/features/production/quality/"
                         + "ProductionFqcInspectionService.java");
+        String arrival = source(
+                "src/main/java/com/uten/imp/features/warehouse/finishedin/"
+                        + "ProductionFinishedArrivalRegistrationService.java");
         String notice = source("src/main/java/com/uten/imp/features/notice/ChainNoticeService.java");
         String stockEntity = source("src/main/java/com/uten/imp/features/stock/StockDocument.java");
         String planEntity = source("src/main/java/com/uten/imp/features/production/plan/ProductionPlan.java");
 
         assertThat(dailyReport)
-                .contains("qualityInspection.registerApprovedReport(r.getId())")
+                .doesNotContain("qualityInspection.registerApprovedReport(r.getId())")
                 .doesNotContain("createFinishedInDraft(");
+        assertThat(dailyReport)
+                .contains("items.stream().allMatch(")
+                .contains("item -> item.getExecutionSegmentId() != null")
+                .contains("chainNotice.notifyProductionFinishedArrivalPending(r.getId())");
+        assertThat(arrival)
+                .contains("qualityInspection.registerApprovedReport((UUID) report[0])")
+                .contains("production_finished_arrival_registrations");
         assertThat(finishedInbound)
                 .contains("document.setSourceDailyReportId((UUID) row[0])")
                 .contains("item.setSourceDailyReportItemId((UUID) row[6])")
+                .contains("item.setPlace((String) row[20])")
                 .contains("production_fqc_inspections inspection")
                 .contains("production_fqc_decision_events decision");
         assertThat(fqc)

@@ -172,6 +172,33 @@ WHERE client.legacy_id IS NOT NULL
         AND method.is_deleted = FALSE
   )
 UNION ALL
+SELECT :'run_id'::uuid, 'B_Client.Credit', 'clients.credit_floor',
+       'invalid_credit_floor', 0, count(*), count(*) = 0,
+       'Every client credit floor must be present, non-negative, and default to zero.'
+FROM clients client
+WHERE client.legacy_id IS NOT NULL
+  AND (client.credit_floor IS NULL OR client.credit_floor < 0)
+UNION ALL
+SELECT :'run_id'::uuid, 'B_Client.PStyle/manual review', 'clients.sales_payment_type',
+       'unresolved_sales_payment_types', 0, count(*), count(*) = 0,
+       'Every non-deleted client must be classified as MONTHLY, CASH, or DEPOSIT before cutover; disabled clients may still own historical AR/receipts.'
+FROM v_client_sales_payment_type_migration_issues
+UNION ALL
+SELECT :'run_id'::uuid, 'S_Out active legacy drafts',
+       'v_sales_shipment_finance_gate_migration_exceptions',
+       'unresolved_sales_shipment_finance_gate_exceptions',
+       0, count(*), count(*) = 0,
+       'Every gate-0 active shipment, including LEGACY_PENDING, must be manually reconciled and rebuilt before cutover.'
+FROM v_sales_shipment_finance_gate_migration_exceptions
+UNION ALL
+SELECT :'run_id'::uuid, 'S_Order.Status', 'sales_orders.finance_confirmed',
+       'legacy_approved_orders_missing_finance_compatibility', 0, count(*), count(*) = 0,
+       'Historical approved/reversed orders must retain the V294 compatibility confirmation or they cannot enter fulfillment.'
+FROM sales_orders sales_order
+WHERE sales_order.legacy_id IS NOT NULL
+  AND sales_order.status <> 0
+  AND sales_order.finance_confirmed = FALSE
+UNION ALL
 SELECT :'run_id'::uuid, 'reviewed warehouse/workshop links',
        'warehouses.workshop_department_id', 'mismatched_explicit_links',
        0, count(*), count(*) = 0,

@@ -12,6 +12,8 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.common.util.CanonicalFingerprint;
+import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmRequest;
+import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmResponse;
 import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.features.stock.dto.StockDocDetail;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
@@ -124,10 +126,10 @@ public class StockDocService {
 
     @Transactional(readOnly = true)
     public PageResponse<StockDocListItem> list(StockDocQueryFilter f, int page, int size, String sort, String order) {
-        if (!canViewCost() && "total".equals(sort)) {
+        if ("total".equals(sort)) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
-                    "无查看货品成本权限(" + StockCostMasker.PERMISSION + ")");
+                    "仓库实物单据不提供成本排序，请在财务或库存价值报表中查看");
         }
         var readScope = access.scope();
         Specification<StockDocument> spec = (Root<StockDocument> root,
@@ -151,7 +153,8 @@ public class StockDocService {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        Map.of("billDate", "billDate")));
         Page<StockDocument> p = docRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toList).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());
@@ -282,6 +285,74 @@ public class StockDocService {
      */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:approve')")
+    public FinishedInboundBatchConfirmResponse confirmFinishedInboundBatch(
+            FinishedInboundBatchConfirmRequest request) {
+        tx.bind();
+        FinishedInboundBatchCommand command =
+                normalizeFinishedInboundBatchRequest(request);
+        UUID actorUserId = currentUser.requireId();
+        UUID actorEmployeeId = currentUser.requireEmployeeId();
+        lockFinishedInboundBatchCommand(
+                actorUserId, command.idempotencyKey());
+        FinishedInboundBatchConfirmResponse replay =
+                findFinishedInboundBatchReplay(
+                        actorUserId,
+                        command.idempotencyKey(),
+                        command.requestHash());
+        if (replay != null) return replay;
+
+        prelockProductionDocuments(command.documentIds());
+        List<FinishedInboundBatchConfirmResponse.Item> responseItems =
+                new ArrayList<>();
+        List<FinishedInboundBatchItem> persistedItems = new ArrayList<>();
+        int position = 0;
+        for (UUID documentId : command.documentIds()) {
+            String childKey = finishedInboundBatchChildKey(
+                    actorUserId,
+                    command.idempotencyKey(),
+                    documentId);
+            FinishedInboundConfirmRequest itemRequest =
+                    fullFinishedInboundAcceptanceRequest(
+                            documentId, childKey);
+            Map<UUID, BigDecimal> accepted =
+                    normalizeFinishedInboundAccepted(itemRequest);
+            String itemHash = finishedInboundConfirmationHash(
+                    documentId, accepted, null);
+            StockDocDetail detail = confirmFinishedInboundAfterPrelock(
+                    documentId, itemRequest, accepted, null, itemHash);
+            if (detail.getStatus() == null
+                    || detail.getStatus() != STATUS_APPROVED
+                    || detail.getBillNo() == null
+                    || detail.getBillNo().isBlank()) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "批量点收未得到完整的已审核单据结果");
+            }
+            UUID confirmationId = finishedInboundConfirmationId(documentId);
+            FinishedInboundBatchConfirmResponse.Item resultItem =
+                    new FinishedInboundBatchConfirmResponse.Item(
+                            documentId,
+                            detail.getBillNo(),
+                            detail.getStatus());
+            responseItems.add(resultItem);
+            persistedItems.add(new FinishedInboundBatchItem(
+                    ++position, confirmationId, resultItem));
+        }
+
+        UUID batchId = UUID.randomUUID();
+        insertFinishedInboundBatch(
+                batchId,
+                actorUserId,
+                actorEmployeeId,
+                command,
+                responseItems,
+                persistedItems);
+        return new FinishedInboundBatchConfirmResponse(
+                batchId, false, responseItems.size(), responseItems);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
     public StockDocDetail confirmFinishedInbound(
             UUID id, FinishedInboundConfirmRequest request) {
         tx.bind();
@@ -294,6 +365,16 @@ public class StockDocService {
 
         prelockProductionDocument(id);
 
+        return confirmFinishedInboundAfterPrelock(
+                id, request, accepted, varianceReason, requestHash);
+    }
+
+    private StockDocDetail confirmFinishedInboundAfterPrelock(
+            UUID id,
+            FinishedInboundConfirmRequest request,
+            Map<UUID, BigDecimal> accepted,
+            String varianceReason,
+            String requestHash) {
         taskClaim.requireNoActiveClaimByOther(
                 "FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument document = requireDocForUpdate(id);
@@ -850,6 +931,223 @@ public class StockDocService {
         return (UUID) row[0];
     }
 
+    static FinishedInboundBatchCommand normalizeFinishedInboundBatchRequest(
+            FinishedInboundBatchConfirmRequest request) {
+        if (request == null
+                || request.getIdempotencyKey() == null
+                || request.getDocumentIds() == null
+                || request.getDocumentIds().isEmpty()
+                || request.getDocumentIds().size() > 50) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "批量点收须包含幂等键和 1 至 50 张单据");
+        }
+        String key = request.getIdempotencyKey().strip();
+        if (key.length() < 8 || key.length() > 128
+                || !key.matches("[A-Za-z0-9._:-]+")) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "批量点收幂等键格式无效");
+        }
+        if (request.getDocumentIds().stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "批量点收单据不能为空");
+        }
+        List<UUID> documentIds = request.getDocumentIds().stream()
+                .sorted()
+                .distinct()
+                .toList();
+        if (documentIds.size() != request.getDocumentIds().size()) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "批量点收不能重复选择同一单据");
+        }
+        List<String> hashParts = new ArrayList<>();
+        hashParts.add("PRODUCTION-FINISHED-IN-CONFIRM-BATCH-V1");
+        documentIds.forEach(id -> hashParts.add(id.toString()));
+        return new FinishedInboundBatchCommand(
+                key,
+                documentIds,
+                CanonicalFingerprint.sha256(hashParts));
+    }
+
+    private void lockFinishedInboundBatchCommand(
+            UUID actorUserId, String idempotencyKey) {
+        em.createNativeQuery("""
+                        SELECT pg_advisory_xact_lock(
+                            hashtextextended(:lockKey, CAST(434 AS bigint)))
+                        """)
+                .setParameter(
+                        "lockKey",
+                        "PRODUCTION_FINISHED_IN_CONFIRM_BATCH:"
+                                + actorUserId + ':' + idempotencyKey)
+                .getSingleResult();
+    }
+
+    private FinishedInboundBatchConfirmResponse findFinishedInboundBatchReplay(
+            UUID actorUserId,
+            String idempotencyKey,
+            String requestHash) {
+        List<Object[]> headers = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT id, request_hash, confirmed_count
+                                FROM production_finished_in_confirm_batches
+                                WHERE actor_user_id = :actorUserId
+                                  AND idempotency_key = :idempotencyKey
+                                """)
+                        .setParameter("actorUserId", actorUserId)
+                        .setParameter("idempotencyKey", idempotencyKey));
+        if (headers.isEmpty()) return null;
+        Object[] header = headers.getFirst();
+        if (!Objects.equals(header[1], requestHash)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "该批量点收幂等键已用于不同单据集合");
+        }
+        UUID batchId = (UUID) header[0];
+        int confirmedCount = ((Number) header[2]).intValue();
+        List<FinishedInboundBatchConfirmResponse.Item> items =
+                NativeQueryResults.objectArrayRows(
+                                em.createNativeQuery("""
+                                                SELECT stock_document_id,
+                                                       bill_no_snapshot,
+                                                       status_snapshot
+                                                FROM production_finished_in_confirm_batch_items
+                                                WHERE batch_id = :batchId
+                                                ORDER BY position
+                                                """)
+                                        .setParameter("batchId", batchId))
+                        .stream()
+                        .map(row -> new FinishedInboundBatchConfirmResponse.Item(
+                                (UUID) row[0],
+                                (String) row[1],
+                                ((Number) row[2]).shortValue()))
+                        .toList();
+        if (items.size() != confirmedCount) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "批量点收冻结结果不完整，禁止猜测重放");
+        }
+        return new FinishedInboundBatchConfirmResponse(
+                batchId, true, confirmedCount, items);
+    }
+
+    private FinishedInboundConfirmRequest fullFinishedInboundAcceptanceRequest(
+            UUID documentId, String idempotencyKey) {
+        List<StockDocumentItem> items =
+                itemRepo.findByDocIdOrderByLineNoAsc(documentId);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "成品入库明细为空");
+        }
+        FinishedInboundConfirmRequest request =
+                new FinishedInboundConfirmRequest();
+        request.setIdempotencyKey(idempotencyKey);
+        List<FinishedInboundConfirmRequest.Line> lines = new ArrayList<>();
+        for (StockDocumentItem item : items) {
+            if (item.getId() == null || item.getQty() == null) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "成品入库行缺少全量点收身份或数量");
+            }
+            FinishedInboundConfirmRequest.Line line =
+                    new FinishedInboundConfirmRequest.Line();
+            line.setItemId(item.getId());
+            line.setAcceptedQty(item.getQty());
+            lines.add(line);
+        }
+        request.setLines(lines);
+        return request;
+    }
+
+    private static String finishedInboundBatchChildKey(
+            UUID actorUserId,
+            String batchKey,
+            UUID documentId) {
+        return "FIB-" + CanonicalFingerprint.sha256(List.of(
+                "PRODUCTION-FINISHED-IN-CONFIRM-BATCH-ITEM-V1",
+                actorUserId.toString(),
+                batchKey,
+                documentId.toString()));
+    }
+
+    private UUID finishedInboundConfirmationId(UUID documentId) {
+        List<UUID> ids = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT id
+                                FROM production_finished_in_confirmations
+                                WHERE stock_document_id = :documentId
+                                """, UUID.class)
+                        .setParameter("documentId", documentId),
+                UUID.class);
+        if (ids.size() != 1) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "批量点收缺少逐单确认结果");
+        }
+        return ids.getFirst();
+    }
+
+    private void insertFinishedInboundBatch(
+            UUID batchId,
+            UUID actorUserId,
+            UUID actorEmployeeId,
+            FinishedInboundBatchCommand command,
+            List<FinishedInboundBatchConfirmResponse.Item> responseItems,
+            List<FinishedInboundBatchItem> persistedItems) {
+        String snapshot = finishedInboundBatchResponseSnapshot(
+                batchId, responseItems);
+        em.createNativeQuery("""
+                        INSERT INTO production_finished_in_confirm_batches(
+                            id, actor_user_id, actor_employee_id,
+                            idempotency_key, request_hash, confirmed_count,
+                            response_snapshot)
+                        VALUES (
+                            :id, :actorUserId, :actorEmployeeId,
+                            :idempotencyKey, :requestHash, :confirmedCount,
+                            CAST(:responseSnapshot AS jsonb))
+                        """)
+                .setParameter("id", batchId)
+                .setParameter("actorUserId", actorUserId)
+                .setParameter("actorEmployeeId", actorEmployeeId)
+                .setParameter("idempotencyKey", command.idempotencyKey())
+                .setParameter("requestHash", command.requestHash())
+                .setParameter("confirmedCount", responseItems.size())
+                .setParameter("responseSnapshot", snapshot)
+                .executeUpdate();
+        for (FinishedInboundBatchItem item : persistedItems) {
+            em.createNativeQuery("""
+                            INSERT INTO production_finished_in_confirm_batch_items(
+                                id, batch_id, confirmation_id,
+                                stock_document_id, position,
+                                bill_no_snapshot, status_snapshot)
+                            VALUES (
+                                gen_random_uuid(), :batchId, :confirmationId,
+                                :documentId, :position,
+                                :billNo, :status)
+                            """)
+                    .setParameter("batchId", batchId)
+                    .setParameter("confirmationId", item.confirmationId())
+                    .setParameter("documentId", item.result().documentId())
+                    .setParameter("position", item.position())
+                    .setParameter("billNo", item.result().billNo())
+                    .setParameter("status", item.result().status())
+                    .executeUpdate();
+        }
+    }
+
+    private static String finishedInboundBatchResponseSnapshot(
+            UUID batchId,
+            List<FinishedInboundBatchConfirmResponse.Item> items) {
+        String documentIds = items.stream()
+                .map(item -> "\"" + item.documentId() + "\"")
+                .reduce((left, right) -> left + "," + right)
+                .orElse("");
+        return "{\"batchId\":\"" + batchId
+                + "\",\"confirmedCount\":" + items.size()
+                + ",\"documentIds\":[" + documentIds + "]}";
+    }
+
     private Map<UUID, BigDecimal> normalizeFinishedInboundAccepted(
             FinishedInboundConfirmRequest request) {
         if (request == null
@@ -1256,6 +1554,181 @@ public class StockDocService {
      * immutable, so the later document lock can safely revalidate the same
      * identities without accepting a stale mutation.</p>
      */
+    private void prelockProductionDocuments(List<UUID> documentIds) {
+        List<UUID> orderedIds = documentIds == null
+                ? List.of()
+                : documentIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+        if (orderedIds.isEmpty()) return;
+        // A transaction-scoped lane prevents two overlapping batches from
+        // interleaving their per-document canonical preludes in opposite
+        // inventory/production-graph orders. Single-document writers still
+        // use the same canonical prelude and can only wait on one document.
+        em.createNativeQuery("""
+                        SELECT pg_advisory_xact_lock(
+                            hashtextextended(
+                                'PRODUCTION_FINISHED_IN_CONFIRM_BATCH_LOCK_ORDER',
+                                CAST(434 AS bigint)))
+                        """)
+                .getSingleResult();
+        List<Object[]> documentRows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT id, warehouse_id, doc_type
+                                FROM stock_documents
+                                WHERE id IN (:documentIds)
+                                  AND is_deleted = FALSE
+                                ORDER BY id
+                                """)
+                        .setParameter("documentIds", orderedIds));
+        List<Object[]> dimensions = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT DISTINCT goods_id, color_id
+                                FROM stock_document_items
+                                WHERE doc_id IN (:documentIds)
+                                  AND is_deleted = FALSE
+                                  AND goods_id IS NOT NULL
+                                ORDER BY goods_id, color_id NULLS FIRST
+                                """)
+                        .setParameter("documentIds", orderedIds));
+        stockService.lockInventory(dimensions.stream()
+                .map(row -> new InventoryKey(
+                        (UUID) row[0], (UUID) row[1]))
+                .toList());
+        for (Object[] document : documentRows) {
+            if ("FINISHED_IN".equals(document[2])) {
+                productionCompletionReverse
+                        .lockFinishedInboundProductionDimensions(
+                                (UUID) document[0], (UUID) document[1]);
+            }
+        }
+        lockProductionDocumentGraphs(orderedIds);
+        lockFinishedInboundBatchAllocationGraph(orderedIds);
+        lockFinishedInboundBatchDocuments(orderedIds);
+    }
+
+    private void lockProductionDocumentGraphs(List<UUID> documentIds) {
+        List<UUID> planIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT plan.id
+                                FROM plan_draw_links link
+                                JOIN production_plans plan
+                                  ON plan.id = link.plan_id
+                                 AND plan.is_deleted = FALSE
+                                WHERE link.draw_id IN (:documentIds)
+                                  AND link.is_deleted = FALSE
+                                ORDER BY plan.id, link.id
+                                FOR UPDATE OF link, plan
+                                """, UUID.class)
+                        .setParameter("documentIds", documentIds), UUID.class)
+                .stream().distinct().toList();
+        if (planIds.isEmpty()) return;
+        List<UUID> packageIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT package.id
+                                FROM production_planning_packages package
+                                WHERE package.plan_id IN (:planIds)
+                                  AND package.is_deleted = FALSE
+                                ORDER BY package.plan_id, package.id
+                                FOR UPDATE
+                                """, UUID.class)
+                        .setParameter("planIds", planIds), UUID.class);
+        if (packageIds.isEmpty()) return;
+        NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT segment.id
+                                FROM production_execution_segments segment
+                                WHERE segment.package_id IN (:packageIds)
+                                  AND segment.is_deleted = FALSE
+                                ORDER BY segment.package_id, segment.id
+                                FOR UPDATE
+                                """, UUID.class)
+                        .setParameter("packageIds", packageIds), UUID.class);
+    }
+
+    private void lockFinishedInboundBatchAllocationGraph(
+            List<UUID> documentIds) {
+        List<UUID> planItemIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT plan_item.id
+                                FROM stock_document_items stock_item
+                                JOIN production_plan_items plan_item
+                                  ON plan_item.id = stock_item.upstream_item_id
+                                 AND plan_item.is_deleted = FALSE
+                                WHERE stock_item.doc_id IN (:documentIds)
+                                  AND stock_item.is_deleted = FALSE
+                                ORDER BY plan_item.id
+                                FOR UPDATE OF plan_item
+                                """, UUID.class)
+                        .setParameter("documentIds", documentIds), UUID.class)
+                .stream().distinct().toList();
+        if (planItemIds.isEmpty()) return;
+        List<Object[]> linkRows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT link.id, link.order_item_id
+                                FROM plan_order_item_links link
+                                WHERE link.plan_item_id IN (:planItemIds)
+                                  AND link.is_deleted = FALSE
+                                ORDER BY link.id
+                                FOR UPDATE
+                                """)
+                        .setParameter("planItemIds", planItemIds));
+        List<UUID> orderItemIds = linkRows.stream()
+                .map(row -> (UUID) row[1])
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+        if (orderItemIds.isEmpty()) return;
+        NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT sales_order.id
+                                FROM sales_order_items sales_item
+                                JOIN sales_orders sales_order
+                                  ON sales_order.id = sales_item.order_id
+                                WHERE sales_item.id IN (:orderItemIds)
+                                ORDER BY sales_order.id, sales_item.id
+                                FOR UPDATE OF sales_order
+                                """, UUID.class)
+                        .setParameter("orderItemIds", orderItemIds), UUID.class);
+        NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT sales_item.id
+                                FROM sales_order_items sales_item
+                                WHERE sales_item.id IN (:orderItemIds)
+                                ORDER BY sales_item.id
+                                FOR UPDATE
+                                """, UUID.class)
+                        .setParameter("orderItemIds", orderItemIds), UUID.class);
+    }
+
+    private void lockFinishedInboundBatchDocuments(List<UUID> documentIds) {
+        NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT document.id
+                                FROM stock_documents document
+                                WHERE document.id IN (:documentIds)
+                                  AND document.is_deleted = FALSE
+                                ORDER BY document.id
+                                FOR UPDATE
+                                """, UUID.class)
+                        .setParameter("documentIds", documentIds), UUID.class);
+        NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT item.id
+                                FROM stock_document_items item
+                                WHERE item.doc_id IN (:documentIds)
+                                  AND item.is_deleted = FALSE
+                                ORDER BY item.doc_id,
+                                         item.line_no NULLS LAST,
+                                         item.id
+                                FOR UPDATE
+                                """, UUID.class)
+                        .setParameter("documentIds", documentIds), UUID.class);
+    }
+
     private void prelockProductionDocument(UUID documentId) {
         if (!isProductionLinked(documentId)) return;
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
@@ -1340,7 +1813,8 @@ public class StockDocService {
     }
 
     /**
-     * 出库/反出库库存流水：数量按本次 qty（×unit_rate 转基本量），金额/重量按 本次/行总量 比例分摊。
+     * 出库/反出库库存流水：数量按本次 qty（×unit_rate 转基本量），金额/实际总重量按
+     * 本次/行总量比例分摊；重量与数量换算率无关。
      * sign +1=出库（DIR_OUT）/ -1=反出库（反向 DIR_IN）。
      *
      * <p>正反向都要求完整、正数的库存维度。历史异常不得只减
@@ -1372,7 +1846,7 @@ public class StockDocService {
                 ? BigDecimal.ZERO
                 : issueQty.divide(it.getQty(), 6, java.math.RoundingMode.HALF_UP);
         BigDecimal amount = it.getAmountLocal() == null ? null : it.getAmountLocal().multiply(ratio);
-        BigDecimal weight = it.getWeight() == null ? null : it.getWeight().multiply(ratio).multiply(rate);
+        BigDecimal weight = it.getWeight() == null ? null : it.getWeight().multiply(ratio);
         stockService.recordMovement(new StockService.MovementRequest(
                 ts, T_DRAW, SRC_STOCK_DOC, d.getId(), it.getId(),
                 it.getGoodsId(), it.getColorId(), d.getWarehouseId(), (short) (DIR_OUT * sign), baseQty,
@@ -1974,20 +2448,20 @@ public class StockDocService {
         for (StockDocumentItem it : items) {
             if (it.getGoodsId() == null) continue;
             BigDecimal baseQty = baseQty(it);
-            // 基本重量 = 明细 weight × unit_rate（与 baseQty 同口径；无重量则为 null，余额重量不动）。
-            BigDecimal baseWgt = baseWeight(it);
+            // weight 是本行实际总重量，不乘数量换算率；无重量则为 null，余额重量不动。
+            BigDecimal actualWeight = actualWeight(it);
             switch (d.getDocType()) {
-                case "OTHER_IN" -> move(d, it, T_OTHER_IN, DIR_IN, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
-                case "OTHER_OUT", "WASTE" -> move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
-                case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
-                case "WDRAW" -> move(d, it, T_WDRAW, DIR_IN, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
-                case "FINISHED_IN" -> move(d, it, T_FINISHED_IN, DIR_IN, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
-                case "FINISHED_OUT" -> move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
+                case "OTHER_IN" -> move(d, it, T_OTHER_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "OTHER_OUT", "WASTE" -> move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "WDRAW" -> move(d, it, T_WDRAW, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "FINISHED_IN" -> move(d, it, T_FINISHED_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                case "FINISHED_OUT" -> move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                 case "TRANSFER" -> {
                     if (d.getWarehouseId() != null)
-                        move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
+                        move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
                     if (d.getToWarehouseId() != null)
-                        move(d, it, T_TRANSFER_IN, DIR_IN, baseQty, baseWgt, d.getToWarehouseId(), ts, sign);
+                        move(d, it, T_TRANSFER_IN, DIR_IN, baseQty, actualWeight, d.getToWarehouseId(), ts, sign);
                 }
                 case "CHECK" -> {
                     BigDecimal surplus = it.getSurplusQty();
@@ -2010,11 +2484,9 @@ public class StockDocService {
         return qty.multiply(rate);
     }
 
-    /** base_weight = weight × unit_rate（即时库存重量基本量）；明细无重量返回 null。 */
-    private BigDecimal baseWeight(StockDocumentItem it) {
-        if (it.getWeight() == null) return null;
-        BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
-        return it.getWeight().multiply(rate);
+    /** 本行实际总重量；与单据数量的 unit_rate 无关。 */
+    private BigDecimal actualWeight(StockDocumentItem it) {
+        return it.getWeight();
     }
 
     /** 写一笔流水：审核用 naturalDir，红冲反向（naturalDir × sign）。weight 传正数，由 recordMovement 乘 direction。 */
@@ -2486,6 +2958,22 @@ public class StockDocService {
                 .setParameter("id", documentId)
                 .getSingleResult();
         return Boolean.TRUE.equals(result);
+    }
+
+    record FinishedInboundBatchCommand(
+            String idempotencyKey,
+            List<UUID> documentIds,
+            String requestHash) {
+
+        FinishedInboundBatchCommand {
+            documentIds = List.copyOf(documentIds);
+        }
+    }
+
+    private record FinishedInboundBatchItem(
+            int position,
+            UUID confirmationId,
+            FinishedInboundBatchConfirmResponse.Item result) {
     }
 
     private record FinishedInboundAcceptedSlice(

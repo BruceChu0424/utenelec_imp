@@ -7,6 +7,8 @@ import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.GoodsProfileHintRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationTask;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalExceptionBatchStockInRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalExceptionBatchStockInResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterResult;
 import jakarta.validation.Valid;
@@ -35,6 +37,7 @@ public class WarehouseInboundController {
     private final PurchaseReceiptService purchaseReceiptService;
     private final SubcontractReceiptService subcontractReceiptService;
     private final WarehouseArrivalRegistrationService arrivalRegistration;
+    private final WarehouseArrivalExceptionStockInBatchService batchStockIn;
 
     @GetMapping("/expectations")
     public PageResponse<InboundExpectationTask> expectations(
@@ -74,9 +77,11 @@ public class WarehouseInboundController {
      * 到货登记一步完成（登记 + 送检审核）：币种/汇率/结算方式由服务端按来源订货单权威回填，
      * 仓库只登记数量与库位；正常路径保存即转品质部待检（IQC），实到超量时按
      * EXCESS_QUARANTINED 返回（草稿已建、未入库未立应付，等待财务定案）。
-     * 建单/审核权限由各收货单 Service 自身 @PreAuthorize 收口。
+     * 建单/审核统一通过收货单 Service 的仓库专用网关，以
+     * {@code warehouse_inbound:stock_in} 精确收口。
      */
     @PostMapping("/arrivals")
+    @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public WarehouseArrivalRegisterResult registerArrival(
             @Valid @RequestBody WarehouseArrivalRegisterRequest request) {
         return arrivalRegistration.register(request);
@@ -85,9 +90,11 @@ public class WarehouseInboundController {
     /**
      * 完成中断的到货登记（断点恢复）：草稿收货单一键「继续送检」——服务端先按来源
      * 订货单权威修复表头币族（老草稿），再走同一审核链路；仓库不进采购/委外单据页。
-     * 审核权限由各收货单 Service.approve 的 @PreAuthorize 收口。
+     * 审核统一通过收货单 Service 的仓库专用网关，以
+     * {@code warehouse_inbound:stock_in} 精确收口。
      */
     @PostMapping("/arrivals/{receiptId}/complete")
+    @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public WarehouseArrivalRegisterResult completeArrival(
             @PathVariable UUID receiptId) {
         return arrivalRegistration.complete(receiptId);
@@ -109,6 +116,13 @@ public class WarehouseInboundController {
      * V304：审核对明细的价格收窄会触发 receipt_item 守卫，统一走
      * {@link ProcurementArrivalControlService#stockInWithDecisionSession} 同事务打开决策会话开关。
      */
+    @PostMapping("/arrival-exceptions/batch-stock-in")
+    @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
+    public WarehouseArrivalExceptionBatchStockInResult stockInAcceptedBatch(
+            @Valid @RequestBody WarehouseArrivalExceptionBatchStockInRequest request) {
+        return batchStockIn.stockInBatch(request);
+    }
+
     @PostMapping("/arrival-exceptions/{id}/stock-in")
     @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
     public ArrivalExceptionTask stockInAccepted(@PathVariable UUID id) {

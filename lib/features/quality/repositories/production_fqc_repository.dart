@@ -73,6 +73,37 @@ class ProductionFqcRepository {
     );
     return ProductionFqcDecisionResult.fromJson(json);
   }
+
+  Future<
+    ({
+      int processedCount,
+      bool replay,
+      List<ProductionFqcInspection> inspections,
+    })
+  >
+  passAll({
+    required List<String> inspectionIds,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.productionQualityInspectionPassAll,
+      body: {'inspectionIds': inspectionIds, 'idempotencyKey': idempotencyKey},
+    );
+    final items = (json['items'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+    final inspections = [
+      for (final item in items)
+        ProductionFqcInspection.fromJson(
+          item['inspection'] as Map<String, dynamic>? ?? item,
+        ),
+    ];
+    return (
+      processedCount: (json['processedCount'] as num?)?.toInt() ?? items.length,
+      replay: json['replay'] == true,
+      inspections: inspections,
+    );
+  }
 }
 
 final productionFqcRepositoryProvider = Provider<ProductionFqcRepository>(

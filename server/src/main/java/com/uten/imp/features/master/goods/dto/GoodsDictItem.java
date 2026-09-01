@@ -21,4 +21,6 @@ public class GoodsDictItem {
     private String series;
     /** 库位号（goods.stock_place）——仓库单据明细展示用。 */
     private String stockPlace;
+    /** 货品基本单位 UUID；数量展示必须使用该关系，不能按单位名称猜。 */
+    private UUID unitId;
 }

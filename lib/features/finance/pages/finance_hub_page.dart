@@ -22,6 +22,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
+import '../../procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
+import '../../procurement_iqc_rejection/widgets/procurement_iqc_rejection_badge.dart';
 import '../finance_workflow_routes.dart';
 import '../providers/finance_procurement_approval_count_provider.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
@@ -38,15 +40,20 @@ class FinanceHubPage extends ConsumerWidget {
       ref.invalidate(financeProcurementApprovalCountProvider);
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
       ref.invalidate(financeArrivalExceptionCountProvider);
+      ref.invalidate(procurementIqcRejectionOpenCountProvider);
     });
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
-    final canViewApprovals =
-        superAdmin ||
-        permissions.contains(Perm.financeOrderApprovalView) ||
-        permissions.contains(Perm.salesOrderFinanceView);
+    final canViewProcurementApprovals =
+        superAdmin || permissions.contains(Perm.financeOrderApprovalView);
+    final canViewSalesConfirmations =
+        superAdmin || permissions.contains(Perm.salesOrderFinanceView);
+    final canAuditSalesShipments =
+        superAdmin || permissions.contains(Perm.financeShipmentAudit);
+    final canViewIqcRejections =
+        superAdmin || permissions.contains(Perm.procurementIqcRejectionView);
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) {
           final requiredAny = requiredAnyPermFor(entry.location);
@@ -73,30 +80,57 @@ class FinanceHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              if (canViewApprovals) ...[
+              if (canViewProcurementApprovals ||
+                  canViewSalesConfirmations ||
+                  canAuditSalesShipments ||
+                  canViewIqcRejections) ...[
                 _section(context, theme, l10n.hubSectionTaskCenter, [
                   // V294 闸门：销售订货单审核后先经财务确认再放行计划部。
-                  const _Entry(
-                    icon: Icons.fact_check_outlined,
-                    label: '销售订单财务确认',
-                    description: '销售订货单审核后在此确认，确认后计划部才可见并排产',
-                    location: FinanceWorkflowRoutes.salesOrderConfirmations,
-                    badge: SalesOrderFinanceConfirmationBadge(size: 16),
-                  ),
-                  _Entry(
-                    icon: Icons.approval_outlined,
-                    label: l10n.financeHubTaskApproval,
-                    description: l10n.financeHubTaskApprovalSub,
-                    location: FinanceWorkflowRoutes.approvalTasks,
-                    badge: const FinanceProcurementApprovalBadge(size: 16),
-                  ),
-                  _Entry(
-                    icon: Icons.local_shipping_outlined,
-                    label: l10n.financeHubTaskOverDelivery,
-                    description: l10n.financeHubTaskOverDeliverySub,
-                    location: FinanceWorkflowRoutes.arrivalExceptionTasks,
-                    badge: const FinanceArrivalExceptionBadge(showLabel: true),
-                  ),
+                  if (canViewSalesConfirmations)
+                    const _Entry(
+                      icon: Icons.fact_check_outlined,
+                      label: '销售订单财务确认',
+                      description: '销售订货单审核后在此确认，确认后计划部才可见并排产',
+                      location: FinanceWorkflowRoutes.salesOrderConfirmations,
+                      badge: SalesOrderFinanceConfirmationBadge(size: 16),
+                    ),
+                  if (canAuditSalesShipments)
+                    const _Entry(
+                      icon: Icons.local_shipping_outlined,
+                      label: '出货财务审核',
+                      description: '所有客户出货先核对货款类型、未收与铺底，再放行仓库作业',
+                      location: RouteName.financeSalesShipmentAudit,
+                    ),
+                  if (canViewProcurementApprovals)
+                    _Entry(
+                      icon: Icons.approval_outlined,
+                      label: l10n.financeHubTaskApproval,
+                      description: l10n.financeHubTaskApprovalSub,
+                      location: FinanceWorkflowRoutes.approvalTasks,
+                      badge: const FinanceProcurementApprovalBadge(size: 16),
+                    ),
+                  if (canViewProcurementApprovals)
+                    _Entry(
+                      icon: Icons.local_shipping_outlined,
+                      label: l10n.financeHubTaskOverDelivery,
+                      description: l10n.financeHubTaskOverDeliverySub,
+                      location: FinanceWorkflowRoutes.arrivalExceptionTasks,
+                      badge: const FinanceArrivalExceptionBadge(
+                        showLabel: true,
+                      ),
+                    ),
+                  if (canViewIqcRejections)
+                    _Entry(
+                      icon: Icons.assignment_late_outlined,
+                      label: 'IQC 不合格退回与贷项',
+                      description: '实物已退回后确认供应商贷项、零金额结案或修复财务异常',
+                      location: RoutePath.procurementIqcRejections(
+                        source: 'finance',
+                      ),
+                      badge: const ProcurementIqcRejectionBadge(
+                        showLabel: true,
+                      ),
+                    ),
                 ]),
                 const SizedBox(height: UtenSpacing.s16),
               ],

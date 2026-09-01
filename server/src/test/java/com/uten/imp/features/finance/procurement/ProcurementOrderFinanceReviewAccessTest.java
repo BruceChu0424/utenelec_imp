@@ -12,14 +12,12 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.order.PurchaseOrder;
-import com.uten.imp.features.purchase.order.PurchaseOrderFinanceDecisionCommandService;
 import com.uten.imp.features.purchase.order.PurchaseOrderItemRepository;
 import com.uten.imp.features.purchase.order.PurchaseOrderRepository;
 import com.uten.imp.features.purchase.order.PurchaseOrderService;
 import com.uten.imp.features.purchase.order.dto.OrderQueryFilter;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.order.SubcontractOrder;
-import com.uten.imp.features.subcontract.order.SubcontractOrderFinanceDecisionCommandService;
 import com.uten.imp.features.subcontract.order.SubcontractOrderCostItemRepository;
 import com.uten.imp.features.subcontract.order.SubcontractOrderItemRepository;
 import com.uten.imp.features.subcontract.order.SubcontractOrderRepository;
@@ -35,7 +33,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -124,76 +121,6 @@ class ProcurementOrderFinanceReviewAccessTest {
                 subcontract.service().detail(subcontract.orderId()).getId());
         verify(subcontract.projection(), never())
                 .canCurrentActorReviewPending(anyString(), any(UUID.class));
-    }
-
-    @Test
-    void financeDecisionResultRequiresAuthoritativeReviewerEligibility() {
-        PurchaseFixture allowedPurchase = purchaseFixture((short) 1);
-        UUID purchaseCaseId = UUID.randomUUID();
-        var purchaseDecision = decidedApproval(purchaseCaseId);
-        when(allowedPurchase.projection().isCurrentActorEligibleReviewer())
-                .thenReturn(true);
-        ProcurementFinanceApprovalService purchaseApproval =
-                mock(ProcurementFinanceApprovalService.class);
-        when(purchaseApproval.approve(
-                "PURCHASE", allowedPurchase.orderId(), 1L))
-                .thenReturn(purchaseDecision);
-        var purchaseResult = new PurchaseOrderFinanceDecisionCommandService(
-                purchaseApproval, allowedPurchase.service())
-                .approve(allowedPurchase.orderId(), 1L);
-        assertEquals(allowedPurchase.orderId(), purchaseResult.getId());
-        assertEquals(purchaseCaseId, purchaseResult.getFinanceApproval().caseId());
-        verify(allowedPurchase.access(), never()).canRead(any(UUID.class));
-
-        PurchaseFixture deniedPurchase = purchaseFixture((short) 1);
-        when(deniedPurchase.projection().isCurrentActorEligibleReviewer())
-                .thenReturn(false);
-        ProcurementFinanceApprovalService deniedPurchaseApproval =
-                mock(ProcurementFinanceApprovalService.class);
-        when(deniedPurchaseApproval.approve(
-                "PURCHASE", deniedPurchase.orderId(), 1L))
-                .thenReturn(decidedApproval(UUID.randomUUID()));
-        assertEquals(
-                ErrorCode.NOT_FOUND,
-                assertThrows(ApiException.class, () ->
-                        new PurchaseOrderFinanceDecisionCommandService(
-                                deniedPurchaseApproval, deniedPurchase.service())
-                                .approve(deniedPurchase.orderId(), 1L)).getCode());
-
-        SubcontractFixture allowedSubcontract = subcontractFixture((short) 1);
-        UUID subcontractCaseId = UUID.randomUUID();
-        var subcontractDecision = decidedApproval(subcontractCaseId);
-        when(allowedSubcontract.projection().isCurrentActorEligibleReviewer())
-                .thenReturn(true);
-        ProcurementFinanceApprovalService subcontractApproval =
-                mock(ProcurementFinanceApprovalService.class);
-        when(subcontractApproval.approve(
-                "SUBCONTRACT", allowedSubcontract.orderId(), 1L))
-                .thenReturn(subcontractDecision);
-        var subcontractResult = new SubcontractOrderFinanceDecisionCommandService(
-                subcontractApproval, allowedSubcontract.service())
-                .approve(allowedSubcontract.orderId(), 1L);
-        assertEquals(allowedSubcontract.orderId(), subcontractResult.getId());
-        assertEquals(
-                subcontractCaseId,
-                subcontractResult.getFinanceApproval().caseId());
-        verify(allowedSubcontract.access(), never()).canRead(any(UUID.class));
-
-        SubcontractFixture deniedSubcontract = subcontractFixture((short) 1);
-        when(deniedSubcontract.projection().isCurrentActorEligibleReviewer())
-                .thenReturn(false);
-        ProcurementFinanceApprovalService deniedSubcontractApproval =
-                mock(ProcurementFinanceApprovalService.class);
-        when(deniedSubcontractApproval.approve(
-                "SUBCONTRACT", deniedSubcontract.orderId(), 1L))
-                .thenReturn(decidedApproval(UUID.randomUUID()));
-        assertEquals(
-                ErrorCode.NOT_FOUND,
-                assertThrows(ApiException.class, () ->
-                        new SubcontractOrderFinanceDecisionCommandService(
-                                deniedSubcontractApproval,
-                                deniedSubcontract.service())
-                                .approve(deniedSubcontract.orderId(), 1L)).getCode());
     }
 
     @Test
@@ -310,21 +237,6 @@ class ProcurementOrderFinanceReviewAccessTest {
                 mock(com.uten.imp.application.port.MasterReferenceValidationPort.class));
         return new PurchaseFixture(
                 orderId, ownerId, service, orders, items, projection, access);
-    }
-
-    private static ProcurementApprovalContracts.FinanceApproval decidedApproval(
-            UUID caseId) {
-        return new ProcurementApprovalContracts.FinanceApproval(
-                caseId,
-                "APPROVED",
-                1,
-                2,
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                "finance reviewer",
-                null,
-                OffsetDateTime.now(),
-                List.of());
     }
 
     private static SubcontractFixture subcontractFixture(short status) {

@@ -72,6 +72,7 @@ class ProductionChainHealthContractTest {
                 .contains("v_production_material_clearance")
                 .contains("production_fqc_release_allocations")
                 .contains("production_fqc_contribution_adjustments")
+                .contains("production_finished_arrival_registration_items")
                 .contains("report_item.qty")
                 .contains("- COALESCE(adjusted.qty, 0)")
                 .contains("v_production_fqc_recovery_balance")

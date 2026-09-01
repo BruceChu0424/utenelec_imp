@@ -139,15 +139,6 @@ public class ProcurementFinanceApprovalService {
         return projection.latestForOrder(orderType, orderId, (short) 0);
     }
 
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_order_approval:approve')")
-    public FinanceApproval approve(
-            String rawOrderType, UUID orderId, long expectedVersion) {
-        tx.bind();
-        requireEligibleReviewer();
-        return approveOne(rawOrderType, orderId, expectedVersion, null);
-    }
-
     /**
      * 批量通过使用一个事务和稳定的订货类型/UUID 顺序。任一项的 case、版本、
      * 快照或副作用失败都会回滚整批，禁止客户端循环单笔接口形成半批事实。
@@ -220,24 +211,6 @@ public class ProcurementFinanceApprovalService {
                 "APPROVED",
                 expectedVersion + 1);
         return projection.latestForOrder(orderType, orderId, (short) 1);
-    }
-
-    /** 驳回：财务审核组资格 + 悲观锁 + version CAS + 快照一致性校验（订货单自提交起未变），驳回原因必填（≤1000 字）。 */
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_order_approval:reject')")
-    public FinanceApproval reject(
-            String rawOrderType,
-            UUID orderId,
-            long expectedVersion,
-            String rawReason) {
-        tx.bind();
-        requireEligibleReviewer();
-        return rejectOne(
-                rawOrderType,
-                orderId,
-                expectedVersion,
-                null,
-                normalizeReason(rawReason));
     }
 
     /** 批量驳回共用一个明确原因，并与全部 case/order 副作用保持原子。 */

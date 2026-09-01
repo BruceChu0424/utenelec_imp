@@ -20,9 +20,12 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/procurement_inbound_count_providers.dart';
+import '../providers/warehouse_iqc_stock_in_count_provider.dart';
 import '../repositories/procurement_inspection_repository.dart';
 
 /// 采购/委外收货 IQC 待检处置任务中心 + 单据处置页（与仓库「预计到货任务中心」
@@ -409,13 +412,6 @@ class _ProcurementInspectionPageState
       type: 'number',
       value: (receipt) => receipt.itemCount.toString(),
     ),
-    MasterColumnDef(
-      key: 'pendingBaseQty',
-      label: '待检量',
-      width: 110,
-      type: 'number',
-      value: (receipt) => _fmt(receipt.pendingBaseQty ?? 0),
-    ),
   ];
 
   String get _emptyMessage {
@@ -538,8 +534,18 @@ class _ProcurementInspectionDetailPageState
       if (_selectedItemIds.contains(item.id)) item,
   ];
 
-  double get _pendingBaseQty =>
-      _items.fold(0, (sum, item) => sum + (item.remainingBaseQty ?? 0));
+  String get _pendingSummary {
+    final names = ref.read(masterNameServiceProvider);
+    return measurementTotalsText(
+      _items.map(
+        (item) => MeasuredAmount(
+          value: item.remainingBaseQty ?? 0,
+          unitId: item.unitId,
+          unitName: names.unit(item.unitId),
+        ),
+      ),
+    );
+  }
 
   String _idempotencyKeyFor(
     ProcurementInspectionItem item,
@@ -587,8 +593,14 @@ class _ProcurementInspectionDetailPageState
       });
       await _load();
       ref.invalidate(procurementInspectionPendingCountProvider);
+      if (action == 'PASS') {
+        ref.invalidate(warehouseIqcStockInPendingCountProvider);
+      }
       if (mounted) {
-        UtenNotify.success(context, action == 'PASS' ? '合格决定已保存' : '不合格决定已保存');
+        UtenNotify.success(
+          context,
+          action == 'PASS' ? '合格决定已保存；已转仓库待入库，尚未增加可用库存' : '不合格决定已保存',
+        );
       }
       return null;
     } catch (error) {
@@ -636,8 +648,12 @@ class _ProcurementInspectionDetailPageState
       });
       await _load();
       ref.invalidate(procurementInspectionPendingCountProvider);
+      ref.invalidate(warehouseIqcStockInPendingCountProvider);
       if (mounted) {
-        UtenNotify.success(context, '已原子合格放行 ${selected.length} 条明细');
+        UtenNotify.success(
+          context,
+          '已原子合格放行 ${selected.length} 条明细；已转仓库待入库，尚未增加可用库存',
+        );
       }
       return null;
     } catch (error) {
@@ -657,6 +673,7 @@ class _ProcurementInspectionDetailPageState
       barrierDismissible: !_busyDecision,
       builder: (dialogContext) => _InspectionDecisionDialog(
         item: item,
+        unitName: ref.read(masterNameServiceProvider).unit(item.unitId),
         initialAction: initialAction,
         requireQuantity: requireQuantity,
         onSubmit: (action, qty, reason) =>
@@ -769,7 +786,7 @@ class _ProcurementInspectionDetailPageState
       return UtenEmpty(
         icon: Icons.verified_outlined,
         message: '本单待检已全部处理完成',
-        description: '合格放行的货品已自动入库；返回任务中心可处理下一单。',
+        description: '合格切片已转仓库待入库任务；仓库核对实物和库位后才增加库存。',
         actionLabel: '返回任务中心',
         onAction: () =>
             popOrBackTo(context, defaultPath: RouteName.warehouseInspections),
@@ -844,7 +861,7 @@ class _ProcurementInspectionDetailPageState
             _InfoLine(
               icon: Icons.inventory_outlined,
               label: '待检',
-              value: '${_items.length} 行明细 · 待检量 ${_fmt(_pendingBaseQty)}',
+              value: '${_items.length} 行明细 · 待检量 $_pendingSummary',
             ),
             const Divider(height: UtenSpacing.s24),
             Row(
@@ -939,6 +956,12 @@ class _ProcurementInspectionDetailPageState
       value: (item) => item.colorName ?? '—',
     ),
     MasterColumnDef(
+      key: 'unit',
+      label: '单位',
+      width: 90,
+      value: (item) => ref.read(masterNameServiceProvider).unit(item.unitId),
+    ),
+    MasterColumnDef(
       key: 'sourceOrderNo',
       label: '来源订货单',
       width: 160,
@@ -989,12 +1012,14 @@ class _ProcurementInspectionDetailPageState
 class _InspectionDecisionDialog extends StatefulWidget {
   const _InspectionDecisionDialog({
     required this.item,
+    required this.unitName,
     required this.initialAction,
     required this.requireQuantity,
     required this.onSubmit,
   });
 
   final ProcurementInspectionItem item;
+  final String unitName;
   final String initialAction;
   final bool requireQuantity;
   final Future<String?> Function(String action, double? qty, String? reason)
@@ -1098,7 +1123,8 @@ class _InspectionDecisionDialogState extends State<_InspectionDecisionDialog> {
               ),
               const SizedBox(height: UtenSpacing.s4),
               Text(
-                '剩余待检 ${_fmt(widget.item.remainingBaseQty ?? 0)}',
+                '剩余待检 ${_fmt(widget.item.remainingBaseQty ?? 0)} '
+                '${widget.unitName}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -1132,7 +1158,7 @@ class _InspectionDecisionDialogState extends State<_InspectionDecisionDialog> {
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  labelText: pass ? '合格数量' : '不合格数量',
+                  labelText: '${pass ? '合格数量' : '不合格数量'}（${widget.unitName}）',
                   helper: UtenFieldMessage.helper(
                     widget.requireQuantity ? '必填；部分处置后本行继续保留' : '留空 = 全部剩余待检量',
                     maxLines: 2,

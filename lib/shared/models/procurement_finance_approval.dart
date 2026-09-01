@@ -29,8 +29,6 @@ class ProcurementFinanceApproval {
   bool get isRejected => status == 'REJECTED';
   bool get isApproved => status == 'APPROVED';
   bool get canSubmit => allowedActions.contains('SUBMIT_FINANCE');
-  bool get canApprove => allowedActions.contains('APPROVE');
-  bool get canReject => allowedActions.contains('REJECT');
 
   factory ProcurementFinanceApproval.fromJson(Map<String, dynamic> json) {
     int number(String key) {

@@ -174,9 +174,12 @@ class _ProductionPlanSummarySheetPageState
             ? null
             : _defaultWorkshops[product.goodsId!],
         status: _makeStatus(product),
-        source: product.sourceType == 'MAKE_COMPONENT'
-            ? '自制备料任务'
-            : (product.orderNo ?? product.sourceRef ?? '生产需求'),
+        source: switch (product.sourceType) {
+          'MAKE_COMPONENT' => '自制备料任务',
+          'SUBCONTRACT_PREPARATION' =>
+            '委外前置自制 · ${product.sourceRef ?? '目标件准备'}',
+          _ => product.orderNo ?? product.sourceRef ?? '生产需求',
+        },
       ),
   ];
 

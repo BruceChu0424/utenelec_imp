@@ -3,14 +3,14 @@
 // 结构（2026-08-16 收敛）：面板状态机与外壳在共享组件
 // [showUtenDocLinkPickerSheet]（components/layout/uten_doc_link_picker_sheet.dart），
 // 本文件只保留委外领域差异：
-//  - 发料审核未启用时的防御门禁（历史兼容说明对话框）；
+//  - 新流目标件出仓由仓库任务生成；本面板的发料来源只服务历史兼容与既有草稿；
 //  - 4 个上游方向推断（见 upstreamTypeOf）；
 //  - 剩余可引量口径（进仓←订货 / 发料←订货 / 退货←进仓/订货 / 材料退·损耗←发料）；
 //  - 单据表与明细表列定义。
 //
 // 委外 8 单据链路更复杂（4 个上游方向，见 upstreamTypeOf）：
 //   订货 → 申请；进仓 → 订货；退货 → 进仓优先/订货；
-//   新增发料在冻结 BOM 快照与子件台账落地前禁止从订货引入；
+//   新流禁止从订货手工空白创建发料；LEGACY_BOM_COMPONENT 历史单保留来源兼容；
 //   材料退 → 发料优先/订货；损耗 → 发料。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,6 +35,7 @@ class LinkedItem {
     this.upstreamItemId,
     this.colorId,
     this.unitId,
+    this.unitRate,
   });
   final String goodsId;
   final double qty;
@@ -43,6 +44,7 @@ class LinkedItem {
   final String? upstreamItemId;
   final String? colorId;
   final String? unitId;
+  final double? unitRate;
 }
 
 /// 「从上游引入」的确认返回：所选明细 + 上游单据委外商 id（编辑页表头未选委外商时回填用）。
@@ -189,6 +191,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
           unitId: (it) => it.unitId,
           price: (it) => it.price,
           upstreamItemId: (it) => it.id,
+          unitRate: (it) => it.unitRate,
         ),
         docColumns: (names) => _docColumns(names),
         goodsName: (names, goodsId) => names.goods(goodsId),
@@ -220,6 +223,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
             upstreamItemId: d.upstreamItemId,
             colorId: d.colorId,
             unitId: d.unitId,
+            unitRate: d.unitRate,
           ),
         )
         .toList(),

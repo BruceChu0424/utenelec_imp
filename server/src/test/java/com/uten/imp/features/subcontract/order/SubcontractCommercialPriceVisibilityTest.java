@@ -64,7 +64,12 @@ class SubcontractCommercialPriceVisibilityTest {
 
     @BeforeEach
     void denyCommercialPricePermission() {
-        lenient().when(commercialPriceVisibility.canViewSubcontract()).thenReturn(false);
+        lenient().when(commercialPriceVisibility.canViewSubcontractOrder()).thenReturn(false);
+        lenient().when(commercialPriceVisibility.canViewSubcontractReturn()).thenReturn(false);
+        lenient().when(commercialPriceVisibility.canViewSubcontractWasteSuggestion())
+                .thenReturn(false);
+        lenient().when(commercialPriceVisibility.canViewSubcontractMaterialCost())
+                .thenReturn(false);
         for (Object service : List.of(orderService, returnService, materialIssueService,
                 materialReturnService, wasteService)) {
             ReflectionTestUtils.setField(
@@ -182,7 +187,8 @@ class SubcontractCommercialPriceVisibilityTest {
     void progressRedactionClosesReceiptReturnWasteAndApAmountBypass() {
         ReceiptDoc receipt = new ReceiptDoc(UUID.randomUUID(), "SR-1", (short) 1,
                 LocalDate.now(), "仓库", "审核人", new BigDecimal("3"),
-                new BigDecimal("30"), "RESOLVED", null);
+                new BigDecimal("30"), "RESOLVED", "STOCKED",
+                new BigDecimal("3"), new BigDecimal("3"), BigDecimal.ZERO, null);
         ReturnDoc finishedReturn = new ReturnDoc(UUID.randomUUID(), "SW-1", (short) 1,
                 LocalDate.now(), new BigDecimal("1"), new BigDecimal("10"));
         WasteDoc waste = new WasteDoc(UUID.randomUUID(), "SL-1", (short) 1,
@@ -201,6 +207,9 @@ class SubcontractCommercialPriceVisibilityTest {
         assertNull(masked.apPostedTotal());
         assertNull(masked.wasteDeductTotal());
         assertEquals(new BigDecimal("3"), masked.receipts().getFirst().totalQty());
+        assertEquals("STOCKED", masked.receipts().getFirst().warehouseStockInStatus());
+        assertEquals(new BigDecimal("3"),
+                masked.receipts().getFirst().warehouseStockedBaseQty());
         assertEquals(new BigDecimal("2"), masked.wastes().getFirst().totalQty());
     }
 

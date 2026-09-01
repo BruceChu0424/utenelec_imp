@@ -13,6 +13,7 @@ import com.uten.imp.common.util.PaymentMethodReferenceResolver;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.accountflow.AccountFlowLedgerService;
 import com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard;
+import com.uten.imp.features.finance.payables.SupplierPayableHoldGuard;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentDetail;
@@ -91,6 +92,7 @@ public class FinancePaymentService {
     private final FinanceDocumentAccessPolicy access;
     private final GlPostingService glPostingService;
     private final AccountFlowLedgerService accountFlowLedger;
+    private final SupplierPayableHoldGuard payableHoldGuard;
 
     @Transactional(readOnly = true)
     public PageResponse<FinancePaymentListItem> list(FinancePaymentQueryFilter f, int page, int size, String sort, String order) {
@@ -287,7 +289,7 @@ public class FinancePaymentService {
                     ErrorCode.CONFLICT,
                     "无应付核销明细的直接付款属于供应商预付；供应商预付资产科目、应用、退款和总账链未完成，当前禁止审核");
         }
-        Map<UUID, ArApLedger> lockedLedgers = lockAppliedLedgers(lines);
+        Map<UUID, ArApLedger> lockedLedgers = lockAppliedLedgers(lines,true);
         settleAppliedLines(p, lines, lockedLedgers);
         BigDecimal accountAmount = adjustAccount(
                 p.getAccountId(), p.getCurrencyId(), p.getAmountOriginal(), p.getAmountLocal());
@@ -297,7 +299,7 @@ public class FinancePaymentService {
     private void reverseSettlement(FinancePayment p) {
         List<FinancePaymentLine> lines = lineRepo.findByPaymentIdOrderByLineNoAsc(p.getId());
         if (!lines.isEmpty()) {
-            reverseAppliedLines(p, lines, lockAppliedLedgers(lines));
+            reverseAppliedLines(p, lines, lockAppliedLedgers(lines,false));
             adjustAccount(p.getAccountId(), p.getCurrencyId(),
                     nz(p.getAmountOriginal()).negate(), nz(p.getAmountLocal()).negate());
             reverseReconciliation(p.getId());
@@ -424,7 +426,8 @@ public class FinancePaymentService {
                 : null);
     }
 
-    private Map<UUID, ArApLedger> lockAppliedLedgers(List<FinancePaymentLine> lines) {
+    private Map<UUID, ArApLedger> lockAppliedLedgers(
+            List<FinancePaymentLine> lines,boolean enforceIqcHold) {
         List<UUID> ids = lines.stream()
                 .map(FinancePaymentLine::getAppliedLedgerId)
                 .toList();
@@ -439,6 +442,7 @@ public class FinancePaymentService {
         if (locked.size() != ids.size()) {
             throw new ApiException(ErrorCode.BUSINESS, "核销的应付记录不存在或已删除");
         }
+        if(enforceIqcHold)payableHoldGuard.requireUnheld(ids, "采购付款");
         Map<UUID, ArApLedger> byId = new HashMap<>();
         for (ArApLedger ledger : locked) {
             byId.put(ledger.getId(), ledger);

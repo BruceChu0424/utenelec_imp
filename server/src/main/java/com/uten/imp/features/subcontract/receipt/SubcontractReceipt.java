@@ -17,12 +17,14 @@ import java.util.UUID;
  *
  * <p>审核（status 0→1）触发（同事务）：
  * <ol>
- *   <li>库存入库 {@code TYPE_SUBCONTRACT_RECEIPT=17} {@code DIR_IN=+1}（正向入库；<b>不照搬老库 QTY-= 反向</b>）</li>
+ *   <li>登记 IQC 待检隔离；不写 {@code stock_balances}</li>
  *   <li>回写订货明细 {@code received_qty += qty}</li>
- *   <li>{@code ArApLedgerService.postArAp(AP, SUBCONTRACT_RECEIPT, +amount)} 立应付</li>
- *   <li>置 {@code ap_posted=true}；重算订货单 is_closed</li>
+ *   <li>按财务批准加工费快照调用 {@code ArApLedgerService.postArAp(AP, SUBCONTRACT_RECEIPT, +amount)}</li>
+ *   <li>置 {@code ap_posted=true}；订货结案继续等待 IQC 合格净量</li>
  * </ol>
- * 红冲（1→-1）：先 {@code reverseArAp}，再反向 DIR_OUT、回减 received_qty、重算 is_closed。
+ * IQC PASS 只形成仓库待入库量；仓库确认后才正向写可用库存，FAIL 不入库存。
+ * 红冲先 {@code reverseArAp}，再精确反向仓库已确认
+ * 库存、回减 received_qty 并重算结案。
  */
 @Getter
 @Setter

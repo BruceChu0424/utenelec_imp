@@ -195,9 +195,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
               builder: (context, _) {
                 final total = _list.total;
                 final canViewCommercialAmounts =
-                    ref
-                        .watch(currentPermissionsProvider)
-                        .contains(Perm.purchaseReceiptPriceView) &&
+                    _cfg.canViewCommercial(
+                      ref.watch(currentPermissionsProvider),
+                    ) &&
                     !(_list.page?.items.any((item) => item.priceMasked) ??
                         false);
                 // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：KPI 卡条随上滑

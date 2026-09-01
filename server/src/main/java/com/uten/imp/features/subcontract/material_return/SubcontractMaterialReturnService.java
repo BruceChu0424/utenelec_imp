@@ -287,7 +287,7 @@ public class SubcontractMaterialReturnService {
                 ts, StockService.TYPE_SUBCONTRACT_MATERIAL_RETURN, StockService.SRC_SUBCONTRACT_MATERIAL_RETURN,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? "红冲" : null));
+                direction < 0 ? "红冲" : null, it.getWeight()));
     }
 
     private void applyHeader(MaterialReturnSaveRequest req, SubcontractMaterialReturn r) {
@@ -530,7 +530,8 @@ public class SubcontractMaterialReturnService {
     }
 
     private boolean subcontractPriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewSubcontractMaterialCost();
     }
 
     private static MaterialReturnItemDto maskItemPrices(MaterialReturnItemDto it) {

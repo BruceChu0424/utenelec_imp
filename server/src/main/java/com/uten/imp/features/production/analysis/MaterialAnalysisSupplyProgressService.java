@@ -69,7 +69,6 @@ public class MaterialAnalysisSupplyProgressService {
             throw new ApiException(ErrorCode.NOT_FOUND, "物料分析节点不存在或已过期");
         }
         Object[] material = materialRows.getFirst();
-        UUID analysisItemId = (UUID) material[0];
         BigDecimal requiredQty = decimal(material[1]);
         BigDecimal shortageQty = decimal(material[2]);
         String goodsCode = (String) material[3];
@@ -119,8 +118,12 @@ public class MaterialAnalysisSupplyProgressService {
         UUID supplyActionId = (UUID) action[0];
 
         if ("MAKE".equals(route)) {
+            UUID makeChildAnalysisItemId =
+                    "PREPLAN_MAKE_TASK".equals(externalType)
+                            ? (UUID) action[3]
+                            : null;
             steps = makeSteps(
-                    materialLineId, analysisItemId, supplyActionId,
+                    analysisId, materialLineId, makeChildAnalysisItemId, supplyActionId,
                     requiredQty, shortageQty, actionAt, actorName);
         } else {
             boolean purchase = !"SUBCONTRACT_APPLICATION".equals(externalType);
@@ -193,14 +196,19 @@ public class MaterialAnalysisSupplyProgressService {
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                     "FINANCE", "财务批准", WAITING, null, null, null, null));
             if (!purchase) {
-                // 委外 = 先出（材料）后进（成品）：出仓步骤同步进计划部进度链。
                 steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                        "MATERIAL_ISSUED", "材料出仓", WAITING, null, null, null, null));
+                        "PREPARATION", "委外目标件准备", WAITING,
+                        "等待委外订货与财务批准", null, null, null));
+                steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
+                        "TARGET_OUTBOUND", "目标件出仓", WAITING,
+                        "准备完成后由仓库执行出仓", null, null, null));
             }
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                    "RECEIVED", "仓库收货", WAITING, null, null, null, null));
+                    "RECEIVED", purchase ? "仓库收货" : "委外件回厂登记",
+                    WAITING, null, null, null, null));
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                    "QUALITY", "品质验收", WAITING, null, null, null, null));
+                    "QUALITY", purchase ? "品质验收" : "委外回厂 IQC",
+                    WAITING, null, null, null, null));
             steps.add(stockedStep(
                     materialLineId, supplyActionId, requiredQty, shortageQty));
             return steps;
@@ -270,9 +278,11 @@ public class MaterialAnalysisSupplyProgressService {
                 financeDetail, null, financeState == DONE ? iso(decidedAt) : null,
                 financeState == DONE ? deciderName : null));
 
-        // ③.5 委外材料出仓（仅委外）：财务批准 → 发料计划/出仓单 → 仓库出仓（V304 口径）。
+        SubcontractOutboundProgress subcontractOutbound = null;
         if (!purchase) {
-            steps.add(subcontractOutboundStep(orderItemIds, financeState));
+            steps.add(subcontractPreparationStep(orderItemIds, financeState));
+            subcontractOutbound = subcontractOutboundProgress(orderItemIds, financeState);
+            steps.add(subcontractOutbound.step());
         }
 
         // ④ 仓库收货：订货明细 → 收货明细 → 收货单（status=1 为已审核收货）。
@@ -323,13 +333,17 @@ public class MaterialAnalysisSupplyProgressService {
             receivedState = DONE;
         } else if (anyReceiptDraft) {
             receivedState = CURRENT;
-            receivedDetail = "收货单已登记，待审核";
+            receivedDetail = purchase ? "收货单已登记，待审核" : "回厂已登记，待审核送检";
+        } else if (!purchase && (subcontractOutbound == null
+                || !subcontractOutbound.hasApprovedOutbound())) {
+            receivedState = WAITING;
+            receivedDetail = "至少一批目标件实际出仓后方可登记回厂";
         } else {
             receivedState = CURRENT;
-            receivedDetail = "等待仓库登记实际到货";
+            receivedDetail = purchase ? "等待仓库登记实际到货" : "等待登记委外件回厂";
         }
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                "RECEIVED", "仓库收货", receivedState,
+                "RECEIVED", purchase ? "仓库收货" : "委外件回厂登记", receivedState,
                 receivedDetail,
                 receiptNos.isEmpty() ? null : receiptNos.toString(),
                 receivedState == DONE ? iso(firstReceiptAt) : null,
@@ -339,6 +353,8 @@ public class MaterialAnalysisSupplyProgressService {
         String qualityState;
         String qualityDetail = null;
         OffsetDateTime qualityAt = null;
+        BigDecimal qualifiedReturnedQty = BigDecimal.ZERO;
+        BigDecimal warehouseStockedQty = BigDecimal.ZERO;
         if (approvedReceiptItemIds.isEmpty()) {
             qualityState = receivedState == WAITING ? WAITING : CURRENT;
             if (receivedState != WAITING) qualityDetail = "等待收货审核后送检";
@@ -348,7 +364,8 @@ public class MaterialAnalysisSupplyProgressService {
                            COUNT(*) FILTER (WHERE status IN ('PENDING','PARTIAL')),
                            COALESCE(SUM(passed_base_qty), 0),
                            COALESCE(SUM(failed_base_qty), 0),
-                           MAX(passed_at)
+                           MAX(passed_at),
+                           COALESCE(SUM(warehouse_stocked_base_qty), 0)
                     FROM procurement_inspection_items
                     WHERE receipt_type = :receiptType
                       AND receipt_item_id IN (:receiptItemIds)
@@ -359,8 +376,10 @@ public class MaterialAnalysisSupplyProgressService {
             long total = ((Number) agg[0]).longValue();
             long open = ((Number) agg[1]).longValue();
             BigDecimal passed = decimal(agg[2]);
+            qualifiedReturnedQty = passed;
             BigDecimal failed = decimal(agg[3]);
             qualityAt = time(agg[4]);
+            warehouseStockedQty = decimal(agg[5]);
             if (total == 0) {
                 qualityState = CURRENT;
                 qualityDetail = "待检记录生成中";
@@ -379,33 +398,128 @@ public class MaterialAnalysisSupplyProgressService {
             }
         }
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                "QUALITY", "品质验收", qualityState,
+                "QUALITY", purchase ? "品质验收" : "委外回厂 IQC", qualityState,
                 qualityDetail, null,
                 qualityState == DONE ? iso(qualityAt) : null, null));
 
-        // ⑥ 入库齐套：以分析节点实时缺口为权威（合格入目标仓即归零）。
-        steps.add(stockedStep(
-                materialLineId, supplyActionId, requiredQty, shortageQty));
+        // 前置自制成品入库仍是 SUBCONTRACT_OUTBOUND 专属占用，不是原需求最终供给。
+        steps.add(purchase
+                ? stockedStep(materialLineId, supplyActionId, requiredQty, shortageQty)
+                : subcontractStockedStep(materialLineId, supplyActionId,
+                        requiredQty, shortageQty,
+                        qualifiedReturnedQty, warehouseStockedQty));
         return steps;
     }
 
-    // ============================ 委外材料出仓（V304） ============================
+    // ============================ 委外目标件准备 / 出仓 ============================
 
-    /**
-     * 委外材料出仓步骤：财务批准后按计划/出仓单聚合。DONE = 全部计划量已出仓或余量已关闭；
-     * CURRENT = 草稿待审 / 部分出仓 / 等待仓库出仓；无计划且无出仓单 = 委外商自备料（DONE）。
-     */
-    private MaterialAnalysisContracts.SupplyProgressStep subcontractOutboundStep(
+    private MaterialAnalysisContracts.SupplyProgressStep subcontractPreparationStep(
             Set<UUID> orderItemIds, String financeState) {
         if (!DONE.equals(financeState)) {
             return new MaterialAnalysisContracts.SupplyProgressStep(
-                    "MATERIAL_ISSUED", "材料出仓", WAITING, null, null, null, null);
+                    "PREPARATION", "委外目标件准备", WAITING,
+                    "等待财务批准后冻结目标件准备路线", null, null, null);
+        }
+        Object[] agg = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT COUNT(*),
+                       COUNT(*) FILTER (
+                           WHERE pi.flow_mode = 'LEGACY_BOM_COMPONENT'),
+                       COUNT(*) FILTER (
+                           WHERE pi.flow_mode = 'DIRECT_OUTBOUND'),
+                       COUNT(*) FILTER (
+                           WHERE pi.flow_mode = 'MAKE_THEN_OUTBOUND'),
+                       COUNT(*) FILTER (
+                           WHERE pi.preparation_status IN (
+                               'LEGACY_READY','READY_OUTBOUND','OUTBOUND_COMPLETE')),
+                       COUNT(*) FILTER (
+                           WHERE pi.preparation_status IN (
+                               'ACTION_REQUIRED','IN_PREPARATION',
+                               'WAITING_FQC','WAITING_INBOUND')),
+                       COUNT(*) FILTER (
+                           WHERE pi.preparation_status = 'CANCELLED'),
+                       COALESCE(SUM(pi.planned_qty), 0),
+                       COALESCE(SUM(pi.prepared_qty), 0),
+                       COUNT(*) FILTER (
+                           WHERE pi.flow_mode NOT IN (
+                               'LEGACY_BOM_COMPONENT','DIRECT_OUTBOUND',
+                               'MAKE_THEN_OUTBOUND')
+                              OR pi.preparation_status NOT IN (
+                               'LEGACY_READY','ACTION_REQUIRED','IN_PREPARATION',
+                               'WAITING_FQC','WAITING_INBOUND','READY_OUTBOUND',
+                               'OUTBOUND_COMPLETE','CANCELLED'))
+                FROM subcontract_material_plans p
+                JOIN subcontract_material_plan_items pi
+                  ON pi.plan_id = p.id AND pi.is_deleted = FALSE
+                WHERE pi.order_item_id IN (:orderItemIds) AND p.is_deleted = FALSE
+                """).setParameter("orderItemIds", List.copyOf(orderItemIds))).getFirst();
+        long total = ((Number) agg[0]).longValue();
+        long legacy = ((Number) agg[1]).longValue();
+        long direct = ((Number) agg[2]).longValue();
+        long make = ((Number) agg[3]).longValue();
+        long ready = ((Number) agg[4]).longValue();
+        long waiting = ((Number) agg[5]).longValue();
+        long cancelled = ((Number) agg[6]).longValue();
+        BigDecimal planned = decimal(agg[7]);
+        BigDecimal prepared = decimal(agg[8]);
+        long invalid = ((Number) agg[9]).longValue();
+        if (total == 0) {
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "PREPARATION", "委外目标件准备", CURRENT,
+                    "财务已批准但尚未形成目标件出仓计划，请刷新或联系委外负责人",
+                    null, null, null);
+        }
+        if (cancelled > 0 || invalid > 0) {
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "PREPARATION", "委外目标件准备", REJECTED,
+                    "准备路线已取消或状态异常，禁止继续委外出仓", null, null, null);
+        }
+        if (ready == total) {
+            String detail;
+            if (make > 0) {
+                detail = "前置自制已完成 FQC 与仓库整批实收，目标件已专属占用";
+            } else if (direct > 0 && legacy == 0) {
+                detail = "目标件无活动子层级，可直接进入仓库出仓";
+            } else {
+                detail = "历史发料行按冻结口径兼容执行";
+            }
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "PREPARATION", "委外目标件准备", DONE, detail,
+                    null, null, null);
+        }
+        String detail = "前置已完成 "
+                + prepared.stripTrailingZeros().toPlainString() + " / "
+                + planned.stripTrailingZeros().toPlainString()
+                + "；等待 " + waiting + " 行完成领料、装配、报工、FQC 与仓库实收";
+        return new MaterialAnalysisContracts.SupplyProgressStep(
+                "PREPARATION", "委外目标件准备", CURRENT, detail,
+                null, null, null);
+    }
+
+    private SubcontractOutboundProgress subcontractOutboundProgress(
+            Set<UUID> orderItemIds, String financeState) {
+        if (!DONE.equals(financeState)) {
+            return new SubcontractOutboundProgress(
+                    new MaterialAnalysisContracts.SupplyProgressStep(
+                            "TARGET_OUTBOUND", "目标件出仓", WAITING,
+                            "等待财务批准与目标件准备", null, null, null),
+                    false);
         }
         List<Object[]> planAgg = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT COALESCE(SUM(pi.planned_qty), 0), COALESCE(SUM(pi.issued_qty), 0),
-                       COALESCE(SUM(GREATEST(pi.planned_qty - pi.issued_qty, 0))
-                           FILTER (WHERE p.status = 'OPEN'), 0),
-                       COUNT(DISTINCT p.id)
+                       COALESCE(SUM(
+                           CASE WHEN p.status = 'OPEN'
+                                      AND pi.preparation_status IN (
+                                          'LEGACY_READY','READY_OUTBOUND')
+                                THEN GREATEST(
+                                    LEAST(pi.planned_qty, pi.prepared_qty)
+                                    - pi.issued_qty, 0)
+                                ELSE 0 END), 0),
+                       COUNT(DISTINCT p.id),
+                       COUNT(*) FILTER (
+                           WHERE pi.preparation_status IN (
+                               'ACTION_REQUIRED','IN_PREPARATION',
+                               'WAITING_FQC','WAITING_INBOUND')),
+                       COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'OPEN')
                 FROM subcontract_material_plans p
                 JOIN subcontract_material_plan_items pi
                   ON pi.plan_id = p.id AND pi.is_deleted = FALSE
@@ -427,6 +541,8 @@ public class MaterialAnalysisSupplyProgressService {
         BigDecimal issued = decimal(agg[1]);
         BigDecimal openRemaining = agg[2] == null ? BigDecimal.ZERO : decimal(agg[2]);
         long planCount = ((Number) agg[3]).longValue();
+        long waitingPreparation = ((Number) agg[4]).longValue();
+        long openPlanCount = ((Number) agg[5]).longValue();
 
         StringBuilder approvedNos = new StringBuilder();
         OffsetDateTime lastApprovedAt = null;
@@ -448,43 +564,85 @@ public class MaterialAnalysisSupplyProgressService {
         }
 
         if (planCount == 0 && issueRows.isEmpty()) {
-            return new MaterialAnalysisContracts.SupplyProgressStep(
-                    "MATERIAL_ISSUED", "材料出仓", DONE, "无需发料(委外商自备料)", null, null, null);
+            return new SubcontractOutboundProgress(
+                    new MaterialAnalysisContracts.SupplyProgressStep(
+                            "TARGET_OUTBOUND", "目标件出仓", WAITING,
+                            "目标件出仓计划尚未生成，不能解释为无 BOM 无需出仓",
+                            null, null, null),
+                    false);
         }
         String qtyText = "已出仓 " + issued.stripTrailingZeros().toPlainString()
                 + " / 计划 " + planned.stripTrailingZeros().toPlainString();
-        if (openRemaining.signum() <= 0 && planCount > 0) {
-            return new MaterialAnalysisContracts.SupplyProgressStep(
-                    "MATERIAL_ISSUED", "材料出仓", DONE, qtyText,
-                    approvedNos.isEmpty() ? null : approvedNos.toString(),
-                    iso(lastApprovedAt), approverName);
+        if (planned.signum() > 0 && issued.compareTo(planned) >= 0) {
+            return new SubcontractOutboundProgress(
+                    new MaterialAnalysisContracts.SupplyProgressStep(
+                            "TARGET_OUTBOUND", "目标件出仓", DONE, qtyText,
+                            approvedNos.isEmpty() ? null : approvedNos.toString(),
+                            iso(lastApprovedAt), approverName),
+                    true);
+        }
+        if (issued.signum() == 0 && waitingPreparation > 0) {
+            return new SubcontractOutboundProgress(
+                    new MaterialAnalysisContracts.SupplyProgressStep(
+                            "TARGET_OUTBOUND", "目标件出仓", WAITING,
+                            "等待前置自制整批完成后释放仓库出仓", null, null, null),
+                    false);
+        }
+        if (openPlanCount == 0 && openRemaining.signum() <= 0
+                && issued.compareTo(planned) < 0) {
+            return new SubcontractOutboundProgress(
+                    new MaterialAnalysisContracts.SupplyProgressStep(
+                            "TARGET_OUTBOUND", "目标件出仓", REJECTED,
+                            qtyText + "；出仓计划已关闭且仍有未出数量",
+                            approvedNos.isEmpty() ? null : approvedNos.toString(),
+                            null, null),
+                    issued.signum() > 0);
         }
         String detail = issued.signum() > 0
                 ? qtyText + "(部分出仓)"
                 : anyDraft ? "出仓单已生成，待仓库审核出仓" : "等待仓库出仓";
-        return new MaterialAnalysisContracts.SupplyProgressStep(
-                "MATERIAL_ISSUED", "材料出仓", CURRENT, detail,
-                approvedNos.isEmpty() ? null : approvedNos.toString(), null, null);
+        return new SubcontractOutboundProgress(
+                new MaterialAnalysisContracts.SupplyProgressStep(
+                        "TARGET_OUTBOUND", "目标件出仓", CURRENT, detail,
+                        approvedNos.isEmpty() ? null : approvedNos.toString(), null, null),
+                issued.signum() > 0);
+    }
+
+    private record SubcontractOutboundProgress(
+            MaterialAnalysisContracts.SupplyProgressStep step,
+            boolean hasApprovedOutbound) {
     }
 
     // ============================ 自制链 ============================
 
     private List<MaterialAnalysisContracts.SupplyProgressStep> makeSteps(
-            UUID materialLineId, UUID analysisItemId, UUID supplyActionId,
+            UUID analysisId, UUID materialLineId, UUID makeChildAnalysisItemId,
+            UUID supplyActionId,
             BigDecimal requiredQty, BigDecimal shortageQty,
             OffsetDateTime actionAt, String actorName) {
         List<MaterialAnalysisContracts.SupplyProgressStep> steps = new ArrayList<>();
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "MAKE_TASK", "已创建自制备料任务", DONE, null, null, iso(actionAt), actorName));
 
-        List<Object[]> planRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT plan.bill_no, plan.status, plan.is_closed, plan.created_at, plan.maker_id
-                FROM production_plans plan
-                WHERE plan.material_analysis_item_id = :analysisItemId
-                  AND plan.is_deleted = FALSE
-                ORDER BY plan.created_at DESC, plan.id DESC
-                LIMIT 1
-                """).setParameter("analysisItemId", analysisItemId));
+        List<Object[]> planRows = makeChildAnalysisItemId == null
+                ? List.of()
+                : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT plan.id, plan.bill_no, plan.status, plan.is_closed,
+                               plan.created_at, plan.maker_id
+                        FROM production_plans plan
+                        JOIN production_material_analysis_items child
+                          ON child.id = plan.material_analysis_item_id
+                         AND child.analysis_id = plan.material_analysis_id
+                         AND child.source_type = 'MAKE_COMPONENT'
+                         AND child.is_deleted = FALSE
+                        WHERE plan.material_analysis_id = :analysisId
+                          AND plan.material_analysis_item_id = :makeChildAnalysisItemId
+                          AND plan.is_deleted = FALSE
+                        ORDER BY plan.created_at DESC, plan.id DESC
+                        LIMIT 1
+                        """)
+                        .setParameter("analysisId", analysisId)
+                        .setParameter("makeChildAnalysisItemId", makeChildAnalysisItemId));
         if (planRows.isEmpty()) {
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                     "PLAN", "生产计划", CURRENT, "待计划员安排生产", null, null, null));
@@ -495,13 +653,15 @@ public class MaterialAnalysisSupplyProgressService {
             return steps;
         }
         Object[] plan = planRows.getFirst();
-        int planStatus = ((Number) plan[1]).intValue();
-        boolean closed = Boolean.TRUE.equals(plan[2]);
+        UUID planId = (UUID) plan[0];
+        int planStatus = ((Number) plan[2]).intValue();
+        boolean closed = Boolean.TRUE.equals(plan[3]);
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "PLAN", "生产计划", planStatus == 1 ? DONE : CURRENT,
                 planStatus == 1 ? null : "计划待审核下达",
-                (String) plan[0], iso(time(plan[3])),
-                nameResolver.nameWithCodeOf((UUID) plan[4])));
+                (String) plan[1], iso(time(plan[4])),
+                nameResolver.nameWithCodeOf((UUID) plan[5]),
+                "PRODUCTION_PLAN", planId));
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "PRODUCTION", "生产完工入库", closed ? DONE : (planStatus == 1 ? CURRENT : WAITING),
                 closed ? null : (planStatus == 1 ? "生产进行中" : null), null, null, null));
@@ -553,6 +713,32 @@ public class MaterialAnalysisSupplyProgressService {
                 "STOCKED", "入库齐套", stocked ? DONE : WAITING,
                 detail,
                 null, null, null);
+    }
+
+    private MaterialAnalysisContracts.SupplyProgressStep subcontractStockedStep(
+            UUID materialLineId, UUID supplyActionId,
+            BigDecimal requiredQty, BigDecimal shortageQty,
+            BigDecimal qualifiedReturnedQty,
+            BigDecimal warehouseStockedQty) {
+        if (requiredQty.signum() > 0 && qualifiedReturnedQty.signum() <= 0) {
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "STOCKED", "委外合格供给入库", WAITING,
+                    "等待委外回厂 IQC 合格；前置自制入库仅形成目标件专属出仓占用，"
+                            + "不能提前满足原生产需求",
+                    null, null, null);
+        }
+        if (requiredQty.signum() > 0 && warehouseStockedQty.signum() <= 0) {
+            return new MaterialAnalysisContracts.SupplyProgressStep(
+                    "STOCKED", "委外合格供给入库", CURRENT,
+                    "品质已合格，等待仓库确认实际库位并入库；确认前不计入可用库存",
+                    null, null, null);
+        }
+        MaterialAnalysisContracts.SupplyProgressStep base =
+                stockedStep(materialLineId, supplyActionId, requiredQty, shortageQty);
+        return new MaterialAnalysisContracts.SupplyProgressStep(
+                base.key(), "委外合格供给入库", base.state(), base.detail(),
+                base.docNo(), base.at(), base.operatorName(),
+                base.documentType(), base.documentId());
     }
 
     private String buySplitDetail(UUID supplyActionId) {

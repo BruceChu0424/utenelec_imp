@@ -58,10 +58,12 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
     }
 
     @Test
-    void purchaseAndSubcontractPassSlicesAdvanceBeforeWholeReceiptClosure()
+    void qualityPassOnlyQueuesWarehouseAndStockInConfirmationAdvancesProduction()
             throws Exception {
         String inspection = source(
                 "features/warehouse/inbound/ProcurementInspectionService.java");
+        String stockIn = source(
+                "features/warehouse/inbound/ProcurementIqcStockInService.java");
         String purchase = source(
                 "features/production/fulfillment/"
                         + "ProductionPurchaseSupplyTransitionService.java");
@@ -72,17 +74,25 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
         assertThat(inspection)
                 .contains("boolean wholeReceiptResolved = allResolved(receiptType, receiptId)")
                 .contains("if (\"PASS\".equals(action))")
-                .contains("advanceProductionAfterInspectionPass(")
-                .contains("if (!wholeReceiptResolved || alreadyWoken(receiptType, receiptId))")
-                .contains("wakeProduction(receiptType, receiptId)")
+                .contains("publishIqcStockInPending(")
+                .contains("if (!wholeReceiptResolved || alreadyReceiptResolved(receiptType, receiptId))")
                 .contains("purchaseSupply.onPurchaseReceiptApproved(receiptId)")
-                .contains("subcontractSupply.onSubcontractReceiptApproved(receiptId)");
-        assertThat(inspection.lastIndexOf("advanceProductionAfterInspectionPass("))
-                .isGreaterThan(inspection.indexOf(
-                        "appendEvent(eventId, inspectionItemId, action, requested, reason, actor, now)"));
-        assertOrdered(inspection,
-                "advanceProductionAfterInspectionPass(",
-                "wakeIfWholeReceiptResolved(");
+                .contains("subcontractSupply.onSubcontractReceiptApproved(receiptId)")
+                .doesNotContain("advanceProductionAfterInspectionPass(")
+                .doesNotContain("purchaseSupply.afterPurchaseInspectionPassed(")
+                .doesNotContain("subcontractSupply.afterSubcontractInspectionPassed(");
+        assertThat(stockIn)
+                .contains("stockService.recordMovement(")
+                .contains("incrementStockedProjection(")
+                .contains("advanceProductionAfterStockIn(")
+                .contains("purchaseSupply.afterPurchaseInspectionPassed(")
+                .contains("subcontractSupply.afterSubcontractInspectionPassed(");
+        assertOrdered(stockIn,
+                "stockService.recordMovement(",
+                "incrementStockedProjection(");
+        assertOrdered(stockIn,
+                "incrementStockedProjection(",
+                "advanceProductionAfterStockIn(");
         assertThat(purchase).contains(
                 "materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId)")
                 .contains("materialAnalysisWakeup.afterPurchaseInspectionPassed(")

@@ -139,7 +139,8 @@ public class SubcontractReportService {
     }
 
     private boolean subcontractPriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewSubcontractReport();
     }
 
     static List<ReportColumn> responseColumns(List<ReportColumn> columns, boolean priceMasked) {

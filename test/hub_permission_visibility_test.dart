@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
+import 'package:uten_imp/features/warehouse/providers/warehouse_iqc_stock_in_count_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 Widget _app(Widget page, Set<String> permissions) {
@@ -11,6 +12,7 @@ Widget _app(Widget page, Set<String> permissions) {
     overrides: [
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
+      warehouseIqcStockInPendingCountProvider.overrideWith((ref) async => 0),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -48,5 +50,19 @@ void main() {
     expect(find.text('库存查询'), findsNWidgets(2));
     expect(find.text('调拨单'), findsNothing);
     expect(find.text('采购收货单'), findsNothing);
+  });
+
+  testWidgets('warehouse IQC stock-in card follows its exact view permission', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(const WarehouseHubPage(), const {Perm.warehouseIqcStockInView}),
+    );
+    await tester.pump();
+    expect(find.text('IQC 合格待入库'), findsOneWidget);
+
+    await tester.pumpWidget(_app(const WarehouseHubPage(), const {}));
+    await tester.pump();
+    expect(find.text('IQC 合格待入库'), findsNothing);
   });
 }

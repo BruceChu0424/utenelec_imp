@@ -1,9 +1,10 @@
 // 委外单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
 // 计划下达的委外申请始终只读；订货走财务审批；其余单据才沿用各自的草稿/审核/红冲动作。
-// 所有动作同时受服务端 allowedActions 与权限约束。
+// 财务决定只存在于财务任务中心；本页仅消费业务动作能力与 SUBMIT_FINANCE。
 // 名称解析：委外商(supplier)/仓库/币种/颜色/单位复用采购 MasterNameService；货品按明细 id 批量 lookup。
-// 审核仅调 approve，库存/应付/累计联动由后端承担；新增发料缺冻结 BOM/子件台账时由服务端 409 禁审（前端门禁已按 V221 解除）。
+// 审核仅调 approve，库存/应付/累计联动由后端承担；新流出仓草稿由仓库任务生成并只出目标件，
+// LEGACY_BOM_COMPONENT 历史单据继续保留原冻结子件守恒与反向能力。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -39,9 +40,13 @@ class SubcontractDocDetailPage extends ConsumerStatefulWidget {
     super.key,
     required this.docType,
     required this.id,
+    this.forceReadOnly = false,
+    this.readOnlyReason,
   });
   final SubcontractDocType docType;
   final String id;
+  final bool forceReadOnly;
+  final String? readOnlyReason;
 
   @override
   ConsumerState<SubcontractDocDetailPage> createState() =>
@@ -50,16 +55,18 @@ class SubcontractDocDetailPage extends ConsumerStatefulWidget {
 
 class _SubcontractDocDetailPageState
     extends ConsumerState<SubcontractDocDetailPage> {
+  static const _financeApprovalTasksPath = '/finance/procurement-approvals';
+
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(widget.docType);
   SubcontractDocDetail? _detail;
   bool _loading = false;
   bool _busy = false;
 
-  bool get _canViewCommercialAmounts =>
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.subcontractReceiptPriceView) &&
-      !(_detail?.priceMasked ?? false);
+  bool get _canViewCommercialAmounts {
+    return _cfg.canViewCommercial(ref.read(currentPermissionsProvider)) &&
+        !(_detail?.priceMasked ?? false);
+  }
+
   String? _error;
 
   @override
@@ -72,18 +79,29 @@ class _SubcontractDocDetailPageState
       code != null && ref.read(currentPermissionsProvider).contains(code);
 
   bool get _ordinaryWritable =>
-      widget.docType == SubcontractDocType.application ||
-      documentOwnerCanWrite(
-        ref.read(
-          documentScopeCapabilityProvider(DocumentDataScope.subcontract),
-        ),
-        _detail?.makerId,
-      );
+      !widget.forceReadOnly &&
+      (widget.docType == SubcontractDocType.application ||
+          documentOwnerCanWrite(
+            ref.read(
+              documentScopeCapabilityProvider(DocumentDataScope.subcontract),
+            ),
+            _detail?.makerId,
+          ));
 
   bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
   bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
   bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
   bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
+
+  bool get _financeReviewOnly =>
+      widget.docType == SubcontractDocType.order &&
+      _hasPermission(Perm.financeOrderApprovalView) &&
+      !_hasPermission(_cfg.listPerm);
+
+  String get _defaultBackPath =>
+      _financeReviewOnly ? _financeApprovalTasksPath : '/subcontract';
+
+  String get _returnLabel => _financeReviewOnly ? '返回订货审批任务中心' : '返回订货单列表';
 
   Future<void> _load() async {
     if (widget.docType != SubcontractDocType.application) {
@@ -277,16 +295,17 @@ class _SubcontractDocDetailPageState
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
         leading: UtenBackButton(
-          onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
+          onPressed: () => popOrBackTo(context, defaultPath: _defaultBackPath),
         ),
         actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: () =>
-                context.push('/subcontract/${_cfg.type.pathSegment}'),
-            child: const Text('查看历史'),
-          ),
+          if (_hasPermission(_cfg.listPerm))
+            UtenButton(
+              type: UtenButtonType.tonal,
+              icon: Icons.history_rounded,
+              onPressed: () =>
+                  context.push('/subcontract/${_cfg.type.pathSegment}'),
+              child: const Text('查看历史'),
+            ),
         ],
       ),
       body: SafeArea(
@@ -300,6 +319,10 @@ class _SubcontractDocDetailPageState
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    if (widget.forceReadOnly) ...[
+                      _readOnlyBusinessNotice(theme),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
                     if (scopeCapability != null)
                       DocumentScopeWriteNotice(
                         capability: scopeCapability,
@@ -342,9 +365,37 @@ class _SubcontractDocDetailPageState
                 ),
         ),
       ),
-      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
+      bottomNavigationBar: _detail == null || _busy || widget.forceReadOnly
+          ? null
+          : _actions(theme),
     );
   }
+
+  Widget _readOnlyBusinessNotice(ThemeData theme) => Semantics(
+    container: true,
+    label: widget.readOnlyReason ?? '该委外记录为只读历史',
+    child: Container(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.55),
+        borderRadius: UtenRadius.mdAll,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.lock_outline_rounded),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Text(
+              widget.readOnlyReason ?? '该委外记录只用于历史查询与审计，不提供业务动作。',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   String _orderStatusText(SubcontractDocDetail detail) {
     final approval = detail.financeApproval;
@@ -538,7 +589,7 @@ class _SubcontractDocDetailPageState
               ),
             MasterColumnDef(
               key: 'qty',
-              label: '数量',
+              label: '业务量',
               width: 90,
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
@@ -565,7 +616,7 @@ class _SubcontractDocDetailPageState
             if (_cfg.itemHasWeight)
               MasterColumnDef(
                 key: 'weight',
-                label: '重量',
+                label: '实际重量',
                 width: 90,
                 type: 'number',
                 value: (it) => it.weight?.toStringAsFixed(2),
@@ -697,7 +748,9 @@ class _SubcontractDocDetailPageState
         : rejected
         ? '退回原因：${reason?.isNotEmpty == true ? reason : '未填写'}。制单人修改后可再次提交。'
         : approved
-        ? '委外订货单已生效，仓库会收到未来入库提醒。'
+        ? '委外订货单已生效。无子层级目标件在合格库存放行后通知仓库出仓；'
+              '有子层级目标件先进入计划部前置自制，完成领料、报工、FQC 和成品入仓后'
+              '再通知仓库出仓。委外加工完成回厂后仍需 IQC 合格才正式入仓。'
         : '填写委外商、数量和单价并保存后，请点击“提交财务审核”。';
     final background = rejected
         ? theme.colorScheme.errorContainer
@@ -867,8 +920,8 @@ class _SubcontractDocDetailPageState
         UtenButton(
           type: UtenButtonType.secondary,
           icon: Icons.arrow_back_rounded,
-          onPressed: () => context.go(SubcontractRoute.list(_cfg.pathSegment)),
-          child: const Text('返回订货单列表'),
+          onPressed: () => popOrBackTo(context, defaultPath: _defaultBackPath),
+          child: Text(_returnLabel),
         ),
       );
     }

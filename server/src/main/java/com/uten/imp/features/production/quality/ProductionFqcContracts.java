@@ -3,11 +3,13 @@ package com.uten.imp.features.production.quality;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /** HTTP and application contracts for production FQC. */
@@ -70,5 +72,32 @@ public final class ProductionFqcContracts {
             UUID decisionEventId,
             InspectionView inspection,
             boolean replay) {
+    }
+
+    public record PassAllBatchRequest(
+            @NotNull
+            @Size(min = 1, max = 100)
+            List<@NotNull UUID> inspectionIds,
+            @NotBlank
+            @Size(min = 8, max = 128)
+            @Pattern(regexp = "[A-Za-z0-9._:-]+",
+                    message = "幂等键只能包含字母、数字或 ._:-")
+            String idempotencyKey) {
+    }
+
+    public record PassAllBatchItem(
+            UUID inspectionId,
+            UUID decisionEventId,
+            InspectionView inspection) {
+    }
+
+    public record PassAllBatchResult(
+            UUID batchId,
+            List<PassAllBatchItem> items,
+            boolean replay) {
+
+        public PassAllBatchResult {
+            items = List.copyOf(items);
+        }
     }
 }

@@ -43,7 +43,7 @@ public class StockBalance extends BaseEntity {
     @Column(name = "amount_local", precision = 18, scale = 4)
     private BigDecimal amountLocal;
 
-    /** 当前库存重量（即时库存）：历史=StockGoods 最新年 FactWeight，增量=明细 weight×unit_rate×direction。 */
+    /** 当前库存重量：历史=StockGoods 最新年 FactWeight；新流水按行实际总重量×direction 增减。 */
     @Column(name = "weight", precision = 18, scale = 4)
     private BigDecimal weight;
 

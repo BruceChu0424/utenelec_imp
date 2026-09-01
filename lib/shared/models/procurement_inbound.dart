@@ -1,4 +1,4 @@
-/// 到货任务在仓库流水线中的当前步骤（到货登记 → [超量待财务] → 送检 → 品质放行入库）。
+/// 到货任务在仓库流水线中的当前步骤（到货登记 → [超量待财务] → 送检 → 品质放行）。
 enum InboundArrivalStep {
   /// 可登记实际到货（还有批准剩余量可收）。
   readyToRegister,
@@ -9,7 +9,7 @@ enum InboundArrivalStep {
   /// 实到超量已隔离，待财务定案（到货异常任务中心处理）。
   excessPendingFinance,
 
-  /// 已送检，待品质部检验放行（放行后自动入库存，仓库无需操作）。
+  /// 已送检，待品质部检验放行（合格后转独立仓库待入库任务）。
   awaitingQuality,
 
   /// 暂不能登记（数据/授权不完整）。
@@ -83,13 +83,16 @@ class InboundExpectationItem {
   final num? unitPrice;
   final num orderedQty;
   final num acceptedQty;
+
+  /// 服务端当前允许继续登记的数量。采购为财务批准未收量；V436 新委外仅为
+  /// 已真实审核出仓、扣除已审核回厂并计入合法 IQC 返修额度后的当前容量。
   final num remainingQty;
 
   /// 已登记待审核在途量（服务端按草稿未审收货单汇总）：审核通过后转入 acceptedQty。
   final num registeredQty;
   final String? expectedDate;
 
-  /// 还可登记量 = 未收量 − 已登记待审核量（防止审核前重复登记同一批到货）。
+  /// 还可登记量 = 当前服务端释放容量 − 已登记待审核量。
   num get effectiveRemainingQty {
     final value = remainingQty - registeredQty;
     return value > 0 ? value : 0;
@@ -169,6 +172,8 @@ class InboundExpectation {
   final String status;
   final num orderedQty;
   final num acceptedQty;
+
+  /// 当前页面可登记容量合计；委外不是整张订货未收量，而是已经真实出仓的批次余量。
   final num remainingQty;
 
   /// 已登记待审核在途量合计（草稿未审收货单）；>0 时卡片展示「已登记待审核」。
@@ -203,7 +208,7 @@ class InboundExpectation {
     return InboundArrivalStep.blocked;
   }
 
-  /// 还可登记量 = 未收量 − 已登记待审核量。
+  /// 还可登记量 = 当前服务端释放容量 − 已登记待审核量。
   num get effectiveRemainingQty {
     final value = remainingQty - registeredQty;
     return value > 0 ? value : 0;
@@ -496,7 +501,8 @@ class ProcurementArrivalException {
   num get excessQty => requestedExcessQty;
 
   /// 一键入库可用：财务已定案且有待入库量（RECEIPT_ADJUSTED = 接受量>0、收货草稿已下调）。
-  bool get canStockIn => status == 'RECEIPT_ADJUSTED' && acceptedQty > 0;
+  bool get canStockIn =>
+      status == 'RECEIPT_ADJUSTED' && acceptedQty > 0 && version > 0;
 
   String get statusLabel => switch (status) {
     'PENDING_FINANCE' => '未入库，等待财务审批超量',
@@ -586,7 +592,7 @@ enum FinanceArrivalDecision {
 
 /// 到货登记一步完成（登记 + 送检审核）的结果。
 enum WarehouseArrivalRegistrationOutcome {
-  /// 已审核并转品质部待检（IQC），合格放行后自动入库存。
+  /// 已审核并转品质部待检（IQC），合格后等待仓库确认实物入库。
   submittedForInspection,
 
   /// 实到超过财务批准量：未入库、未立应付，已隔离等待财务定案。

@@ -45,6 +45,23 @@ class SalesReturnQualityServiceTest {
     }
 
     @Test
+    void optionalActualWeightUsesTheSameCumulativeProration() {
+        BigDecimal first = SalesReturnQualityService.proratedIncrementNullable(
+                new BigDecimal("10.0000"), new BigDecimal("3"),
+                BigDecimal.ZERO, BigDecimal.ONE);
+        BigDecimal second = SalesReturnQualityService.proratedIncrementNullable(
+                new BigDecimal("10.0000"), new BigDecimal("3"),
+                BigDecimal.ONE, BigDecimal.ONE);
+        BigDecimal third = SalesReturnQualityService.proratedIncrementNullable(
+                new BigDecimal("10.0000"), new BigDecimal("3"),
+                new BigDecimal("2"), BigDecimal.ONE);
+
+        assertEquals(new BigDecimal("10.0000"), first.add(second).add(third));
+        assertEquals(null, SalesReturnQualityService.proratedIncrementNullable(
+                null, new BigDecimal("3"), BigDecimal.ZERO, BigDecimal.ONE));
+    }
+
+    @Test
     void dispositionIdempotencyIsStableStrictAndPayloadAware() {
         assertEquals("quality-dispose-001",
                 SalesReturnQualityService.normalizeIdempotencyKey(

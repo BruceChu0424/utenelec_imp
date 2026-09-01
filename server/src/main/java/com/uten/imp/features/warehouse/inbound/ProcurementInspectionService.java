@@ -2,11 +2,12 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProcurementInspectionPort;
+import com.uten.imp.application.port.ProcurementIqcRejectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.stock.InventoryKey;
+import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionPassRequest;
 import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
@@ -40,10 +41,10 @@ import java.util.UUID;
  * globalAvailableBase / v_stock_available）自然不含待检品——零改动、零口径漂移，这是比
  * "给 stock_balances 加 inspection_status 列"更稳的选型（详见 ADR）。
  *
- * <p>只有受控的 {@code PASS} 处置才 {@link StockService#recordMovement} {@code DIR_IN}
- * 进可用库存，并在同一事务按该次合格切片推进正式生产供给；整单结案只负责结案事件与通知。
- * {@code FAIL} 只记质量事实，不入可用。
- * 收货红冲前须所有明细已结案（RESOLVED），由 {@link #reverseResolvedStock} 反向已放行库存。
+ * <p>{@code PASS} 只形成品质放行事实和仓库待入库任务；它不再写库存，也不再推进生产。
+ * 仓库确认对应的放行切片后，才由 {@link ProcurementIqcStockInService} 写可用库存并推进正式
+ * 生产供给。{@code FAIL} 只记质量事实。收货红冲前须所有明细已结案（RESOLVED），由
+ * {@link #reverseResolvedStock} 只反向仓库已经确认入库的数量。
  */
 @Service
 @RequiredArgsConstructor
@@ -55,10 +56,19 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     private static final String REVERSED = "REVERSED";
     private static final String HANDLE_AUTHORITY = "procurement_inspection:handle";
 
-    /** 与 ChainNoticeService.EVENT_IQC_RESOLVED 对齐：IQC 整单结案 → 通知仓库合格量已入库。 */
+    /** 与 ChainNoticeService.EVENT_IQC_RESOLVED 对齐：IQC 整单结案结果回执。 */
     private static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
+    /** 每个 PASS 切片立即形成仓库待入库提醒；实时任务投影才是权威。 */
+    private static final String EVENT_IQC_STOCK_IN_PENDING =
+            "PROCUREMENT_IQC_STOCK_IN_PENDING";
     /** 与 ChainNoticeService.EVENT_IQC_PENDING 对齐：仓库审核收货 → 通知品质部进入待检。 */
     private static final String EVENT_IQC_PENDING = "PROCUREMENT_IQC_PENDING";
+    /**
+     * Quality-owned detection only.  The async outbox processor projects the
+     * finance case; FAIL never queries AP or a finance table in this transaction.
+     */
+    private static final String EVENT_IQC_REJECTION_DETECTED =
+            "PROCUREMENT_IQC_REJECTION_DETECTED";
 
     private final EntityManager em;
     private final StockService stockService;
@@ -66,8 +76,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     private final TxSessionVars tx;
     private final ProductionSupplyTransitionPort purchaseSupply;
     private final ProductionSubcontractSupplyTransitionPort subcontractSupply;
-    private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
     private final BusinessEventPublisher outbox;
+    private final ProcurementIqcRejectionPort rejectionPort;
 
     /** 收货审核同事务调用：建冻结行 + RECEIVED 事件；不写 stock_balances。 */
     @Override
@@ -79,14 +89,17 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             BigDecimal rate = positiveRate(l.unitRate());
             BigDecimal receivedBase = l.qty().multiply(rate);
             BigDecimal amount = l.amountLocal() == null ? BigDecimal.ZERO : l.amountLocal();
+            BigDecimal receivedWeight = normalizeOptionalWeight(l.weight());
             UUID inspectionItemId = UUID.randomUUID();
             em.createNativeQuery("""
                     INSERT INTO procurement_inspection_items (
                         id, receipt_type, receipt_id, receipt_item_id, warehouse_id, goods_id,
-                        color_id, unit_id, unit_rate, received_base_qty, received_amount_local, received_at
+                        color_id, unit_id, unit_rate, received_base_qty, received_amount_local,
+                        received_weight, received_at
                     ) VALUES (
                         :id, :receiptType, :receiptId, :receiptItemId, :warehouseId, :goodsId,
-                        :colorId, :unitId, :unitRate, :receivedBase, :amount, :receivedAt
+                        :colorId, :unitId, :unitRate, :receivedBase, :amount,
+                        :receivedWeight, :receivedAt
                     )
                     """)
                     .setParameter("id", inspectionItemId)
@@ -100,6 +113,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                     .setParameter("unitRate", rate)
                     .setParameter("receivedBase", receivedBase)
                     .setParameter("amount", amount)
+                    .setParameter("receivedWeight", receivedWeight)
                     .setParameter("receivedAt", receivedAt)
                     .executeUpdate();
             appendEvent(UUID.randomUUID(), inspectionItemId, "RECEIVED", receivedBase, null, actor, receivedAt);
@@ -157,7 +171,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
                                received_base_qty, received_amount_local,
-                               passed_base_qty, failed_base_qty, status, receipt_type
+                               passed_base_qty, failed_base_qty, status, receipt_type,
+                               received_weight, received_weight_unit_id
                         FROM procurement_inspection_items
                         WHERE receipt_type = :rt AND receipt_id = :rid
                         ORDER BY id
@@ -170,12 +185,12 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         int replayCount = 0;
         for (NormalizedBatchPassItem command : commands) {
             UUID eventId = dispositionEventId(command.inspectionItemId(), command.idempotencyKey());
-            if (isReplay(
+            if (replayRequiresWarehouseStockIn(
                     eventId,
                     command.inspectionItemId(),
                     "PASS",
                     command.expectedRemainingBaseQty(),
-                    reason)) {
+                    reason) != null) {
                 replayCount++;
             }
         }
@@ -223,8 +238,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     /**
-     * 受控质检结论：{@code PASS} 放行进可用库存（DIR_IN）并立即按合格切片推进生产；
-     * {@code FAIL} 只记质量事实，不入可用。事件账幂等（同键同命令静默重放，同键异命令 409）。
+     * 受控质检结论：{@code PASS} 只放行到仓库待入库队列；{@code FAIL} 只记质量事实。
+     * 两者都不改变可用库存。事件账幂等（同键同命令静默重放，同键异命令 409）。
      */
     @Transactional
     @PreAuthorize("hasAuthority('procurement_inspection:view')"
@@ -251,7 +266,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
                                received_base_qty, received_amount_local,
-                               passed_base_qty, failed_base_qty, status, receipt_type
+                               passed_base_qty, failed_base_qty, status, receipt_type,
+                               received_weight, received_weight_unit_id
                         FROM procurement_inspection_items
                         WHERE receipt_type = :rt AND receipt_id = :rid
                         ORDER BY id
@@ -271,15 +287,24 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             throw new ApiException(ErrorCode.CONFLICT, "质检结论的单据类型不一致");
         }
         UUID eventId = dispositionEventId(inspectionItemId, idempotencyKey);
-        if (isReplay(eventId, inspectionItemId, action, requested, reason)) {
+        Boolean replayRequiresWarehouseStockIn = replayRequiresWarehouseStockIn(
+                eventId, inspectionItemId, action, requested, reason);
+        if (replayRequiresWarehouseStockIn != null) {
             // Older concurrent dispositions may have committed every line without
             // publishing the whole-receipt wake marker. A same-command replay owns
             // the receipt-scoped row locks above, so it can safely repair that state.
             boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
-            if ("PASS".equals(action)) {
-                advanceProductionAfterInspectionPass(
+            switch (replayNotification(action, replayRequiresWarehouseStockIn)) {
+                case STOCK_IN_PENDING -> publishIqcStockInPending(
                         receiptType, receiptId, inspectionItemId, eventId);
+                case REJECTION_DETECTED -> publishIqcRejectionDetected(
+                        receiptType, receiptId, inspectionItemId, eventId);
+                case NONE -> {
+                    // Historical PASS was already posted before V446. Replaying it
+                    // must not fabricate either a warehouse task or a FAIL event.
+                }
             }
+            recalculateOrderClosure(receiptType, receiptId);
             wakeIfWholeReceiptResolved(
                     receiptType,
                     receiptId,
@@ -295,6 +320,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         BigDecimal received = dec(row[6]);
         BigDecimal passed = dec(row[8]);
         BigDecimal failed = dec(row[9]);
+        BigDecimal resolvedBefore = passed.add(failed);
         BigDecimal remaining = received.subtract(passed).subtract(failed);
         if (requested == null) {
             requested = remaining; // 不传量 = 全量处置（傻瓜式一键合格/不合格）
@@ -306,21 +332,18 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
 
         OffsetDateTime now = OffsetDateTime.now();
         UUID actor = currentUser.requireEmployeeId();
-        UUID warehouseId = (UUID) row[1];
-        UUID goodsId = (UUID) row[2];
-        UUID colorId = (UUID) row[3];
-        UUID unitId = (UUID) row[4];
-        BigDecimal unitRate = dec(row[5]);
-        BigDecimal receivedAmount = dec(row[7]);
-
+        BigDecimal releasedAmount = "PASS".equals(action)
+                ? proratedIncrement(dec(row[7]), received, resolvedBefore, requested)
+                : null;
+        UUID receivedWeightUnitId = (UUID) row[13];
+        BigDecimal trustedReceivedWeight = nullableDec(row[12]);
+        BigDecimal releasedWeight = "PASS".equals(action)
+                ? proratedIncrementNullable(
+                        trustedReceivedWeight, received, resolvedBefore, requested)
+                : null;
+        UUID releasedWeightUnitId = releasedWeight == null
+                ? null : receivedWeightUnitId;
         if ("PASS".equals(action)) {
-            stockService.lockInventory(List.of(new InventoryKey(goodsId, colorId)));
-            BigDecimal passedAmount = proratedIncrement(receivedAmount, received, passed, requested);
-            stockService.recordMovement(new StockService.MovementRequest(
-                    now, movementType(receiptType), sourceDocType(receiptType),
-                    receiptId, inspectionItemId, goodsId, colorId, warehouseId,
-                    StockService.DIR_IN, requested, unitId, unitRate, passedAmount,
-                    passMovementRemark(reason)));
             passed = passed.add(requested);
         } else {
             failed = failed.add(requested);
@@ -346,29 +369,56 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         if (updated != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "待检状态已变化，请刷新后重试");
         }
-        appendEvent(eventId, inspectionItemId, action, requested, reason, actor, now);
-
+        appendEvent(
+                eventId, inspectionItemId, action, requested, reason, actor, now,
+                releasedAmount, releasedWeight, releasedWeightUnitId);
         if ("PASS".equals(action)) {
-            // 分析备料绑定（V298）：放行进现货的同一事务内，把本次放行量按来源
-            // 订货明细溯源绑定到物料分析（无分析来源/超分摊量静默留作公共现货）。
-            // 必须在下方分析刷新与整单唤醒之前建行，归属分析才能立即看到这批料。
-            preplanAnalysisPeg.attributeInspectionPass(
-                    receiptType, receiptId, inspectionItemId, eventId,
-                    requested, warehouseId);
-        }
-
-        boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
-        if ("PASS".equals(action)) {
-            // The PASS movement is already available stock. Advance the exact
-            // qualified slice in this transaction; transition services subtract
-            // existing effective allocations, so retries cannot double count.
-            advanceProductionAfterInspectionPass(
+            publishIqcStockInPending(
+                    receiptType, receiptId, inspectionItemId, eventId);
+        } else {
+            publishIqcRejectionDetected(
                     receiptType, receiptId, inspectionItemId, eventId);
         }
 
-        // 整单结案事件/通知仍按收货单只发一次；生产供给已由每个 PASS 切片推进。
+        boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
+        recalculateOrderClosure(receiptType, receiptId);
+
+        // 整单结案事件/通知仍按收货单只发一次；每个 PASS 切片只生成仓库待入库任务，
+        // 正式生产供给仅按仓库已确认入库量推进。
         wakeIfWholeReceiptResolved(
                 receiptType, receiptId, now, wholeReceiptResolved);
+    }
+
+    private void publishIqcStockInPending(
+            String receiptType,
+            UUID receiptId,
+            UUID inspectionItemId,
+            UUID passEventId) {
+        outbox.publishOnce(
+                EVENT_IQC_STOCK_IN_PENDING,
+                "PROCUREMENT_INSPECTION_PASS",
+                passEventId,
+                Map.of(
+                        "receiptType", receiptType,
+                        "receiptId", receiptId,
+                        "inspectionItemId", inspectionItemId),
+                EVENT_IQC_STOCK_IN_PENDING + ':' + passEventId);
+    }
+
+    private void publishIqcRejectionDetected(
+            String receiptType,
+            UUID receiptId,
+            UUID inspectionItemId,
+            UUID inspectionEventId) {
+        outbox.publishOnce(
+                EVENT_IQC_REJECTION_DETECTED,
+                "PROCUREMENT_INSPECTION_ITEM",
+                inspectionItemId,
+                Map.of(
+                        "receiptType", receiptType,
+                        "receiptId", receiptId,
+                        "inspectionEventId", inspectionEventId),
+                EVENT_IQC_REJECTION_DETECTED + ':' + inspectionEventId);
     }
 
     /** 收货红冲前置校验：存在待检行时，必须全部结案（RESOLVED）才能红冲。 */
@@ -387,10 +437,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             throw new ApiException(ErrorCode.CONFLICT,
                     "收货单尚有未完成质检结论的明细，请先质检结案再红冲");
         }
+        rejectionPort.beforeReceiptReverse(receiptType, receiptId);
     }
 
     /**
-     * 收货红冲同事务调用：反向已 PASS 放行的库存（仅 passed 量），并置冻结行 REVERSED。
+     * 收货红冲同事务调用：只反向仓库已确认入库量，并置冻结行 REVERSED。
      * 返回是否管理了该单（有冻结行）；无冻结行时调用方走历史全量反向。
      */
     @Override
@@ -399,7 +450,10 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
-                               passed_base_qty, received_amount_local, received_base_qty, status
+                               warehouse_stocked_base_qty,
+                               warehouse_stocked_amount_local,
+                               warehouse_stocked_weight,
+                               status, received_weight_unit_id
                         FROM procurement_inspection_items
                         WHERE receipt_type = :rt AND receipt_id = :rid
                         ORDER BY id
@@ -412,23 +466,23 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         UUID actor = currentUser.requireEmployeeId();
         for (Object[] row : rows) {
             UUID inspectionItemId = (UUID) row[0];
-            BigDecimal passed = dec(row[6]);
-            if (passed.signum() > 0) {
-                BigDecimal receivedAmount = dec(row[7]);
-                BigDecimal receivedBase = dec(row[8]);
-                BigDecimal passedAmount = proratedIncrement(
-                        receivedAmount, receivedBase, BigDecimal.ZERO, passed);
-                // 反向放行金额 = 已放行金额（一次性反向整条已放行量）。
+            BigDecimal stocked = dec(row[6]);
+            if (stocked.signum() > 0) {
                 stockService.recordMovement(new StockService.MovementRequest(
                         now, movementType(receiptType), sourceDocType(receiptType),
                         receiptId, inspectionItemId, (UUID) row[2], (UUID) row[3], (UUID) row[1],
-                        StockService.DIR_OUT, passed, (UUID) row[4], dec(row[5]), passedAmount,
-                        "红冲收货，反向 IQC 已放行库存"));
+                        StockService.DIR_OUT, stocked, (UUID) row[4], dec(row[5]), dec(row[7]),
+                        "红冲收货，反向仓库已确认 IQC 入库", nullableDec(row[8]),
+                        (UUID) row[10]));
             }
             int updated = em.createNativeQuery("""
                     UPDATE procurement_inspection_items
                     SET passed_base_qty = 0,
                         failed_base_qty = 0,
+                        warehouse_stocked_base_qty = 0,
+                        warehouse_stocked_amount_local = 0,
+                        warehouse_stocked_weight = CASE
+                            WHEN received_weight IS NULL THEN NULL ELSE 0 END,
                         status = 'REVERSED',
                         updated_at = :now
                     WHERE id = :id AND status = 'RESOLVED'
@@ -441,7 +495,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         ErrorCode.CONFLICT,
                         "IQC 明细状态已变化，请刷新后重试");
             }
-            appendEvent(UUID.randomUUID(), inspectionItemId, "RECEIPT_REVERSED", passed, null, actor, now);
+            appendEvent(UUID.randomUUID(), inspectionItemId, "RECEIPT_REVERSED", stocked, null, actor, now);
         }
         return true;
     }
@@ -454,7 +508,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         SELECT i.id, i.receipt_item_id, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
                                i.received_base_qty, i.passed_base_qty, i.failed_base_qty, i.status,
                                g.code, g.name, col.name, i.warehouse_id,
-                               COALESCE(po.bill_no, so.bill_no)
+                               COALESCE(po.bill_no, so.bill_no), i.received_weight
                         FROM procurement_inspection_items i
                         LEFT JOIN goods g ON g.id = i.goods_id
                         LEFT JOIN colors col ON col.id = i.color_id
@@ -550,17 +604,17 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         return total > 0 && unfinished == 0;
     }
 
-    private boolean alreadyWoken(String receiptType, UUID receiptId) {
-        Integer woken = ((Number) em.createNativeQuery("""
+    private boolean alreadyReceiptResolved(String receiptType, UUID receiptId) {
+        Integer resolved = ((Number) em.createNativeQuery("""
                         SELECT COUNT(*) FROM procurement_inspection_events e
                         JOIN procurement_inspection_items i ON i.id = e.inspection_item_id
-                        WHERE e.action = 'PRODUCTION_WOKEN'
+                        WHERE e.action IN ('PRODUCTION_WOKEN', 'RECEIPT_RESOLVED')
                           AND i.receipt_type = :rt AND i.receipt_id = :rid
                         """)
                 .setParameter("rt", receiptType)
                 .setParameter("rid", receiptId)
                 .getSingleResult()).intValue();
-        return woken > 0;
+        return resolved > 0;
     }
 
     private void wakeIfWholeReceiptResolved(
@@ -568,23 +622,22 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             UUID receiptId,
             OffsetDateTime now,
             boolean wholeReceiptResolved) {
-        if (!wholeReceiptResolved || alreadyWoken(receiptType, receiptId)) {
+        if (!wholeReceiptResolved || alreadyReceiptResolved(receiptType, receiptId)) {
             return;
         }
-        // A receipt that ends with FAIL may have no final PASS callback. Run
-        // one delta-idempotent reconciliation so demand/source projections are
-        // closed against the terminal qualified quantity before publishing the
-        // receipt-scoped marker.
-        wakeProduction(receiptType, receiptId);
+        // Reconcile quality-terminal shortage/replacement projections once.
+        // The transition services now read warehouse_stocked_base_qty, so this
+        // callback cannot turn an unstocked PASS quantity into READY inventory.
+        reconcileProductionAfterQualityResolved(receiptType, receiptId);
         appendReceiptEvent(
                 receiptType,
                 receiptId,
-                "PRODUCTION_WOKEN",
+                "RECEIPT_RESOLVED",
                 BigDecimal.ZERO,
-                "整单质检结案，生产供给已按合格切片推进",
+                "整单质检结案；合格量须由仓库确认后才进入可用库存",
                 currentUser.requireEmployeeId(),
                 now);
-        // 通知仓库：品质检验结案，合格量已放行入库（outbox 同事务投递，送达幂等）。
+        // 整单品质结果回执；仓库待办已由每个 PASS 切片即时投递。
         outbox.publishOnce(
                 EVENT_IQC_RESOLVED,
                 "PROCUREMENT_INSPECTION",
@@ -593,25 +646,33 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 EVENT_IQC_RESOLVED + ':' + receiptId);
     }
 
-    private void advanceProductionAfterInspectionPass(
-            String receiptType,
-            UUID receiptId,
-            UUID inspectionItemId,
-            UUID dispositionEventId) {
-        if (PURCHASE.equals(receiptType)) {
-            purchaseSupply.afterPurchaseInspectionPassed(
-                    receiptId, inspectionItemId, dispositionEventId);
-        } else {
-            subcontractSupply.afterSubcontractInspectionPassed(
-                    receiptId, inspectionItemId, dispositionEventId);
-        }
-    }
-
-    private void wakeProduction(String receiptType, UUID receiptId) {
+    private void reconcileProductionAfterQualityResolved(
+            String receiptType, UUID receiptId) {
         if (PURCHASE.equals(receiptType)) {
             purchaseSupply.onPurchaseReceiptApproved(receiptId);
         } else {
             subcontractSupply.onSubcontractReceiptApproved(receiptId);
+        }
+    }
+
+    private void recalculateOrderClosure(String receiptType, UUID receiptId) {
+        String receiptItemTable = PURCHASE.equals(receiptType)
+                ? "purchase_receipt_items"
+                : "subcontract_receipt_items";
+        @SuppressWarnings("unchecked")
+        List<UUID> orderItemIds = em.createNativeQuery("""
+                        SELECT DISTINCT order_item_id
+                        FROM %s
+                        WHERE receipt_id=:receiptId
+                          AND order_item_id IS NOT NULL
+                          AND COALESCE(is_deleted,FALSE)=FALSE
+                        ORDER BY order_item_id
+                        """.formatted(receiptItemTable))
+                .setParameter("receiptId", receiptId)
+                .getResultList();
+        for (UUID orderItemId : orderItemIds) {
+            ProcurementOrderClosurePolicy.recalculate(
+                    em, receiptType, orderItemId);
         }
     }
 
@@ -625,16 +686,21 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
     }
 
-    private boolean isReplay(UUID eventId, UUID inspectionItemId, String action,
-                             BigDecimal requested, String reason) {
+    private Boolean replayRequiresWarehouseStockIn(
+            UUID eventId,
+            UUID inspectionItemId,
+            String action,
+            BigDecimal requested,
+            String reason) {
         @SuppressWarnings("unchecked")
         List<Object[]> events = em.createNativeQuery("""
-                        SELECT inspection_item_id, action, base_qty, reason
+                        SELECT inspection_item_id, action, base_qty, reason,
+                               requires_warehouse_stock_in
                         FROM procurement_inspection_events WHERE id = :id
                         """)
                 .setParameter("id", eventId)
                 .getResultList();
-        if (events.isEmpty()) return false;
+        if (events.isEmpty()) return null;
         Object[] ex = events.getFirst();
         if (Objects.equals(ex[0], inspectionItemId)
                 && Objects.equals(ex[1], action)
@@ -644,17 +710,54 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 // NPE'ing on the null and to keep the retry idempotent.
                 && (requested == null || dec(ex[2]).compareTo(requested) == 0)
                 && Objects.equals(ex[3], reason)) {
-            return true;
+            return (Boolean) ex[4];
         }
         throw new ApiException(ErrorCode.CONFLICT, "该质检幂等键已用于不同结论，请刷新后重新操作");
     }
 
+    static ReplayNotification replayNotification(
+            String action, Boolean requiresWarehouseStockIn) {
+        if ("PASS".equals(action)) {
+            return Boolean.TRUE.equals(requiresWarehouseStockIn)
+                    ? ReplayNotification.STOCK_IN_PENDING
+                    : ReplayNotification.NONE;
+        }
+        return ReplayNotification.REJECTION_DETECTED;
+    }
+
+    enum ReplayNotification {
+        STOCK_IN_PENDING,
+        REJECTION_DETECTED,
+        NONE
+    }
+
     private void appendEvent(UUID eventId, UUID inspectionItemId, String action,
                              BigDecimal baseQty, String reason, UUID actor, OffsetDateTime occurredAt) {
+        appendEvent(
+                eventId, inspectionItemId, action, baseQty, reason, actor, occurredAt,
+                null, null, null);
+    }
+
+    private void appendEvent(
+            UUID eventId,
+            UUID inspectionItemId,
+            String action,
+            BigDecimal baseQty,
+            String reason,
+            UUID actor,
+            OffsetDateTime occurredAt,
+            BigDecimal releasedAmountLocal,
+            BigDecimal releasedWeight,
+            UUID releasedWeightUnitId) {
         em.createNativeQuery("""
                 INSERT INTO procurement_inspection_events (
-                    id, inspection_item_id, action, base_qty, reason, actor_employee_id, occurred_at
-                ) VALUES (:id, :iid, :action, :qty, :reason, :actor, :at)
+                    id, inspection_item_id, action, base_qty, reason,
+                    actor_employee_id, occurred_at, requires_warehouse_stock_in,
+                    released_amount_local, released_weight, released_weight_unit_id
+                ) VALUES (
+                    :id, :iid, :action, :qty, :reason,
+                    :actor, :at, :requiresWarehouseStockIn,
+                    :releasedAmountLocal, :releasedWeight, :releasedWeightUnitId)
                 """)
                 .setParameter("id", eventId)
                 .setParameter("iid", inspectionItemId)
@@ -663,10 +766,14 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 .setParameter("reason", reason)
                 .setParameter("actor", actor)
                 .setParameter("at", occurredAt)
+                .setParameter("requiresWarehouseStockIn", "PASS".equals(action))
+                .setParameter("releasedAmountLocal", releasedAmountLocal)
+                .setParameter("releasedWeight", releasedWeight)
+                .setParameter("releasedWeightUnitId", releasedWeightUnitId)
                 .executeUpdate();
     }
 
-    /** PRODUCTION_WOKEN 以单据维度去重：挂在任一明细事件上（取第一条），按 receipt 查重。 */
+    /** 收货单级结案标记挂在任一明细事件上（取第一条），按 receipt 查重。 */
     private void appendReceiptEvent(String receiptType, UUID receiptId, String action,
                                     BigDecimal qty, String reason, UUID actor, OffsetDateTime at) {
         UUID anyItem = (UUID) em.createNativeQuery("""
@@ -698,6 +805,51 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         BigDecimal next = sourceAmount.multiply(alreadyPassed.add(passBase))
                 .divide(receivedBase, 4, RoundingMode.HALF_UP);
         return next.subtract(previous);
+    }
+
+    static BigDecimal proratedIncrementNullable(
+            BigDecimal sourceWeight, BigDecimal receivedBase,
+            BigDecimal alreadyPassed, BigDecimal passBase) {
+        return sourceWeight == null ? null : proratedIncrement(
+                sourceWeight, receivedBase, alreadyPassed, passBase);
+    }
+
+    private BigDecimal actionAllocatedAmount(
+            UUID inspectionItemId,BigDecimal sourceTotal,
+            BigDecimal receivedBase,String wantedAction,BigDecimal fallbackBase){
+        @SuppressWarnings("unchecked")
+        List<Object[]> events=em.createNativeQuery("""
+                SELECT action,base_qty
+                FROM procurement_inspection_events
+                WHERE inspection_item_id=:inspectionItemId
+                  AND action IN('PASS','FAIL')
+                ORDER BY occurred_at,id
+                """).setParameter("inspectionItemId",inspectionItemId).getResultList();
+        if(events.isEmpty()){
+            return proratedIncrement(
+                    sourceTotal,receivedBase,BigDecimal.ZERO,fallbackBase);
+        }
+        BigDecimal resolvedBefore=BigDecimal.ZERO;
+        BigDecimal selected=BigDecimal.ZERO;
+        for(Object[] event:events){
+            BigDecimal sliceBase=dec(event[1]);
+            BigDecimal slice=proratedIncrement(
+                    sourceTotal,receivedBase,resolvedBefore,sliceBase);
+            if(wantedAction.equals(event[0]))selected=selected.add(slice);
+            resolvedBefore=resolvedBefore.add(sliceBase);
+        }
+        if(resolvedBefore.compareTo(receivedBase)!=0){
+            throw new ApiException(
+                    ErrorCode.CONFLICT,"IQC处置事件数量与冻结行不守恒，禁止红冲");
+        }
+        return selected;
+    }
+
+    private BigDecimal actionAllocatedAmountNullable(
+            UUID inspectionItemId,BigDecimal sourceTotal,
+            BigDecimal receivedBase,String wantedAction,BigDecimal fallbackBase){
+        return sourceTotal==null?null:actionAllocatedAmount(
+                inspectionItemId,sourceTotal,receivedBase,wantedAction,fallbackBase);
     }
 
     static String normalizeAction(String action) {
@@ -758,7 +910,30 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         return n;
     }
 
+    private static BigDecimal normalizeOptionalWeight(BigDecimal weight) {
+        if (weight == null) return null;
+        if (weight.signum() < 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT, "收货明细实际总重量不得为负数");
+        }
+        try {
+            BigDecimal normalized = weight.setScale(4, RoundingMode.UNNECESSARY);
+            if (normalized.precision() - normalized.scale() > 14) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "收货明细实际总重量整数位最多 14 位");
+            }
+            return normalized;
+        } catch (ArithmeticException ex) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT, "收货明细实际总重量最多保留 4 位小数");
+        }
+    }
+
     private static BigDecimal dec(Object value) {
         return value == null ? BigDecimal.ZERO : (BigDecimal) value;
+    }
+
+    private static BigDecimal nullableDec(Object value) {
+        return value == null ? null : (BigDecimal) value;
     }
 }

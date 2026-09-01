@@ -1,6 +1,7 @@
 // 采购单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
-// PurchaseGridRow：货品(选择)/数量/单价→金额自动（AmountRowMixin）；颜色/单位/上游明细 id
+// PurchaseGridRow：货品(选择)/单位/数量/实际重量/单价→金额自动（AmountRowMixin）；
+// 颜色/单位换算率/上游明细 id
 // 为透传（从上游引入或详情回填时预填，保存时随行写回，UI 不单独编辑）。
 // purchaseGridColumns：货品/数量/单价/金额 四列。
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
   final TextEditingController qty = TextEditingController();
+  final TextEditingController weight = TextEditingController();
   final TextEditingController price = TextEditingController();
 
   /// 库位号（只读，货品主档带出；收货上架/退货拣货指引，异步补全后自动刷新）。
@@ -43,6 +45,7 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
   String? sourceDocNo;
   String? colorId;
   String? unitId;
+  double? unitRate;
 
   /// 明细级供应商（订货单可逐行选不同供应商，保存时按供应商自动拆单；为空回落表头）。
   /// ValueNotifier：多选统一设供应商/记忆预填后单元格与必填红框即时刷新。
@@ -63,7 +66,8 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
       ..upstreamItemId = li.upstreamItemId
       ..maxQty = li.maxQty
       ..colorId = li.colorId
-      ..unitId = li.unitId;
+      ..unitId = li.unitId
+      ..unitRate = li.unitRate;
     r.qty.text = li.qty.toString();
     if (li.price != null) r.price.text = li.price.toString();
     return r;
@@ -77,6 +81,7 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
   void dispose() {
     goodsNotifier.dispose();
     qty.dispose();
+    weight.dispose();
     price.dispose();
     stockPlaceNotifier.dispose();
     supplierIdNotifier.dispose();
@@ -97,6 +102,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   Future<void> Function(PurchaseGridRow row) onPickGoods, {
   bool arrivalMode = false,
   bool showStockPlace = false,
+  Map<String, String> unitEntries = const {},
   Map<String, String> supplierEntries = const {},
   bool supplierRequired = false,
   String? headerSupplierId,
@@ -163,6 +169,20 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           ),
         ),
       ),
+    EditableGridColumn<PurchaseGridRow>(
+      key: 'unit',
+      label: '单位',
+      width: 84,
+      textOf: (r) => unitEntries[r.unitId] ?? '',
+      cellBuilder: (context, row) => Text(
+        unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
+        style: TextStyle(
+          color: row.unitId == null
+              ? Theme.of(context).colorScheme.error
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    ),
     if (showSupplier)
       EditableGridColumn<PurchaseGridRow>(
         key: 'supplier',
@@ -208,6 +228,18 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
+      ),
+    ),
+    EditableGridColumn<PurchaseGridRow>(
+      key: 'weight',
+      label: '实际重量',
+      width: 104,
+      numeric: true,
+      cellBuilder: (context, row) => TextField(
+        controller: row.weight,
+        textAlign: TextAlign.right,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(isDense: true, hintText: '可选'),
       ),
     ),
     if (!arrivalMode)

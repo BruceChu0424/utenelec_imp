@@ -14,6 +14,9 @@ import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionResult;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionView;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchItem;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchResult;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -31,7 +34,10 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -58,6 +64,8 @@ public class ProductionFqcInspectionService
     static final String EVENT_PENDING = "PRODUCTION_FQC_PENDING";
     static final String EVENT_RELEASED = "PRODUCTION_FQC_RELEASED";
     static final String EVENT_RESOLVED = "PRODUCTION_FQC_RESOLVED";
+    private static final Comparator<UUID> UUID_ORDER =
+            Comparator.comparing(UUID::toString);
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
@@ -69,7 +77,8 @@ public class ProductionFqcInspectionService
     private final BusinessEventPublisher outbox;
 
     /**
-     * Called by the report-approval transaction after the report status is 1.
+     * Called by the warehouse-arrival registration transaction after the
+     * source report status is 1 and every exact line has a placement snapshot.
      * There is intentionally no historical batch/backfill entry point.
      */
     @Override
@@ -82,7 +91,7 @@ public class ProductionFqcInspectionService
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT report.id, report.status,
-                                       report.warehouse_id, report.maker_id,
+                                       registration.warehouse_id, report.maker_id,
                                        report.is_deleted,
                                        item.id, item.plan_item_id,
                                        item.execution_segment_id,
@@ -96,6 +105,12 @@ public class ProductionFqcInspectionService
                                 FROM production_daily_reports report
                                 JOIN production_daily_report_items item
                                   ON item.report_id = report.id
+                                JOIN production_finished_arrival_registrations registration
+                                  ON registration.source_report_id = report.id
+                                JOIN production_finished_arrival_registration_items
+                                          registration_item
+                                  ON registration_item.registration_id = registration.id
+                                 AND registration_item.source_report_item_id = item.id
                                 LEFT JOIN production_execution_segments segment
                                   ON segment.id = item.execution_segment_id
                                 LEFT JOIN production_planning_packages package
@@ -269,6 +284,71 @@ public class ProductionFqcInspectionService
         NormalizedRequest normalized = normalizeRequest(request);
         prelockDecisionDimensions(inspectionId);
         Object[] inspection = lockInspection(inspectionId);
+
+        return decideLocked(inspectionId, normalized, inspection);
+    }
+
+    /**
+     * Atomically resolves every selected inspection as PASS for its current
+     * remaining quantity. The client supplies identities only; all quantities
+     * are derived after the complete lock set has been acquired.
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')"
+            + " and hasAuthority('production_quality_inspection:approve')")
+    public PassAllBatchResult passAll(PassAllBatchRequest request) {
+        tx.bind();
+        taskAccess.requireQualityPool("当前账号不在品质任务组织范围");
+        NormalizedPassAllBatch normalized = normalizePassAllBatch(request);
+        UUID actorUserId = currentUser.requireId();
+        BatchCommand batch = claimPassAllBatch(actorUserId, normalized);
+        if (batch.replay()) {
+            return loadPassAllBatch(batch.id(), true, normalized.inspectionIds().size());
+        }
+
+        Map<UUID, Object[]> locked = lockPassAllDecisionDimensions(
+                normalized.inspectionIds());
+        for (UUID inspectionId : normalized.inspectionIds()) {
+            requireActiveDecisionRow(locked.get(inspectionId));
+        }
+
+        List<PassAllBatchItem> items = new ArrayList<>(
+                normalized.inspectionIds().size());
+        int lineNo = 0;
+        for (UUID inspectionId : normalized.inspectionIds()) {
+            NormalizedRequest child = normalizeRequest(new DecisionRequest(
+                    "PASS", null, null, null, null,
+                    passAllChildKey(batch.id(), inspectionId)));
+            DecisionResult decision = decideLocked(
+                    inspectionId, child, locked.get(inspectionId));
+            if (decision.replay()) {
+                throw conflict("批量全合格子结果已存在但缺少批次关联，请联系管理员核查");
+            }
+            int nextLine = ++lineNo;
+            em.createNativeQuery("""
+                            INSERT INTO production_fqc_pass_all_batch_items(
+                                batch_id, inspection_id, decision_event_id,
+                                line_no)
+                            VALUES (:batchId, :inspectionId, :decisionEventId,
+                                    :lineNo)
+                            """)
+                    .setParameter("batchId", batch.id())
+                    .setParameter("inspectionId", inspectionId)
+                    .setParameter("decisionEventId", decision.decisionEventId())
+                    .setParameter("lineNo", nextLine)
+                    .executeUpdate();
+            items.add(new PassAllBatchItem(
+                    inspectionId,
+                    decision.decisionEventId(),
+                    decision.inspection()));
+        }
+        return new PassAllBatchResult(batch.id(), items, false);
+    }
+
+    private DecisionResult decideLocked(
+            UUID inspectionId,
+            NormalizedRequest normalized,
+            Object[] inspection) {
 
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -666,6 +746,146 @@ public class ProductionFqcInspectionService
         recovery.requireLegacyExemption(sourceReportItemId);
     }
 
+    private BatchCommand claimPassAllBatch(
+            UUID actorUserId,
+            NormalizedPassAllBatch normalized) {
+        UUID candidateId = UUID.randomUUID();
+        int inserted = em.createNativeQuery("""
+                        INSERT INTO production_fqc_pass_all_batches(
+                            id, idempotency_key, request_hash,
+                            inspection_count, created_by)
+                        VALUES (:id, :key, :hash, :count, :actorId)
+                        ON CONFLICT (created_by, idempotency_key) DO NOTHING
+                        """)
+                .setParameter("id", candidateId)
+                .setParameter("key", normalized.idempotencyKey())
+                .setParameter("hash", normalized.requestHash())
+                .setParameter("count", normalized.inspectionIds().size())
+                .setParameter("actorId", actorUserId)
+                .executeUpdate();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT id, request_hash, inspection_count
+                                FROM production_fqc_pass_all_batches
+                                WHERE created_by = :actorId
+                                  AND idempotency_key = :key
+                                FOR UPDATE
+                                """)
+                        .setParameter("actorId", actorUserId)
+                        .setParameter("key", normalized.idempotencyKey()));
+        if (rows.size() != 1) {
+            throw conflict("批量全合格幂等命令未能建立，请重试");
+        }
+        Object[] row = rows.getFirst();
+        requirePassAllReplayCompatible(
+                string(row[1]),
+                ((Number) row[2]).intValue(),
+                normalized);
+        UUID batchId = (UUID) row[0];
+        if (inserted == 1 && !candidateId.equals(batchId)) {
+            throw conflict("批量全合格幂等命令身份冲突，请刷新后重试");
+        }
+        return new BatchCommand(batchId, inserted == 0);
+    }
+
+    private PassAllBatchResult loadPassAllBatch(
+            UUID batchId,
+            boolean replay,
+            int expectedCount) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT inspection_id, decision_event_id
+                                FROM production_fqc_pass_all_batch_items
+                                WHERE batch_id = :batchId
+                                ORDER BY line_no
+                                """)
+                        .setParameter("batchId", batchId));
+        if (rows.size() != expectedCount) {
+            throw conflict("批量全合格历史结果不完整，请联系管理员核查");
+        }
+        List<PassAllBatchItem> items = rows.stream()
+                .map(row -> {
+                    UUID inspectionId = (UUID) row[0];
+                    return new PassAllBatchItem(
+                            inspectionId,
+                            (UUID) row[1],
+                            detailInternal(inspectionId));
+                })
+                .toList();
+        return new PassAllBatchResult(batchId, items, replay);
+    }
+
+    /**
+     * Locks every selected row before any decision write, then locks the
+     * shared execution dimensions in UUID order. This is the batch form of the
+     * single-item inspection -> segment -> plan-item lock hierarchy.
+     */
+    private Map<UUID, Object[]> lockPassAllDecisionDimensions(
+            List<UUID> inspectionIds) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT id, reported_qty, passed_qty, failed_qty,
+                                       status, source_report_id,
+                                       source_report_item_id, report_maker_id,
+                                       execution_segment_id,
+                                       source_plan_item_id
+                                FROM production_fqc_inspections
+                                WHERE id IN (:inspectionIds)
+                                ORDER BY id
+                                FOR UPDATE
+                                """)
+                        .setParameter("inspectionIds", inspectionIds));
+        if (rows.size() != inspectionIds.size()) {
+            throw notFound("部分生产质检任务不存在，请刷新后重试");
+        }
+        List<UUID> lockedInspectionIds = rows.stream()
+                .map(row -> (UUID) row[0])
+                .toList();
+        if (!lockedInspectionIds.equals(inspectionIds)) {
+            throw conflict("生产质检批量锁定顺序异常，请刷新后重试");
+        }
+
+        List<UUID> segmentIds = rows.stream()
+                .map(row -> (UUID) row[8])
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted(UUID_ORDER)
+                .toList();
+        List<UUID> planItemIds = rows.stream()
+                .map(row -> (UUID) row[9])
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted(UUID_ORDER)
+                .toList();
+        if (segmentIds.isEmpty() || planItemIds.isEmpty()) {
+            throw conflict("生产质检任务缺少执行段或计划明细，禁止批量决定");
+        }
+        for (UUID segmentId : segmentIds) {
+            lockOne("production_execution_segments", segmentId);
+        }
+        for (UUID planItemId : planItemIds) {
+            lockOne("production_plan_items", planItemId);
+        }
+
+        Map<UUID, Object[]> result = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], row);
+        }
+        return result;
+    }
+
+    private static void requireActiveDecisionRow(Object[] inspection) {
+        if (inspection == null) throw notFound("生产质检任务不存在");
+        String status = string(inspection[4]);
+        BigDecimal remaining = dec(inspection[1])
+                .subtract(dec(inspection[2]))
+                .subtract(dec(inspection[3]));
+        if (!List.of("PENDING", "PARTIAL").contains(status)
+                || remaining.signum() <= 0) {
+            throw conflict("所选生产质检任务包含已决定项，请刷新后重试");
+        }
+    }
+
     private InspectionView detailInternal(UUID inspectionId) {
         if (inspectionId == null) throw notFound("生产质检任务不存在");
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
@@ -796,6 +1016,51 @@ public class ProductionFqcInspectionService
                 || Boolean.TRUE.equals(row[19])) {
             throw conflict("仅已审核且精确关联 IN_PROGRESS 执行段的报工明细可登记 FQC");
         }
+    }
+
+    static NormalizedPassAllBatch normalizePassAllBatch(
+            PassAllBatchRequest request) {
+        if (request == null || request.inspectionIds() == null
+                || request.inspectionIds().isEmpty()
+                || request.inspectionIds().size() > 100) {
+            throw validation("批量全合格必须包含 1-100 个生产质检任务");
+        }
+        HashSet<UUID> unique = new HashSet<>();
+        List<UUID> inspectionIds = new ArrayList<>(
+                request.inspectionIds().size());
+        for (UUID inspectionId : request.inspectionIds()) {
+            if (inspectionId == null) {
+                throw validation("批量全合格任务 UUID 不能为空");
+            }
+            if (!unique.add(inspectionId)) {
+                throw validation("批量全合格任务 UUID 不能重复");
+            }
+            inspectionIds.add(inspectionId);
+        }
+        inspectionIds.sort(UUID_ORDER);
+        String key = normalizeDecisionKey(request.idempotencyKey());
+        List<String> hashParts = new ArrayList<>(inspectionIds.size() + 1);
+        hashParts.add("PRODUCTION-FQC-PASS-ALL-BATCH-V1");
+        inspectionIds.stream().map(UUID::toString).forEach(hashParts::add);
+        return new NormalizedPassAllBatch(
+                inspectionIds, key, sha256(hashParts));
+    }
+
+    static void requirePassAllReplayCompatible(
+            String existingHash,
+            int existingCount,
+            NormalizedPassAllBatch request) {
+        if (!Objects.equals(existingHash, request.requestHash())
+                || existingCount != request.inspectionIds().size()) {
+            throw conflict("该批量全合格幂等键已用于不同任务集合，请刷新后重试");
+        }
+    }
+
+    static String passAllChildKey(UUID batchId, UUID inspectionId) {
+        if (batchId == null || inspectionId == null) {
+            throw validation("批量全合格子命令缺少 UUID");
+        }
+        return "FQC-BATCH:" + batchId + ':' + inspectionId;
     }
 
     static NormalizedRequest normalizeRequest(DecisionRequest request) {
@@ -937,6 +1202,19 @@ public class ProductionFqcInspectionService
 
     private static ApiException notFound(String message) {
         return new ApiException(ErrorCode.NOT_FOUND, message);
+    }
+
+    record NormalizedPassAllBatch(
+            List<UUID> inspectionIds,
+            String idempotencyKey,
+            String requestHash) {
+
+        NormalizedPassAllBatch {
+            inspectionIds = List.copyOf(inspectionIds);
+        }
+    }
+
+    record BatchCommand(UUID id, boolean replay) {
     }
 
     record NormalizedRequest(

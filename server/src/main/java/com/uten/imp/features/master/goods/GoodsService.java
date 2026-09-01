@@ -595,7 +595,8 @@ public class GoodsService {
                 .filter(g -> scope.seeAll() || g.getOwnerEmployeeId() == null
                         || scope.visibleOwners().contains(g.getOwnerEmployeeId()))
                 .map(g -> new GoodsDictItem(
-                        g.getId(), g.getCode(), g.getName(), g.getSeries(), g.getStockPlace()))
+                        g.getId(), g.getCode(), g.getName(), g.getSeries(), g.getStockPlace(),
+                        g.getUnit() == null ? null : g.getUnit().getId()))
                 .toList();
     }
 

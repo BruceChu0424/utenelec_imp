@@ -122,6 +122,8 @@ class AdminPermission {
     this.module,
     this.actionType = PermissionActionType.other,
     this.description,
+    this.bulkAssignable = true,
+    this.sensitivity = 'NORMAL',
   });
 
   final String id;
@@ -139,6 +141,8 @@ class AdminPermission {
 
   /// 面向授权人员的权限边界说明。
   final String? description;
+  final bool bulkAssignable;
+  final String sensitivity;
 
   factory AdminPermission.fromJson(Map<String, dynamic> json) =>
       AdminPermission(
@@ -149,6 +153,8 @@ class AdminPermission {
         module: json['module'] as String?,
         actionType: PermissionActionType.fromJson(json['actionType']),
         description: _nullableTrimmed(json['description']),
+        bulkAssignable: json['bulkAssignable'] as bool? ?? true,
+        sensitivity: json['sensitivity'] as String? ?? 'NORMAL',
       );
 }
 
@@ -210,6 +216,8 @@ class PermissionCatalogGroup {
           module: p['module'] as String? ?? module,
           actionType: PermissionActionType.fromJson(p['actionType']),
           description: _nullableTrimmed(p['description']),
+          bulkAssignable: p['bulkAssignable'] as bool? ?? true,
+          sensitivity: p['sensitivity'] as String? ?? 'NORMAL',
         );
       }).toList(),
     );

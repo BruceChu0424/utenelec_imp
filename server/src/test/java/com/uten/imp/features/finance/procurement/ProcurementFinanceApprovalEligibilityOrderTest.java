@@ -6,6 +6,7 @@ import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.BatchDecisionItem;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
@@ -32,8 +33,8 @@ class ProcurementFinanceApprovalEligibilityOrderTest {
 
         ApiException denied = assertThrows(
                 ApiException.class,
-                () -> fixture.service().approve(
-                        "PURCHASE", UUID.randomUUID(), 1L));
+                () -> fixture.service().approveBatch(List.of(
+                        new BatchDecisionItem(UUID.randomUUID(), 1L))));
 
         assertEquals(ErrorCode.FORBIDDEN, denied.getCode());
         verify(fixture.eligibility()).findEligible(fixture.actorId());
@@ -48,8 +49,9 @@ class ProcurementFinanceApprovalEligibilityOrderTest {
 
         ApiException denied = assertThrows(
                 ApiException.class,
-                () -> fixture.service().reject(
-                        "PURCHASE", UUID.randomUUID(), 1L, "reason"));
+                () -> fixture.service().rejectBatch(
+                        List.of(new BatchDecisionItem(UUID.randomUUID(), 1L)),
+                        "reason"));
 
         assertEquals(ErrorCode.FORBIDDEN, denied.getCode());
         verify(fixture.eligibility()).findEligible(fixture.actorId());

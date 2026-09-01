@@ -33,13 +33,13 @@ import java.util.UUID;
  *
  * <p>职责边界：
  * <ul>
- *   <li>币族权威回填——币种/汇率/结算方式不来自客户端，而是按明细 orderItemId 回查
+ *   <li>商业快照权威回填——币种/汇率/税率/结算方式不来自客户端，而是按明细 orderItemId 回查
  *       财务批准的来源订货单表头带出（多张订货单来源或快照不完整即 fail-closed）；
  *       价格仍由收货审核链路（ReceiptAmountAuthority）按订货明细权威重算。</li>
- *   <li>复用各收货单 Service 的 create + approve 完整链路（校验/IQC 隔离/订货回写/立应付/
- *       recordApproval），本服务不另写任何库存或应付逻辑；权限同样由两段服务自身的
- *       @PreAuthorize 收口（create + approve，仓库经 purchase_receipt:edit /
- *       subcontract_receipt:edit 蕴含获得）。</li>
+ *   <li>通过各收货单 Service 的仓库专用网关复用 create + approve 完整链路
+ *       （校验/IQC 隔离/订货回写/立应付/recordApproval），本服务不另写任何库存或应付逻辑；
+ *       仓库入口只认 {@code warehouse_inbound:stock_in}，不会借用采购或委外收货单的
+ *       create/approve 权限。</li>
  *   <li>实到超量时 approve 抛 {@link ProcurementArrivalBlockedException}
  *       （草稿 + PENDING_FINANCE 异常已提交），这里翻译为正常响应
  *       {@code EXCESS_QUARANTINED}，前端引导到「到货异常任务中心」等待财务定案。</li>
@@ -79,6 +79,7 @@ public class WarehouseArrivalRegistrationService {
         UUID makerId = currentUser.requireEmployeeId();
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
         String orderType = normalizeOrderType(request.orderType());
+        validateActualWeights(request.items());
         String requestHash = requestHash(request);
         lockRegistrationCommand(makerId, idempotencyKey);
         ArrivalCommand replay = findRegistrationCommand(makerId, idempotencyKey);
@@ -96,16 +97,22 @@ public class WarehouseArrivalRegistrationService {
                 request.items().stream()
                         .map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList(),
                 request.supplierId());
+        if (SUBCONTRACT.equals(orderType)) {
+            requireSubcontractOutboundReleased(request.items().stream()
+                    .map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList());
+        }
         UUID receiptId;
         String billNo;
         if (PURCHASE.equals(orderType)) {
             ReceiptDetail created =
-                    purchaseReceiptService.create(purchaseRequest(request, header));
+                    purchaseReceiptService.createFromWarehouseArrival(
+                            purchaseRequest(request, header));
             receiptId = created.getId();
             billNo = created.getBillNo();
         } else {
             com.uten.imp.features.subcontract.receipt.dto.ReceiptDetail created =
-                    subcontractReceiptService.create(subcontractRequest(request, header));
+                    subcontractReceiptService.createFromWarehouseArrival(
+                            subcontractRequest(request, header));
             receiptId = created.getId();
             billNo = created.getBillNo();
         }
@@ -119,7 +126,7 @@ public class WarehouseArrivalRegistrationService {
      * 完成中断的到货登记（断点恢复）：老流程/网络中断留下的草稿收货单，由登记人在
      * 预计到货任务中心一键「继续送检」——不再进采购/委外收货单详情页手动点审核。
      *
-     * <p>对历史草稿同时做**币族权威修复**：老登记链路建的草稿不带币种/汇率/结算方式
+     * <p>对历史草稿同时做**商业快照权威修复**：老登记链路建的草稿不带币种/汇率/税率/结算方式
      * （审核必报「与财务批准订单不一致」），这里按来源订货单表头覆盖修正后再走
      * 同一审核链路；供应商一并按订货单对齐。仅草稿态可修正（未审核、无下游）。
      */
@@ -129,6 +136,9 @@ public class WarehouseArrivalRegistrationService {
         DraftReceipt draft = requireDraft(receiptId);
         OrderHeader header = resolveOrderHeader(
                 draft.orderType(), draft.orderItemIds(), null);
+        if (SUBCONTRACT.equals(draft.orderType())) {
+            requireSubcontractOutboundReleased(draft.orderItemIds());
+        }
         alignDraftHeader(draft, header);
         return approveAsArrival(draft.orderType(), receiptId, draft.billNo());
     }
@@ -138,9 +148,9 @@ public class WarehouseArrivalRegistrationService {
             String orderType, UUID receiptId, String billNo) {
         try {
             if (PURCHASE.equals(orderType)) {
-                purchaseReceiptService.approve(receiptId);
+                purchaseReceiptService.approveFromWarehouseDecision(receiptId);
             } else {
-                subcontractReceiptService.approve(receiptId);
+                subcontractReceiptService.approveFromWarehouseDecision(receiptId);
             }
         } catch (ProcurementArrivalBlockedException blocked) {
             UUID exceptionId = latestPendingExceptionId(receiptId);
@@ -181,17 +191,18 @@ public class WarehouseArrivalRegistrationService {
         throw new ApiException(ErrorCode.NOT_FOUND, "收货单不存在或不是待审核草稿");
     }
 
-    /** 币族权威修复（仅草稿态）：按来源订货单覆盖 供应商/币种/汇率/结算方式。 */
+    /** 商业快照权威修复（仅草稿态）：按来源订货单覆盖供应商/币种/汇率/税率/结算方式。 */
     private void alignDraftHeader(DraftReceipt draft, OrderHeader header) {
         String receiptTable = PURCHASE.equals(draft.orderType())
                 ? "purchase_receipts" : "subcontract_receipts";
         int updated = jdbc.update("""
                 UPDATE %s
-                SET supplier_id = ?, currency_id = ?, exchange_rate = ?, settlement_method_id = ?
+                SET supplier_id = ?, currency_id = ?, exchange_rate = ?, tax_rate = ?,
+                    settlement_method_id = ?
                 WHERE id = ? AND status = 0 AND is_deleted = FALSE
                 """.formatted(receiptTable),
                 header.supplierId(), header.currencyId(), header.exchangeRate(),
-                header.settlementMethodId(), draft.receiptId());
+                header.taxRate(), header.settlementMethodId(), draft.receiptId());
         if (updated != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "收货单状态已变化，请刷新后重试");
         }
@@ -205,6 +216,7 @@ public class WarehouseArrivalRegistrationService {
         req.setWarehouseId(request.warehouseId());
         req.setCurrencyId(header.currencyId());
         req.setExchangeRate(header.exchangeRate());
+        req.setTaxRate(header.taxRate());
         req.setSettlementMethodId(header.settlementMethodId());
         req.setPurchaserId(request.purchaserId());
         req.setReceiverId(request.receiverEmployeeId());
@@ -224,6 +236,7 @@ public class WarehouseArrivalRegistrationService {
             item.setUnitId(line.unitId());
             item.setUnitRate(line.unitRate());
             item.setQty(line.qty());
+            item.setWeight(line.weight());
             item.setOrderItemId(line.orderItemId());
             item.setSourceDocNo(line.sourceDocNo());
             lines.add(item);
@@ -239,6 +252,7 @@ public class WarehouseArrivalRegistrationService {
         req.setWarehouseId(request.warehouseId());
         req.setCurrencyId(header.currencyId());
         req.setExchangeRate(header.exchangeRate());
+        req.setTaxRate(header.taxRate());
         req.setSettlementMethodId(header.settlementMethodId());
         // 委外进仓单主档仅 sender_id 一个人员列，服务端按「收货人」语义解析。
         req.setSenderId(request.receiverEmployeeId());
@@ -261,6 +275,7 @@ public class WarehouseArrivalRegistrationService {
             item.setUnitId(line.unitId());
             item.setUnitRate(line.unitRate());
             item.setQty(line.qty());
+            item.setWeight(line.weight());
             item.setOrderItemId(line.orderItemId());
             item.setSourceDocNo(line.sourceDocNo());
             lines.add(item);
@@ -283,7 +298,8 @@ public class WarehouseArrivalRegistrationService {
                 Collections.nCopies(orderItemIds.size(), "?"));
         List<OrderHeader> headers = jdbc.query("""
                 SELECT DISTINCT order_doc.supplier_id, order_doc.currency_id,
-                       order_doc.exchange_rate, order_doc.settlement_method_id
+                       order_doc.exchange_rate, order_doc.tax_rate,
+                       order_doc.settlement_method_id
                 FROM %s order_item
                 JOIN %s order_doc ON order_doc.id = order_item.order_id
                 WHERE order_item.id IN (%s)
@@ -291,6 +307,7 @@ public class WarehouseArrivalRegistrationService {
                 rs.getObject("supplier_id", UUID.class),
                 rs.getObject("currency_id", UUID.class),
                 rs.getBigDecimal("exchange_rate"),
+                rs.getBigDecimal("tax_rate"),
                 rs.getObject("settlement_method_id", UUID.class)),
                 orderItemIds.toArray());
         if (headers.size() != 1) {
@@ -303,11 +320,61 @@ public class WarehouseArrivalRegistrationService {
             throw new ApiException(ErrorCode.CONFLICT, "供应商与来源订货单不一致");
         }
         if (header.supplierId() == null || header.currencyId() == null
-                || header.exchangeRate() == null || header.settlementMethodId() == null) {
+                || header.exchangeRate() == null || header.exchangeRate().signum() <= 0
+                || header.taxRate() == null || header.taxRate().signum() < 0
+                || header.taxRate().compareTo(new BigDecimal("100")) > 0
+                || header.settlementMethodId() == null) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "来源订货单币种/汇率/结算方式不完整，禁止登记到货");
+                    "来源订货单币种/汇率/税率/结算方式不完整，禁止登记到货");
         }
         return header;
+    }
+
+    /**
+     * 新委外回厂必须晚于目标件真实审核出仓。没有 V436 新流计划行的历史单继续
+     * 按旧口径兼容；新流只认 status=1、未删除的系统计划出仓单，不认财务批准、
+     * READY_OUTBOUND、草稿或通知。精确数量和并发额度由委外进仓 create/approve 再校验。
+     */
+    private void requireSubcontractOutboundReleased(List<UUID> orderItemIds) {
+        List<UUID> ids = orderItemIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外回厂明细不能为空");
+        }
+        String placeholders = String.join(", ", Collections.nCopies(ids.size(), "?"));
+        Long released = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM subcontract_order_items order_item
+                WHERE order_item.id IN (%s)
+                  AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                  AND (
+                      NOT EXISTS (
+                          SELECT 1
+                          FROM subcontract_material_plan_items new_flow_plan
+                          WHERE new_flow_plan.order_item_id = order_item.id
+                            AND new_flow_plan.flow_mode IN (
+                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                            AND new_flow_plan.is_deleted = FALSE)
+                      OR EXISTS (
+                          SELECT 1
+                          FROM subcontract_material_issue_items issue_item
+                          JOIN subcontract_material_issues issue
+                            ON issue.id = issue_item.issue_id
+                           AND issue.status = 1
+                           AND issue.is_deleted = FALSE
+                          JOIN subcontract_material_plan_items release_plan
+                            ON release_plan.id = issue_item.plan_item_id
+                           AND release_plan.flow_mode IN (
+                               'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                           AND release_plan.is_deleted = FALSE
+                          WHERE issue_item.order_item_id = order_item.id
+                            AND issue_item.is_deleted = FALSE)
+                  )
+                """.formatted(placeholders), Long.class, ids.toArray());
+        if (released == null || released != ids.size()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "委外目标件尚未真实审核出仓，不能登记回厂；请先完成前置自制、仓库实收和目标件出仓");
+        }
     }
 
     private UUID latestPendingExceptionId(UUID receiptId) {
@@ -445,6 +512,7 @@ public class WarehouseArrivalRegistrationService {
             appendHash(canonical, item == null ? null : item.colorId());
             appendHash(canonical, item == null ? null : item.unitId());
             appendHash(canonical, item == null ? null : decimalText(item.unitRate()));
+            appendHash(canonical, item == null ? null : decimalText(item.weight()));
             appendHash(canonical, item == null ? null : item.sourceDocNo());
         }
         try {
@@ -465,6 +533,21 @@ public class WarehouseArrivalRegistrationService {
         return value == null ? null : value.stripTrailingZeros().toPlainString();
     }
 
+    private static void validateActualWeights(
+            List<WarehouseArrivalRegisterRequest.ArrivalLine> items) {
+        if (items == null) return;
+        for (var item : items) {
+            if (item == null || item.weight() == null) continue;
+            BigDecimal weight = item.weight();
+            if (weight.signum() < 0 || weight.scale() > 4
+                    || weight.precision() - weight.scale() > 14) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "到货明细实际总重量必须为非负数，最多 14 位整数和 4 位小数");
+            }
+        }
+    }
+
     private static String normalizeOrderType(String orderType) {
         String normalized = orderType == null ? "" : orderType.strip().toUpperCase();
         return switch (normalized) {
@@ -476,7 +559,7 @@ public class WarehouseArrivalRegistrationService {
     /** 来源订货单表头（审核 requireHeaderMatches 的权威口径）。 */
     private record OrderHeader(
             UUID supplierId, UUID currencyId,
-            BigDecimal exchangeRate, UUID settlementMethodId) {
+            BigDecimal exchangeRate, BigDecimal taxRate, UUID settlementMethodId) {
     }
 
     /** 待完成的草稿收货单定位：id + 类型 + 单号 + 关联的订货明细。 */

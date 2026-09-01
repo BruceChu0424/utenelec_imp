@@ -28,6 +28,13 @@ public record AuditLogDetail(
         String action,
         String targetType,
         String targetId,
+        /** 对象可读名称或单据类型标签；仅来自明确的名称/标题字段。 */
+        String targetDisplayName,
+        /** 业务编号或单号；与对象名称分开。 */
+        String targetBusinessCode,
+        /** 明确记录的旧系统编号；未知时为空。 */
+        String targetLegacyCode,
+        /** 兼容旧客户端的合并展示字段。 */
         String targetName,
         String pageLabel,
         String before,
@@ -79,6 +86,9 @@ public record AuditLogDetail(
                 value.getAction(),
                 value.getTargetType(),
                 value.getTargetId(),
+                blankToNull(event.targetDisplayName()),
+                blankToNull(event.targetBusinessCode()),
+                blankToNull(event.targetLegacyCode()),
                 blankToNull(event.targetName()),
                 blankToNull(event.pageLabel()),
                 internalViewMetadata ? null : value.getBefore(),

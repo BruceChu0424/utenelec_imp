@@ -17,6 +17,7 @@ import com.uten.imp.features.subcontract.inquiry.dto.InquiryListItem;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryQueryFilter;
 import com.uten.imp.features.subcontract.inquiry.dto.InquirySaveRequest;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.security.CommercialPriceVisibility;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
@@ -64,9 +65,11 @@ public class SubcontractInquiryService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final SubcontractDocumentAccessPolicy access;
+    private final CommercialPriceVisibility commercialPriceVisibility;
 
     @Transactional(readOnly = true)
     public PageResponse<InquiryListItem> list(InquiryQueryFilter f, int page, int size, String sort, String order) {
+        boolean priceMasked = subcontractPriceMasked();
         var readScope = access.scope();
         Specification<SubcontractInquiry> spec = (Root<SubcontractInquiry> root,
                                                   jakarta.persistence.criteria.CriteriaQuery<?> q,
@@ -86,9 +89,11 @@ public class SubcontractInquiryService {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
         Page<SubcontractInquiry> p = inquiryRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
@@ -270,9 +275,10 @@ public class SubcontractInquiryService {
         inquiryRepo.save(r);
     }
 
-    private InquiryListItem toList(SubcontractInquiry r) {
+    private InquiryListItem toList(SubcontractInquiry r, boolean priceMasked) {
         return new InquiryListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getSupplierId(),
-                r.getWarehouseId(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getLegacyId());
+                r.getWarehouseId(), priceMasked ? null : r.getTotalLocal(),
+                r.getStatus(), r.isClosed(), r.getLegacyId(), priceMasked);
     }
 
     private InquiryItemDto toItemDto(SubcontractInquiryItem it) {
@@ -284,11 +290,33 @@ public class SubcontractInquiryService {
     }
 
     private InquiryDetail toDetail(SubcontractInquiry r, List<InquiryItemDto> items) {
+        boolean priceMasked = subcontractPriceMasked();
+        List<InquiryItemDto> safeItems = priceMasked
+                ? items.stream().map(SubcontractInquiryService::maskItemPrices).toList()
+                : items;
         return new InquiryDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(),
+                r.getSupplierId(), r.getWarehouseId(),
+                priceMasked ? null : r.getCurrencyId(),
+                priceMasked ? null : r.getExchangeRate(),
                 r.getMakerId(), r.getApproverId(), r.getDeliverDate(), r.getRemark(),
-                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                priceMasked ? null : r.getTotalOriginal(),
+                priceMasked ? null : r.getTotalLocal(),
+                r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), priceMasked);
+    }
+
+    private boolean subcontractPriceMasked() {
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewSubcontractInquiry();
+    }
+
+    private static InquiryItemDto maskItemPrices(InquiryItemDto item) {
+        return new InquiryItemDto(item.getId(), item.getLineNo(), item.getGoodsId(),
+                item.getGoodsCodeSnapshot(), item.getGoodsNameSnapshot(),
+                item.getGoodsSnapshotSource(), item.getGoodsSnapshotLockedAt(),
+                item.getColorId(), item.getUnitId(), item.getUnitRate(),
+                item.getQty(), null, null, null, item.getWeight(),
+                item.getSourceDocNo(), item.getRemark());
     }
 
     private SubcontractInquiry requireInquiry(UUID id) {

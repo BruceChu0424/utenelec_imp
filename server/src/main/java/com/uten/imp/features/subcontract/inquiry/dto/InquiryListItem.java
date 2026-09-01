@@ -20,4 +20,5 @@ public class InquiryListItem {
     private Short status;
     private boolean closed;
     private Integer legacyId;
+    private boolean priceMasked;
 }

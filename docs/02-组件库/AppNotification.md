@@ -3,7 +3,8 @@
 > **本项目自建组件**。
 > 不是 Material 的 SnackBar，也不是 `lib/components/feedback/uten_toast.dart` 的 UtenToast。
 > 顶部渲染（status bar 下方滑入），按 `success/error/warning/info` 四级配色，
-> 队列上限 3 条 + 600ms 同 message 合并去重，专治"先成功再失败"的双 SnackBar 抖动。
+> 同时完整展示上限 3 条（队列不截断）+ 600ms 同 message 合并去重，
+> 专治"先成功再失败"的双 SnackBar 抖动。
 
 > ⚠️ **调用入口已收敛**：新代码请走统一门面 **[UtenNotify](UtenNotify.md)**
 > （`UtenNotify.banner/success/error/...`，顶部弹条 + 居中弹窗双通道）。
@@ -25,7 +26,8 @@
 | API 抛 `ApiException` 后的错误提示 | `context.appApiError(e)` |
 | 普通 toast 式提示 | `context.appInfo(...)` |
 | 阻塞性错误 | 用 `UtenDialog` 确认对话框，**不要**用通知 |
-| 重要/紧急强提醒（必须被看见） | 用 `UtenNotify.alert(...)` 居中弹窗（见 [UtenNotify.md](UtenNotify.md)），**不要**用顶部弹条 |
+| 通知中心到达的 important / urgent 事件 | 仍走顶部叠放，分别使用 warning / error 视觉和更长停留时间 |
+| 当前操作必须立即确认、且不是通知到达事件 | 可显式使用 `UtenNotify.alert(...)`；不得由通知到达链默认弹出 |
 | 进度提示（非瞬时反馈） | 使用按钮 loading、`UtenSkeleton` 或主题化进度指示器，**不要**用通知 |
 
 > 旧代码里 `ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(...)))`
@@ -92,17 +94,19 @@ class AppNotification {
 
 > 本主题 `primary/secondary/tertiaryContainer` 同为 teal，故 **success 与 warning 同底色，靠语义图标区分**（✓ / ⚠）；error 浅红、info 浅蓝各自独立。info 不再用中性灰 `surfaceContainerHighest`——灰底叠 hover InkWell 罩会把整条刷成一片灰长条（用户误以为「灰色面板」），故改用语义浅蓝/深蓝容器色。
 
-- **位置**：屏幕顶部居中，最大宽 720dp（卡片自带 `SafeArea` + `Center`，宿主不再加左右留白）。
-- **动画**：滑入（easeOutCubic，220ms）+ 长按或左/右滑可关闭。
-- **队列上限 3 条**：超出自动 FIFO 出队最早的。
+- **位置**：屏幕顶部居中，最大宽 720dp；`SafeArea` 与水平居中由宿主统一承担，卡片两侧空白不拦截页面点击。
+- **动画**：滑入（easeOutCubic，220ms）+ 左/右滑可关闭；系统 `disableAnimations` 时立即进入/退出。
+- **iPhone 式叠放**：最新通知在最上层；默认只挂载最新真实卡片，旧卡以最多 2 层不可交互轮廓露出；可展开最近 3 条并逐条点击、滑动或关闭。
+- **队列不丢弃**：3 条只是同时完整展示上限。超过 3 条继续保留在 `AppNotificationService`；上层关闭后旧通知补位，且每条 `onDismissed` 只在真实关闭后调用一次。
 - **去重**：600ms 内同 `kind + message` 合并显示一次（防止“先 success 再 fail”双显）。`force: true` 时绕过去重，保证关键提示（如禁用态点击反馈）不被前一条同文案吞掉。
 
 ## 五、响应式 / 性能档
 
-- **响应式**：卡片 `Center` + 最大宽 720dp，三档断点下均居中不超宽（不再“全宽跟随父 Stack”）。
+- **响应式**：卡片最大宽 720dp；窄屏或文字放大超过 1.5 倍时，展开控制自动从文字按钮切为 48dp 图标按钮。
+- **可访问性**：展开/收起有明确 Semantics 标签；关闭和展开触控目标至少 48dp；叠放时只有最新通知进入 live region，展开旧通知不会重复打断读屏。
 - **性能档**：
   - `lite` 档：仍正常显示，不开模糊/长动画。
-  - `standard/rich` 档：220ms 滑入 + 自动计时消失。
+  - `standard/rich` 档：220ms 滑入/展开淡变 + 自动计时消失；悬停暂停计时。
 
 ## 六、国际化适配
 
@@ -140,11 +144,11 @@ ref.read(appNotificationProvider.notifier).clear();
 
 - **不依赖具体页面**：`AppNotificationHost` 通过 `MaterialApp.builder` 挂到全局 `Stack` 顶层。
   路由 push / pop 不会丢失提示。`ScaffoldMessenger` 不行——它跟最近一个 Scaffold 绑。
-- **自管生命**：通知进入队列后由 host 渲染 `_AppNotificationBanner`，220ms 滑入 + `Future.delayed` 计时退出。
+- **自管生命**：通知进入队列后由 host 交给 `UtenNotificationStack`；收拢状态只让顶层真实卡片计时，展开后最近 3 条各自计时。
 - **去重策略**：比 `DateTime.now().millisecondsSinceEpoch` 简单判断；同 message 在 600ms 内合并；`force: true` 跳过此判定。
 - **可手动关闭**：IconButton + Dismissible（左滑 / 右滑），保证无障碍可达性。
-- **共享外壳**：`_AppNotificationBanner` 的视觉外壳（SafeArea / Center / maxWidth 720 / Material / 圆角 14）由 [`lib/core/ui/uten_top_banner_card.dart`](../../lib/core/ui/uten_top_banner_card.dart) 的 `UtenTopBannerCard` 提供，与 `ConnectionRecoveryBanner` 同款；host 仅做纵向堆叠（裸 `Column`），每张卡片自带 `SafeArea` 居中。
+- **共享外壳**：`_AppNotificationBanner` 的视觉外壳（maxWidth 720 / Material / 圆角 14）由 [`lib/core/ui/uten_top_banner_card.dart`](../../lib/core/ui/uten_top_banner_card.dart) 的 `UtenTopBannerCard` 提供，与 `ConnectionRecoveryBanner` 同款；`AppNotificationHost` 统一处理 `SafeArea`、居中与叠放。
 
 ---
 
-**最后更新**：2026-08-05（视觉外壳统一为 `UtenTopBannerCard` + 柔和容器色） · **位置**：`lib/core/ui/app_notification.dart` · **外壳**：`lib/core/ui/uten_top_banner_card.dart`
+**最后更新**：2026-08-30（非阻塞顶部叠放、展开最近 3 条、队列不丢弃、reduced motion 与 live region） · **位置**：`lib/core/ui/app_notification.dart` · **叠放层**：`lib/core/ui/app_notification_stack.dart` · **外壳**：`lib/core/ui/uten_top_banner_card.dart`

@@ -82,6 +82,10 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
     return _operationsSubcontractScope;
   }
   if (path == '/rd/tasks') return _rdTaskScope;
+  if (path == '/procurement/iqc-rejections' ||
+      _isDescendant(path, '/procurement/iqc-rejections')) {
+    return _procurementIqcRejectionScope;
+  }
   if (path == '/procurement/arrival-exceptions' ||
       _isDescendant(path, '/procurement/arrival-exceptions')) {
     return _procurementExceptionScope;
@@ -160,10 +164,20 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _inspectionScope,
   _qualityInspectionScope,
   _warehouseInboundScope,
+  _warehousePurchaseReceiptHistoryScope,
+  _warehouseSubcontractReceiptHistoryScope,
+  _warehouseSubcontractOutboundHistoryScope,
+  _warehouseSubcontractFinishedReturnHistoryScope,
+  _warehouseSubcontractMaterialReturnHistoryScope,
+  _warehouseSubcontractWasteHistoryScope,
+  _warehouseIqcReturnScope,
+  _warehouseIqcStockInScope,
   _warehouseReportScope,
   _shelfLabelScope,
   _subcontractOutboundScope,
+  _warehouseSalesOutboundScope,
   _stockDocumentScope,
+  _procurementIqcRejectionScope,
   _procurementExceptionScope,
   _salesHubScope,
   _salesReportScope,
@@ -175,6 +189,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _salesOtherShipmentScope,
   _salesReturnScope,
   _subcontractHubScope,
+  _subcontractPreparationScope,
   _subcontractReportScope,
   _subcontractInquiryScope,
   _subcontractApplicationScope,
@@ -194,6 +209,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _financeHubScope,
   _financeOrderApprovalScope,
   _salesFinanceScope,
+  _financeShipmentAuditScope,
   _financeReportScope,
   _arApScope,
   _reconciliationScope,
@@ -230,6 +246,17 @@ PagePermissionScope? _stockScopeFor(List<String> segments) {
 
 PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
   if (segments.length == 1) return _warehouseHubScope;
+  if (segments.length >= 3 && segments[1] == 'history') {
+    return _warehouseHistoryScopes[segments[2]];
+  }
+  if (path == '/warehouse/iqc-returns' ||
+      _isDescendant(path, '/warehouse/iqc-returns')) {
+    return _warehouseIqcReturnScope;
+  }
+  if (path == '/warehouse/iqc-stock-ins' ||
+      _isDescendant(path, '/warehouse/iqc-stock-ins')) {
+    return _warehouseIqcStockInScope;
+  }
   if (path == '/warehouse/inspections' ||
       _isDescendant(path, '/warehouse/inspections')) {
     return _inspectionScope;
@@ -246,6 +273,10 @@ PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
   if (path == '/warehouse/subcontract-outbound' ||
       _isDescendant(path, '/warehouse/subcontract-outbound')) {
     return _subcontractOutboundScope;
+  }
+  if (path == '/warehouse/sales-outbound' ||
+      _isDescendant(path, '/warehouse/sales-outbound')) {
+    return _warehouseSalesOutboundScope;
   }
   if (!_stockDocumentCodes.contains(segments[1])) return null;
   return _isDocumentPath(segments) ? _stockDocumentScope : null;
@@ -269,6 +300,9 @@ PagePermissionScope? _salesScopeFor(List<String> segments) {
 
 PagePermissionScope? _subcontractScopeFor(List<String> segments) {
   if (segments.length == 1) return _subcontractHubScope;
+  if (segments[1] == 'preparations') {
+    return segments.length == 2 ? _subcontractPreparationScope : null;
+  }
   if (segments[1] == 'report') {
     return segments.length <= 3 ? _subcontractReportScope : null;
   }
@@ -316,6 +350,9 @@ PagePermissionScope? _financeScopeFor(String path, List<String> segments) {
   if (path == '/finance/sales-order-confirmations' ||
       _isDescendant(path, '/finance/sales-order-confirmations')) {
     return _salesFinanceScope;
+  }
+  if (path == '/finance/sales-shipment-audits') {
+    return _financeShipmentAuditScope;
   }
   if (path == '/finance/procurement-arrival-exceptions' ||
       _isDescendant(path, '/finance/procurement-arrival-exceptions')) {
@@ -523,6 +560,47 @@ const _warehouseInboundScope = PagePermissionScope(
   surfaceKey: 'warehouse.inbound',
   title: '到货与入库',
 );
+const _warehousePurchaseReceiptHistoryScope = PagePermissionScope(
+  surfaceKey: 'warehouse.purchase-receipt-history',
+  title: '仓库采购收货历史',
+);
+const _warehouseSubcontractReceiptHistoryScope = PagePermissionScope(
+  surfaceKey: 'warehouse.subcontract-receipt-history',
+  title: '仓库委外进仓历史',
+);
+const _warehouseSubcontractOutboundHistoryScope = PagePermissionScope(
+  surfaceKey: 'warehouse.subcontract-outbound-history',
+  title: '仓库委外出仓历史',
+);
+const _warehouseSubcontractFinishedReturnHistoryScope = PagePermissionScope(
+  surfaceKey: 'warehouse.subcontract-finished-return-history',
+  title: '仓库委外成品退货历史',
+);
+const _warehouseSubcontractMaterialReturnHistoryScope = PagePermissionScope(
+  surfaceKey: 'warehouse.subcontract-material-return-history',
+  title: '仓库委外材料退回历史',
+);
+const _warehouseSubcontractWasteHistoryScope = PagePermissionScope(
+  surfaceKey: 'warehouse.subcontract-waste-history',
+  title: '仓库委外损耗历史',
+);
+const _warehouseIqcReturnScope = PagePermissionScope(
+  surfaceKey: 'warehouse.iqc-return',
+  title: '仓库 IQC 不合格实物退回',
+);
+const _warehouseIqcStockInScope = PagePermissionScope(
+  surfaceKey: 'warehouse.iqc-stock-in',
+  title: 'IQC 合格待入库',
+);
+const _warehouseHistoryScopes = <String, PagePermissionScope>{
+  'purchase-receipts': _warehousePurchaseReceiptHistoryScope,
+  'subcontract-receipts': _warehouseSubcontractReceiptHistoryScope,
+  'subcontract-material-issues': _warehouseSubcontractOutboundHistoryScope,
+  'subcontract-returns': _warehouseSubcontractFinishedReturnHistoryScope,
+  'subcontract-material-returns':
+      _warehouseSubcontractMaterialReturnHistoryScope,
+  'subcontract-wastes': _warehouseSubcontractWasteHistoryScope,
+};
 const _warehouseReportScope = PagePermissionScope(
   surfaceKey: 'warehouse.report',
   title: '仓库报表',
@@ -535,9 +613,17 @@ const _subcontractOutboundScope = PagePermissionScope(
   surfaceKey: 'warehouse.subcontract-outbound',
   title: '委外出仓',
 );
+const _warehouseSalesOutboundScope = PagePermissionScope(
+  surfaceKey: 'warehouse.sales-outbound',
+  title: '仓库销售出库',
+);
 const _stockDocumentScope = PagePermissionScope(
   surfaceKey: 'warehouse.stock-document',
   title: '库存单据',
+);
+const _procurementIqcRejectionScope = PagePermissionScope(
+  surfaceKey: 'procurement.iqc-rejection',
+  title: '采购与委外 IQC 拒收闭环',
 );
 const _procurementExceptionScope = PagePermissionScope(
   surfaceKey: 'purchase.arrival-exception',
@@ -601,6 +687,10 @@ const _salesDocumentScopes = <String, PagePermissionScope>{
 const _subcontractHubScope = PagePermissionScope(
   surfaceKey: 'subcontract.hub',
   title: '委外管理',
+);
+const _subcontractPreparationScope = PagePermissionScope(
+  surfaceKey: 'subcontract.preparation',
+  title: '委外前置自制',
 );
 const _subcontractReportScope = PagePermissionScope(
   surfaceKey: 'subcontract.report',
@@ -695,6 +785,10 @@ const _financeOrderApprovalScope = PagePermissionScope(
 const _salesFinanceScope = PagePermissionScope(
   surfaceKey: 'finance.sales-order-confirmation',
   title: '销售订单财务确认',
+);
+const _financeShipmentAuditScope = PagePermissionScope(
+  surfaceKey: 'finance.sales-shipment-audit',
+  title: '出货财务审核',
 );
 const _financeReportScope = PagePermissionScope(
   surfaceKey: 'finance.report',

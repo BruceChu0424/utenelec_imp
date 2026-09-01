@@ -16,6 +16,7 @@
 #   bash server/legacy_migration/migrate.sh --sales      # 只迁销售五单据（报价/订货+BOM/出货/其它出货/退货）
 #   bash server/legacy_migration/migrate.sh --subcontract # 只迁委外八单据（询价/申请/订单+BOM/入库/发料/退料/次品退/废料）
 #   bash server/legacy_migration/migrate.sh --production # 只迁生产（F_Plan/F_PlanItem/F_PlanCostItem/F_DateReport，依赖 --sales 先迁）
+#   bash server/legacy_migration/migrate.sh --measurement-profiles # 已审物理单据计量画像（依赖采购/仓库/销售/委外/生产）
 #   bash server/legacy_migration/migrate.sh --finance    # 只迁钱流（账户/付款方式 + AR/AP + 收支/对账）
 #   bash server/legacy_migration/migrate.sh --hr-workers # 只迁人事老库（B_Worker 全量试迁，含加密敏感信息）
 #   bash server/legacy_migration/migrate.sh --hr-cleanup # 人事清理：只留 admin（正式名录导入前执行）
@@ -29,7 +30,7 @@
 # 当前已实现：货品/模具/客户/供应商（分类+主档）、颜色/单位/币种/仓库主档、采购四单据、
 #   仓库管理 9 单据（统一 stock_documents + 台账余额 + 流水）、销售五单据（含 BOM 成本子表）、
 #   委外八单据（含 BOM 成本子表）、生产（F_Plan 系列 + 日报）、钱流（账户/付款方式 + AR/AP 总账 +
-#   收支/对账）。依赖顺序：主档 -> 采购 -> 仓库 -> 销售 -> 委外 -> 生产 -> 钱流
+#   收支/对账）。依赖顺序：主档 -> 采购 -> 仓库 -> 销售 -> 委外 -> 生产 -> 计量画像 -> 钱流
 #   （production 依赖 sales_order_items 已迁，跨模块 FK 映射 sales_order_item_id）。
 #   新增模块时在下方加 case + 对应 .sql。
 #
@@ -52,6 +53,8 @@ LOCAL_KEY_FILE=""
 RUN_ID=""
 EXPORT_MANIFEST_SHA256=""
 CHECKSUM_MANIFEST_SHA256=""
+SOURCE_BACKUP_SHA256=""
+EXPORT_APPROVAL_REFERENCE=""
 MIGRATION_REPOSITORY_COMMIT="unknown"
 MIGRATION_SCRIPT_SHA256=""
 FLYWAY_CHECKSUM_MANIFEST="${UTEN_FLYWAY_CHECKSUM_MANIFEST:-$HERE/../target/uten-imp-flyway-checksums.tsv}"
@@ -73,7 +76,7 @@ usage () {
   --supplier | --supplier-data
   --color-data | --unit-data | --currency-data | --warehouse-data
   --purchase | --stock-docs | --sales | --sales-owner
-  --subcontract | --production | --finance | --hr-workers
+  --subcontract | --production | --measurement-profiles | --finance | --hr-workers
   --hr-cleanup | --hr-roster
   --shelf-labels（货架库位：人工 CSV，非老库导出）
   --goods-owner
@@ -101,7 +104,7 @@ for arg in "$@"; do
         --mould|-m|--mould-data|--client|--client-data|--client-owner|\
         --supplier|--supplier-data|--color-data|--unit-data|--currency-data|\
         --warehouse-data|--purchase|--stock-docs|--sales|--sales-owner|\
-        --subcontract|--production|--finance|--hr-workers|\
+        --subcontract|--production|--measurement-profiles|--finance|--hr-workers|\
         --hr-cleanup|--hr-roster|--shelf-labels|\
         --bootstrap-all|--all|-a)
             if [ -n "$TARGET" ]; then
@@ -216,7 +219,9 @@ verify_full_bootstrap_export () {
         exit 69
     fi
 
-    if ! python3 -I - \
+    local manifest_authority
+    if ! manifest_authority=$(
+        python3 -I - \
         "$HERE/data/export_manifest.json" \
         "$HERE/data/export_manifest.sha256" \
         "$HERE/export_legacy.ps1" \
@@ -339,9 +344,17 @@ for name in sorted(expected_files):
         actual_rows = sum(1 for _ in rows)
     if actual_rows != record["rows"]:
         raise ValueError(f"export row count drift: {name}")
+print(manifest["sourceBackupSha256"] + "|" + manifest["approvalReference"])
 PY
-    then
+    ); then
         echo "✗ 完整导出 JSON、checksum 或 CSV inventory/rows/bytes/digest 校验失败；迁移尚未写库。" >&2
+        exit 66
+    fi
+    IFS='|' read -r SOURCE_BACKUP_SHA256 EXPORT_APPROVAL_REFERENCE \
+        <<< "$manifest_authority"
+    if [[ ! "$SOURCE_BACKUP_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || [[ ! "$EXPORT_APPROVAL_REFERENCE" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$ ]]; then
+        echo "✗ 已验证 manifest 的来源 authority 字段无法安全持久化；迁移尚未写库。" >&2
         exit 66
     fi
 }
@@ -515,6 +528,20 @@ preflight () {
                    WHERE table_schema = 'public'
                      AND table_name = 'legacy_migration_runs'
                      AND column_name = 'export_manifest_sha256'
+               )
+               AND EXISTS (
+                   SELECT 1
+                   FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                     AND table_name = 'legacy_migration_runs'
+                     AND column_name = 'source_backup_sha256'
+               )
+               AND EXISTS (
+                   SELECT 1
+                   FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                     AND table_name = 'legacy_migration_runs'
+                     AND column_name = 'export_approval_reference'
                )")" = "t" ] || {
         echo "✗ 数据库未应用最新迁移追溯结构，请先启动 server 完成 Flyway。" >&2
         exit 69
@@ -531,6 +558,8 @@ preflight () {
              migration_mode,
              export_manifest_sha256,
              checksum_manifest_sha256,
+             source_backup_sha256,
+             export_approval_reference,
              migration_repository_commit,
              migration_script_sha256,
              mapping_version
@@ -541,6 +570,8 @@ preflight () {
              'BOOTSTRAP',
              '$EXPORT_MANIFEST_SHA256',
              '$CHECKSUM_MANIFEST_SHA256',
+             NULLIF('$SOURCE_BACKUP_SHA256', ''),
+             NULLIF('$EXPORT_APPROVAL_REFERENCE', ''),
              '$MIGRATION_REPOSITORY_COMMIT',
              '$MIGRATION_SCRIPT_SHA256',
              '$MAPPING_VERSION'
@@ -653,7 +684,7 @@ PY
         "SELECT count(*) || '|' || count(*) FILTER (WHERE passed = FALSE)
          FROM legacy_migration_reconciliation_items
          WHERE run_id = '$RUN_ID'::uuid")
-    if [ "$reconciliation_state" != "20|0" ]; then
+    if [ "$reconciliation_state" != "24|0" ]; then
         echo "✗ 全量结构化对账失败（检查状态：$reconciliation_state）；已拒绝形成切换候选。" >&2
         exit 78
     fi
@@ -874,6 +905,13 @@ migrate_production () {
     run_sql migrate_production.sql
 }
 
+# Manifest-bound measurement profile suggestions. This must run only after all
+# physical document modules so the same target UUID facts are aggregated.
+migrate_measurement_profiles () {
+    echo "→ [计量学习] 汇总已审核业务量/实际重量证据并隔离异常..."
+    run_sql migrate_measurement_profiles.sql
+}
+
 # 钱流模块：账户（accounts）+ 付款方式（payment_styles）+ AR/AP 总账（ar_ap_ledger，
 #   M_in/M_out 双向）+ 收支单据（finance_receipts/payments/expenses/other_incomes）
 #   + 对账（finance_reconciliations）。M_Bank legacy 0 行，结构在 V57 已建，本期不迁。
@@ -1058,6 +1096,7 @@ case "$TARGET" in
     --sales) migrate_sales ;;
     --subcontract) migrate_subcontract ;;
     --production) migrate_production ;;
+    --measurement-profiles) migrate_measurement_profiles ;;
     --finance) migrate_finance ;;
     --hr-workers) migrate_hr_workers ;;
     --hr-cleanup) migrate_hr_cleanup ;;
@@ -1087,6 +1126,7 @@ case "$TARGET" in
         migrate_sales
         migrate_subcontract
         migrate_production
+        migrate_measurement_profiles
         migrate_finance
         migrate_hr_workers
         migrate_goods_owner

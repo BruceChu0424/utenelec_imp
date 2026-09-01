@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -62,7 +63,7 @@ public class ProductionFqcFinishedInboundService
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT report.id, report.status,
-                               report.warehouse_id, report.bill_no,
+                               inspection.warehouse_id, report.bill_no,
                                report.worker_id, report.maker_id,
                                report_item.id, report_item.plan_item_id,
                                report_item.execution_segment_id,
@@ -74,7 +75,17 @@ public class ProductionFqcFinishedInboundService
                                report_item.qty,
                                segment.status,
                                inspection.id,
-                               decision.id
+                               decision.id,
+                               registration_item.place_snapshot,
+                               report_item.weight,
+                               COALESCE((
+                                   SELECT SUM(prior.pass_qty)
+                                   FROM production_fqc_decision_events prior
+                                   WHERE prior.inspection_id = inspection.id
+                                     AND (prior.decided_at < decision.decided_at
+                                          OR (prior.decided_at = decision.decided_at
+                                              AND prior.id < decision.id))
+                               ), 0) AS prior_pass_qty
                         FROM production_daily_reports report
                         JOIN production_daily_report_items report_item
                           ON report_item.report_id = report.id
@@ -96,11 +107,14 @@ public class ProductionFqcFinishedInboundService
                           ON decision.id = :decisionEventId
                          AND decision.inspection_id = inspection.id
                          AND decision.pass_qty = :quantity
+                        LEFT JOIN production_finished_arrival_registration_items
+                                  registration_item
+                          ON registration_item.source_report_item_id = report_item.id
                         WHERE report.id = :reportId
                           AND report_item.id = :reportItemId
                           AND report.status = 1
                           AND report.is_deleted = FALSE
-                          AND report.warehouse_id IS NOT NULL
+                          AND inspection.warehouse_id IS NOT NULL
                           AND report.maker_id IS NOT NULL
                           AND plan.status = 1
                           AND plan.is_closed = FALSE
@@ -166,11 +180,15 @@ public class ProductionFqcFinishedInboundService
         item.setQty(quantity);
         item.setReportedQty(quantity);
         item.setBaseQty(quantity.multiply(unitRate));
+        item.setWeight(proratedActualWeight(
+                (BigDecimal) row[21], (BigDecimal) row[16],
+                (BigDecimal) row[22], quantity));
         item.setUpstreamItemId((UUID) row[7]);
         item.setExecutionSegmentId((UUID) row[8]);
         item.setExecutionSegmentSalesAllocationId((UUID) row[9]);
         item.setSourceDailyReportItemId((UUID) row[6]);
         item.setSourceDocNo((String) row[3]);
+        item.setPlace((String) row[20]);
         itemRepository.saveAndFlush(item);
 
         em.createNativeQuery("""
@@ -184,6 +202,26 @@ public class ProductionFqcFinishedInboundService
                 .executeUpdate();
         chainNotice.notifyFinishedInboundPending(document.getId());
         return new CreatedDraft(document.getId(), item.getId());
+    }
+
+    static BigDecimal proratedActualWeight(
+            BigDecimal totalWeight,
+            BigDecimal reportedQty,
+            BigDecimal priorPassQty,
+            BigDecimal passQty) {
+        if (totalWeight == null) return null;
+        if (totalWeight.signum() < 0
+                || reportedQty == null || reportedQty.signum() <= 0
+                || priorPassQty == null || priorPassQty.signum() < 0
+                || passQty == null || passQty.signum() <= 0
+                || priorPassQty.add(passQty).compareTo(reportedQty) > 0) {
+            throw conflict("报工实际总重量或 FQC 放行比例无效");
+        }
+        BigDecimal previous = totalWeight.multiply(priorPassQty)
+                .divide(reportedQty, 4, RoundingMode.HALF_UP);
+        BigDecimal next = totalWeight.multiply(priorPassQty.add(passQty))
+                .divide(reportedQty, 4, RoundingMode.HALF_UP);
+        return next.subtract(previous);
     }
 
     private static ApiException validation(String message) {

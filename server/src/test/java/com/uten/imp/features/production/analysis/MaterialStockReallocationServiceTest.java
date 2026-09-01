@@ -248,7 +248,7 @@ class MaterialStockReallocationServiceTest {
         SecurityContextCurrentUser user = mock(SecurityContextCurrentUser.class);
         UUID actorId = UUID.randomUUID();
         when(user.requireId()).thenReturn(actorId);
-        when(entitlements.requireAvailableLot(originEventId, true))
+        when(entitlements.availableLotOrNull(originEventId, true))
                 .thenReturn(targetOrigin);
         Map<String, Object> update = new HashMap<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
@@ -298,7 +298,7 @@ class MaterialStockReallocationServiceTest {
                 mock(PreplanStockEntitlementService.class);
         SecurityContextCurrentUser user = mock(SecurityContextCurrentUser.class);
         when(user.requireId()).thenReturn(UUID.randomUUID());
-        when(entitlements.requireAvailableLot(originEventId, true))
+        when(entitlements.availableLotOrNull(originEventId, true))
                 .thenReturn(sourceOrigin);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0, String.class);

@@ -20,6 +20,7 @@ Future<StockBalanceAdjustmentResult?> showStockBalanceDetailSheet({
   required BuildContext context,
   required BalanceRow balance,
   required String goodsName,
+  required String unitName,
   required String warehouseName,
   required String colorName,
   required bool canAdjust,
@@ -29,6 +30,7 @@ Future<StockBalanceAdjustmentResult?> showStockBalanceDetailSheet({
   final sheet = _StockBalanceDetailSheet(
     balance: balance,
     goodsName: goodsName,
+    unitName: unitName,
     warehouseName: warehouseName,
     colorName: colorName,
     canAdjust: canAdjust,
@@ -78,6 +80,7 @@ class _StockBalanceDetailSheet extends StatefulWidget {
   const _StockBalanceDetailSheet({
     required this.balance,
     required this.goodsName,
+    required this.unitName,
     required this.warehouseName,
     required this.colorName,
     required this.canAdjust,
@@ -87,6 +90,7 @@ class _StockBalanceDetailSheet extends StatefulWidget {
 
   final BalanceRow balance;
   final String goodsName;
+  final String unitName;
   final String warehouseName;
   final String colorName;
   final bool canAdjust;
@@ -263,7 +267,16 @@ class _StockBalanceDetailSheetState extends State<_StockBalanceDetailSheet> {
         _infoRow('货品', widget.goodsName, theme),
         _infoRow('仓库', widget.warehouseName, theme),
         _infoRow('颜色', widget.colorName, theme),
+        _infoRow('基本单位', widget.unitName, theme),
         _infoRow('当前数量', _quantity(_currentQty), theme, emphasized: true),
+        _infoRow(
+          '库存重量',
+          widget.balance.weight == null
+              ? '未维护'
+              : _quantity(widget.balance.weight!),
+          theme,
+          emphasized: widget.balance.weight != null,
+        ),
         if (widget.balance.lastMovementDate != null)
           _infoRow(
             '最后变动',

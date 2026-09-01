@@ -4,10 +4,14 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.uten.imp.common.validation.RequestLimits;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -35,7 +39,7 @@ public final class ProcurementArrivalContracts {
     /**
      * 仓库到货登记一步完成（登记 + 送检审核）请求体。
      *
-     * <p>与「登记实际到货」页字段一致：只有数量与库位语义字段，无价格/币族——
+     * <p>与「登记实际到货」页字段一致：只有数量、可选实际总重量与库位语义字段，无价格/币族——
      * 服务端从财务批准的来源订货单权威带出 币种/汇率/结算方式 后建收货单草稿，
      * 并在同一事务内立即审核（转品质待检）；实到超量时审核被到货控制拦截，
      * 草稿与 PENDING_FINANCE 异常一并提交，接口以 {@code EXCESS_QUARANTINED} 正常返回。
@@ -50,7 +54,7 @@ public final class ProcurementArrivalContracts {
             @NotNull UUID receiverEmployeeId,
             @Size(max = 1000) String remark,
             @NotNull @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-                    List<ArrivalLine> items) {
+                    List<@Valid ArrivalLine> items) {
 
         public record ArrivalLine(
                 @NotNull UUID goodsId,
@@ -59,7 +63,17 @@ public final class ProcurementArrivalContracts {
                 UUID colorId,
                 UUID unitId,
                 BigDecimal unitRate,
+                @DecimalMin(value = "0", inclusive = true)
+                @Digits(integer = 14, fraction = 4) BigDecimal weight,
                 @Size(max = 64) String sourceDocNo) {
+
+            /** Compatibility for callers that do not provide an actual total weight. */
+            public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId,
+                               UUID colorId, UUID unitId, BigDecimal unitRate,
+                               String sourceDocNo) {
+                this(goodsId, qty, orderItemId, colorId, unitId, unitRate,
+                        null, sourceDocNo);
+            }
         }
     }
 
@@ -72,6 +86,61 @@ public final class ProcurementArrivalContracts {
             UUID receiptId,
             String receiptBillNo,
             UUID exceptionId) {
+    }
+
+    /**
+     * Atomic warehouse submission of finance-adjusted arrival exceptions.
+     *
+     * <p>Each item binds the immutable exception UUID to the version observed by
+     * the operator. The top-level key identifies the whole all-or-nothing
+     * command; it is not a per-line retry key.</p>
+     */
+    public record WarehouseArrivalExceptionBatchStockInRequest(
+            @NotBlank
+            @Size(min = 8, max = 128)
+            @Pattern(regexp = "[A-Za-z0-9._:-]+")
+            String idempotencyKey,
+            @NotEmpty @Size(max = 100)
+            List<@Valid WarehouseArrivalExceptionBatchStockInItem> items) {
+    }
+
+    public record WarehouseArrivalExceptionBatchStockInItem(
+            @NotNull UUID exceptionId,
+            @NotNull @Min(1) Long expectedVersion) {
+    }
+
+    /**
+     * A successful batch has submitted every unique receipt group into the
+     * existing receipt-approval/IQC pipeline. It does not assert that IQC has
+     * released usable inventory.
+     */
+    public record WarehouseArrivalExceptionBatchStockInResult(
+            UUID batchId,
+            boolean replay,
+            boolean submittedForInspection,
+            int processedExceptions,
+            List<WarehouseArrivalExceptionStockInReceiptGroup> receiptGroups) {
+        public WarehouseArrivalExceptionBatchStockInResult {
+            receiptGroups = List.copyOf(receiptGroups);
+        }
+    }
+
+    public record WarehouseArrivalExceptionStockInReceiptGroup(
+            String orderType,
+            UUID receiptId,
+            String receiptBillNo,
+            boolean submittedForInspection,
+            List<WarehouseArrivalExceptionStockInItemResult> items) {
+        public WarehouseArrivalExceptionStockInReceiptGroup {
+            items = List.copyOf(items);
+        }
+    }
+
+    public record WarehouseArrivalExceptionStockInItemResult(
+            UUID exceptionId,
+            long expectedVersion,
+            String resultStatus,
+            long resultVersion) {
     }
 
     public record ArrivalDecisionRequest(

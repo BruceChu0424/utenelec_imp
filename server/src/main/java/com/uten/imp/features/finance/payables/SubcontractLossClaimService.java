@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.payables;
 
 import com.uten.imp.application.port.SubcontractLossClaimPort;
+import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -38,6 +39,10 @@ import static com.uten.imp.features.finance.payables.SubcontractLossClaimContrac
 @RequiredArgsConstructor
 public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     public static final String AP_SOURCE_TYPE = "SUBCONTRACT_LOSS_OFFSET";
+    public static final String EVENT_OPENED = "SUBCONTRACT_LOSS_CLAIM_OPENED";
+    public static final String EVENT_DECIDED = "SUBCONTRACT_LOSS_CLAIM_DECIDED";
+    public static final String EVENT_FULFILLED = "SUBCONTRACT_LOSS_CLAIM_FULFILLED";
+    public static final String EVENT_REVERSED = "SUBCONTRACT_LOSS_CLAIM_REVERSED";
     private static final int MONEY_SCALE = 4;
     private static final int QTY_SCALE = 4;
     private static final Set<String> TYPES = Set.of(
@@ -58,6 +63,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     private final SupplierClosedPeriodGuard closedPeriodGuard;
     private final CommercialPriceVisibility commercialPriceVisibility;
     private final AccountFlowLedgerService accountFlowLedger;
+    private final BusinessEventPublisher events;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -207,6 +213,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         }
         appendEvent(caseId,hasExcess?"OPENED":"WITHIN_TOLERANCE",
                 hasExcess?"超过合同允许损耗，等待财务责任决定":"实际损耗未超过合同允许量");
+        if (hasExcess) {
+            publishLossEvent(EVENT_OPENED, caseId, "OPEN", 0, "OPENED");
+        }
     }
 
     @Override
@@ -245,6 +254,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                     """).setParameter("actor", currentUser.requireId())
                     .setParameter("id", caseId).executeUpdate();
             appendEvent(caseId, "CANCELED_BY_WASTE_REVERSAL", "损耗实物事实准备红冲");
+            publishLossEvent(
+                    EVENT_REVERSED, caseId, "CANCELED",
+                    ((Number) row[2]).longValue() + 1, "WASTE_REVERSAL");
             return;
         }
         throw conflict("该损耗已形成财务责任/索赔处理，请先反转责任决定再红冲损耗单");
@@ -353,6 +365,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
             em.createNativeQuery("UPDATE subcontract_loss_cases SET dispute_reason=:reason WHERE id=:id")
                     .setParameter("reason", reason).setParameter("id", caseId).executeUpdate();
             appendEvent(caseId, "DISPUTED", reason);
+            publishLossEvent(
+                    EVENT_DECIDED, caseId, "DISPUTED",
+                    loss.version() + 1, "DISPUTED");
             return detail(caseId);
         }
         List<ResolutionInput> inputs = request.resolutions() == null ? List.of() : request.resolutions();
@@ -454,6 +469,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         String status = pending ? "AWAITING_FULFILLMENT" : "RESOLVED";
         updateCaseDecision(loss, status, reason, money(claimTotal), !pending);
         appendEvent(caseId, "DECIDED", reason);
+        publishLossEvent(
+                EVENT_DECIDED, caseId, status,
+                loss.version() + 1, "DECIDED");
         return detail(caseId);
     }
 
@@ -524,6 +542,10 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 .setParameter("actor", currentUser.requireId())
                 .setParameter("id", caseId).executeUpdate();
         appendEvent(caseId, "FULFILLED", evidence);
+        publishLossEvent(
+                EVENT_FULFILLED, caseId,
+                pending == 0 ? "RESOLVED" : "AWAITING_FULFILLMENT",
+                loss.version() + 1, resolutionId.toString());
         return detail(caseId);
     }
 
@@ -611,6 +633,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("actor",currentUser.requireId())
                 .setParameter("id",caseId).executeUpdate();
         appendEvent(caseId,"FULFILLMENT_REVERSED",reason);
+        publishLossEvent(
+                EVENT_REVERSED, caseId, "AWAITING_FULFILLMENT",
+                loss.version() + 1, "FULFILLMENT:" + resolutionId);
         return detail(caseId);
     }
 
@@ -682,6 +707,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("actor",currentUser.requireId())
                 .setParameter("id",loss.id()).executeUpdate();
         appendEvent(loss.id(),"CASH_FULFILLMENT_REVERSED",reason);
+        publishLossEvent(
+                EVENT_REVERSED, loss.id(), "AWAITING_FULFILLMENT",
+                loss.version() + 1, "CASH_FULFILLMENT:" + resolution.id());
         return detail(loss.id());
     }
 
@@ -760,6 +788,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("actor", currentUser.requireId())
                 .setParameter("id", caseId).executeUpdate();
         appendEvent(caseId, "REVERSED", reason);
+        publishLossEvent(
+                EVENT_REVERSED, caseId, "REVERSED",
+                loss.version() + 1, "DECISION");
         return detail(caseId);
     }
 
@@ -1169,6 +1200,20 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 .setParameter("actor", currentUser.requireId())
                 .setParameter("reason", optionalBounded(reason, 2000, "事件说明"))
                 .executeUpdate();
+    }
+
+    private void publishLossEvent(
+            String eventType,
+            UUID caseId,
+            String status,
+            long version,
+            String discriminator) {
+        events.publishOnce(
+                eventType,
+                "SUBCONTRACT_LOSS_CASE",
+                caseId,
+                Map.of("status", status, "version", version),
+                eventType + ":" + caseId + ":" + discriminator + ":" + version);
     }
 
     private static void requireVersion(CaseRow row, long expected) {

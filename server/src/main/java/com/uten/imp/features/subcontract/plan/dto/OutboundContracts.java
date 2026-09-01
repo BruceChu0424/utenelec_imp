@@ -24,10 +24,14 @@ public final class OutboundContracts {
             BigDecimal remainingQty,
             /** 未审出仓草稿（null = 尚未生成/已被处理）。 */
             UUID draftId,
-            String draftBillNo) {
+            String draftBillNo,
+            BigDecimal readyOutboundQty,
+            int readyLineCount,
+            int waitingPreparationCount,
+            int blockedLineCount) {
     }
 
-    /** 计划行（父件→子件），剩余量 = planned − issued − draft（草稿占用）。 */
+    /** Server-authoritative outbound line; parent fields are legacy compatibility only. */
     public record OutboundPlanLine(
             UUID planItemId,
             UUID orderItemId,
@@ -47,9 +51,18 @@ public final class OutboundContracts {
             BigDecimal bomUnitQty,
             BigDecimal plannedQty,
             BigDecimal issuedQty,
-            BigDecimal draftQty) {
-        public BigDecimal remainingQty() {
-            return plannedQty.subtract(issuedQty).subtract(draftQty).max(BigDecimal.ZERO);
+            BigDecimal draftReservedQty,
+            String flowMode,
+            String preparationStatus,
+            BigDecimal preparedQty,
+            BigDecimal readyOutboundQty,
+            BigDecimal remainingQty,
+            UUID preparationAnalysisId,
+            UUID preparationAnalysisItemId,
+            String blocker,
+            List<String> allowedActions) {
+        public OutboundPlanLine {
+            allowedActions = allowedActions == null ? List.of() : List.copyOf(allowedActions);
         }
     }
 

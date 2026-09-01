@@ -65,13 +65,13 @@ public class ClientService {
 
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径；UUID 关联名称不走旧字段 facet。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
-            "code", "name", "fullName", "clientXz", "tday", "region", "placeId",
+            "code", "name", "fullName", "salesPaymentType", "clientXz", "tday", "region", "placeId",
             "empId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax",
-            "postcode", "address", "bank", "bankAccount", "taxId", "credit", "website");
+            "postcode", "address", "bank", "bankAccount", "taxId", "credit", "creditFloor", "website");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量列；命中才排序，否则默认 code ASC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of(
-            "tday", "tday", "credit", "credit");
+            "tday", "tday", "credit", "credit", "creditFloor", "creditFloor");
 
     /** facet 截断阈值（高基数列取前 N）。 */
     private static final int FACET_LIMIT = 50;
@@ -85,6 +85,7 @@ public class ClientService {
         FACET_COLUMNS.put("code", "code");
         FACET_COLUMNS.put("name", "name");
         FACET_COLUMNS.put("fullName", "full_name");
+        FACET_COLUMNS.put("salesPaymentType", "sales_payment_type");
         FACET_COLUMNS.put("clientXz", "client_xz");
         FACET_COLUMNS.put("tday", "tday");
         FACET_COLUMNS.put("region", "region");
@@ -102,6 +103,7 @@ public class ClientService {
         FACET_COLUMNS.put("bankAccount", "bank_account");
         FACET_COLUMNS.put("taxId", "tax_id");
         FACET_COLUMNS.put("credit", "credit");
+        FACET_COLUMNS.put("creditFloor", "credit_floor");
         FACET_COLUMNS.put("website", "website");
     }
 
@@ -148,6 +150,9 @@ public class ClientService {
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "fullName", f.fullName());
+            if (f.salesPaymentType() != null) {
+                ps.add(cb.equal(root.get("salesPaymentType"), f.salesPaymentType()));
+            }
             addEq(ps, cb, root, "clientXz", f.clientXz());
             addEq(ps, cb, root, "region", f.region());
             addEq(ps, cb, root, "placeId", f.placeId());
@@ -166,6 +171,7 @@ public class ClientService {
             addEq(ps, cb, root, "website", f.website());
             if (f.tday() != null) ps.add(cb.equal(root.get("tday"), f.tday()));
             if (f.credit() != null) ps.add(cb.equal(root.get("credit"), f.credit()));
+            if (f.creditFloor() != null) ps.add(cb.equal(root.get("creditFloor"), f.creditFloor()));
             if (f.nullFields() != null) {
                 for (String fld : f.nullFields()) {
                     if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
@@ -241,6 +247,7 @@ public class ClientService {
                 new ExportColumn("code", "客户编码", ExportColumn.TEXT),
                 new ExportColumn("name", "客户简称", ExportColumn.TEXT),
                 new ExportColumn("fullName", "客户全称", ExportColumn.TEXT),
+                new ExportColumn("salesPaymentType", "货款类型", ExportColumn.TEXT),
                 new ExportColumn("defaultSettlementMethodName", "主结账方式", ExportColumn.TEXT),
                 new ExportColumn("clientXz", "客户性质", ExportColumn.TEXT),
                 new ExportColumn("tday", "信用天数", ExportColumn.NUMBER),
@@ -259,6 +266,7 @@ public class ClientService {
                 new ExportColumn("bankAccount", "银行账号", ExportColumn.TEXT),
                 new ExportColumn("taxId", "纳税号", ExportColumn.TEXT),
                 new ExportColumn("credit", "信誉额度", ExportColumn.MONEY),
+                new ExportColumn("creditFloor", "铺底额", ExportColumn.MONEY),
                 new ExportColumn("website", "网址", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -273,6 +281,7 @@ public class ClientService {
                 row.put("code", m.getCode());
                 row.put("name", m.getName());
                 row.put("fullName", m.getFullName());
+                row.put("salesPaymentType", paymentTypeLabel(m.getSalesPaymentType()));
                 row.put("defaultSettlementMethodName", m.getDefaultSettlementMethodName());
                 row.put("clientXz", m.getClientXz());
                 row.put("tday", m.getTday());
@@ -291,6 +300,7 @@ public class ClientService {
                 row.put("bankAccount", m.getBankAccount());
                 row.put("taxId", m.getTaxId());
                 row.put("credit", m.getCredit());
+                row.put("creditFloor", m.getCreditFloor());
                 row.put("website", m.getWebsite());
                 row.put("status", m.getStatus());
                 rows.add(row);
@@ -385,6 +395,9 @@ public class ClientService {
     @Transactional
     public ClientDetail create(ClientSaveRequest req) {
         tx.bind();
+        if (req.getSalesPaymentType() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户货款类型必须选择月结、现金或定金");
+        }
         prepareOwnerForCreate(req);
         if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:status");
@@ -409,6 +422,7 @@ public class ClientService {
         requireOwnerUnchanged(req, m);
         // 乐观锁：编辑回传的版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
+        requireLegacyCreditSnapshotUnchanged(m, req.getCredit());
         if (req.getStatus() != null && !Objects.equals(m.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:status");
         }
@@ -474,7 +488,12 @@ public class ClientService {
         m.setInitTotal(req.getInitTotal());
         m.setTday(req.getTday());
         applyDefaultSettlementMethod(req, m);
-        m.setCreditFloor(req.getCreditFloor());
+        if (req.getSalesPaymentType() != null) {
+            m.setSalesPaymentType(req.getSalesPaymentType());
+        }
+        if (req.getCreditFloor() != null || m.getCreditFloor() == null) {
+            m.setCreditFloor(normalizeCreditFloor(req.getCreditFloor()));
+        }
         m.setStatus(req.getStatus());
         m.setRemark(req.getRemark());
     }
@@ -515,6 +534,7 @@ public class ClientService {
                 employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
                 m.getDefaultSettlementMethodId(),
                 settlementMethodName,
+                m.getSalesPaymentType(),
                 clientAccessPolicy.canWrite(m, scope),
                 clientAccessPolicy.canManageAccess(m, scope),
                 clientAccessPolicy.accessReason(m, scope));
@@ -529,11 +549,12 @@ public class ClientService {
                 m.getTday(), m.getRegion(), m.getPlaceId(), m.getEmpId(), m.getLegalPerson(),
                 m.getLinkman(), m.getMobile(), m.getPhone(), m.getPhone2(), m.getFax(),
                 m.getPostcode(), m.getAddress(), m.getBank(), m.getBankAccount(), m.getTaxId(),
-                m.getCredit(), m.getWebsite(), m.getStatus(), m.getLegacyId(),
+                m.getCredit(), m.getCreditFloor(), m.getWebsite(), m.getStatus(), m.getLegacyId(),
                 m.getCategory() == null ? null : m.getCategory().getId(),
                 m.getOwnerEmployeeId(),
                 employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
                 m.getDefaultSettlementMethodId(), settlementMethodName,
+                m.getSalesPaymentType(),
                 clientAccessPolicy.canWrite(m, scope),
                 clientAccessPolicy.canManageAccess(m, scope));
     }
@@ -635,6 +656,42 @@ public class ClientService {
                 em, id, null, "客户默认结账方式");
         client.setDefaultSettlementMethodId(method.id());
         client.setPriceStyle(method.legacyId());
+    }
+
+    static BigDecimal normalizeCreditFloor(BigDecimal value) {
+        if (value == null) return BigDecimal.ZERO;
+        BigDecimal normalized = value.stripTrailingZeros();
+        int fractionalDigits = Math.max(normalized.scale(), 0);
+        int integerDigits = Math.max(normalized.precision() - normalized.scale(), 0);
+        if (value.signum() < 0 || fractionalDigits > 4 || integerDigits > 14) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "铺底额必须为非负数，最多 14 位整数和 4 位小数");
+        }
+        return value;
+    }
+
+    static void requireLegacyCreditSnapshotUnchanged(
+            Client client, BigDecimal requestedCredit) {
+        if (client.getLegacyId() == null) return;
+        BigDecimal stored = client.getCredit();
+        boolean unchanged = stored == null
+                ? requestedCredit == null
+                : requestedCredit != null && stored.compareTo(requestedCredit) == 0;
+        if (!unchanged) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "旧库 Credit 是铺底来源的只读快照，不能作为信用额度修改；真实信用额度需使用后续显式核准模型");
+        }
+    }
+
+    private static String paymentTypeLabel(ClientSalesPaymentType value) {
+        if (value == null) return "待人工分类";
+        return switch (value) {
+            case MONTHLY -> "月结";
+            case CASH -> "现金";
+            case DEPOSIT -> "定金";
+        };
     }
 
     private Client requireClient(UUID id) {

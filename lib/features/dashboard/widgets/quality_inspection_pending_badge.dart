@@ -32,7 +32,8 @@ class QualityInspectionPendingBadge extends ConsumerWidget {
         ),
       );
     }
-    if (iqc.isLoading && fqc.isLoading) {
+    // 任一来源仍在加载时总数尚未收敛；不把另一个已返回值伪装成最终合计。
+    if (iqc.isLoading || fqc.isLoading) {
       return const SizedBox.shrink();
     }
     return UtenNotificationBadge(

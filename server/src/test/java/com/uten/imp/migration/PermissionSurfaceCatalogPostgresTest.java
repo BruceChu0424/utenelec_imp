@@ -50,13 +50,14 @@ class PermissionSurfaceCatalogPostgresTest {
     }
 
     @Test
-    void migrationSeedsEightyFiveStableSurfacesAndExactSplitCodeLinks()
+    void migrationSeedsStableSurfacesAndExactSplitCodeLinks()
             throws Exception {
         try (Connection connection = connection();
              Statement statement = connection.createStatement()) {
-            assertEquals(85, scalarLong(statement,
-                    "select count(*) from permission_surfaces"));
-            assertEquals(85, scalarLong(statement,
+            long surfaceCount = scalarLong(
+                    statement, "select count(*) from permission_surfaces");
+            assertTrue(surfaceCount >= 86);
+            assertEquals(surfaceCount, scalarLong(statement,
                     "select count(distinct id) from permission_surfaces"));
             assertEquals(
                     "32800000-0000-4000-8000-000000000001",
@@ -131,6 +132,47 @@ class PermissionSurfaceCatalogPostgresTest {
                     statement, "production.plan", "production:view"));
             assertEquals(0, linkCount(
                     statement, "production.hub", "production:view"));
+            assertEquals(1, linkCount(
+                    statement, "subcontract.preparation",
+                    "subcontract_preparation:view"));
+            assertEquals(1, linkCount(
+                    statement, "subcontract.preparation",
+                    "subcontract_preparation:start"));
+            assertEquals(1, linkCount(
+                    statement, "subcontract.order",
+                    "subcontract_order:price:view"));
+            assertEquals(1, linkCount(
+                    statement, "warehouse.subcontract-outbound",
+                    "subcontract_material_issue:approve"));
+            assertEquals(1, linkCount(
+                    statement, "purchase.order", "purchase_order:price:view"));
+            assertEquals(1, linkCount(
+                    statement, "purchase.return", "purchase_return:price:view"));
+            assertEquals(1, linkCount(
+                    statement, "purchase.report", "purchase_report:price:view"));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*)
+                    from department_permissions grant_row
+                    join permissions permission
+                      on permission.id = grant_row.permission_id
+                    where permission.code like 'subcontract_preparation:%'
+                       or permission.code in (
+                           'subcontract_inquiry:price:view',
+                           'subcontract_order:price:view',
+                           'subcontract_return:price:view',
+                           'subcontract_waste:suggestion:view',
+                           'subcontract_report:price:view')
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*)
+                    from department_permissions grant_row
+                    join permissions permission
+                      on permission.id = grant_row.permission_id
+                    where permission.code in (
+                        'purchase_order:price:view',
+                        'purchase_return:price:view',
+                        'purchase_report:price:view')
+                    """));
 
 
             assertEquals(0, scalarLong(statement, """
@@ -155,7 +197,10 @@ class PermissionSurfaceCatalogPostgresTest {
                 new PermissionSurfaceCatalogRepository(
                         new JdbcTemplate(dataSource)));
 
-        assertEquals(85, registry.knownKeys().size());
+        Integer surfaceCount = new JdbcTemplate(dataSource).queryForObject(
+                "select count(*) from permission_surfaces", Integer.class);
+        assertEquals(surfaceCount, registry.knownKeys().size());
+        assertTrue(registry.knownKeys().size() >= 86);
         assertTrue(registry.permissionsFor("basic.goods").containsAll(Set.of(
                 "goods:create", "material_category:move", "stock:view")));
         assertFalse(registry.permissionsFor("basic.goods").contains("mould:view"));
@@ -164,6 +209,16 @@ class PermissionSurfaceCatalogPostgresTest {
                 "department:manager_assign", "position:create", "position:delete")));
         assertTrue(registry.permissionsFor("purchase.arrival-exception")
                 .contains("supplier_return_task:complete"));
+        assertEquals(Set.of(
+                        "subcontract_preparation:start",
+                        "subcontract_preparation:view"),
+                registry.permissionsFor("subcontract.preparation"));
+        assertTrue(registry.permissionsFor("purchase.order")
+                .contains("purchase_order:price:view"));
+        assertTrue(registry.permissionsFor("purchase.return")
+                .contains("purchase_return:price:view"));
+        assertTrue(registry.permissionsFor("purchase.report")
+                .contains("purchase_report:price:view"));
         assertEquals(Set.of(
                 "production_daily_report:edit",
                 "production_execution:assign",

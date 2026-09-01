@@ -51,7 +51,8 @@ class ClientFacetVisibilityConsistencyTest {
         service.facets(categoryId, true);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        org.mockito.Mockito.verify(em, org.mockito.Mockito.times(42))
+        // 23 visible facet fields, each issuing one bucket and one null-count query.
+        org.mockito.Mockito.verify(em, org.mockito.Mockito.times(46))
                 .createNativeQuery(sql.capture());
         assertThat(sql.getAllValues()).allSatisfy(statement -> assertThat(statement)
                 .contains("lower(code) not like 'legacy-fin-cl-%'")

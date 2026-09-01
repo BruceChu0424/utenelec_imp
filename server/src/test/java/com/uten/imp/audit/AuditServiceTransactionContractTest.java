@@ -80,6 +80,8 @@ class AuditServiceTransactionContractTest {
                 String.class,
                 String.class,
                 java.util.UUID.class,
+                String.class,
+                String.class,
                 String.class);
         Transactional transactional = method.getAnnotation(Transactional.class);
 

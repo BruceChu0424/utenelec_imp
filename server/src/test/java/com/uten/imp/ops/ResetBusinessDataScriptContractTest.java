@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ResetBusinessDataScriptContractTest {
 
     private static final Pattern POLICY_ROW = Pattern.compile(
-            "(?m)^\\s*\\('([^']+)'\\s*,\\s*'(CLEAR|PRESERVE)'\\)[,;]$");
+            "(?m)^\\s*\\('([^']+)'\\s*,\\s*'(CLEAR|PRESERVE)'\\)[,;]?$");
     private String sql;
 
     @BeforeEach
@@ -50,18 +50,39 @@ class ResetBusinessDataScriptContractTest {
     void currentPolicyClassifiesEveryKnownParentTableAndPreservesEvidence() {
         Map<String, String> policy = policy();
 
-        assertThat(policy).hasSize(284);
+        assertThat(policy).hasSize(314);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(192);
+                .isEqualTo(219);
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(92);
+                .isEqualTo(95);
 
         assertThat(policy).containsAllEntriesOf(Map.of(
                 "preplan_analysis_stock_exact_pegs", "CLEAR",
                 "preplan_material_reallocations", "CLEAR",
                 "preplan_stock_entitlement_events", "CLEAR",
                 "subcontract_material_plans", "CLEAR",
-                "subcontract_material_plan_items", "CLEAR"));
+                "subcontract_material_plan_items", "CLEAR",
+                "subcontract_outbound_preparation_commands", "CLEAR",
+                "subcontract_outbound_issue_reservation_allocations", "CLEAR"));
+        assertThat(policy).containsAllEntriesOf(Map.of(
+                "procurement_iqc_rejection_cases", "CLEAR",
+                "procurement_iqc_rejection_commands", "CLEAR",
+                "procurement_iqc_rejection_events", "CLEAR",
+                "procurement_iqc_replacement_allocations", "CLEAR"));
+        assertThat(policy).containsAllEntriesOf(Map.of(
+                "procurement_iqc_stock_in_batches", "CLEAR",
+                "procurement_iqc_stock_in_batch_items", "CLEAR"));
+        assertThat(policy).containsAllEntriesOf(Map.of(
+                "preplan_subcontract_requirement_handoffs", "CLEAR",
+                "preplan_subcontract_requirement_handoff_items", "CLEAR",
+                "preplan_subcontract_requirement_supply_claims", "CLEAR",
+                "preplan_subcontract_entitlement_handoff_slices", "CLEAR",
+                "preplan_subcontract_requirement_handoff_events", "CLEAR"));
+        assertThat(policy).containsAllEntriesOf(Map.of(
+                "measurement_capture_profiles", "CLEAR",
+                "measurement_capture_line_snapshots", "CLEAR",
+                "measurement_capture_evidence", "CLEAR",
+                "measurement_capture_decision_events", "CLEAR"));
         assertThat(policy).containsAllEntriesOf(Map.ofEntries(
                 Map.entry("account_balance_adjustment_batches", "CLEAR"),
                 Map.entry("account_balance_adjustment_items", "CLEAR"),
@@ -72,15 +93,22 @@ class ResetBusinessDataScriptContractTest {
                 Map.entry("subcontract_loss_fulfillment_allocations", "CLEAR"),
                 Map.entry("supplier_claim_receivables", "CLEAR"),
                 Map.entry("supplier_open_item_offsets", "CLEAR"),
-                Map.entry("supplier_settlement_batches", "CLEAR")));
+                Map.entry("supplier_settlement_batches", "CLEAR"),
+                Map.entry("sales_shipment_finance_release_events", "CLEAR")));
         Set.of(
                 "account_flow_monthly_summaries",
                 "production_daily_report_commands",
                 "production_daily_report_workers",
+                "production_finished_arrival_registration_items",
+                "production_finished_arrival_registrations",
+                "production_finished_in_confirm_batch_items",
+                "production_finished_in_confirm_batches",
                 "production_fqc_cancellation_events",
                 "production_fqc_contribution_adjustments",
                 "production_fqc_decision_events",
                 "production_fqc_inspections",
+                "production_fqc_pass_all_batch_items",
+                "production_fqc_pass_all_batches",
                 "production_fqc_legacy_exemptions",
                 "production_fqc_recovery_allocation_events",
                 "production_fqc_recovery_authorizations",
@@ -96,7 +124,10 @@ class ResetBusinessDataScriptContractTest {
                 "production_fqc_replenishment_ready_reversals",
                 "production_fqc_replenishment_supply_gaps",
                 "production_fqc_replenishment_tasks",
-                "warehouse_arrival_registration_commands"
+                "warehouse_arrival_registration_commands",
+                "warehouse_arrival_exception_stock_in_batch_items",
+                "warehouse_arrival_exception_stock_in_batches",
+                "warehouse_goods_place_preferences"
         ).forEach(table -> assertThat(policy).containsEntry(table, "CLEAR"));
 
         Set<String> protectedEvidence = Set.of(
@@ -108,6 +139,10 @@ class ResetBusinessDataScriptContractTest {
                 "legacy_migration_reconciliation_items",
                 "legacy_migration_rejects", "legacy_migration_run_files",
                 "legacy_migration_runs",
+                "legacy_measurement_exceptions",
+                "legacy_measurement_profile_snapshots",
+                "legacy_measurement_source_registry",
+                "unit_measurement_profiles",
                 "client_default_settlement_migration_issues",
                 "profile_change_requests",
                 "client_access_change_events", "client_visibility_grants",
@@ -119,10 +154,37 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry(
                 "production_product_no_sequences", "CLEAR");
         assertThat(sql)
-                .contains("clear_count <> 192 OR preserve_count <> 92")
-                .contains("V429 白名单数量异常")
-                .contains("CLEAR 192 张")
-                .contains("PRESERVE 92 张");
+                .contains("measurement_table_count <> 8")
+                .contains("v440_business_table_count <> 6")
+                .contains("v443_business_table_count <> 1")
+                .contains("v446_business_table_count NOT IN (0, 2)")
+                .contains("v447_business_table_count NOT IN (0, 5)")
+                .contains("(applied_max_version, applied_migration_count) NOT IN")
+                .contains("(443, 405)")
+                .contains("(446, 408)")
+                .contains("(447, 409)")
+                .contains("仅允许 V443/405、V446/408 或 V447/409 目录")
+                .contains("V443/V446 要求 V436/V440 业务表完整存在")
+                .contains("V443 财审事件表必须存在")
+                .contains("V446 IQC 入库表只出现 %/2")
+                .contains("v446_business_table_count = 0")
+                .contains("v447_business_table_count = 0 AND clear_count = 212")
+                .contains("v446_business_table_count = 2")
+                .contains("v447_business_table_count = 0 AND clear_count = 214")
+                .contains("v447_business_table_count = 5 AND clear_count = 219")
+                .contains("V443/V446/V447 白名单数量异常")
+                .contains("V447 委外前置自制权益交接表只出现 %/5")
+                .contains("V447新增五张交接事实表后为219张")
+                .contains("dependency.classid = 'pg_class'::regclass")
+                .contains("dependency.deptype = 'e'")
+                .contains("extension.extconfig")
+                .contains("c.relname <> 'spatial_ref_sys'")
+                .contains("to_regclass")
+                .contains("PRESERVE 95 张");
+        assertThat(sql.indexOf("('warehouse_goods_place_preferences', 'CLEAR')"))
+                .isBetween(
+                        sql.indexOf("('warehouse_arrival_registration_commands', 'CLEAR')") + 1,
+                        sql.indexOf("('website_inquiries', 'CLEAR')") - 1);
     }
 
     @Test

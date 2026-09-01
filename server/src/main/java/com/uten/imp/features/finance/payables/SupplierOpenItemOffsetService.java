@@ -33,6 +33,7 @@ public class SupplierOpenItemOffsetService {
     private final SecurityContextCurrentUser currentUser;
     private final GlPostingService glPosting;
     private final SupplierClosedPeriodGuard closedPeriodGuard;
+    private final SupplierPayableHoldGuard payableHoldGuard;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void apply(
@@ -57,6 +58,44 @@ public class SupplierOpenItemOffsetService {
             LocalDate effectiveDate,
             List<Target> targets,
             String reason) {
+        applyBatchInternal(offsetBatchId, resolutionId, sourceLedgerId, supplierId,
+                currencyId, effectiveDate, targets, reason, null);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void applyIqcCreditBatch(
+            UUID iqcCaseId,
+            UUID offsetBatchId,
+            UUID sourceLedgerId,
+            UUID supplierId,
+            UUID currencyId,
+            LocalDate effectiveDate,
+            List<Target> targets,
+            String reason) {
+        List<UUID> targetIds = targets == null ? List.of()
+                : targets.stream().filter(Objects::nonNull)
+                    .map(Target::payableId).filter(Objects::nonNull).toList();
+        if (!payableHoldGuard.authorizedIqcCreditOffset(
+                iqcCaseId, sourceLedgerId, targetIds)) {
+            throw conflict("IQC专用贷项与任务、来源应付或抵销目标不匹配");
+        }
+        em.createNativeQuery("""
+                SELECT set_config('app.iqc_offset_case_id',:caseId,TRUE)
+                """).setParameter("caseId", iqcCaseId.toString()).getSingleResult();
+        applyBatchInternal(offsetBatchId, null, sourceLedgerId, supplierId,
+                currencyId, effectiveDate, targets, reason, iqcCaseId);
+    }
+
+    private void applyBatchInternal(
+            UUID offsetBatchId,
+            UUID resolutionId,
+            UUID sourceLedgerId,
+            UUID supplierId,
+            UUID currencyId,
+            LocalDate effectiveDate,
+            List<Target> targets,
+            String reason,
+            UUID allowedIqcCaseId) {
         tx.bind();
         if(offsetBatchId==null)throw validation("抵销批次 UUID 不能为空");
         closedPeriodGuard.requireOpen(
@@ -71,6 +110,10 @@ public class SupplierOpenItemOffsetService {
         if (targets.stream().map(Target::payableId).distinct().count() != targets.size()) {
             throw validation("同一笔正应付不能在一次抵销中重复选择");
         }
+        payableHoldGuard.requireUnheld(
+                targets.stream().map(Target::payableId).toList(),
+                "供应商贷项抵销",
+                allowedIqcCaseId);
         List<UUID> ids = java.util.stream.Stream.concat(
                         java.util.stream.Stream.of(sourceLedgerId),
                         targets.stream().map(Target::payableId))

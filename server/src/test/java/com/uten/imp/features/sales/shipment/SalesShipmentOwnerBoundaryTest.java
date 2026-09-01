@@ -241,6 +241,9 @@ class SalesShipmentOwnerBoundaryTest {
                         .collect(java.util.stream.Collectors.toSet()));
         assertTrue(savedItems.getAllValues().stream()
                 .allMatch(item -> item.getAmountLocal() == null));
+        assertTrue(savedItems.getAllValues().stream()
+                .allMatch(item -> new BigDecimal("2.5000")
+                        .compareTo(item.getWeight()) == 0));
     }
 
     private Query queryReturning(List<Object[]> rows) {
@@ -280,7 +283,7 @@ class SalesShipmentOwnerBoundaryTest {
                 new BigDecimal("999"),
                 BigDecimal.TEN, clientId, currencyId, billNo, ownerId,
                 (short) 1, false, false,
-                BigDecimal.ZERO, null, ownerId, orderId, null, false
+                BigDecimal.ZERO, null, ownerId, orderId, null, false, true
         };
     }
 
@@ -293,7 +296,7 @@ class SalesShipmentOwnerBoundaryTest {
                 currencyId, BigDecimal.ZERO, null, ownerId,
                 BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ONE,
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                "CLIENT", "MODEL", null, orderId, null, false
+                "CLIENT", "MODEL", null, orderId, null, false, true
         };
     }
 
@@ -305,6 +308,7 @@ class SalesShipmentOwnerBoundaryTest {
         BatchShipRequest.Line line = new BatchShipRequest.Line();
         line.setOrderItemId(itemId);
         line.setQty(BigDecimal.ONE);
+        line.setWeight(new BigDecimal("2.5000"));
         return line;
     }
 }

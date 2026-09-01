@@ -1,12 +1,10 @@
-// 委外管理入口页（hub）—— 三个分组卡片（V304 全链路重设计后）：
-//  ① 任务中心：委外任务中心（按委外商分解为订货单）+ 待退回供应商。
-//  ② 委外管理：委外订货单（含全链路进度）+ 计划下达的委外申请（只读）。
-//     材料出仓/成品回厂/成品退/材料退/损耗的执行移交仓库（仓库 hub 专属页面）；
-//     询价老库 0 行未启用，卡片移除（路由/权限保留，历史链接不受影响）。
-//  ③ 委外报表：3 张报表卡片（明细报表/汇总报表/出入状况表）。
+// 委外全链路入口页：两条下单来源汇入同一执行链。
+//  ① 直接委外：直接新建订货；物料分析委外：先在申请分解页选择只读申请明细。
+//  ② 财务通过后，无子层级目标件直接进入仓库出仓；有子层级先走前置自制。
+//  ③ 目标件出仓、加工回厂、IQC、余料/损耗责任和应付结算各有独立岗位页面。
 // 点卡片进对应列表/报表页。卡片统一用 UtenHubCard（徽章恒在右上角）。
 //
-// 入口归综合营销部（DEPT_SALES）；view 权限全员，edit 归综合营销部（V53 seed）。
+// V53 仅是历史默认授权；现行入口按每个页面权限与个人/部门显式配置逐卡显隐。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,7 +19,6 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
@@ -29,7 +26,6 @@ import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
-import '../models/subcontract_doc.dart';
 import '../widgets/subcontract_task_badge.dart';
 
 class SubcontractHubPage extends ConsumerWidget {
@@ -60,7 +56,7 @@ class SubcontractHubPage extends ConsumerWidget {
           location: RouteName.operationsSubcontractWorkbench,
           badge: const SubcontractTaskBadge(showLabel: true),
         ),
-      if (can(Perm.subcontractOrderView))
+      if (can(Perm.supplierReturnTaskView))
         _Entry(
           icon: Icons.assignment_return_outlined,
           label: l10n.subcontractHubReturnVendor,
@@ -74,11 +70,61 @@ class SubcontractHubPage extends ConsumerWidget {
           ),
         ),
     ];
-    final docEntries = <_Entry>[
+    final trackingEntries = <_Entry>[
       if (can(Perm.subcontractOrderView))
-        _Entry.fromCfg(SubcontractDocConfig.order, l10n),
-      if (can(Perm.subcontractApplicationView))
-        _Entry.fromCfg(SubcontractDocConfig.application, l10n),
+        _Entry(
+          icon: Icons.precision_manufacturing_outlined,
+          label: '委外订货与全链路',
+          description: '财务、准备、目标件出仓、回厂 IQC、结案与应付',
+          location: SubcontractRoute.list(
+            SubcontractDocConfig.order.pathSegment,
+          ),
+        ),
+      if (can(Perm.subcontractReceiptView))
+        _Entry(
+          icon: Icons.fact_check_outlined,
+          label: '回厂与品质跟踪',
+          description: '仓库登记回厂、IQC 隔离、PASS 放行或 FAIL 处置',
+          location: SubcontractRoute.list(
+            SubcontractDocConfig.receipt.pathSegment,
+          ),
+        ),
+      if (can(Perm.subcontractMaterialIssueView))
+        _Entry(
+          icon: Icons.history_rounded,
+          label: '历史 BOM 子件发料',
+          description: '历史 BOM 子件发料兼容；不是新委外出仓入口',
+          location: SubcontractRoute.list(
+            SubcontractDocConfig.materialIssue.pathSegment,
+          ),
+        ),
+      if (can(Perm.subcontractReturnView))
+        _Entry(
+          icon: Icons.undo_outlined,
+          label: '成品退回',
+          description: '绑定回厂 / IQC 来源，仓库退回并反向加工费应付',
+          location: SubcontractRoute.list(
+            SubcontractDocConfig.returnDoc.pathSegment,
+          ),
+        ),
+      if (can(Perm.subcontractMaterialReturnView))
+        _Entry(
+          icon: Icons.assignment_return_outlined,
+          label: '余料退回',
+          description: '按委外商处净结存登记仓库实收并对称核减台账',
+          location: SubcontractRoute.list(
+            SubcontractDocConfig.materialReturn.pathSegment,
+          ),
+        ),
+      if (can(Perm.subcontractWasteView))
+        _Entry(
+          icon: Icons.gavel_outlined,
+          label: '损耗与责任',
+          description: '实物损耗、超耗责任、索赔履约和会计事实分层处理',
+          location: SubcontractRoute.list(
+            SubcontractDocConfig.waste.pathSegment,
+          ),
+        ),
     ];
     final reportEntries = <_Entry>[
       for (final k in SubcontractReportKind.values)
@@ -107,20 +153,11 @@ class SubcontractHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
+              const _SubcontractFlowOverview(),
+              const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, l10n.hubSectionTaskCenter, taskEntries),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, l10n.subcontractHubTitle, docEntries),
-              const SizedBox(height: UtenSpacing.s8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
-                child: Text(
-                  '材料出仓与成品回厂由仓库执行；打开委外订货单详情可跟踪全链路进度'
-                  '(出仓单号 / 进仓单号 / 品质验收 / 应付)。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
+              _section(context, theme, '履约、异常与责任', trackingEntries),
               const SizedBox(height: UtenSpacing.s16),
               _section(
                 context,
@@ -175,6 +212,98 @@ class SubcontractHubPage extends ConsumerWidget {
   }
 }
 
+class _SubcontractFlowOverview extends StatelessWidget {
+  const _SubcontractFlowOverview();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    const steps = [
+      ('1', '订货来源', '直接委外 / 物料分析申请分解'),
+      ('2', '财务放行', '冻结委外商、价格、税率与结算'),
+      ('3', '准备目标件', '无子层直接；有子层先完整自制'),
+      ('4', '仓库出仓', '专属预留、拣货、审核交付加工商'),
+      ('5', '回厂品质', '先出后进、IQC 隔离、PASS 放行'),
+      ('6', '对账与责任', '应付对账、退回、余料/损耗责任'),
+    ];
+    return Semantics(
+      container: true,
+      label: '委外全链路：订货来源、财务放行、准备目标件、仓库出仓、回厂品质、对账与责任',
+      child: Container(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: UtenRadius.lgAll,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '委外不是采购：公司先交付目标件，加工完成回厂后再经品质放行',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                for (final step in steps)
+                  Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 176,
+                      minHeight: 68,
+                    ),
+                    padding: const EdgeInsets.all(UtenSpacing.s8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface,
+                      borderRadius: UtenRadius.mdAll,
+                      border: Border.all(
+                        color: theme.colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: theme.colorScheme.primaryContainer,
+                          foregroundColor: theme.colorScheme.onPrimaryContainer,
+                          child: Text(
+                            step.$1,
+                            style: theme.textTheme.labelSmall,
+                          ),
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(step.$2, style: theme.textTheme.labelLarge),
+                              Text(
+                                step.$3,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 一个入口项（单据类型或报表）。
 class _Entry {
   _Entry({
@@ -182,26 +311,13 @@ class _Entry {
     required this.label,
     required this.description,
     required this.location,
-    this.enabled = true,
     this.badge,
   });
-
-  _Entry.fromCfg(SubcontractDocConfig cfg, AppLocalizations l10n)
-    : this(
-        icon: cfg.icon,
-        label: _subcontractDocTitle(cfg.type, l10n),
-        description: _subcontractDocSubtitle(cfg.type, l10n),
-        location: cfg.skipListOnCreate
-            ? SubcontractRoute.newList(cfg.type.pathSegment)
-            : SubcontractRoute.list(cfg.type.pathSegment),
-        enabled: cfg.enabled,
-      );
 
   final IconData icon;
   final String label;
   final String description;
   final String location;
-  final bool enabled;
   final Widget? badge;
 }
 
@@ -217,39 +333,9 @@ class _EntryTile extends StatelessWidget {
       description: entry.description,
       onTap: () => goFrom(context, entry.location),
       badge: entry.badge,
-      enabled: entry.enabled,
-      onDisabledTap: () =>
-          context.appInfo(AppLocalizations.of(context).hubDisabledDocNotice),
     );
   }
 }
-
-// 单据卡标题/副标题本地化（config 仍是中文 const，列表/编辑页在用）。
-String _subcontractDocTitle(SubcontractDocType t, AppLocalizations l10n) =>
-    switch (t) {
-      SubcontractDocType.inquiry => l10n.subcontractHubDocInquiry,
-      SubcontractDocType.application => l10n.subcontractHubDocApplication,
-      SubcontractDocType.order => l10n.subcontractHubDocOrder,
-      SubcontractDocType.receipt => l10n.subcontractHubDocReceipt,
-      SubcontractDocType.materialIssue => l10n.subcontractHubDocMaterialIssue,
-      SubcontractDocType.returnDoc => l10n.subcontractHubDocReturn,
-      SubcontractDocType.materialReturn => l10n.subcontractHubDocMaterialReturn,
-      SubcontractDocType.waste => l10n.subcontractHubDocWaste,
-    };
-
-String _subcontractDocSubtitle(
-  SubcontractDocType t,
-  AppLocalizations l10n,
-) => switch (t) {
-  SubcontractDocType.inquiry => l10n.subcontractHubDocInquirySub,
-  SubcontractDocType.application => l10n.hubSubReadOnlyPlan,
-  SubcontractDocType.order => l10n.subcontractHubDocOrderSub,
-  SubcontractDocType.receipt => l10n.subcontractHubDocReceiptSub,
-  SubcontractDocType.materialIssue => l10n.subcontractHubDocMaterialIssueSub,
-  SubcontractDocType.returnDoc => l10n.subcontractHubDocReturnSub,
-  SubcontractDocType.materialReturn => l10n.subcontractHubDocMaterialReturnSub,
-  SubcontractDocType.waste => l10n.subcontractHubDocWasteSub,
-};
 
 // 报表卡标题/副标题本地化（按 SubcontractReportKind 枚举查）。
 String _subcontractReportTitle(

@@ -67,8 +67,8 @@ import java.util.UUID;
  *       超报硬校验（累计 fqty ≤ 计划量）</li>
  *   <li>回写 plan_items.fqty + plan_order_item_links.produced_qty（指定订单行直击，
  *       未指定按 FIFO 分摊）；订单行状态 3/4→5 生产中</li>
- *   <li>登记逐报工行 FQC 待检事实；只有 PASS 数量在同事务生成
- *       FINISHED_IN 草稿并分配合格放行额度，仓库点收后才增加库存/iqty</li>
+ *   <li>审核后进入仓库送检登记队列；仓库冻结目标仓/库位后逐行
+ *       建立 FQC。只有 PASS 数量生成 FINISHED_IN，最终点收才增加库存/iqty</li>
  *   <li>is_final 完结行：合格不足 → 缺额封顶（qty/allocated 砍到实际，砍量记 capped_qty）
  *       + 自动生成补产计划（links source=1）</li>
  * </ol>
@@ -238,11 +238,6 @@ public class ProductionDailyReportService {
                     ErrorCode.VALIDATION_FAILED,
                     "每条报工必须关联精确生产计划行；新流程还必须选择已开工执行子任务");
         }
-        if (r.getWarehouseId() == null
-                && items.stream().anyMatch(item -> item.getExecutionSegmentId() != null)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "执行子计划报工必须指定成品入库仓库");
-        }
         executionSegments.approve(id, items);
 
         for (ProductionDailyReportItem item : items) {
@@ -309,6 +304,9 @@ public class ProductionDailyReportService {
                         item.getQty());
             }
         }
+        // Preserve the explicit pre-execution compatibility lane. New clients
+        // cannot create no-segment lines, but an existing legacy draft with a
+        // reviewed exemption and warehouse must not become an orphan.
         if (r.getWarehouseId() != null) {
             for (var entry : byPlan.entrySet()) {
                 List<ProductionDailyReportItem> legacyItems =
@@ -325,9 +323,13 @@ public class ProductionDailyReportService {
                 }
             }
         }
-        // 报工审核只增加 fqty；FQC PASS 后才会生成 FINISHED_IN 待点收草稿。
-        qualityInspection.registerApprovedReport(r.getId());
+        // 报工审核只增加 fqty。仓库完成目标仓/库位送检登记后，
+        // 登记事务才逐行建立 FQC；PASS 后生成 FINISHED_IN 待点收草稿。
         chainNotice.notifyProductionReported(r.getId());
+        if (items.stream().allMatch(
+                item -> item.getExecutionSegmentId() != null)) {
+            chainNotice.notifyProductionFinishedArrivalPending(r.getId());
+        }
         chainNotice.notifyRemakeCreated(r.getId()); // UUID 真源：完结缺额已自动补产→销售（无补产时静默）
         return detail(id);
     }

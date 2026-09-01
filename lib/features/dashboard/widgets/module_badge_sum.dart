@@ -14,6 +14,7 @@ import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/providers/production_finished_inbound_task_count_provider.dart';
 import '../../warehouse/providers/production_draw_count_provider.dart';
+import '../../warehouse/providers/warehouse_iqc_stock_in_count_provider.dart';
 import '../../../shared/providers/production_fqc_pending_count_provider.dart';
 import 'quality_inspection_pending_badge.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
@@ -31,7 +32,7 @@ enum WorkbenchBadgeKind {
   finance, // 钱流管理（订货审批 + 销售订单财务确认 + 超量到货审批）
   subcontract, // 委外管理（待退回供应商）
   sales, // 销售管理（财务驳回待修正 + 订单完工提醒）
-  qualityInspection, // 品质任务中心（待检处置：待检收货单张数）
+  qualityInspection, // 品质任务中心（IQC 待检收货单 + FQC 待检行）
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
 
@@ -115,6 +116,7 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
         warehouseArrivalExceptionCountProvider,
         warehouseProductionDrawPendingCountProvider,
         warehouseProductionFinishedInboundPendingCountProvider,
+        warehouseIqcStockInPendingCountProvider,
       ]);
     case WorkbenchBadgeKind.finance:
       return _sum(ref, [

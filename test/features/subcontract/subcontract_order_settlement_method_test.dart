@@ -33,6 +33,7 @@ Map<String, dynamic> _orderDetailJson() => {
   'createdAt': '2026-08-22T10:00:00+08:00',
   'supplierId': 'supplier-1',
   'currencyId': 'currency-cny',
+  'taxRate': 13,
   'settlementMethodId': _settlementId,
   'status': 0,
   'canEdit': true,
@@ -91,7 +92,7 @@ Widget _app({
     // Settlement terms are part of the commercial detail surface and are
     // intentionally protected by the existing price-view permission.
     currentPermissionsProvider.overrideWithValue(const <String>{
-      Perm.subcontractReceiptPriceView,
+      Perm.subcontractOrderPriceView,
     }),
     subcontractRepositoryProvider(
       SubcontractDocType.order,

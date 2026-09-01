@@ -19,19 +19,81 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 
-/**
- * Authoritative warehouse queue for production-created FINISHED_IN drafts.
- *
- * <p>The queue is rebuilt from active stock documents on every read. Notices
- * are only projections, so clearing or losing a notice can never hide a task.
- */
+/** Authoritative two-stage warehouse queue: pre-FQC registration and final count. */
 @Service
 @RequiredArgsConstructor
 public class ProductionFinishedInboundTaskService {
 
     private static final String BASE_SQL = """
-            WITH task_documents AS (
-                SELECT document.id AS document_id,
+            WITH arrival_tasks AS (
+                SELECT 'ARRIVAL_REGISTRATION'::text AS task_stage,
+                       report.id AS task_id,
+                       report.id AS report_id,
+                       NULL::uuid AS document_id,
+                       NULL::text AS document_no,
+                       report.bill_date AS document_date,
+                       NULL::uuid AS warehouse_id,
+                       NULL::text AS warehouse_name,
+                       plan.plan_id,
+                       plan.plan_no,
+                       report.bill_no AS report_nos,
+                       string_agg(
+                           DISTINCT COALESCE(
+                               NULLIF(goods.name, ''),
+                               NULLIF(goods.code, ''),
+                               '未命名货品'),
+                           '、') AS goods_summary,
+                       COUNT(report_item.id)::integer AS line_count,
+                       COALESCE(SUM(report_item.qty), 0) AS pending_qty,
+                       report.created_at,
+                       FALSE AS residual_task
+                FROM production_daily_reports report
+                JOIN production_daily_report_items report_item
+                  ON report_item.report_id = report.id
+                 AND report_item.is_deleted = FALSE
+                JOIN goods goods ON goods.id = report_item.goods_id
+                LEFT JOIN LATERAL (
+                    SELECT production_plan.id AS plan_id,
+                           production_plan.bill_no AS plan_no
+                    FROM production_daily_report_items source_item
+                    JOIN production_plan_items plan_item
+                      ON plan_item.id = source_item.plan_item_id
+                     AND plan_item.is_deleted = FALSE
+                    JOIN production_plans production_plan
+                      ON production_plan.id = plan_item.plan_id
+                     AND production_plan.is_deleted = FALSE
+                    WHERE source_item.report_id = report.id
+                      AND source_item.is_deleted = FALSE
+                    ORDER BY production_plan.bill_no, production_plan.id
+                    LIMIT 1
+                ) plan ON TRUE
+                WHERE report.status = 1
+                  AND report.is_deleted = FALSE
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM production_finished_arrival_registrations registration
+                      WHERE registration.source_report_id = report.id)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM production_fqc_inspections inspection
+                      WHERE inspection.source_report_id = report.id)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM production_fqc_legacy_exemptions exemption
+                      WHERE exemption.source_report_id = report.id)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM production_daily_report_items legacy_item
+                      WHERE legacy_item.report_id = report.id
+                        AND legacy_item.is_deleted = FALSE
+                        AND legacy_item.execution_segment_id IS NULL)
+                GROUP BY report.id, report.bill_no, report.bill_date,
+                         plan.plan_id, plan.plan_no, report.created_at
+            ), final_count_tasks AS (
+                SELECT 'FINAL_COUNT'::text AS task_stage,
+                       document.id AS task_id,
+                       document.source_daily_report_id AS report_id,
+                       document.id AS document_id,
                        document.bill_no AS document_no,
                        document.bill_date AS document_date,
                        document.warehouse_id,
@@ -97,10 +159,15 @@ public class ProductionFinishedInboundTaskService {
                 WHERE document.doc_type = 'FINISHED_IN'
                   AND document.status = 0
                   AND document.is_deleted = FALSE
-                GROUP BY document.id, document.bill_no,
+                GROUP BY document.id, document.source_daily_report_id,
+                         document.bill_no,
                          document.bill_date, document.warehouse_id,
                          warehouse.name, plan.plan_id, plan.plan_no,
                          reports.report_nos, document.created_at
+            ), task_documents AS (
+                SELECT * FROM arrival_tasks
+                UNION ALL
+                SELECT * FROM final_count_tasks
             )
             """;
 
@@ -139,13 +206,14 @@ public class ProductionFinishedInboundTaskService {
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query rowsQuery = em.createNativeQuery(BASE_SQL + """
-                SELECT document_id, document_no, document_date,
+                SELECT task_stage, task_id, report_id,
+                       document_id, document_no, document_date,
                        warehouse_id, warehouse_name, plan_id, plan_no,
                        report_nos, goods_summary, line_count,
                        pending_qty, created_at, residual_task
                 FROM task_documents
                 """ + filter + """
-                ORDER BY created_at ASC, document_id ASC
+                ORDER BY created_at ASC, task_id ASC
                 OFFSET :offset LIMIT :limit
                 """);
         bindKeyword(rowsQuery, normalized);
@@ -179,19 +247,22 @@ public class ProductionFinishedInboundTaskService {
 
     private static ProductionFinishedInboundTask map(Object[] row) {
         return new ProductionFinishedInboundTask(
-                (java.util.UUID) row[0],
-                (String) row[1],
-                localDate(row[2]),
+                (String) row[0],
+                (java.util.UUID) row[1],
+                (java.util.UUID) row[2],
                 (java.util.UUID) row[3],
                 (String) row[4],
-                (java.util.UUID) row[5],
-                (String) row[6],
+                localDate(row[5]),
+                (java.util.UUID) row[6],
                 (String) row[7],
-                (String) row[8],
-                ((Number) row[9]).intValue(),
-                decimal(row[10]),
-                offsetDateTime(row[11]),
-                Boolean.TRUE.equals(row[12]));
+                (java.util.UUID) row[8],
+                (String) row[9],
+                (String) row[10],
+                (String) row[11],
+                ((Number) row[12]).intValue(),
+                decimal(row[13]),
+                offsetDateTime(row[14]),
+                Boolean.TRUE.equals(row[15]));
     }
 
     private static BigDecimal decimal(Object value) {

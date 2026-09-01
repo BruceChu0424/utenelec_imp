@@ -54,9 +54,10 @@ class CrossAnalysisReallocationWorkflowContractTest {
 
         assertThat(entitlement)
                 .contains("with recursive entitlement_lineage as")
-                .contains("current_positive.event_type in ( 'restore', 'make_delegate_in')")
+                .contains("current_positive.event_type in ( 'restore', 'make_delegate_in', 'subcontract_handoff_in')")
                 .contains("counter_negative.source_entitlement_event_id")
                 .contains("positive.event_type in ('origin_iqc', 'origin_make')")
+                .contains("'make_delegate_out', 'subcontract_handoff_out'")
                 .contains("lineage.event_type in ( 'reallocate_in', 'priority_in')");
         assertThat(reallocation).contains(
                 "(from_analysis_id = :analysisid and from_analysis_material_id = :materialid)");

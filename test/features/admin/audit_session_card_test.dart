@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,9 +95,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(calls, [(null, null, 9001)]);
-      expect(find.text('查看销售历史订单详情'), findsOneWidget);
-      expect(find.textContaining('业务对象 销售历史订单'), findsOneWidget);
-      expect(find.textContaining('名称或单据编号 SO-001'), findsOneWidget);
+      expect(find.text('查看销售订单历史单据'), findsOneWidget);
+      expect(find.text('查看了销售订单历史单据：SO-2026-001(旧系统编号 86)'), findsOneWidget);
+      expect(find.textContaining('业务对象 销售订单'), findsOneWidget);
+      expect(find.textContaining('对象名称 销售订货单'), findsOneWidget);
+      expect(find.textContaining('业务编号 SO-2026-001'), findsOneWidget);
+      expect(
+        find.text(
+          '业务对象 销售订单 · 对象名称 销售订货单 · '
+          '业务编号 SO-2026-001 · 旧系统编号 86',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('成功'), findsOneWidget);
 
       await tester.tap(
@@ -142,6 +153,60 @@ void main() {
     },
   );
 
+  testWidgets(
+    'load more disables duplicate requests and removes overlapping event ids',
+    (tester) async {
+      final secondPage = Completer<AuditSessionEventPage>();
+      final calls = <(String?, int?, int?)>[];
+      await _pumpTimeline(
+        tester,
+        loader: ({cursorAt, cursorId, snapshotAuditId}) {
+          calls.add((cursorAt, cursorId, snapshotAuditId));
+          if (cursorId == null) {
+            return Future.value(
+              const AuditSessionEventPage(
+                items: [firstEvent],
+                nextCursorAt: '2026-08-29T16:00:00Z',
+                nextCursorId: 42,
+                hasMore: true,
+                snapshotAuditId: 9001,
+              ),
+            );
+          }
+          return secondPage.future;
+        },
+      );
+      await tester.pumpAndSettle();
+
+      final loadMore = find.byKey(
+        ValueKey('audit-session-load-more-${sessionFixture.sessionId}'),
+      );
+      await tester.tap(loadMore);
+      await tester.pump();
+
+      expect(calls, hasLength(2));
+      expect(tester.widget<FilledButton>(loadMore).onPressed, isNull);
+      secondPage.complete(
+        const AuditSessionEventPage(
+          items: [firstEvent, secondEvent],
+          hasMore: false,
+          snapshotAuditId: 9001,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('audit-session-event-42')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('audit-session-event-41')),
+        findsOneWidget,
+      );
+      expect(calls[1], ('2026-08-29T16:00:00Z', 42, 9001));
+    },
+  );
+
   testWidgets('server status values always have readable Chinese labels', (
     tester,
   ) async {
@@ -176,14 +241,15 @@ Future<void> _pumpTimeline(
 }) => tester.pumpWidget(
   MaterialApp(
     home: Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(12),
-        child: AuditSessionTimeline(
-          sessionId: sessionFixture.sessionId,
-          snapshotAuditId: 9001,
-          loadEvents: loader,
-          onOpenEvent: onOpenEvent ?? (_) {},
-        ),
+      body: CustomScrollView(
+        slivers: [
+          AuditSessionTimeline(
+            sessionId: sessionFixture.sessionId,
+            snapshotAuditId: 9001,
+            loadEvents: loader,
+            onOpenEvent: onOpenEvent ?? (_) {},
+          ),
+        ],
       ),
     ),
   ),
@@ -242,13 +308,16 @@ const firstEvent = AuditLogEntry(
   id: 42,
   actorAccount: 'sales01',
   actorDisplay: '王小明(sales01)',
-  action: 'view_sales_order_history_detail',
-  actionLabel: '查看销售历史订单详情',
-  objectLabel: '销售历史订单',
+  action: 'view_sales_order_detail_history',
+  actionLabel: '查看销售订单历史单据',
+  objectLabel: '销售订单',
   targetId: '11111111-1111-4111-8111-111111111111',
-  targetName: 'SO-001',
+  targetName: 'SO-2026-001(旧系统编号 86)',
+  targetDisplayName: '销售订货单',
+  targetBusinessCode: 'SO-2026-001',
+  targetLegacyCode: '86',
   pageLabel: '销售历史单据',
-  summary: '查看销售历史订单 SO-001',
+  summary: '查看销售订单历史单据 SO-2026-001(旧系统编号 86)',
   result: 'success',
   resultLabel: '成功',
   createdAt: '2026-08-29T16:00:00Z',

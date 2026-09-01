@@ -38,16 +38,20 @@ class PurchaseReceiptAmountAuthorityTest {
         UUID currency = UUID.randomUUID();
         UUID method = UUID.randomUUID();
         assertThatThrownBy(() -> PurchaseReceiptAmountAuthority.requireHeaderMatches(
-                supplier, UUID.randomUUID(), BigDecimal.ONE, method,
-                supplier, currency, BigDecimal.ONE, method))
-                .hasMessageContaining("币种、汇率或结算方式");
+                supplier, UUID.randomUUID(), BigDecimal.ONE, method, new BigDecimal("13"),
+                supplier, currency, BigDecimal.ONE, method, new BigDecimal("13")))
+                .hasMessageContaining("币种、汇率、税率或结算方式");
         assertThatThrownBy(() -> PurchaseReceiptAmountAuthority.requireHeaderMatches(
-                supplier, currency, new BigDecimal("2"), method,
-                supplier, currency, BigDecimal.ONE, method))
-                .hasMessageContaining("币种、汇率或结算方式");
+                supplier, currency, new BigDecimal("2"), method, new BigDecimal("13"),
+                supplier, currency, BigDecimal.ONE, method, new BigDecimal("13")))
+                .hasMessageContaining("币种、汇率、税率或结算方式");
         assertThatThrownBy(() -> PurchaseReceiptAmountAuthority.requireHeaderMatches(
-                supplier, currency, BigDecimal.ONE, UUID.randomUUID(),
-                supplier, currency, BigDecimal.ONE, method))
-                .hasMessageContaining("币种、汇率或结算方式");
+                supplier, currency, BigDecimal.ONE, UUID.randomUUID(), new BigDecimal("13"),
+                supplier, currency, BigDecimal.ONE, method, new BigDecimal("13")))
+                .hasMessageContaining("币种、汇率、税率或结算方式");
+        assertThatThrownBy(() -> PurchaseReceiptAmountAuthority.requireHeaderMatches(
+                supplier, currency, BigDecimal.ONE, method, new BigDecimal("9"),
+                supplier, currency, BigDecimal.ONE, method, new BigDecimal("13")))
+                .hasMessageContaining("币种、汇率、税率或结算方式");
     }
 }

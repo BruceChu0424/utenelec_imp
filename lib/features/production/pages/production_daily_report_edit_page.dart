@@ -1,10 +1,10 @@
 // 生产日报编辑页（新建/编辑，全页路由）：与生产计划/销售编辑页同构（统一模板）。
 //
 // 日报特点：
-//   - 明细只记录完工申报数量；品质通过与仓库实收分别决定可入库量和 iqty。
+//   - 明细记录完工申报数量及可选实际总重量；品质通过与仓库实收分别决定可入库量和 iqty。
 //   - 单据号系统自动生成（后端 DocNumberService，PRODUCTION_DAILY_REPORT），本页只读显示。
-//   - 仓库 = 下拉（UtenDropdownField，warehouseId）；车间 = 部门选择器（department_id + 部门名冗余 workshop_name）；
-//     生产参与人员 = 多选员工(workerIds；首位兼容 workerId)。
+//   - 车间 = 部门选择器（department_id + 部门名冗余 workshop_name）；
+//     生产参与人员 = 多选员工(workerIds；首位兼容 workerId)。成品仓和库位由仓库登记。
 //   - 明细行：goodsId（必填）+ qty 完工量（必填）+ color/unit + 精确来源子任务 + remark。
 //
 // 仅草稿可编辑（后端校验；已审走详情页红冲）。
@@ -16,7 +16,6 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
-import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -62,7 +61,6 @@ class _ProductionDailyReportEditPageState
   final _remark = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
 
-  String? _warehouseId;
   // 车间 = 部门
   String? _departmentId;
   String? _workshopName; // 部门名冗余（供报表 workshop_name facet）
@@ -133,7 +131,6 @@ class _ProductionDailyReportEditPageState
         if (d.billDate != null) {
           _billDate = DateTime.tryParse(d.billDate!) ?? _billDate;
         }
-        _warehouseId = d.warehouseId;
         _departmentId = d.departmentId;
         _workshopName = d.workshopName;
         _workers = [
@@ -172,6 +169,7 @@ class _ProductionDailyReportEditPageState
                     name: ref.read(masterNameServiceProvider).goods(it.goodsId),
                   );
           row.qty.text = it.qty?.toString() ?? '';
+          row.weight.text = it.weight?.toString() ?? '';
           row.isFinal = it.isFinal;
           rows.add(row);
         }
@@ -347,7 +345,8 @@ class _ProductionDailyReportEditPageState
         ..goods = null
         ..colorId = null
         ..unitId = null
-        ..qty.clear();
+        ..qty.clear()
+        ..weight.clear();
     });
   }
 
@@ -361,17 +360,18 @@ class _ProductionDailyReportEditPageState
       context.appError('请至少添加一条明细');
       return;
     }
-    if (_warehouseId == null &&
-        rows.any((row) => row.executionSegmentId != null)) {
-      context.appError('执行子计划报工必须选择成品入库仓库');
-      return;
-    }
     for (var i = 0; i < rows.length; i++) {
       final r = rows[i];
       if (r.goods == null) continue;
       final qty = double.tryParse(r.qty.text);
       if (qty == null || qty <= 0) {
         context.appError('第 ${i + 1} 行完工申报量必须大于 0');
+        return;
+      }
+      final weightText = r.weight.text.trim();
+      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
+        context.appError('第 ${i + 1} 行实际重量必须大于 0');
         return;
       }
       if (!r.hasLinkedSource || r.executionSegmentId == null) {
@@ -426,9 +426,12 @@ class _ProductionDailyReportEditPageState
         return;
       }
       final qty = double.tryParse(r.qty.text) ?? 0;
+      final weightText = r.weight.text.trim();
+      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
+        'weight': ?weight,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.unitRate != null) 'unitRate': r.unitRate,
@@ -452,7 +455,6 @@ class _ProductionDailyReportEditPageState
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
       'billDate': _fmt(_billDate),
-      if (_warehouseId != null) 'warehouseId': _warehouseId,
       if (_departmentId != null) 'departmentId': _departmentId,
       if (_workshopName != null && _workshopName!.trim().isNotEmpty)
         'workshopName': _workshopName,
@@ -551,25 +553,6 @@ class _ProductionDailyReportEditPageState
     );
   }
 
-  Widget _dropdown(
-    String label,
-    String? value,
-    Map<String, String> entries,
-    ValueChanged<String?> onChanged,
-  ) {
-    return UtenDropdownField(
-      label: label,
-      value: value,
-      items: [
-        for (final e in entries.entries)
-          UtenDropdownItem(value: e.key, label: e.value),
-        if (value != null && value.isNotEmpty && !entries.containsKey(value))
-          UtenDropdownItem(value: value, label: value),
-      ],
-      onChanged: onChanged,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -644,14 +627,6 @@ class _ProductionDailyReportEditPageState
                                     onChanged: (d) =>
                                         setState(() => _billDate = d),
                                   ),
-                                  _dropdown(
-                                    '仓库',
-                                    _warehouseId,
-                                    names.warehouseEntries,
-                                    (v) {
-                                      setState(() => _warehouseId = v);
-                                    },
-                                  ),
                                   // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
                                   UtenDepartmentPicker(
                                     mode: UtenDepartmentPickerMode.single,
@@ -719,8 +694,9 @@ class _ProductionDailyReportEditPageState
                             const SizedBox(width: UtenSpacing.s8),
                             Expanded(
                               child: Text(
-                                '数量口径：这里只填写本次实际完工申报量。审核后先进入生产成品质检；'
-                                '只有品质通过数量会生成仓库待点收任务，仓库实收后才增加库存与完成率。'
+                                '计量口径：填写本次实际完工申报量；需要重量统计的成品同时填写实称总重量。'
+                                '审核后先由仓库登记成品仓和库位并送检；'
+                                '只有品质通过且仓库最终点收的数量才会增加库存与完成率。'
                                 '疑似不良也应按实际完工事实申报，由品质登记通过、返工、报废或拒收。',
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: theme.colorScheme.onTertiaryContainer,

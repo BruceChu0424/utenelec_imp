@@ -82,7 +82,8 @@ public class StockService {
     }
 
     /** 出入库请求值对象。qty 为基本单位量（已乘 unit_rate）；amountLocal 为本币金额。
-     *  weight 为基本单位重量（已乘 unit_rate，即时库存重量联动；null=不维护重量）。 */
+     *  weight 为本次流水切片的实际总重量，不乘 unit_rate；null=来源未提供/不维护重量。
+     *  weightUnitId 是 V442 显式重量单位；旧来源尚未迁移时允许为空。 */
     public record MovementRequest(
             OffsetDateTime transactionDate,
             short movementType,
@@ -98,7 +99,30 @@ public class StockService {
             BigDecimal unitRate,
             BigDecimal amountLocal,
             String remark,
-            BigDecimal weight) {
+            BigDecimal weight,
+            UUID weightUnitId) {
+
+        /** 兼容已传重量但尚未传 V442 显式重量单位的调用方。 */
+        public MovementRequest(
+                OffsetDateTime transactionDate,
+                short movementType,
+                String sourceDocType,
+                UUID sourceDocId,
+                UUID sourceItemId,
+                UUID goodsId,
+                UUID colorId,
+                UUID warehouseId,
+                short direction,
+                BigDecimal qty,
+                UUID unitId,
+                BigDecimal unitRate,
+                BigDecimal amountLocal,
+                String remark,
+                BigDecimal weight) {
+            this(transactionDate, movementType, sourceDocType, sourceDocId, sourceItemId,
+                    goodsId, colorId, warehouseId, direction, qty, unitId, unitRate,
+                    amountLocal, remark, weight, null);
+        }
 
         /** 兼容旧签名（无重量）：weight=null，余额重量保持不变。 */
         public MovementRequest(
@@ -118,7 +142,7 @@ public class StockService {
                 String remark) {
             this(transactionDate, movementType, sourceDocType, sourceDocId, sourceItemId,
                     goodsId, colorId, warehouseId, direction, qty, unitId, unitRate,
-                    amountLocal, remark, null);
+                    amountLocal, remark, null, null);
         }
     }
 
@@ -128,7 +152,7 @@ public class StockService {
      * @param req 方向已体现在 direction（+1/-1），qty/amountLocal 传正数
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public void recordMovement(MovementRequest req) {
+    public UUID recordMovement(MovementRequest req) {
         tx.bind();
         if (req == null || req.goodsId() == null || req.warehouseId() == null
                 || req.sourceDocType() == null || req.sourceDocType().isBlank()) {
@@ -140,20 +164,39 @@ public class StockService {
         if (req.qty() == null || req.qty().signum() <= 0) {
             throw new IllegalArgumentException("inventory movement quantity must be positive");
         }
+        if (req.weight() != null && req.weight().signum() < 0) {
+            throw new IllegalArgumentException("inventory movement weight must not be negative");
+        }
+        if (req.weight() == null && req.weightUnitId() != null) {
+            throw new IllegalArgumentException(
+                    "inventory movement weight unit requires an actual weight");
+        }
         // Re-entrant when the top-level document already batch-locked its keys;
         // mandatory as a safe fallback for future single-movement callers.
         inventoryLock.lock(new InventoryKey(req.goodsId(), req.colorId()));
         if (req.direction() == DIR_OUT) {
-            BigDecimal available = balanceRepo
+            StockBalance balance = balanceRepo
                     .findByWarehouseIdAndGoodsIdAndColorId(
                             req.warehouseId(), req.goodsId(), req.colorId())
-                    .map(StockBalance::getQty)
-                    .orElse(BigDecimal.ZERO);
+                    .orElse(null);
+            BigDecimal available = balance == null
+                    ? BigDecimal.ZERO : balance.getQty();
             if (available.compareTo(req.qty()) < 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "目标仓库存不足：当前 " + available.stripTrailingZeros().toPlainString()
                                 + "，本次出库 " + req.qty().stripTrailingZeros().toPlainString());
+            }
+            BigDecimal availableWeight = balance == null ? null : balance.getWeight();
+            if (req.weight() != null
+                    && availableWeight != null
+                    && availableWeight.compareTo(req.weight()) < 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "目标仓库存重量不足：当前 "
+                                + availableWeight.stripTrailingZeros().toPlainString()
+                                + "，本次出库 "
+                                + req.weight().stripTrailingZeros().toPlainString());
             }
             // A physical count loss records reality and must not be blocked by
             // an operational reservation policy. Every normal outbound path,
@@ -192,6 +235,8 @@ public class StockService {
         m.setUnitId(req.unitId());
         m.setUnitRate(req.unitRate());
         m.setAmountLocal(req.amountLocal());
+        m.setWeight(req.weight());
+        m.setActualWeightUnitId(req.weightUnitId());
         m.setRemark(req.remark());
         movementRepo.save(m);
 
@@ -202,5 +247,6 @@ public class StockService {
         BigDecimal signedWgt = req.weight() == null ? null : req.weight().multiply(dir);
         balanceRepo.upsertBalance(req.warehouseId(), req.goodsId(), req.colorId(),
                 signedQty, signedAmt, signedWgt, ts);
+        return m.getId();
     }
 }

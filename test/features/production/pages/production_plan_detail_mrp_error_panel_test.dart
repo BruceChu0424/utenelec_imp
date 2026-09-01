@@ -276,8 +276,10 @@ void main() {
       expect(printPlan, findsOneWidget);
       expect(find.text('红冲'), findsOneWidget);
       await tester.ensureVisible(printPlan);
+      expect(tester.takeException(), isNull);
       await tester.tap(printPlan);
       await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
 
       expect(find.text('A4 生产计划单 · 流水线执行工卡'), findsOneWidget);
       expect(find.textContaining('SEG-001 · 测试产品'), findsOneWidget);

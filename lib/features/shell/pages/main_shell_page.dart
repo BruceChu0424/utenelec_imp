@@ -237,9 +237,14 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: Offstage(
-                      offstage: tabIndex == null,
-                      child: _slidingTabs(tabIndex: tabIndex),
+                    child: TickerMode(
+                      // 业务子页保留四个主 Tab 的 State/滚动位置，但不可继续
+                      // 驱动骨架屏、轮播等 ticker，避免隐藏页面占用渲染帧。
+                      enabled: tabIndex != null,
+                      child: Offstage(
+                        offstage: tabIndex == null,
+                        child: _slidingTabs(tabIndex: tabIndex),
+                      ),
                     ),
                   ),
                   if (tabIndex == null)
@@ -304,9 +309,13 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: Offstage(
-                        offstage: tabIndex == null,
-                        child: _slidingTabs(tabIndex: tabIndex),
+                      child: TickerMode(
+                        // 与 compact 分支一致：保活不等于继续耗帧。
+                        enabled: tabIndex != null,
+                        child: Offstage(
+                          offstage: tabIndex == null,
+                          child: _slidingTabs(tabIndex: tabIndex),
+                        ),
                       ),
                     ),
                     if (tabIndex == null) Positioned.fill(child: widget.child),

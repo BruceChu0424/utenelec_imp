@@ -117,75 +117,43 @@ void main() {
     expect(await repository.pendingApprovalCount(), 0);
   });
 
-  test(
-    'approval decisions use exact action paths, versions and reasons',
-    () async {
-      final requests = <RequestOptions>[];
-      final repository = DioFinanceProcurementWorkflowRepository(
-        _api((request) {
-          requests.add(request);
-          return <String, dynamic>{};
-        }),
-      );
+  test('approval decisions use exact atomic batch case contracts', () async {
+    final requests = <RequestOptions>[];
+    final repository = DioFinanceProcurementWorkflowRepository(
+      _api((request) {
+        requests.add(request);
+        return <String, dynamic>{};
+      }),
+    );
 
-      await repository.approveOrder(
-        FinanceProcurementOrderType.purchase,
-        'purchase-1',
-        3,
-      );
-      await repository.rejectOrder(
-        FinanceProcurementOrderType.purchase,
-        'purchase-1',
-        4,
-        ' 数量需要复核 ',
-      );
-      await repository.approveOrder(
-        FinanceProcurementOrderType.subcontract,
-        'subcontract-1',
-        5,
-      );
-      await repository.rejectOrder(
-        FinanceProcurementOrderType.subcontract,
-        'subcontract-1',
-        6,
-        ' 工价需要复核 ',
-      );
-      await repository.approveOrdersBatch(const [
-        FinanceProcurementDecisionItem(caseId: 'case-7', expectedVersion: 7),
-      ]);
-      await repository.rejectOrdersBatch(const [
-        FinanceProcurementDecisionItem(caseId: 'case-8', expectedVersion: 8),
-      ], ' 统一退回原因 ');
+    await repository.approveOrdersBatch(const [
+      FinanceProcurementDecisionItem(caseId: 'case-7', expectedVersion: 7),
+    ]);
+    await repository.rejectOrdersBatch(const [
+      FinanceProcurementDecisionItem(caseId: 'case-8', expectedVersion: 8),
+    ], ' 统一退回原因 ');
 
-      expect(requests[0].path, '/purchase/orders/purchase-1/approve');
-      expect(requests[0].data, {'expectedVersion': 3});
-      expect(requests[1].path, '/purchase/orders/purchase-1/reject');
-      expect(requests[1].data, {'expectedVersion': 4, 'reason': '数量需要复核'});
-      expect(requests[2].path, '/subcontract/orders/subcontract-1/approve');
-      expect(requests[2].data, {'expectedVersion': 5});
-      expect(requests[3].path, '/subcontract/orders/subcontract-1/reject');
-      expect(requests[3].data, {'expectedVersion': 6, 'reason': '工价需要复核'});
-      expect(
-        requests[4].path,
-        '/finance/procurement-approvals/tasks/batch-approve',
-      );
-      expect(requests[4].data, {
-        'items': [
-          {'caseId': 'case-7', 'expectedVersion': 7},
-        ],
-      });
-      expect(
-        requests[5].path,
-        '/finance/procurement-approvals/tasks/batch-reject',
-      );
-      expect(requests[5].data, {
-        'items': [
-          {'caseId': 'case-8', 'expectedVersion': 8},
-        ],
-        'reason': '统一退回原因',
-      });
-    },
-  );
+    expect(
+      requests[0].path,
+      '/finance/procurement-approvals/tasks/batch-approve',
+    );
+    expect(requests[0].data, {
+      'items': [
+        {'caseId': 'case-7', 'expectedVersion': 7},
+      ],
+    });
+    expect(
+      requests[1].path,
+      '/finance/procurement-approvals/tasks/batch-reject',
+    );
+    expect(requests[1].data, {
+      'items': [
+        {'caseId': 'case-8', 'expectedVersion': 8},
+      ],
+      'reason': '统一退回原因',
+    });
+    expect(requests, hasLength(2));
+  });
 
   test('unknown task type remains fail closed', () {
     final task = FinanceProcurementApprovalTask.fromJson(const {

@@ -13,6 +13,8 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
+import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
+import com.uten.imp.common.finance.ProcurementIqcReplacementAllocationService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.payables.SupplierPaymentTermService;
 import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard;
@@ -75,6 +77,7 @@ public class PurchaseReceiptService {
     private final StockService stockService;
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final PurchaseReceiptAmountAuthority receiptAmountAuthority;
+    private final ProcurementIqcReplacementAllocationService iqcReplacementAllocation;
     private final ArApLedgerService arApService;
     private final SupplierPaymentTermService paymentTerms;
     private final SupplierPeriodIdentityGuard periodIdentityGuard;
@@ -110,10 +113,13 @@ public class PurchaseReceiptService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        // 列排序：sort 命中白名单(日期/金额)才按实体属性排序，否则默认 billDate DESC。
+        // 无商业查看权时金额排序同样属于侧信道：即使响应金额为 null，排序次序仍会泄露高低。
+        boolean priceMasked = !priceMasker.canViewPurchaseReceipt();
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
-                        Map.of("billDate", "billDate", "total", "totalLocal")));
+                        priceMasked
+                                ? Map.of("billDate", "billDate")
+                                : Map.of("billDate", "billDate", "total", "totalLocal")));
         Page<PurchaseReceipt> p = receiptRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
     }
@@ -142,6 +148,13 @@ public class PurchaseReceiptService {
         List<ReceiptItemDto> items = saveItems(r, req.getItems());
         applyTotals(r, items);
         return toDetail(r, items);
+    }
+
+    /** Dedicated warehouse-arrival gateway; normal creation keeps its exact action. */
+    @Transactional
+    @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
+    public ReceiptDetail createFromWarehouseArrival(ReceiptSaveRequest req) {
+        return create(req);
     }
 
     @Transactional
@@ -224,11 +237,12 @@ public class PurchaseReceiptService {
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
         OffsetDateTime now = OffsetDateTime.now();
-        // IQC：收货入待检隔离（不写 stock_balances）；合格处置（PASS）才进可用库存 + 唤醒生产。
+        // IQC：收货入待检隔离；PASS 只放行给仓库，仓库确认后才进可用库存并推进生产。
         inspectionService.receive(ProcurementInspectionPort.PURCHASE, id, r.getWarehouseId(),
                 items.stream().map(it -> new ProcurementInspectionPort.ReceivedLine(
                         it.getId(), it.getGoodsId(), it.getColorId(), it.getUnitId(),
-                        it.getUnitRate(), it.getQty(), it.getAmountLocal())).toList(),
+                        it.getUnitRate(), it.getQty(), it.getAmountLocal(),
+                        it.getWeight())).toList(),
                 now);
         for (PurchaseReceiptItem it : items) {
             if (it.getOrderItemId() != null) {
@@ -240,7 +254,7 @@ public class PurchaseReceiptService {
                 recalcOrderClosed(it.getOrderItemId());
             }
         }
-        // 生产唤醒（onPurchaseReceiptApproved）推迟到 IQC 整单结案（ProcurementInspectionService.dispose）。
+        // 正式生产供给由仓库确认 IQC 合格入库量后推进；整单质检结案只做终态校准。
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         receiptRepo.save(r);
@@ -256,7 +270,7 @@ public class PurchaseReceiptService {
                 ProcurementArrivalControlPort.PURCHASE, id);
         return detail(id);
     }
-    /** Dedicated gateway for a finance-decided arrival exception; normal approve keeps its own authority. */
+    /** Dedicated warehouse-arrival gateway; normal approval keeps its exact action authority. */
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
     public ReceiptDetail approveFromWarehouseDecision(UUID id) {
@@ -277,6 +291,11 @@ public class PurchaseReceiptService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RECEIPT, id);
         periodIdentityGuard.requireOpenToday(periodIdentity, "采购收货红冲");
+        List<PurchaseReceiptItem> prelockItems =
+                itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        stockService.lockInventory(prelockItems.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         productionSupply.lockPurchaseReceiptMutationDimensions(
                 id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
@@ -288,21 +307,21 @@ public class PurchaseReceiptService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<PurchaseReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        requireSameInventoryDimensions(prelockItems, items);
         requireNonNegativeStoredCommercial(r, items);
         if (items.stream().anyMatch(it ->
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "采购收货已有退货记录，请先红冲下游退货单");
         }
-        // IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
+        // IQC：红冲前须质检结案；只反向仓库已确认入库量（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.PURCHASE, id);
         productionSupply.beforePurchaseReceiptReversed(id);
         // 分析备料绑定对称反向：释放本收货单建立的分析归属预留（V298）。
         preplanAnalysisPeg.releaseForReceipt(ProcurementInspectionPort.PURCHASE, id);
-        // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve（先 lockInventory 后 postArAp）锁序一致，消除并发 approve vs reverse 死锁。
-        stockService.lockInventory(items.stream()
-                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
-                .toList());
+        // 库存 advisory 锁已在任何 receipt/inspection/AP 行锁之前取得。
         arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
+        iqcReplacementAllocation.reverseForReceipt(
+                "PURCHASE",r.getId(),"补货采购收货红冲");
         OffsetDateTime now = OffsetDateTime.now();
         boolean inspectionManaged = inspectionService.reverseResolvedStock(
                 ProcurementInspectionPort.PURCHASE, id, now);
@@ -340,20 +359,31 @@ public class PurchaseReceiptService {
                 ts, StockService.TYPE_PURCHASE_RECEIPT, StockService.SRC_PURCHASE_RECEIPT,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? "红冲" : null));
+                direction < 0 ? "红冲" : null, it.getWeight()));
+    }
+
+    private static void requireSameInventoryDimensions(
+            List<PurchaseReceiptItem> before,
+            List<PurchaseReceiptItem> locked) {
+        Map<UUID, InventoryKey> expected = before.stream().collect(
+                java.util.stream.Collectors.toMap(
+                        PurchaseReceiptItem::getId,
+                        item -> new InventoryKey(item.getGoodsId(), item.getColorId())));
+        Map<UUID, InventoryKey> actual = locked.stream().collect(
+                java.util.stream.Collectors.toMap(
+                        PurchaseReceiptItem::getId,
+                        item -> new InventoryKey(item.getGoodsId(), item.getColorId())));
+        if (!expected.equals(actual)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "采购收货明细货品/颜色在库存预锁后发生变化，请刷新后重试");
+        }
     }
 
     /** 重算订货单结案：所有明细 qty - received_qty + returned_qty ≤ 0 → is_closed=true。 */
     private void recalcOrderClosed(UUID orderItemId) {
-        em.createNativeQuery("""
-                UPDATE purchase_orders o SET is_closed = (
-                    SELECT COALESCE(bool_and(
-                        COALESCE(i.qty,0) - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0) <= 0
-                    ), true)
-                    FROM purchase_order_items i
-                    WHERE i.order_id = o.id AND COALESCE(i.is_deleted, false) = false
-                ) WHERE o.id = (SELECT order_id FROM purchase_order_items WHERE id = :iid)
-                """).setParameter("iid", orderItemId).executeUpdate();
+        ProcurementOrderClosurePolicy.recalculate(
+                em, ProcurementOrderClosurePolicy.PURCHASE, orderItemId);
     }
 
     private void applyHeader(ReceiptSaveRequest req, PurchaseReceipt r) {
@@ -532,7 +562,7 @@ public class PurchaseReceiptService {
 
     private ReceiptListItem toList(PurchaseReceipt r) {
         // 价格脱敏（V302）：无 purchase_receipt:price:view 的角色合计置 null + priceMasked。
-        boolean mask = !priceMasker.canViewPurchase();
+        boolean mask = !priceMasker.canViewPurchaseReceipt();
         return new ReceiptListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getSupplierId(),
                 r.getWarehouseId(), mask ? null : r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getLegacyId(), mask);
@@ -578,15 +608,18 @@ public class PurchaseReceiptService {
 
     private ReceiptDetail toDetail(PurchaseReceipt r, List<ReceiptItemDto> items) {
         // 价格脱敏（V302）：主表金额族 + 明细价格族置 null，priceMasked 标记供前端渲染 ***。
-        boolean mask = !priceMasker.canViewPurchase();
+        boolean mask = !priceMasker.canViewPurchaseReceipt();
         ReceiptSourceRef sourceOrder = singleOrderSource(items);
         List<ReceiptItemDto> safeItems = mask
                 ? items.stream().map(PurchaseReceiptService::maskItemPrices).toList()
                 : items;
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
-                r.getSenderId(), r.getReceiverId(), r.getPurchaserId(), r.getSettlementMethodId(),
-                r.getSettlementStyleLegacy() == null ? null : r.getSettlementStyleLegacy().intValue(),
+                r.getSupplierId(), r.getWarehouseId(), mask ? null : r.getCurrencyId(),
+                mask ? null : r.getExchangeRate(), mask ? null : r.getTaxRate(),
+                r.getSenderId(), r.getReceiverId(), r.getPurchaserId(),
+                mask ? null : r.getSettlementMethodId(),
+                mask || r.getSettlementStyleLegacy() == null
+                        ? null : r.getSettlementStyleLegacy().intValue(),
                 r.getMakerId(), r.getApproverId(), r.getRemark(),
                 mask ? null : r.getTotalOriginal(), mask ? null : r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,

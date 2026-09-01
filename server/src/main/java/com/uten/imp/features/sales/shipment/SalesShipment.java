@@ -135,7 +135,7 @@ public class SalesShipment extends SoftDeletableEntity {
     @Column(name = "reject_reason")
     private String rejectReason;
 
-    /** C6 财务发货审核：0 未审 / 1 已审发货（结账 UUID 的 CASH system role 须审）。 */
+    /** 财务发货审核：0 未审 / 1 已审发货；V443 起所有新流客户均须审核。 */
     @Column(name = "finance_audit", nullable = false)
     private Short financeAudit = 0;
 
@@ -144,6 +144,10 @@ public class SalesShipment extends SoftDeletableEntity {
 
     @Column(name = "finance_audited_at")
     private java.time.OffsetDateTime financeAuditedAt;
+
+    /** 0=历史兼容；1=所有客户在仓库实物作业前必须财务放行。 */
+    @Column(name = "finance_gate_version", nullable = false)
+    private Short financeGateVersion = 1;
 
     @Column(name = "warehouse_work_status", nullable = false)
     private String warehouseWorkStatus = WORK_PENDING_PICK;

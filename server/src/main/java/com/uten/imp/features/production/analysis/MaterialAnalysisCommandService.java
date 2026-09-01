@@ -78,6 +78,8 @@ public class MaterialAnalysisCommandService {
     private final ObjectMapper objectMapper;
     private final PreplanAnalysisStockPegService analysisPeg;
     private final PreplanStockEntitlementService stockEntitlement;
+    private final SubcontractPreparationEntitlementHandoffService
+            subcontractPreparationHandoffs;
     private final InventoryMutationLock inventoryLock;
 
     /**
@@ -121,6 +123,12 @@ public class MaterialAnalysisCommandService {
             BigDecimal demandQty = delta;
             if (input != null) {
                 BigDecimal requested = input.qty().setScale(4, RoundingMode.CEILING);
+                if ("MAKE".equals(group.route()) && requested.compareTo(delta) != 0) {
+                    throw validation("「" + groupLabel(group)
+                            + "」自制任务当前必须按全部剩余需求 "
+                            + delta.stripTrailingZeros().toPlainString()
+                            + " 创建；本批生产数量请在子件任务创建后的计划向导中填写");
+                }
                 if (requested.compareTo(delta) > 0) {
                     throw validation("「" + groupLabel(group) + "」本次最多还能提交 "
                             + delta.stripTrailingZeros().toPlainString()
@@ -391,6 +399,8 @@ public class MaterialAnalysisCommandService {
             return analysisService.detailInternal(analysisId, false);
         }
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
+        subcontractPreparationHandoffs.requireSourceAnalysisCancellationSafe(
+                analysisId);
         Number planned = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM production_material_analysis_plan_links
                 WHERE analysis_id = :id
@@ -399,6 +409,8 @@ public class MaterialAnalysisCommandService {
         if (planned.longValue() > 0) {
             throw conflict("分析已有待审核或已审核生产计划，必须先删除、驳回或红冲计划");
         }
+        subcontractPreparationHandoffs.restoreForTargetAnalysis(
+                analysisId, request.idempotencyKey());
         @SuppressWarnings("unchecked")
         List<UUID> actionIds = (List<UUID>) em.createNativeQuery("""
                 SELECT id FROM preplan_supply_actions
@@ -1126,6 +1138,8 @@ public class MaterialAnalysisCommandService {
     }
 
     private void cancelActionLocked(UUID analysisId, UUID actionId, String reason) {
+        subcontractPreparationHandoffs.requireSupplyActionCancellationSafe(
+                analysisId, actionId);
         Object[] row = one(em.createNativeQuery("""
                 SELECT id, status, route, requested_qty, external_document_type,
                        external_document_id
@@ -1300,8 +1314,9 @@ public class MaterialAnalysisCommandService {
                                              WHEN inspection.id IS NULL
                                              THEN receipt_item.qty * COALESCE(
                                                  receipt_item.unit_rate,1)
-                                             WHEN inspection.status = 'RESOLVED'
-                                             THEN inspection.passed_base_qty
+                                             WHEN inspection.status IN (
+                                                 'PARTIAL','RESOLVED')
+                                             THEN inspection.warehouse_stocked_base_qty
                                              ELSE 0
                                          END)
                                          FROM purchase_receipt_items receipt_item
@@ -1349,8 +1364,9 @@ public class MaterialAnalysisCommandService {
                                              WHEN inspection.id IS NULL
                                              THEN receipt_item.qty * COALESCE(
                                                  receipt_item.unit_rate,1)
-                                             WHEN inspection.status = 'RESOLVED'
-                                             THEN inspection.passed_base_qty
+                                             WHEN inspection.status IN (
+                                                 'PARTIAL','RESOLVED')
+                                             THEN inspection.warehouse_stocked_base_qty
                                              ELSE 0
                                          END)
                                          FROM subcontract_receipt_items receipt_item

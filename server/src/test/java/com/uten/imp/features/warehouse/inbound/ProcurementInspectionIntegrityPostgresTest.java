@@ -2,7 +2,11 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmResult;
 import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
+import com.uten.imp.common.web.ApiException;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.AfterEach;
@@ -23,6 +27,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -76,6 +81,7 @@ class ProcurementInspectionIntegrityPostgresTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private TransactionTemplate transactions;
     @Autowired private ProcurementInspectionService inspectionService;
+    @Autowired private ProcurementIqcStockInService stockInService;
     @Autowired private ProductionSupplyTransitionPort productionSupply;
     @Autowired private TxSessionVars tx;
 
@@ -85,23 +91,57 @@ class ProcurementInspectionIntegrityPostgresTest {
     }
 
     @Test
-    void partialPassAndFailOnlyStockTheQualifiedQuantityAndReverseExactly() {
+    void partialPassOnlyQueuesWarehouseThenPartialStockInReplaysAndReversesExactly() {
         ReceiptFixture receipt = seedReceipt(
                 ProcurementInspectionPort.PURCHASE, 1, "10", "100");
         InspectionLine line = receipt.lines().getFirst();
+        ProductionStockFactCounts stockFactsBefore = productionStockFactCounts();
         login("partial-pass-fail");
 
         inspectionService.dispose(receipt.type(), receipt.id(), line.inspectionItemId(),
                 disposition("PASS", "6", "partial-pass-0001"));
-        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "6");
-        assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isZero();
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "0");
+        assertQuantity(stockedProjection(line.inspectionItemId()), "0");
+        assertThat(movementCount(receipt.id())).isZero();
+        assertProductionStockFactsUnchanged(stockFactsBefore);
 
         inspectionService.dispose(receipt.type(), receipt.id(), line.inspectionItemId(),
                 disposition("FAIL", "4", "partial-fail-0001"));
-        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "6");
-        assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isEqualTo(1L);
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "0");
+        assertThat(receiptEventCount(receipt, "RECEIPT_RESOLVED")).isEqualTo(1L);
+        assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isZero();
         assertInspection(line.inspectionItemId(), "RESOLVED", "6", "4");
-        assertNoProductionStockFacts();
+        assertProductionStockFactsUnchanged(stockFactsBefore);
+
+        UUID passEventId = passEventId(line.inspectionItemId());
+        loginCurrentEmployee("partial-stock-in");
+        ConfirmRequest first = stockInRequest(
+                passEventId, "2", "6", "iqc-stock-partial-0001", "A01-01");
+        ConfirmResult firstResult = stockInService.confirm(
+                receipt.type(), receipt.id(), first);
+        assertThat(firstResult.replayed()).isFalse();
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "2");
+        assertQuantity(stockedProjection(line.inspectionItemId()), "2");
+        assertThat(stockInItemCount(receipt.id())).isEqualTo(1L);
+
+        ConfirmResult replay = stockInService.confirm(receipt.type(), receipt.id(), first);
+        assertThat(replay.replayed()).isTrue();
+        assertThat(replay.batchId()).isEqualTo(firstResult.batchId());
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "2");
+        assertThat(stockInItemCount(receipt.id())).isEqualTo(1L);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> stockInService.confirm(
+                        receipt.type(), receipt.id(),
+                        stockInRequest(passEventId, "1", "4",
+                                "iqc-stock-partial-0001", "A01-02")))
+                .isInstanceOf(ApiException.class);
+
+        stockInService.confirm(
+                receipt.type(), receipt.id(),
+                stockInRequest(passEventId, "4", "4",
+                        "iqc-stock-partial-0002", "A01-02"));
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "6");
+        assertQuantity(stockedProjection(line.inspectionItemId()), "6");
+        assertThat(stockInItemCount(receipt.id())).isEqualTo(2L);
 
         transactions.executeWithoutResult(ignored -> inspectionService.reverseResolvedStock(
                 receipt.type(), receipt.id(), OffsetDateTime.now()));
@@ -118,8 +158,7 @@ class ProcurementInspectionIntegrityPostgresTest {
     }
 
     @Test
-    void partialPassAdvancesFormalSupplyWhileAnotherReceiptLineRemainsPending()
-            throws Exception {
+    void qualityPassNeverCreatesFormalSupplyBeforeWarehouseStockIn() {
         ProductionIqcFixture fixture = seedProductionIqcReceipt();
         ReceiptFixture receipt = fixture.receipt();
         InspectionLine productionLine = receipt.lines().get(0);
@@ -133,25 +172,24 @@ class ProcurementInspectionIntegrityPostgresTest {
 
         assertInspection(productionLine.inspectionItemId(), "PARTIAL", "4", "0");
         assertInspection(unrelatedLine.inspectionItemId(), "PENDING", "0", "0");
-        assertThat(segmentStatus(fixture.segmentId())).isEqualTo("READY");
-        assertQuantity(pegConsumed(fixture.orderPegId()), "4");
-        assertQuantity(activeReceiptAllocationQty(receipt.id()), "4");
-        assertThat(activeReceiptAllocationCount(receipt.id())).isEqualTo(1L);
-        assertThat(activeProductionReservationCount(fixture.demandId())).isEqualTo(1L);
-        assertThat(activeDrawCount(fixture.segmentId())).isEqualTo(1L);
+        assertThat(segmentStatus(fixture.segmentId())).isEqualTo("WAITING");
+        assertQuantity(pegConsumed(fixture.orderPegId()), "0");
+        assertQuantity(activeReceiptAllocationQty(receipt.id()), "0");
+        assertThat(activeReceiptAllocationCount(receipt.id())).isZero();
+        assertThat(activeProductionReservationCount(fixture.demandId())).isZero();
+        assertThat(activeDrawCount(fixture.segmentId())).isZero();
+        assertQuantity(stockQty(receipt.warehouseId(), productionLine.goodsId()), "0");
         assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isZero();
 
-        // Same event replay re-enters the formal transition, but the cumulative
-        // qualified quantity is already fully represented by one allocation.
+        // Replaying the quality command remains quality-only and does not create
+        // stock, reservations or production supply.
         inspectionService.dispose(
                 receipt.type(), receipt.id(), productionLine.inspectionItemId(), firstPass);
-        assertQuantity(activeReceiptAllocationQty(receipt.id()), "4");
-        assertThat(activeReceiptAllocationCount(receipt.id())).isEqualTo(1L);
-        assertThat(activeProductionReservationCount(fixture.demandId())).isEqualTo(1L);
-        assertThat(activeDrawCount(fixture.segmentId())).isEqualTo(1L);
+        assertQuantity(activeReceiptAllocationQty(receipt.id()), "0");
+        assertQuantity(stockQty(receipt.warehouseId(), productionLine.goodsId()), "0");
 
-        // Later decisions close each inspection line without changing the first
-        // qualified slice or duplicating its reservation/DRAW provenance.
+        // Later quality decisions may close the receipt, but closure still does
+        // not create usable stock, reservations, DRAW or segment readiness.
         inspectionService.dispose(
                 receipt.type(), receipt.id(), productionLine.inspectionItemId(),
                 disposition("FAIL", "2", "formal-fail-0001"));
@@ -162,33 +200,42 @@ class ProcurementInspectionIntegrityPostgresTest {
                 receipt.type(), receipt.id(), unrelatedLine.inspectionItemId(),
                 disposition("PASS", null, "unrelated-pass-0001"));
         assertInspection(unrelatedLine.inspectionItemId(), "RESOLVED", "3", "0");
-        assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isEqualTo(1L);
-        assertQuantity(activeReceiptAllocationQty(receipt.id()), "4");
-        assertThat(activeReceiptAllocationCount(receipt.id())).isEqualTo(1L);
-
-        transactions.executeWithoutResult(ignored -> {
-            tx.bind();
-            productionSupply.lockPurchaseReceiptMutationDimensions(receipt.id());
-            inspectionService.requireResolvedForReverse(receipt.type(), receipt.id());
-            productionSupply.beforePurchaseReceiptReversed(receipt.id());
-            inspectionService.reverseResolvedStock(
-                    receipt.type(), receipt.id(), OffsetDateTime.now());
-            jdbc.update("UPDATE purchase_receipts SET status=-1 WHERE id=?", receipt.id());
-            productionSupply.afterPurchaseReceiptReversed(receipt.id());
-        });
-
-        assertThat(segmentStatus(fixture.segmentId())).isEqualTo("WAITING");
-        assertQuantity(pegConsumed(fixture.orderPegId()), "0");
+        assertThat(receiptEventCount(receipt, "RECEIPT_RESOLVED")).isEqualTo(1L);
+        assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isZero();
+        assertQuantity(activeReceiptAllocationQty(receipt.id()), "0");
         assertThat(activeReceiptAllocationCount(receipt.id())).isZero();
-        assertThat(reversedReceiptAllocationCount(receipt.id())).isEqualTo(1L);
         assertThat(activeProductionReservationCount(fixture.demandId())).isZero();
         assertThat(activeDrawCount(fixture.segmentId())).isZero();
+        assertThat(segmentStatus(fixture.segmentId())).isEqualTo("WAITING");
+        assertQuantity(pegConsumed(fixture.orderPegId()), "0");
         assertQuantity(stockQty(receipt.warehouseId(), productionLine.goodsId()), "0");
         assertQuantity(stockQty(receipt.warehouseId(), unrelatedLine.goodsId()), "0");
-        assertInspection(productionLine.inspectionItemId(), "REVERSED", "0", "0");
-        assertInspection(unrelatedLine.inspectionItemId(), "REVERSED", "0", "0");
-        assertQuantity(movementTotal(receipt.id(), (short) 1, "qty"), "7");
-        assertQuantity(movementTotal(receipt.id(), (short) -1, "qty"), "7");
+    }
+
+    @Test
+    void procurementOrderClosesOnlyAfterThePassedQuantityIsWarehouseStocked() {
+        ProductionIqcFixture fixture = seedProductionIqcReceipt();
+        InspectionLine productionLine = fixture.receipt().lines().getFirst();
+        loginCurrentEmployee("order-close-quality");
+        inspectionService.dispose(
+                fixture.receipt().type(), fixture.receipt().id(),
+                productionLine.inspectionItemId(),
+                disposition("PASS", null, "order-close-pass-0001"));
+
+        assertThat(jdbc.queryForObject("""
+                SELECT is_closed FROM purchase_orders WHERE id=?
+                """, Boolean.class, fixture.orderId())).isFalse();
+
+        UUID passEventId = passEventId(productionLine.inspectionItemId());
+        loginCurrentEmployee("order-close-warehouse");
+        stockInService.confirm(
+                fixture.receipt().type(), fixture.receipt().id(),
+                stockInRequest(passEventId, "6", "6",
+                        "order-close-stock-in-0001", "CLOSE-01"));
+
+        assertThat(jdbc.queryForObject("""
+                SELECT is_closed FROM purchase_orders WHERE id=?
+                """, Boolean.class, fixture.orderId())).isTrue();
     }
 
     @Test
@@ -196,6 +243,7 @@ class ProcurementInspectionIntegrityPostgresTest {
         ReceiptFixture receipt = seedReceipt(
                 ProcurementInspectionPort.SUBCONTRACT, 1, "10", "100");
         InspectionLine line = receipt.lines().getFirst();
+        ProductionStockFactCounts stockFactsBefore = productionStockFactCounts();
         login("full-subcontract-fail");
 
         inspectionService.dispose(receipt.type(), receipt.id(), line.inspectionItemId(),
@@ -204,12 +252,101 @@ class ProcurementInspectionIntegrityPostgresTest {
         assertInspection(line.inspectionItemId(), "RESOLVED", "0", "10");
         assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "0");
         assertThat(movementCount(receipt.id())).isZero();
-        assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isEqualTo(1L);
-        assertNoProductionStockFacts();
+        assertThat(receiptEventCount(receipt, "RECEIPT_RESOLVED")).isEqualTo(1L);
+        assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isZero();
+        assertProductionStockFactsUnchanged(stockFactsBefore);
     }
 
     @Test
-    void concurrentLastLinesSerializeToOneWholeReceiptWake() throws Exception {
+    void subcontractPassNeedsASeparateWarehouseConfirmationBeforeStockExists() {
+        ReceiptFixture receipt = seedReceipt(
+                ProcurementInspectionPort.SUBCONTRACT, 1, "10", "100");
+        InspectionLine line = receipt.lines().getFirst();
+        login("subcontract-pass-quality");
+
+        inspectionService.dispose(
+                receipt.type(), receipt.id(), line.inspectionItemId(),
+                disposition("PASS", null, "subcontract-pass-0001"));
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "0");
+        assertQuantity(stockedProjection(line.inspectionItemId()), "0");
+
+        UUID passEventId = passEventId(line.inspectionItemId());
+        loginCurrentEmployee("subcontract-pass-warehouse");
+        stockInService.confirm(
+                receipt.type(), receipt.id(),
+                stockInRequest(
+                        passEventId, "10", "10",
+                        "subcontract-stock-in-0001", "SC-A01"));
+
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "10");
+        assertQuantity(stockedProjection(line.inspectionItemId()), "10");
+        assertThat(stockInItemCount(receipt.id())).isEqualTo(1L);
+        assertThat(movementCount(receipt.id())).isEqualTo(1L);
+        assertQuantity(movementTotal(receipt.id(), (short) 1, "amount_local"), "100");
+    }
+
+    @Test
+    void employeeWhoReleasedPassCannotConfirmTheSameSlice() {
+        ReceiptFixture receipt = seedReceipt(
+                ProcurementInspectionPort.PURCHASE, 1, "10", "100");
+        InspectionLine line = receipt.lines().getFirst();
+        AuthUser sameActor = createWarehouseActor("same-actor-quality-warehouse");
+        authenticate(sameActor);
+
+        inspectionService.dispose(
+                receipt.type(), receipt.id(), line.inspectionItemId(),
+                disposition("PASS", null, "same-actor-pass-0001"));
+        UUID passEventId = passEventId(line.inspectionItemId());
+
+        assertThat(stockInService.detail(receipt.type(), receipt.id()).allowedActions())
+                .doesNotContain("CONFIRM");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> stockInService.confirm(
+                        receipt.type(), receipt.id(),
+                        stockInRequest(passEventId, "10", "10",
+                                "same-actor-stock-0001", "SAME-01")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("同一员工不能同时完成");
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "0");
+        assertThat(stockInBatchCount(receipt.id())).isZero();
+    }
+
+    @Test
+    void twoPassSlicesOfOneInspectionCanStockInTogetherOnce() {
+        ReceiptFixture receipt = seedReceipt(
+                ProcurementInspectionPort.PURCHASE, 1, "10", "100");
+        InspectionLine line = receipt.lines().getFirst();
+        login("same-inspection-two-pass-quality");
+        inspectionService.dispose(
+                receipt.type(), receipt.id(), line.inspectionItemId(),
+                disposition("PASS", "4", "same-inspection-pass-0001"));
+        inspectionService.dispose(
+                receipt.type(), receipt.id(), line.inspectionItemId(),
+                disposition("PASS", "6", "same-inspection-pass-0002"));
+        List<UUID> passEventIds = passEventIds(line.inspectionItemId());
+        assertThat(passEventIds).hasSize(2);
+
+        loginCurrentEmployee("same-inspection-two-pass-warehouse");
+        stockInService.confirm(
+                receipt.type(), receipt.id(),
+                new ConfirmRequest(
+                        "same-inspection-stock-0001",
+                        List.of(
+                                new ConfirmItem(
+                                        passEventIds.get(0), decimal("4"),
+                                        decimal("4"), "MULTI-01"),
+                                new ConfirmItem(
+                                        passEventIds.get(1), decimal("6"),
+                                        decimal("6"), "MULTI-01"))));
+
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "10");
+        assertQuantity(stockedProjection(line.inspectionItemId()), "10");
+        assertThat(stockInBatchCount(receipt.id())).isEqualTo(1L);
+        assertThat(stockInItemCount(receipt.id())).isEqualTo(2L);
+        assertQuantity(movementTotal(receipt.id(), (short) 1, "amount_local"), "100");
+    }
+
+    @Test
+    void concurrentLastQualityLinesSerializeToOneTruthfulReceiptResolution() throws Exception {
         ReceiptFixture receipt = seedReceipt(
                 ProcurementInspectionPort.PURCHASE, 2, "10", "100");
         CountDownLatch start = new CountDownLatch(1);
@@ -241,11 +378,158 @@ class ProcurementInspectionIntegrityPostgresTest {
             executor.shutdownNow();
         }
 
-        assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isEqualTo(1L);
+        assertThat(receiptEventCount(receipt, "RECEIPT_RESOLVED")).isEqualTo(1L);
+        assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isZero();
         for (InspectionLine line : receipt.lines()) {
             assertInspection(line.inspectionItemId(), "RESOLVED", "10", "0");
+            assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "0");
+        }
+
+        loginCurrentEmployee("concurrent-quality-stock-in");
+        int position = 0;
+        for (InspectionLine line : receipt.lines()) {
+            position++;
+            UUID passEventId = passEventId(line.inspectionItemId());
+            stockInService.confirm(
+                    receipt.type(), receipt.id(),
+                    stockInRequest(passEventId, "10", "10",
+                            "concurrent-quality-stock-000" + position,
+                            "C0" + position + "-01"));
             assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "10");
         }
+    }
+
+    @Test
+    void concurrentWarehouseCommandsCannotOverstockOnePassSlice() throws Exception {
+        ReceiptFixture receipt = seedReceipt(
+                ProcurementInspectionPort.PURCHASE, 1, "10", "100");
+        InspectionLine line = receipt.lines().getFirst();
+        login("concurrent-stock-in-quality");
+        inspectionService.dispose(
+                receipt.type(), receipt.id(), line.inspectionItemId(),
+                disposition("PASS", null, "concurrent-stock-in-pass-0001"));
+        UUID passEventId = passEventId(line.inspectionItemId());
+        AuthUser firstActor = createWarehouseActor("concurrent-stock-in-a");
+        AuthUser secondActor = createWarehouseActor("concurrent-stock-in-b");
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        List<Future<Object>> futures = new ArrayList<>();
+        try {
+            List<AuthUser> actors = List.of(firstActor, secondActor);
+            for (int index = 0; index < actors.size(); index++) {
+                int commandNo = index;
+                AuthUser actor = actors.get(index);
+                futures.add(executor.submit(() -> {
+                    authenticate(actor);
+                    try {
+                        start.await(10, TimeUnit.SECONDS);
+                        return stockInService.confirm(
+                                receipt.type(), receipt.id(),
+                                stockInRequest(passEventId, "10", "10",
+                                        "concurrent-stock-command-000" + commandNo,
+                                        "CC-01"));
+                    } catch (RuntimeException error) {
+                        return error;
+                    } finally {
+                        SecurityContextHolder.clearContext();
+                    }
+                }));
+            }
+            start.countDown();
+            List<Object> results = new ArrayList<>();
+            for (Future<Object> future : futures) {
+                results.add(future.get(30, TimeUnit.SECONDS));
+            }
+            assertThat(results.stream().filter(ConfirmResult.class::isInstance).count())
+                    .isEqualTo(1L);
+            assertThat(results.stream().filter(ApiException.class::isInstance).count())
+                    .isEqualTo(1L);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "10");
+        assertQuantity(stockedProjection(line.inspectionItemId()), "10");
+        assertThat(stockInItemCount(receipt.id())).isEqualTo(1L);
+        assertThat(stockInBatchCount(receipt.id())).isEqualTo(1L);
+        assertThat(movementCount(receipt.id())).isEqualTo(1L);
+    }
+
+    @Test
+    void databaseRejectsForgedProjectionAndMutationOfStockInEvidence() {
+        ReceiptFixture receipt = seedReceipt(
+                ProcurementInspectionPort.PURCHASE, 1, "10", "100");
+        InspectionLine line = receipt.lines().getFirst();
+        login("stock-in-db-guard-quality");
+        inspectionService.dispose(
+                receipt.type(), receipt.id(), line.inspectionItemId(),
+                disposition("PASS", null, "stock-in-db-guard-pass-0001"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update("""
+                        UPDATE procurement_inspection_items
+                        SET warehouse_stocked_base_qty = 1
+                        WHERE id = ?
+                        """, line.inspectionItemId()))
+                .isInstanceOf(RuntimeException.class);
+        assertQuantity(stockedProjection(line.inspectionItemId()), "0");
+
+        loginCurrentEmployee("stock-in-db-guard-warehouse");
+        UUID passEventId = passEventId(line.inspectionItemId());
+        stockInService.confirm(
+                receipt.type(), receipt.id(),
+                stockInRequest(passEventId, "4", "10",
+                        "stock-in-db-guard-command-0001", "D01-01"));
+        Map<String, Object> evidence = jdbc.queryForMap("""
+                SELECT item.id AS item_id, item.stock_movement_id
+                FROM procurement_iqc_stock_in_batch_items item
+                JOIN procurement_iqc_stock_in_batches batch ON batch.id = item.batch_id
+                WHERE batch.receipt_id = ?
+                """, receipt.id());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update(
+                        "UPDATE procurement_iqc_stock_in_batch_items SET base_qty=3 WHERE id=?",
+                        evidence.get("item_id")))
+                .isInstanceOf(RuntimeException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> jdbc.update(
+                        "DELETE FROM stock_movements WHERE id=?",
+                        evidence.get("stock_movement_id")))
+                .isInstanceOf(RuntimeException.class);
+        assertQuantity(stockQty(receipt.warehouseId(), line.goodsId()), "4");
+        assertQuantity(stockedProjection(line.inspectionItemId()), "4");
+    }
+
+    @Test
+    void databaseRejectsAForgedPassReleaseValuationAtCommit() {
+        ReceiptFixture receipt = seedReceipt(
+                ProcurementInspectionPort.PURCHASE, 1, "10", "100");
+        InspectionLine line = receipt.lines().getFirst();
+        AuthUser actor = createWarehouseActor("forged-pass-release");
+        authenticate(actor);
+        UUID forgedEventId = UUID.randomUUID();
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                transactions.executeWithoutResult(ignored -> {
+                    jdbc.update("""
+                            UPDATE procurement_inspection_items
+                            SET passed_base_qty=1,status='PARTIAL',updated_at=now()
+                            WHERE id=?
+                            """, line.inspectionItemId());
+                    jdbc.update("""
+                            INSERT INTO procurement_inspection_events(
+                                id,inspection_item_id,action,base_qty,
+                                actor_employee_id,requires_warehouse_stock_in,
+                                released_amount_local,occurred_at)
+                            VALUES (?,?,'PASS',1,?,TRUE,999,now())
+                            """, forgedEventId, line.inspectionItemId(),
+                            actor.getEmployeeId());
+                }))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("frozen receipt quantity, amount and weight sequence");
+
+        assertInspection(line.inspectionItemId(), "PENDING", "0", "0");
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM procurement_inspection_events WHERE id=?
+                """, Long.class, forgedEventId)).isZero();
     }
 
     private ReceiptFixture seedReceipt(
@@ -445,7 +729,8 @@ class ProcurementInspectionIntegrityPostgresTest {
                                 materialId, productionReceiptItemId, productionInspectionId),
                         new InspectionLine(
                                 unrelatedGoodsId, unrelatedReceiptItemId, unrelatedInspectionId)));
-        return new ProductionIqcFixture(receipt, segmentId, demandId, orderPegId);
+        return new ProductionIqcFixture(
+                receipt, segmentId, demandId, orderPegId, orderId);
     }
 
     private void assertInspection(
@@ -459,19 +744,24 @@ class ProcurementInspectionIntegrityPostgresTest {
         assertQuantity(row.get("failed_base_qty"), failed);
     }
 
-    private void assertNoProductionStockFacts() {
-        assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM stock_reservations", Long.class)).isZero();
-        assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM production_material_receipt_allocations",
-                Long.class)).isZero();
-        assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM production_material_subcontract_receipt_allocations",
-                Long.class)).isZero();
-        assertThat(jdbc.queryForObject("""
-                SELECT COUNT(*) FROM stock_documents
-                WHERE doc_type='DRAW' AND is_deleted=FALSE
-                """, Long.class)).isZero();
+    private ProductionStockFactCounts productionStockFactCounts() {
+        return new ProductionStockFactCounts(
+                jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM stock_reservations", Long.class),
+                jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM production_material_receipt_allocations",
+                        Long.class),
+                jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM production_material_subcontract_receipt_allocations",
+                        Long.class),
+                jdbc.queryForObject("""
+                        SELECT COUNT(*) FROM stock_documents
+                        WHERE doc_type='DRAW' AND is_deleted=FALSE
+                        """, Long.class));
+    }
+
+    private void assertProductionStockFactsUnchanged(ProductionStockFactCounts expected) {
+        assertThat(productionStockFactCounts()).isEqualTo(expected);
     }
 
     private BigDecimal stockQty(UUID warehouseId, UUID goodsId) {
@@ -481,6 +771,50 @@ class ProcurementInspectionIntegrityPostgresTest {
                     WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL
                 ),0)
                 """, BigDecimal.class, warehouseId, goodsId);
+    }
+
+    private BigDecimal stockedProjection(UUID inspectionItemId) {
+        return jdbc.queryForObject("""
+                SELECT warehouse_stocked_base_qty
+                FROM procurement_inspection_items
+                WHERE id=?
+                """, BigDecimal.class, inspectionItemId);
+    }
+
+    private UUID passEventId(UUID inspectionItemId) {
+        return jdbc.queryForObject("""
+                SELECT id
+                FROM procurement_inspection_events
+                WHERE inspection_item_id=? AND action='PASS'
+                ORDER BY occurred_at, id
+                LIMIT 1
+                """, UUID.class, inspectionItemId);
+    }
+
+    private List<UUID> passEventIds(UUID inspectionItemId) {
+        return jdbc.queryForList("""
+                SELECT id
+                FROM procurement_inspection_events
+                WHERE inspection_item_id=? AND action='PASS'
+                ORDER BY occurred_at, id
+                """, UUID.class, inspectionItemId);
+    }
+
+    private long stockInItemCount(UUID receiptId) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM procurement_iqc_stock_in_batch_items item
+                JOIN procurement_iqc_stock_in_batches batch ON batch.id=item.batch_id
+                WHERE batch.receipt_id=?
+                """, Long.class, receiptId);
+    }
+
+    private long stockInBatchCount(UUID receiptId) {
+        return jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM procurement_iqc_stock_in_batches
+                WHERE receipt_id=?
+                """, Long.class, receiptId);
     }
 
     private BigDecimal movementTotal(UUID receiptId, short direction, String column) {
@@ -568,25 +902,35 @@ class ProcurementInspectionIntegrityPostgresTest {
                 action, qty == null ? null : decimal(qty), "verified by IQC", key);
     }
 
-    private static void login(String login) {
-        AuthUser user = new AuthUser(
-                UUID.randomUUID(), UUID.randomUUID(), login,
-                Set.of(), Set.of(
-                        "procurement_inspection:view",
-                        "procurement_inspection:handle"),
-                false, true, true);
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(
-                        user, null, user.getAuthorities()));
+    private static ConfirmRequest stockInRequest(
+            UUID passEventId,
+            String qty,
+            String expectedRemaining,
+            String key,
+            String place) {
+        return new ConfirmRequest(
+                key,
+                List.of(new ConfirmItem(
+                        passEventId,
+                        decimal(qty),
+                        decimal(expectedRemaining),
+                        place)));
+    }
+
+    private void login(String login) {
+        authenticate(createWarehouseActor(login));
     }
 
     private void loginCurrentEmployee(String login) {
+        authenticate(createWarehouseActor(login));
+    }
+
+    private AuthUser createWarehouseActor(String login) {
         UUID employeeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
         UUID departmentId = jdbc.queryForObject("""
                 SELECT id FROM departments
-                WHERE is_deleted=FALSE
-                ORDER BY code, id
-                LIMIT 1
+                WHERE code='SUB_WH' AND is_deleted=FALSE
                 """, UUID.class);
         jdbc.update("""
                 INSERT INTO employees(
@@ -596,12 +940,23 @@ class ProcurementInspectionIntegrityPostgresTest {
                 """, employeeId, "E-IQC-" + employeeId,
                 "IQC production actor", departmentId,
                 LocalDate.of(2026, 8, 28));
-        AuthUser user = new AuthUser(
-                UUID.randomUUID(), employeeId, login,
+        jdbc.update("""
+                INSERT INTO users(
+                    id,employee_id,login_account,password_hash,
+                    must_change_password,is_super_admin,status)
+                VALUES (?,?,?,'x',FALSE,FALSE,'active')
+                """, userId, employeeId, login + '-' + userId);
+        return new AuthUser(
+                userId, employeeId, login,
                 Set.of(), Set.of(
                         "procurement_inspection:view",
-                        "procurement_inspection:handle"),
+                        "procurement_inspection:handle",
+                        "warehouse_iqc_stock_in:view",
+                        "warehouse_iqc_stock_in:confirm"),
                 false, true, true);
+    }
+
+    private static void authenticate(AuthUser user) {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
                         user, null, user.getAuthorities()));
@@ -641,6 +996,14 @@ class ProcurementInspectionIntegrityPostgresTest {
             ReceiptFixture receipt,
             UUID segmentId,
             UUID demandId,
-            UUID orderPegId) {
+            UUID orderPegId,
+            UUID orderId) {
+    }
+
+    private record ProductionStockFactCounts(
+            long reservations,
+            long purchaseReceiptAllocations,
+            long subcontractReceiptAllocations,
+            long draws) {
     }
 }

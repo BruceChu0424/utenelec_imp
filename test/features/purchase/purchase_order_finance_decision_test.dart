@@ -11,6 +11,7 @@ import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_detail_page.dart';
 import 'package:uten_imp/features/purchase/repositories/purchase_repository.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
@@ -31,8 +32,8 @@ Map<String, dynamic> _orderDetail({
   'exchangeRate': 1,
   'status': status,
   'totalLocal': 50.0,
-  'canEdit': false,
-  'canDelete': false,
+  'canEdit': true,
+  'canDelete': true,
   'canReverse': false,
   'financeApproval': {
     'caseId': 'case-1',
@@ -108,8 +109,21 @@ class _RecordingApi extends ApiClient {
   }
 }
 
-Future<void> _pump(WidgetTester tester, _RecordingApi api) async {
-  tester.view.physicalSize = const Size(1200, 1800);
+Future<void> _pump(
+  WidgetTester tester,
+  _RecordingApi api, {
+  Size size = const Size(1200, 1800),
+  Set<String> permissions = const {
+    Perm.purchaseOrderView,
+    Perm.purchaseOrderEdit,
+    Perm.purchaseOrderDelete,
+    Perm.purchaseOrderSubmitFinance,
+    Perm.financeOrderApprovalView,
+    Perm.financeOrderApprovalApprove,
+    Perm.financeOrderApprovalReject,
+  },
+}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -117,6 +131,7 @@ Future<void> _pump(WidgetTester tester, _RecordingApi api) async {
     ProviderScope(
       overrides: [
         writeAllDocumentScope(DocumentDataScope.purchase),
+        currentPermissionsProvider.overrideWithValue(permissions),
         purchaseRepositoryProvider(
           PurchaseDocType.order,
         ).overrideWithValue(PurchaseRepository(api, PurchaseDocType.order)),
@@ -134,20 +149,36 @@ Future<void> _pump(WidgetTester tester, _RecordingApi api) async {
 }
 
 void main() {
-  testWidgets('持权审核员打开待审采购详情仍只读，不暴露财务审批动作', (tester) async {
-    final api = _RecordingApi();
-    await _pump(tester, api);
+  for (final size in <Size>[const Size(1200, 1800), const Size(375, 812)]) {
+    testWidgets('混合授权账号在 $size 的待审采购详情仍完全只读', (tester) async {
+      final api = _RecordingApi();
+      await _pump(tester, api, size: size);
 
-    expect(
-      find.byKey(const Key('purchase-order-finance-approve')),
-      findsNothing,
+      expect(find.text('删除'), findsNothing);
+      expect(find.text('编辑'), findsNothing);
+      expect(find.text('提交财务审核'), findsNothing);
+      expect(
+        find.byKey(const Key('purchase-order-finance-approve')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('purchase-order-finance-reject')),
+        findsNothing,
+      );
+      expect(find.text('返回列表'), findsOneWidget);
+      expect(find.textContaining('财务 → 订货审批任务中心'), findsOneWidget);
+      expect(api.posts, isEmpty);
+    });
+  }
+
+  testWidgets('finance-only 核单不显示业务历史并返回财务任务中心', (tester) async {
+    await _pump(
+      tester,
+      _RecordingApi(),
+      permissions: const {Perm.financeOrderApprovalView},
     );
-    expect(
-      find.byKey(const Key('purchase-order-finance-reject')),
-      findsNothing,
-    );
-    expect(find.text('返回列表'), findsOneWidget);
-    expect(find.textContaining('财务 → 订货审批任务中心'), findsOneWidget);
-    expect(api.posts, isEmpty);
+
+    expect(find.text('查看历史'), findsNothing);
+    expect(find.text('返回订货审批任务中心'), findsOneWidget);
   });
 }

@@ -169,8 +169,16 @@ class DocumentActionPermissionContractTest {
                 + " and " + authority("warehouse_inbound:stock_in");
         assertGate(type("com.uten.imp.features.warehouse.inbound.WarehouseInboundController"),
                 "stockInAccepted", stockIn);
+        assertGate(type("com.uten.imp.features.warehouse.inbound.WarehouseInboundController"),
+                "stockInAcceptedBatch", stockIn);
         assertGate(type("com.uten.imp.features.warehouse.inbound.ProcurementArrivalControlService"),
                 "stockInWithDecisionSession", authority("warehouse_inbound:stock_in"));
+        assertGate(type("com.uten.imp.features.warehouse.inbound.WarehouseArrivalExceptionStockInBatchService"),
+                "stockInBatch", authority("warehouse_inbound:stock_in"));
+        assertGate(type("com.uten.imp.features.purchase.receipt.PurchaseReceiptService"),
+                "createFromWarehouseArrival", authority("warehouse_inbound:stock_in"));
+        assertGate(type("com.uten.imp.features.subcontract.receipt.SubcontractReceiptService"),
+                "createFromWarehouseArrival", authority("warehouse_inbound:stock_in"));
         assertGate(type("com.uten.imp.features.purchase.receipt.PurchaseReceiptService"),
                 "approveFromWarehouseDecision", authority("warehouse_inbound:stock_in"));
         assertGate(type("com.uten.imp.features.subcontract.receipt.SubcontractReceiptService"),
@@ -238,21 +246,25 @@ class DocumentActionPermissionContractTest {
 
 
     @Test
-    void financeApproveAndRejectAreIndependentAtEveryCommandLayer() {
-        assertDecisionGate(
-                "com.uten.imp.features.purchase.order.PurchaseOrderController",
-                "com.uten.imp.features.purchase.order.PurchaseOrderFinanceDecisionCommandService");
-        assertDecisionGate(
-                "com.uten.imp.features.subcontract.order.SubcontractOrderController",
-                "com.uten.imp.features.subcontract.order.SubcontractOrderFinanceDecisionCommandService");
-        assertGate(type("com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService"),
+    void legacySingleRoutesStayActionGatedWhileBatchServiceIsAuthoritative() {
+        assertGate(type("com.uten.imp.features.purchase.order.PurchaseOrderController"),
                 "approve", authority("finance_order_approval:approve"));
-        assertGate(type("com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService"),
+        assertGate(type("com.uten.imp.features.purchase.order.PurchaseOrderController"),
                 "reject", authority("finance_order_approval:reject"));
-        assertGate(type("com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService"),
+        assertGate(type("com.uten.imp.features.subcontract.order.SubcontractOrderController"),
+                "approve", authority("finance_order_approval:approve"));
+        assertGate(type("com.uten.imp.features.subcontract.order.SubcontractOrderController"),
+                "reject", authority("finance_order_approval:reject"));
+        Class<?> service = type(
+                "com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService");
+        assertGate(service,
                 "approveBatch", authority("finance_order_approval:approve"));
-        assertGate(type("com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService"),
+        assertGate(service,
                 "rejectBatch", authority("finance_order_approval:reject"));
+        assertThat(Arrays.stream(service.getDeclaredMethods())
+                .filter(method -> Modifier.isPublic(method.getModifiers()))
+                .map(Method::getName))
+                .doesNotContain("approve", "reject");
     }
 
     @Test
@@ -336,18 +348,6 @@ class DocumentActionPermissionContractTest {
             assertThat((Boolean) ReflectionTestUtils.invokeMethod(
                     service, "hasObjectActionAuthority")).isFalse();
         }
-    }
-
-    private static void assertDecisionGate(
-            String controllerName, String commandServiceName) {
-        assertGate(type(controllerName), "approve",
-                authority("finance_order_approval:approve"));
-        assertGate(type(commandServiceName), "approve",
-                authority("finance_order_approval:approve"));
-        assertGate(type(controllerName), "reject",
-                authority("finance_order_approval:reject"));
-        assertGate(type(commandServiceName), "reject",
-                authority("finance_order_approval:reject"));
     }
 
     private static void assertExactGateRejectsLegacy(

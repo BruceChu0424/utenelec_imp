@@ -273,6 +273,7 @@ class SalesOrderFinanceReviewLine {
     this.unitName,
     this.clientModel,
     this.qty,
+    this.weight,
     this.price,
     this.discount,
     this.amountOriginal,
@@ -287,6 +288,7 @@ class SalesOrderFinanceReviewLine {
   final String? unitName;
   final String? clientModel;
   final String? qty;
+  final String? weight;
   final String? price;
   final String? discount;
   final String? amountOriginal;
@@ -302,6 +304,7 @@ class SalesOrderFinanceReviewLine {
       unitName: _string(json['unitName']),
       clientModel: _string(json['clientModel']),
       qty: _string(json['qty']),
+      weight: _string(json['weight']),
       price: _string(json['price']),
       discount: _string(json['discount']),
       amountOriginal: _string(json['amountOriginal']),

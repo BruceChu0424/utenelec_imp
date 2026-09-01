@@ -7,14 +7,15 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.sql.Timestamp;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -50,6 +51,7 @@ public class AuditSessionQueryService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('audit_log:view')")
     public AuditSessionPageResponse sessions(
             UUID actorId,
             LocalDate dateFrom,
@@ -61,6 +63,13 @@ public class AuditSessionQueryService {
         long snapshotAuditId = snapshot(requestedSnapshotAuditId);
         OffsetDateTime from = BusinessTime.startOfDay(dateFrom);
         OffsetDateTime toExclusive = BusinessTime.startOfDay(dateTo.plusDays(1));
+
+        if (hasArchivedSessions(actorId, from, toExclusive)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "所选日期范围包含已转入冷归档的登录会话；"
+                            + "当前审计中心只提供在线日志，请缩小到在线留存日期");
+        }
 
         long total = sessionCount(actorId, from, toExclusive, snapshotAuditId);
         if (total == 0) {
@@ -106,6 +115,7 @@ public class AuditSessionQueryService {
      * deep link without a snapshot receives a fresh high-water mark.
      */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('audit_log:view')")
     public AuditSessionRow session(
             UUID sessionId,
             Long requestedSnapshotAuditId) {
@@ -117,7 +127,7 @@ public class AuditSessionQueryService {
 
         List<?> rows = query.getResultList();
         if (rows.isEmpty()) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "登录会话不存在或已归档");
+            throwUnavailableSession(sessionId, snapshotAuditId);
         }
         SessionAggregate aggregate = toAggregate((Object[]) rows.get(0));
         Set<UUID> actorIds = aggregate.actorId() == null
@@ -132,6 +142,7 @@ public class AuditSessionQueryService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('audit_log:view')")
     public AuditSessionEventPageResponse events(
             UUID sessionId,
             OffsetDateTime cursorAt,
@@ -141,6 +152,9 @@ public class AuditSessionQueryService {
         validateEventScope(
                 sessionId, cursorAt, cursorId, size, requestedSnapshotAuditId);
         long snapshotAuditId = snapshot(requestedSnapshotAuditId);
+        if (cursorId != null && cursorId > snapshotAuditId) {
+            throw malformed("事件编号游标不能超过查询快照编号");
+        }
         boolean firstPage = cursorAt == null;
         var query = entityManager.createQuery(
                 firstPage ? SESSION_EVENTS_FIRST_JPQL : SESSION_EVENTS_AFTER_JPQL,
@@ -154,6 +168,13 @@ public class AuditSessionQueryService {
         query.setMaxResults(size + 1);
 
         List<AuditLog> rawRows = query.getResultList();
+        if (rawRows.isEmpty()) {
+            SessionAvailability availability = sessionAvailability(
+                    sessionId, snapshotAuditId);
+            if (availability != SessionAvailability.ONLINE_AT_SNAPSHOT) {
+                throwUnavailableSession(availability);
+            }
+        }
         boolean hasMore = rawRows.size() > size;
         int returned = Math.min(size, rawRows.size());
         List<AuditLog> logs = List.copyOf(rawRows.subList(0, returned));
@@ -193,9 +214,10 @@ public class AuditSessionQueryService {
         if (dateTo.isBefore(dateFrom)) {
             throw malformed("结束日期不能早于开始日期");
         }
-        long inclusiveDays = Duration.between(
-                BusinessTime.startOfDayInstant(dateFrom),
-                BusinessTime.startOfDayInstant(dateTo.plusDays(1))).toDays();
+        if (LocalDate.MAX.equals(dateTo)) {
+            throw malformed("结束日期超出可查询范围");
+        }
+        long inclusiveDays = ChronoUnit.DAYS.between(dateFrom, dateTo) + 1;
         if (inclusiveDays > MAX_DATE_RANGE_DAYS) {
             throw malformed("查询日期范围不能超过31天");
         }
@@ -252,6 +274,27 @@ public class AuditSessionQueryService {
         return ((Number) query.getSingleResult()).longValue();
     }
 
+    private boolean hasArchivedSessions(
+            UUID actorId,
+            OffsetDateTime from,
+            OffsetDateTime toExclusive) {
+        Query query = entityManager.createNativeQuery("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM audit_log_archive archived
+                    WHERE archived.session_id IS NOT NULL
+                      AND archived.actor_id = :actorId
+                      AND archived.created_at >= :dateFrom
+                      AND archived.created_at < :dateToExclusive
+                      AND LOWER(COALESCE(archived.event_source, '')) <> 'database'
+                )
+                """);
+        query.setParameter("actorId", actorId);
+        query.setParameter("dateFrom", from);
+        query.setParameter("dateToExclusive", toExclusive);
+        return toBoolean(query.getSingleResult());
+    }
+
     private void bindSessionScope(
             Query query,
             UUID actorId,
@@ -265,16 +308,77 @@ public class AuditSessionQueryService {
     }
 
     private long snapshot(Long requested) {
-        if (requested != null) {
-            if (requested < 0) {
-                throw malformed("查询快照编号不能为负数");
-            }
-            return requested;
-        }
         Object value = entityManager.createNativeQuery(
                 "SELECT COALESCE(MAX(id), 0) FROM audit_log")
                 .getSingleResult();
-        return ((Number) value).longValue();
+        long currentHighWater = ((Number) value).longValue();
+        if (requested == null) {
+            return currentHighWater;
+        }
+        if (requested < 0) {
+            throw malformed("查询快照编号不能为负数");
+        }
+        if (requested > currentHighWater) {
+            throw malformed("查询快照编号超出当前审计范围，请刷新审计中心后重试");
+        }
+        return requested;
+    }
+
+    private void throwUnavailableSession(UUID sessionId, long snapshotAuditId) {
+        throwUnavailableSession(sessionAvailability(sessionId, snapshotAuditId));
+    }
+
+    private void throwUnavailableSession(SessionAvailability availability) {
+        throw switch (availability) {
+            case NEWER_THAN_SNAPSHOT -> new ApiException(
+                    ErrorCode.CONFLICT,
+                    "登录会话晚于当前查询快照，请返回审计中心重新打开");
+            case ARCHIVED -> new ApiException(
+                    ErrorCode.NOT_FOUND,
+                    "登录会话已转入冷归档，当前页面只提供在线审计记录");
+            case MISSING -> new ApiException(
+                    ErrorCode.NOT_FOUND,
+                    "登录会话不存在");
+            case ONLINE_AT_SNAPSHOT -> new IllegalStateException(
+                    "Online audit session unexpectedly produced no aggregate");
+        };
+    }
+
+    private SessionAvailability sessionAvailability(
+            UUID sessionId,
+            long snapshotAuditId) {
+        Query query = entityManager.createNativeQuery("""
+                SELECT CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM audit_log hot
+                        WHERE hot.session_id = :sessionId
+                          AND hot.id <= :snapshotAuditId
+                          AND LOWER(COALESCE(hot.event_source, '')) <> 'database'
+                    ) THEN 'online_at_snapshot'
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM audit_log hot
+                        WHERE hot.session_id = :sessionId
+                          AND LOWER(COALESCE(hot.event_source, '')) <> 'database'
+                    ) THEN 'newer_than_snapshot'
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM audit_log_archive archived
+                        WHERE archived.session_id = :sessionId
+                          AND LOWER(COALESCE(archived.event_source, '')) <> 'database'
+                    ) THEN 'archived'
+                    ELSE 'missing'
+                END
+                """);
+        query.setParameter("sessionId", sessionId);
+        query.setParameter("snapshotAuditId", snapshotAuditId);
+        return switch (toText(query.getSingleResult())) {
+            case "online_at_snapshot" -> SessionAvailability.ONLINE_AT_SNAPSHOT;
+            case "newer_than_snapshot" -> SessionAvailability.NEWER_THAN_SNAPSHOT;
+            case "archived" -> SessionAvailability.ARCHIVED;
+            default -> SessionAvailability.MISSING;
+        };
     }
 
     private SessionAggregate toAggregate(Object[] row) {
@@ -299,7 +403,8 @@ public class AuditSessionQueryService {
                 toText(row[17]),
                 toText(row[18]),
                 toBeijingTime(row[19]),
-                toBeijingTime(row[20]));
+                toBeijingTime(row[20]),
+                toBoolean(row[21]));
     }
 
     private AuditSessionRow toRow(
@@ -342,7 +447,7 @@ public class AuditSessionQueryService {
                 value.refreshRevokedAt(),
                 credentialStatus,
                 credentialStatusLabel(credentialStatus),
-                false,
+                value.timelinePartial(),
                 snapshotAuditId);
     }
 
@@ -463,6 +568,13 @@ public class AuditSessionQueryService {
         return value == null ? 0 : ((Number) value).longValue();
     }
 
+    private static boolean toBoolean(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return value != null && Boolean.parseBoolean(value.toString());
+    }
+
     private static String toText(Object value) {
         return value == null ? null : value.toString();
     }
@@ -523,7 +635,15 @@ public class AuditSessionQueryService {
             String devicePlatform,
             String lastIp,
             OffsetDateTime refreshExpiresAt,
-            OffsetDateTime refreshRevokedAt) {
+            OffsetDateTime refreshRevokedAt,
+            boolean timelinePartial) {
+    }
+
+    private enum SessionAvailability {
+        ONLINE_AT_SNAPSHOT,
+        NEWER_THAN_SNAPSHOT,
+        ARCHIVED,
+        MISSING
     }
 
     private static final String SESSION_SCOPE = """
@@ -555,6 +675,13 @@ public class AuditSessionQueryService {
                 WHERE a.id <= :snapshotAuditId
                   AND LOWER(COALESCE(a.event_source, '')) <> 'database'
             ),
+            archive_presence AS (
+                SELECT DISTINCT archived.session_id
+                FROM audit_log_archive archived
+                JOIN matched_sessions matched
+                  ON matched.session_id = archived.session_id
+                WHERE LOWER(COALESCE(archived.event_source, '')) <> 'database'
+            ),
             logout_event AS (
                 SELECT DISTINCT ON (event.session_id)
                        event.session_id,
@@ -571,7 +698,8 @@ public class AuditSessionQueryService {
                        token.expires_at,
                        token.revoked_at
                 FROM refresh_tokens token
-                WHERE token.session_id IS NOT NULL
+                JOIN matched_sessions matched
+                  ON matched.session_id = token.session_id
                 UNION ALL
                 SELECT token.session_id,
                        token.id AS token_id,
@@ -579,7 +707,8 @@ public class AuditSessionQueryService {
                        token.expires_at,
                        token.revoked_at
                 FROM visitor_refresh_tokens token
-                WHERE token.session_id IS NOT NULL
+                JOIN matched_sessions matched
+                  ON matched.session_id = token.session_id
             ),
             latest_token AS (
                 SELECT DISTINCT ON (token.session_id)
@@ -587,7 +716,6 @@ public class AuditSessionQueryService {
                        token.expires_at,
                        token.revoked_at
                 FROM token_rows token
-                JOIN matched_sessions matched ON matched.session_id = token.session_id
                 ORDER BY token.session_id, token.issued_at DESC, token.token_id DESC
             ),
             grouped AS (
@@ -680,9 +808,12 @@ public class AuditSessionQueryService {
                    grouped.device_platform,
                    grouped.last_ip,
                    token.expires_at AS refresh_expires_at,
-                   token.revoked_at AS refresh_revoked_at
+                   token.revoked_at AS refresh_revoked_at,
+                   (archived.session_id IS NOT NULL) AS timeline_partial
             FROM grouped
             LEFT JOIN latest_token token ON token.session_id = grouped.session_id
+            LEFT JOIN archive_presence archived
+              ON archived.session_id = grouped.session_id
             ORDER BY COALESCE(grouped.login_at, grouped.first_activity_at) DESC,
                      grouped.session_id DESC
             """;

@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -27,7 +28,10 @@ public class StockDocDetail {
     private String assTeam;
     private String planNo;
     private String remark;
+    /** 内部库存过账事实；仓库详情响应不属于财务/成本视图。 */
+    @JsonIgnore
     private BigDecimal totalOriginal;
+    @JsonIgnore
     private BigDecimal totalLocal;
     private Short status;
     private boolean closed;

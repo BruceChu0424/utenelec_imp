@@ -101,7 +101,9 @@ public class ProductionLegacyFinishedInboundService {
                     : reportItem.getUnitRate();
             if (reportItem.getQty() == null
                     || reportItem.getQty().signum() <= 0
-                    || unitRate.signum() <= 0) {
+                    || unitRate.signum() <= 0
+                    || (reportItem.getWeight() != null
+                        && reportItem.getWeight().signum() < 0)) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "历史兼容报工数量或单位换算率无效");
@@ -124,6 +126,7 @@ public class ProductionLegacyFinishedInboundService {
             item.setQty(reportItem.getQty());
             item.setReportedQty(reportItem.getQty());
             item.setBaseQty(reportItem.getQty().multiply(unitRate));
+            item.setWeight(reportItem.getWeight());
             item.setUpstreamItemId(reportItem.getPlanItemId());
             item.setSourceDailyReportItemId(reportItem.getId());
             item.setSourceDocNo(report.getBillNo());

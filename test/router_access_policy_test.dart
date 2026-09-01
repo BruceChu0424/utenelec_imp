@@ -219,6 +219,31 @@ void main() {
     );
 
     test(
+      'IQC warehouse stock-in list and detail use exact view permission',
+      () {
+        for (final location in [
+          RouteName.warehouseIqcStockIns,
+          RouteName.warehouseIqcStockInDetail('PURCHASE', 'receipt-1'),
+        ]) {
+          final required = requiredAnyPermFor(location);
+          expect(required, const [Perm.warehouseIqcStockInView]);
+          for (final oldPermission in const [
+            Perm.procurementInspectionHandle,
+            Perm.warehouseInboundStockIn,
+            Perm.warehouseInboundView,
+            Perm.stockDocEdit,
+          ]) {
+            expect(required, isNot(contains(oldPermission)));
+          }
+        }
+        expect(
+          requiredAnyPermFor(RouteName.warehouse),
+          contains(Perm.warehouseIqcStockInView),
+        );
+      },
+    );
+
+    test(
       'purchase order create and detail deep links keep distinct authorities',
       () {
         expect(requiredAnyPermFor('/purchase/orders/new'), const [

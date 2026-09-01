@@ -10,7 +10,7 @@ import java.util.UUID;
  *
  * <p>purchase / subcontract 收货服务通过本端口把收货明细送入仓库侧的待检隔离
  * （实现位于 features/warehouse/inbound/ProcurementInspectionService），避免 feature→feature
- * 直连（ADR-017）。合格放行（PASS）的库存入库与生产唤醒由仓库侧实现内部完成。
+ * 直连（ADR-017）。品质 PASS 只形成待入库量；仓库另行确认后才写库存并推进生产。
  */
 public interface ProcurementInspectionPort {
 
@@ -25,13 +25,21 @@ public interface ProcurementInspectionPort {
     void requireResolvedForReverse(String receiptType, UUID receiptId);
 
     /**
-     * 收货红冲同事务调用：反向已 PASS 放行的库存并置冻结行 REVERSED。
+     * 收货红冲同事务调用：只反向仓库已确认入库的库存并置冻结行 REVERSED。
      * 返回是否管理了该单（有冻结行）；无冻结行时调用方走历史全量反向。
      */
     boolean reverseResolvedStock(String receiptType, UUID receiptId, OffsetDateTime now);
 
     record ReceivedLine(UUID receiptItemId, UUID goodsId, UUID colorId,
                         UUID unitId, BigDecimal unitRate, BigDecimal qty,
-                        BigDecimal amountLocal) {
+                        BigDecimal amountLocal, BigDecimal weight) {
+
+        /** Historical/test compatibility: omitted actual total weight remains unknown. */
+        public ReceivedLine(UUID receiptItemId, UUID goodsId, UUID colorId,
+                            UUID unitId, BigDecimal unitRate, BigDecimal qty,
+                            BigDecimal amountLocal) {
+            this(receiptItemId, goodsId, colorId, unitId, unitRate, qty,
+                    amountLocal, null);
+        }
     }
 }

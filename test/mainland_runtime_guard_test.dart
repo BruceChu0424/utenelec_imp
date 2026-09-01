@@ -59,6 +59,7 @@ void main() {
     test('China Web release contract stays enabled', () {
       final workflow = File('.github/workflows/quality.yml').readAsStringSync();
       final index = File('web/index.html').readAsStringSync();
+      final bootstrap = File('web/flutter_bootstrap.js').readAsStringSync();
       final nginx = File(
         'deploy/nginx/uten-imp.conf.example',
       ).readAsStringSync();
@@ -71,6 +72,14 @@ void main() {
 
       expect(workflow, contains('--no-web-resources-cdn'));
       expect(index, contains('<html lang="zh-CN">'));
+      expect(
+        bootstrap,
+        contains("canvasKitVariant: 'full'"),
+        reason:
+            'Keep the universal CanvasKit build pinned until the reproduced '
+            'Chromium-variant synchronous hang has an independently verified '
+            'engine fix.',
+      );
       expect(nginx, contains("connect-src 'self'"));
       expect(nginx, contains("font-src 'self'"));
       expect(nginx, contains("frame-src 'self' blob:"));

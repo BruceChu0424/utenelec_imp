@@ -173,8 +173,10 @@ void main() {
   testWidgets('banner wraps long messages within maxWidth without overflow', (
     tester,
   ) async {
+    final previousErrorHandler = FlutterError.onError;
     final flutterErrors = <FlutterErrorDetails>[];
     FlutterError.onError = flutterErrors.add;
+    addTearDown(() => FlutterError.onError = previousErrorHandler);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -217,7 +219,7 @@ void main() {
     expect(flutterErrors, isEmpty, reason: '长文案换行不应触发 RenderFlex 溢出等布局异常');
   });
 
-  testWidgets('notifications render one at a time in strict FIFO order', (
+  testWidgets('notifications stack newest first, expand, and keep overflow', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -252,23 +254,57 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(container.read(appNotificationProvider), hasLength(4));
-    for (var expected = 1; expected <= 4; expected++) {
-      expect(find.byType(UtenTopBannerCard), findsOneWidget);
-      for (var index = 1; index <= 4; index++) {
-        expect(
-          find.text('通知 $index'),
-          index == expected ? findsOneWidget : findsNothing,
-        );
-      }
-      expect(dismissed, List<int>.generate(expected - 1, (index) => index + 1));
+    expect(find.byType(UtenTopBannerCard), findsOneWidget);
+    expect(find.text('通知 4'), findsOneWidget);
+    expect(find.text('通知 1'), findsNothing);
+    expect(find.text('展开最近 3 条通知，共 4 条'), findsOneWidget);
 
+    await tester.tap(
+      find.byKey(const ValueKey('app-notification-stack-toggle')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(UtenTopBannerCard), findsNWidgets(3));
+    expect(find.text('通知 4'), findsOneWidget);
+    expect(find.text('通知 3'), findsOneWidget);
+    expect(find.text('通知 2'), findsOneWidget);
+    expect(find.text('通知 1'), findsNothing);
+    expect(dismissed, isEmpty);
+
+    final newestCard = find.ancestor(
+      of: find.text('通知 4'),
+      matching: find.byType(UtenTopBannerCard),
+    );
+    await tester.tap(
+      find.descendant(
+        of: newestCard,
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(dismissed, <int>[4]);
+    expect(container.read(appNotificationProvider), hasLength(3));
+    expect(find.byType(UtenTopBannerCard), findsNWidgets(3));
+    expect(find.text('通知 1'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('app-notification-stack-toggle')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenTopBannerCard), findsOneWidget);
+    expect(find.text('通知 3'), findsOneWidget);
+
+    for (final expected in <int>[3, 2, 1]) {
+      expect(find.text('通知 $expected'), findsOneWidget);
       await tester.tap(find.byTooltip('关闭通知'));
       await tester.pumpAndSettle();
-
-      expect(dismissed, List<int>.generate(expected, (index) => index + 1));
-      expect(container.read(appNotificationProvider), hasLength(4 - expected));
     }
+    expect(container.read(appNotificationProvider), isEmpty);
     expect(find.byType(UtenTopBannerCard), findsNothing);
+    expect(dismissed, <int>[4, 3, 2, 1]);
+    await tester.pump(const Duration(seconds: 1));
+    expect(dismissed, <int>[4, 3, 2, 1]);
   });
 
   testWidgets(
@@ -579,8 +615,8 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
-    expect(find.text('可见后被 clear'), findsOneWidget);
-    expect(find.text('排队中被 clear'), findsNothing);
+    expect(find.text('可见后被 clear'), findsNothing);
+    expect(find.text('排队中被 clear'), findsOneWidget);
 
     notifications.clear();
     await tester.pump();

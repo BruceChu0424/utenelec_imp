@@ -59,6 +59,7 @@ class ProcurementReceiptAmountAuthorityContractTest {
                 .contains(sourceTable)
                 .contains("FOR UPDATE OF source_item, source_order")
                 .contains("source_order.settlement_method_id")
+                .contains("source_order.tax_rate")
                 .contains("COUNT(*) FILTER")
                 .contains("receipt_doc.status=1")
                 .contains("item.setAmountOriginal(amounts.original())")

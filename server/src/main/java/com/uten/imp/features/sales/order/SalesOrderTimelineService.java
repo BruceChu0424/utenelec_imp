@@ -19,6 +19,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -32,7 +33,7 @@ import static com.uten.imp.features.sales.order.dto.OrderProgressTimelineEvent.R
  * 物料准备（采购/委外下单、财务审批）→ 生产计划 → 生产 → 发货 → 结案。
  *
  * <p>每一环都尽量带「责任人 + 发生时间」：制单/审核/确认人取单据自身 *_by 列（员工经
- * {@link EmployeeNameResolver#nameWithCodeOf} 解析为「姓名(工号)」防重名，兼容 users.id 历史数据）；单据自身没有审核时间列的
+ * {@link EmployeeNameResolver#nameOf} 解析为实际姓名，兼容 users.id 历史数据）；单据自身没有审核时间列的
  * （销售审核、计划下达、出货审核），时间点从 audit_log 的状态迁移记录补齐，查不到就只显示责任人。
  *
  * <p>展示顺序（服务端排好，前端直接渲染）：已发生事件（DONE/CURRENT/REJECTED）按发生时间倒序、
@@ -90,19 +91,19 @@ public class SalesOrderTimelineService {
     private void addOrderEvents(SalesOrder order, List<OrderProgressTimelineEvent> events) {
         events.add(new OrderProgressTimelineEvent(
                 10, "ORDER_PLACED", "销售下单", "下单人",
-                nameResolver.nameWithCodeOf(order.getMakerId()), toTime(order.getCreatedAt()), DONE,
+                employeeDisplayName(order.getMakerId()), toTime(order.getCreatedAt()), DONE,
                 "订单 " + order.getBillNo() + " 已创建", null, null, order.getBillNo()));
 
         if (order.getStatus() == 1) {
             events.add(new OrderProgressTimelineEvent(
                     20, "ORDER_APPROVED", "销售审核", "审核人",
-                    nameResolver.nameWithCodeOf(order.getApproverId()),
+                    employeeDisplayName(order.getApproverId()),
                     auditTransitionAt("sales_orders", order.getId(), "status", "1"), DONE,
                     null, null, null, null));
         } else if (order.getStatus() == -1) {
             events.add(new OrderProgressTimelineEvent(
                     25, "ORDER_REVERSED", "订单红冲", "操作人",
-                    nameResolver.nameWithCodeOf(order.getApproverId()),
+                    employeeDisplayName(order.getApproverId()),
                     auditTransitionAt("sales_orders", order.getId(), "status", "-1"), REJECTED,
                     "订单已红冲作废", null, null, null));
         } else {
@@ -119,14 +120,14 @@ public class SalesOrderTimelineService {
         if (hasRejectionHistory) {
             events.add(new OrderProgressTimelineEvent(
                     35, "FINANCE_REJECTED", "财务驳回", "审核人",
-                    nameResolver.nameWithCodeOf(order.getFinanceRejectedBy()),
+                    employeeDisplayName(order.getFinanceRejectedBy()),
                     order.getFinanceRejectedAt(), REJECTED,
                     order.getFinanceRejectedReason(), null, null, null));
         }
         if (order.isFinanceConfirmed()) {
             events.add(new OrderProgressTimelineEvent(
                     30, "FINANCE_CONFIRMED", "财务审核通过", "审核人",
-                    nameResolver.nameWithCodeOf(order.getFinanceConfirmedBy()),
+                    employeeDisplayName(order.getFinanceConfirmedBy()),
                     order.getFinanceConfirmedAt(), DONE,
                     order.getFinanceConfirmRemark(), null, null, null));
             return;
@@ -186,21 +187,24 @@ public class SalesOrderTimelineService {
             String status = (String) row[1];
             events.add(new OrderProgressTimelineEvent(
                     40, "MATERIAL_ANALYSIS", "计划单物料分析", "执行人",
-                    nameResolver.nameWithCodeOf((UUID) row[3]), toTime(row[2]), DONE,
+                    employeeDisplayName((UUID) row[3]), toTime(row[2]), DONE,
                     "分析状态 " + analysisStatusLabel(status),
                     "MATERIAL_ANALYSIS", (UUID) row[0], null));
         }
         return analysisIds;
     }
 
-    private static String analysisStatusLabel(String status) {
-        if (status == null) return "—";
-        return switch (status.toUpperCase()) {
+    static String analysisStatusLabel(String status) {
+        if (status == null || status.isBlank()) return "—";
+        return switch (status.trim().toUpperCase(Locale.ROOT)) {
+            case "ACTIVE" -> "进行中";
+            case "PARTIALLY_PLANNED" -> "部分已下达，剩余待料";
+            case "COMPLETED" -> "已全部下达";
+            case "CANCELLED" -> "已取消";
             case "READY" -> "已齐套";
             case "CONFIRMED" -> "已确认";
             case "STALE" -> "已过期待刷新";
-            case "ACTIVE" -> "备料中";
-            default -> status;
+            default -> "状态待确认";
         };
     }
 
@@ -263,7 +267,7 @@ public class SalesOrderTimelineService {
             } else if (status == 1) {
                 state = DONE;
                 String approver = approval == null
-                        ? null : nameResolver.nameWithCodeOf((UUID) approval[3]);
+                        ? null : employeeDisplayName((UUID) approval[3]);
                 detail = approver == null ? "财务审批通过" : "财务审批通过(审批人：" + approver + ")";
             } else {
                 state = CURRENT;
@@ -273,7 +277,7 @@ public class SalesOrderTimelineService {
             events.add(new OrderProgressTimelineEvent(
                     seq, purchase ? "PURCHASE_ORDER" : "SUBCONTRACT_ORDER",
                     "物料准备-" + routeLabel + "订货", routeLabel + "人",
-                    nameResolver.nameWithCodeOf((UUID) row[4]), toTime(row[3]), state, detail,
+                    employeeDisplayName((UUID) row[4]), toTime(row[3]), state, detail,
                     purchase ? "PURCHASE_ORDER" : "SUBCONTRACT_ORDER", docId, (String) row[1]));
         }
         return true;
@@ -337,7 +341,7 @@ public class SalesOrderTimelineService {
                 detail = "计划已红冲";
             } else if (status == 1) {
                 state = DONE;
-                String approver = nameResolver.nameWithCodeOf((UUID) row[6]);
+                String approver = employeeDisplayName((UUID) row[6]);
                 OffsetDateTime approvedAt =
                         auditTransitionAt("production_plans", planId, "status", "1");
                 if (approvedAt != null) at = approvedAt;
@@ -349,7 +353,7 @@ public class SalesOrderTimelineService {
             }
             events.add(new OrderProgressTimelineEvent(
                     60, "PRODUCTION_PLAN", "生产计划下达", "下达人",
-                    nameResolver.nameWithCodeOf((UUID) row[5]), at, state, detail,
+                    employeeDisplayName((UUID) row[5]), at, state, detail,
                     "PRODUCTION_PLAN", planId, (String) row[1]));
         }
         return !rows.isEmpty();
@@ -402,7 +406,7 @@ public class SalesOrderTimelineService {
                 detail = "出货单已红冲";
             } else if (status == 1) {
                 state = DONE;
-                String approver = nameResolver.nameWithCodeOf((UUID) row[5]);
+                String approver = employeeDisplayName((UUID) row[5]);
                 OffsetDateTime approvedAt =
                         auditTransitionAt("sales_shipments", shipmentId, "status", "1");
                 if (approvedAt != null) at = approvedAt;
@@ -418,7 +422,7 @@ public class SalesOrderTimelineService {
             }
             events.add(new OrderProgressTimelineEvent(
                     80, "SHIPMENT", "销售发货", "发货人",
-                    nameResolver.nameWithCodeOf((UUID) row[4]), at, state, detail,
+                    employeeDisplayName((UUID) row[4]), at, state, detail,
                     "SALES_SHIPMENT", shipmentId, (String) row[1]));
         }
     }
@@ -440,6 +444,10 @@ public class SalesOrderTimelineService {
     }
 
     // ============================ 工具 ============================
+
+    String employeeDisplayName(UUID employeeId) {
+        return nameResolver.nameOf(employeeId);
+    }
 
     /**
      * 单据自身没有审核时间列，从审计日志的状态迁移记录补时间点

@@ -389,7 +389,7 @@ void main() {
   );
 
   testWidgets(
-    'warehouse without a batch command has no selection chrome and keeps a visible open action',
+    'warehouse uses a task table on compact widths without meaningless multi-select',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(375, 1800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -430,10 +430,28 @@ void main() {
         find.byKey(const Key('operations-workbench-floating-primary-action')),
         findsNothing,
       );
-      expect(find.byType(Checkbox), findsNothing);
       expect(
-        find.byKey(const Key('operations-task-action-warehouse-task')),
+        find.byKey(const Key('operations-workbench-mobile-list')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('operations-workbench-desktop-table')),
         findsOneWidget,
+      );
+      expect(find.text('已选 0 项'), findsNothing);
+      expect(find.byType(Checkbox), findsNothing);
+
+      await tester.tap(find.text('PP-001'));
+      await tester.pump();
+
+      expect(find.text('已选 1 项'), findsNothing);
+      expect(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('operations-workbench-subcontract-batch')),
+        findsNothing,
       );
     },
   );
@@ -489,8 +507,12 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // 默认视图是「待完成」（OPEN_ANY 哨兵），不再是全部。
-        expect(gateway.statuses, [kOperationsWorkbenchOpenStatus]);
+        // 委外业务阶段默认全部；采购/仓库仍默认待完成。
+        expect(gateway.statuses, [
+          scenario.department == OperationsWorkbenchDepartment.subcontract
+              ? null
+              : kOperationsWorkbenchOpenStatus,
+        ]);
         await tester.tap(find.text(scenario.metricLabel));
         await tester.pumpAndSettle();
 

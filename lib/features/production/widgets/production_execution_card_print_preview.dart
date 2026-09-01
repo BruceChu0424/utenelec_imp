@@ -13,6 +13,12 @@ import '../../../core/ui/app_notification.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_work_card.dart';
 
+typedef ProductionPdfPrinter =
+    Future<bool> Function(Uint8List bytes, String filename);
+
+const int _maxPrintBatchPlans = 50;
+const int _maxPrintBatchCards = 200;
+
 /// Opens a responsive preview for the persisted work-card projection.
 ///
 /// The loader is called again immediately before printing so a cancelled or
@@ -20,18 +26,43 @@ import '../models/production_work_card.dart';
 Future<void> showProductionExecutionCardPrintPreview(
   BuildContext context, {
   required Future<ProductionWorkCardView> Function() loader,
+  ProductionPdfPrinter? printer,
+}) {
+  return showProductionExecutionCardBatchPrintPreview(
+    context,
+    loader: () async => [await loader()],
+    printer: printer,
+  );
+}
+
+/// Opens one preview for multiple confirmed plans and prints them as one PDF.
+///
+/// Each plan keeps its own package/segment identity and is reloaded before
+/// printing. A failure in any plan aborts the whole batch; no stale subset is
+/// silently printed.
+Future<void> showProductionExecutionCardBatchPrintPreview(
+  BuildContext context, {
+  required Future<List<ProductionWorkCardView>> Function() loader,
+  ProductionPdfPrinter? printer,
 }) {
   return showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => _ProductionExecutionCardPrintDialog(loader: loader),
+    builder: (_) => _ProductionExecutionCardPrintDialog(
+      loader: loader,
+      printer: printer ?? printPdfBytes,
+    ),
   );
 }
 
 class _ProductionExecutionCardPrintDialog extends StatefulWidget {
-  const _ProductionExecutionCardPrintDialog({required this.loader});
+  const _ProductionExecutionCardPrintDialog({
+    required this.loader,
+    required this.printer,
+  });
 
-  final Future<ProductionWorkCardView> Function() loader;
+  final Future<List<ProductionWorkCardView>> Function() loader;
+  final ProductionPdfPrinter printer;
 
   @override
   State<_ProductionExecutionCardPrintDialog> createState() =>
@@ -40,10 +71,14 @@ class _ProductionExecutionCardPrintDialog extends StatefulWidget {
 
 class _ProductionExecutionCardPrintDialogState
     extends State<_ProductionExecutionCardPrintDialog> {
-  ProductionWorkCardView? _view;
+  List<ProductionWorkCardView> _views = const [];
   String? _error;
   bool _loading = true;
-  bool _printing = false;
+  String? _printingTarget;
+
+  bool get _printing => _printingTarget != null;
+  int get _cardCount =>
+      _views.fold(0, (total, view) => total + view.cards.length);
 
   @override
   void initState() {
@@ -58,49 +93,139 @@ class _ProductionExecutionCardPrintDialogState
       _error = null;
     });
     try {
-      final view = await widget.loader();
+      final views = _validateViews(await widget.loader());
       if (!mounted) return;
-      if (!view.isPrintable) {
-        throw StateError('计划包不是可打印的已确认执行包');
-      }
       setState(() {
-        _view = view;
+        _views = views;
         _loading = false;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _view = null;
+        _views = const [];
         _loading = false;
         _error = error is ApiException
             ? error.message
-            : '生产执行工卡加载失败，请确认计划包仍处于已确认状态';
+            : error is StateError
+            ? error.message
+            : '生产计划工卡加载失败，请确认所有计划包仍处于已确认状态';
       });
     }
   }
 
-  Future<void> _print() async {
-    if (_printing) return;
-    setState(() => _printing = true);
-    try {
-      final latest = await widget.loader();
-      if (!latest.isPrintable) {
-        throw StateError('计划包已失效，不能继续打印');
-      }
-      if (mounted) setState(() => _view = latest);
-      final bytes = await buildProductionExecutionCardPdf(latest);
-      await printPdfBytes(
-        bytes,
-        '生产计划单_${_safeFilename(latest.planBillNo ?? latest.planId)}_执行工卡.pdf',
+  List<ProductionWorkCardView> _validateViews(
+    List<ProductionWorkCardView> views,
+  ) {
+    if (views.isEmpty || views.any((view) => !view.isPrintable)) {
+      throw StateError('计划包不是可打印的已确认执行包');
+    }
+    final cardCount = views.fold<int>(
+      0,
+      (total, view) => total + view.cards.length,
+    );
+    if (views.length > _maxPrintBatchPlans || cardCount > _maxPrintBatchCards) {
+      throw StateError(
+        '单次最多打印 $_maxPrintBatchPlans 张计划、$_maxPrintBatchCards 张工卡，请分批处理',
       );
+    }
+    final identities = <String>{};
+    final planIds = <String>{};
+    final segmentIds = <String>{};
+    final segmentCodes = <String>{};
+    for (final view in views) {
+      if (!_present(view.planId) || !_present(view.packageId)) {
+        throw StateError('批量打印包含无效的计划或计划包身份');
+      }
+      final identity = '${view.planId}|${view.packageId}';
+      if (!planIds.add(view.planId)) {
+        throw StateError('批量打印不能包含同一生产计划的多个计划包');
+      }
+      if (!identities.add(identity)) {
+        throw StateError('批量打印包含重复的生产计划包');
+      }
+      for (final card in view.cards) {
+        if (!_isExecutionCardPrintableStatus(card.status)) {
+          throw StateError('已取消或已反向的执行分段不能打印');
+        }
+        if (!_present(card.segmentId) || !_present(card.segmentCode)) {
+          throw StateError('批量打印包含无效的执行分段身份');
+        }
+        if (!segmentIds.add(card.segmentId)) {
+          throw StateError('批量打印包含重复的执行分段');
+        }
+        if (!segmentCodes.add(card.segmentCode)) {
+          throw StateError('批量打印包含重复的分段条码');
+        }
+      }
+    }
+    return List.unmodifiable(views);
+  }
+
+  Future<void> _printAll() async {
+    if (_printing) return;
+    setState(() => _printingTarget = 'all');
+    try {
+      final latest = _validateViews(await widget.loader());
+      if (mounted) setState(() => _views = latest);
+      final bytes = await buildProductionExecutionCardBatchPdf(latest);
+      final filename = latest.length == 1
+          ? '生产计划单_${_safeFilename(latest.single.planBillNo ?? latest.single.planId)}_执行工卡.pdf'
+          : '生产计划单_批量${latest.length}张计划_'
+                '${latest.fold<int>(0, (total, view) => total + view.cards.length)}张工卡.pdf';
+      final completed = await widget.printer(bytes, filename);
+      if (!completed && mounted) context.appWarning('打印流程未完成');
     } on ApiException catch (error) {
+      if (mounted) context.appError(error.message, force: true);
+    } on StateError catch (error) {
       if (mounted) context.appError(error.message, force: true);
     } catch (_) {
       if (mounted) {
-        context.appError('生成工卡失败；请刷新计划包状态后重试', force: true);
+        context.appError('生成批量工卡失败；请刷新计划包状态后重试', force: true);
       }
     } finally {
-      if (mounted) setState(() => _printing = false);
+      if (mounted) setState(() => _printingTarget = null);
+    }
+  }
+
+  Future<void> _printOne(
+    ProductionWorkCardView selectedView,
+    ProductionWorkCard selectedCard,
+  ) async {
+    if (_printing) return;
+    final target =
+        '${selectedView.planId}|${selectedView.packageId}|${selectedCard.segmentId}';
+    setState(() => _printingTarget = target);
+    try {
+      final latest = _validateViews(await widget.loader());
+      final latestView = latest.singleWhere(
+        (view) =>
+            view.planId == selectedView.planId &&
+            view.packageId == selectedView.packageId,
+      );
+      final latestCard = latestView.cards.singleWhere(
+        (card) => card.segmentId == selectedCard.segmentId,
+      );
+      if (mounted) setState(() => _views = latest);
+      final bytes = await buildProductionExecutionCardPdf(
+        latestView,
+        segmentIds: {latestCard.segmentId},
+      );
+      final completed = await widget.printer(
+        bytes,
+        '生产计划单_${_safeFilename(latestView.planBillNo ?? latestView.planId)}_'
+        '${_safeFilename(latestCard.segmentCode)}.pdf',
+      );
+      if (!completed && mounted) context.appWarning('打印流程未完成');
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message, force: true);
+    } on StateError catch (error) {
+      if (mounted) context.appError(error.message, force: true);
+    } catch (_) {
+      if (mounted) {
+        context.appError('本次复核中有计划包或工卡失效；请重新读取后再试', force: true);
+      }
+    } finally {
+      if (mounted) setState(() => _printingTarget = null);
     }
   }
 
@@ -109,7 +234,7 @@ class _ProductionExecutionCardPrintDialogState
     final theme = Theme.of(context);
     final size = MediaQuery.sizeOf(context);
     final compact = size.width < 600;
-    return Dialog(
+    final dialog = Dialog(
       insetPadding: EdgeInsets.all(compact ? UtenSpacing.s8 : UtenSpacing.s24),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
@@ -125,16 +250,16 @@ class _ProductionExecutionCardPrintDialogState
               const Divider(height: 1),
               Expanded(child: _body(theme)),
               const Divider(height: 1),
-              _footer(compact),
+              _footer(),
             ],
           ),
         ),
       ),
     );
+    return PopScope(canPop: !_printing, child: dialog);
   }
 
   Widget _header(ThemeData theme) {
-    final view = _view;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s16,
@@ -157,11 +282,14 @@ class _ProductionExecutionCardPrintDialogState
                   ),
                 ),
                 Text(
-                  view == null
+                  _views.isEmpty
                       ? '正在读取已确认计划包…'
-                      : '${view.planBillNo ?? view.planId} · '
-                            '${view.cards.length} 张执行工卡 · '
-                            '计划包 ${_shortId(view.packageId)}',
+                      : _views.length == 1
+                      ? '${_views.single.planBillNo ?? _views.single.planId} · '
+                            '${_views.single.cards.length} 张执行工卡 · '
+                            '计划包 ${_shortId(_views.single.packageId)}'
+                      : '${_views.length} 张生产计划 · '
+                            '$_cardCount 张执行工卡 · 打印前整批复核',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -209,21 +337,34 @@ class _ProductionExecutionCardPrintDialogState
         ),
       );
     }
-    final view = _view!;
+    final entries = <({ProductionWorkCardView view, ProductionWorkCard card})>[
+      for (final view in _views)
+        for (final card in view.cards) (view: view, card: card),
+    ];
     return ListView.builder(
       padding: const EdgeInsets.all(UtenSpacing.s12),
-      itemCount: view.cards.length + 1,
+      itemCount: entries.length + 1,
       itemBuilder: (context, index) {
-        if (index == 0) return _sourceNotice(theme, view);
+        if (index == 0) return _sourceNotice(theme);
+        final entry = entries[index - 1];
         return Padding(
           padding: const EdgeInsets.only(top: UtenSpacing.s12),
-          child: _workCardPreview(theme, view, view.cards[index - 1]),
+          child: _workCardPreview(
+            theme,
+            entry.view,
+            entry.card,
+            showPlanNo: _views.length > 1,
+          ),
         );
       },
     );
   }
 
-  Widget _sourceNotice(ThemeData theme, ProductionWorkCardView view) {
+  Widget _sourceNotice(ThemeData theme) {
+    final versions = {
+      for (final view in _views)
+        'V${view.executionModelVersion}.${view.packageLockVersion}',
+    }.join('、');
     return DecoratedBox(
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withValues(alpha: 0.07),
@@ -245,9 +386,10 @@ class _ProductionExecutionCardPrintDialogState
             const SizedBox(width: UtenSpacing.s8),
             Expanded(
               child: Text(
+                '本次共 ${_views.length} 张生产计划、$_cardCount 张执行工卡。'
                 '工卡来自已确认计划包、执行分段和物料需求的只读投影。'
                 '打印或补打不会锁料、开单或改变状态；货品、颜色、单位和人员名称按打印时当前主档解析。'
-                '版本 V${view.executionModelVersion}.${view.packageLockVersion}。',
+                '计划包版本 $versions。',
                 style: theme.textTheme.bodySmall,
               ),
             ),
@@ -260,12 +402,15 @@ class _ProductionExecutionCardPrintDialogState
   Widget _workCardPreview(
     ThemeData theme,
     ProductionWorkCardView view,
-    ProductionWorkCard card,
-  ) {
+    ProductionWorkCard card, {
+    required bool showPlanNo,
+  }) {
     final zeroMaterialText = productionZeroMaterialReasonText(
       card.materialRequirementMode,
       card.zeroMaterialReason,
     );
+    final operationalNotice = _workCardOperationalNotice(card);
+    final target = '${view.planId}|${view.packageId}|${card.segmentId}';
     return Card(
       margin: EdgeInsets.zero,
       elevation: 0,
@@ -278,16 +423,17 @@ class _ProductionExecutionCardPrintDialogState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              runSpacing: UtenSpacing.s8,
-              children: [
-                Column(
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final identity = Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${card.segmentCode} · ${_value(card.productName)}',
+                      [
+                        if (showPlanNo) view.planBillNo ?? view.planId,
+                        card.segmentCode,
+                        _value(card.productName),
+                      ].join(' · '),
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -302,23 +448,100 @@ class _ProductionExecutionCardPrintDialogState
                       style: theme.textTheme.bodySmall,
                     ),
                   ],
-                ),
-                Chip(
-                  avatar: Icon(
-                    card.status == 'READY'
-                        ? Icons.play_circle_outline
-                        : Icons.hourglass_bottom_rounded,
-                    size: 18,
-                  ),
-                  label: Text(
-                    _statusLabel(
-                      card.status,
-                      autoPromoteWhenReady: card.autoPromoteWhenReady,
+                );
+                final actions = Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Chip(
+                      avatar: Icon(
+                        card.status == 'READY'
+                            ? Icons.play_circle_outline
+                            : Icons.hourglass_bottom_rounded,
+                        size: 18,
+                      ),
+                      label: Text(
+                        _statusLabel(
+                          card.status,
+                          autoPromoteWhenReady: card.autoPromoteWhenReady,
+                        ),
+                      ),
                     ),
+                    UtenButton(
+                      key: ValueKey(
+                        'production-work-card-print-${card.segmentId}',
+                      ),
+                      type: UtenButtonType.tonal,
+                      size: UtenButtonSize.small,
+                      icon: Icons.print_outlined,
+                      isLoading: _printingTarget == target,
+                      onPressed: _printing ? null : () => _printOne(view, card),
+                      child: const Text('打印本张'),
+                    ),
+                  ],
+                );
+                if (constraints.maxWidth < 520) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      identity,
+                      const SizedBox(height: UtenSpacing.s8),
+                      Align(alignment: Alignment.centerLeft, child: actions),
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: identity),
+                    const SizedBox(width: UtenSpacing.s8),
+                    actions,
+                  ],
+                );
+              },
+            ),
+            if (operationalNotice != null) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Container(
+                key: ValueKey('production-work-card-status-${card.segmentId}'),
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: card.status == 'COMPLETED'
+                      ? theme.colorScheme.surfaceContainerHighest
+                      : theme.colorScheme.tertiaryContainer.withValues(
+                          alpha: 0.55,
+                        ),
+                  borderRadius: UtenRadius.smAll,
+                  border: Border.all(
+                    color: card.status == 'COMPLETED'
+                        ? theme.colorScheme.outlineVariant
+                        : theme.colorScheme.tertiary.withValues(alpha: 0.5),
                   ),
                 ),
-              ],
-            ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      card.status == 'COMPLETED'
+                          ? Icons.archive_outlined
+                          : Icons.local_shipping_outlined,
+                      size: 20,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        operationalNotice,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: UtenSpacing.s8),
             Wrap(
               spacing: UtenSpacing.s16,
@@ -427,7 +650,7 @@ class _ProductionExecutionCardPrintDialogState
     );
   }
 
-  Widget _footer(bool compact) {
+  Widget _footer() {
     return SafeArea(
       top: false,
       child: Padding(
@@ -444,11 +667,9 @@ class _ProductionExecutionCardPrintDialogState
             ),
             UtenButton(
               icon: Icons.print_outlined,
-              isLoading: _printing,
-              onPressed: _view?.isPrintable == true && !_printing
-                  ? _print
-                  : null,
-              child: Text(compact ? '打印全部' : '打印全部 A4 计划工卡'),
+              isLoading: _printingTarget == 'all',
+              onPressed: _views.isNotEmpty && !_printing ? _printAll : null,
+              child: Text('打印全部（$_cardCount 张工卡）'),
             ),
           ],
         ),
@@ -459,36 +680,128 @@ class _ProductionExecutionCardPrintDialogState
 
 /// Generates one landscape A4 work card per persisted execution segment.
 Future<Uint8List> buildProductionExecutionCardPdf(
-  ProductionWorkCardView view,
-) async {
+  ProductionWorkCardView view, {
+  Set<String>? segmentIds,
+}) async {
   if (!view.isPrintable) {
     throw StateError('Only a confirmed V1 package can produce work cards');
   }
+  if (segmentIds?.isEmpty == true) {
+    throw StateError('At least one execution segment must be selected');
+  }
+  final cards = segmentIds == null
+      ? view.cards
+      : view.cards
+            .where((card) => segmentIds.contains(card.segmentId))
+            .toList(growable: false);
+  if (cards.isEmpty) {
+    throw StateError('No matching persisted execution card can be printed');
+  }
+  if (cards.length > _maxPrintBatchCards) {
+    throw StateError('Too many execution cards in one print job');
+  }
+  if (segmentIds != null && cards.length != segmentIds.length) {
+    throw StateError('One or more selected execution segments no longer exist');
+  }
+  if (cards.any((card) => !_isExecutionCardPrintableStatus(card.status))) {
+    throw StateError('Cancelled or reversed execution cards cannot be printed');
+  }
+  return _buildProductionExecutionCardPdf([
+    for (final card in cards) (view: view, card: card),
+  ], title: '生产计划单_${view.planBillNo ?? view.planId}_执行工卡');
+}
+
+/// Generates one PDF containing every card from multiple confirmed plans.
+///
+/// The operation is all-or-nothing: an empty, duplicate, or invalid package
+/// rejects the whole batch rather than printing a misleading partial subset.
+Future<Uint8List> buildProductionExecutionCardBatchPdf(
+  List<ProductionWorkCardView> views,
+) async {
+  if (views.isEmpty || views.any((view) => !view.isPrintable)) {
+    throw StateError('Every batch item must be a confirmed V1 work-card view');
+  }
+  final cardCount = views.fold<int>(
+    0,
+    (total, view) => total + view.cards.length,
+  );
+  if (views.length > _maxPrintBatchPlans || cardCount > _maxPrintBatchCards) {
+    throw StateError('Print batch exceeds the supported plan or card limit');
+  }
+  final identities = <String>{};
+  final planIds = <String>{};
+  final segmentIds = <String>{};
+  final segmentCodes = <String>{};
+  for (final view in views) {
+    if (!_present(view.planId) || !_present(view.packageId)) {
+      throw StateError('Print batch contains a blank plan or package identity');
+    }
+    if (!planIds.add(view.planId)) {
+      throw StateError('Multiple packages for one plan cannot share a batch');
+    }
+    if (!identities.add('${view.planId}|${view.packageId}')) {
+      throw StateError('Duplicate production plan package in print batch');
+    }
+    for (final card in view.cards) {
+      if (!_present(card.segmentId) || !_present(card.segmentCode)) {
+        throw StateError('Print batch contains a blank segment identity');
+      }
+      if (!segmentIds.add(card.segmentId) ||
+          !segmentCodes.add(card.segmentCode)) {
+        throw StateError('Print batch contains a duplicate segment or barcode');
+      }
+    }
+  }
+  final entries = <({ProductionWorkCardView view, ProductionWorkCard card})>[
+    for (final view in views)
+      for (final card in view.cards) (view: view, card: card),
+  ];
+  if (entries.any(
+    (entry) => !_isExecutionCardPrintableStatus(entry.card.status),
+  )) {
+    throw StateError('Cancelled or reversed execution cards cannot be printed');
+  }
+  return _buildProductionExecutionCardPdf(
+    entries,
+    title: '生产计划单_批量${views.length}张计划_${entries.length}张工卡',
+  );
+}
+
+Future<Uint8List> _buildProductionExecutionCardPdf(
+  List<({ProductionWorkCardView view, ProductionWorkCard card})> entries, {
+  required String title,
+}) async {
   final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
   final font = pw.Font.ttf(fontData);
   final document = pw.Document(
-    title: '生产计划单_${view.planBillNo ?? view.planId}_执行工卡',
+    title: title,
     author: 'Uten IMP',
     creator: 'Uten IMP production planning',
     subject: 'Confirmed production execution package work cards',
     theme: pw.ThemeData.withFont(base: font, bold: font),
   );
 
-  for (final card in view.cards) {
+  for (final entry in entries) {
     document.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.fromLTRB(24, 22, 24, 22),
-        header: (_) => _pdfHeader(view, card),
-        footer: (context) => _pdfFooter(context, view, card),
+        header: (_) => _pdfHeader(entry.view, entry.card),
+        footer: (context) => _pdfFooter(context, entry.view, entry.card),
         build: (_) => [
-          _pdfMetadata(view, card),
+          _pdfMetadata(entry.view, entry.card),
+          if (_workCardOperationalNotice(entry.card) != null) ...[
+            pw.SizedBox(height: 6),
+            _pdfOperationalNotice(entry.card),
+          ],
           pw.SizedBox(height: 8),
-          _pdfMaterialTable(card),
+          _pdfMaterialTable(entry.card),
           pw.SizedBox(height: 8),
-          _pdfNotes(card),
+          _pdfNotes(entry.card),
           pw.SizedBox(height: 14),
           _pdfSignatures(),
+          pw.SizedBox(height: 12),
+          _pdfShopFloorRecordArea(),
         ],
       ),
     );
@@ -554,6 +867,7 @@ pw.Widget _pdfHeader(ProductionWorkCardView view, ProductionWorkCard card) {
               pw.SizedBox(height: 2),
               pw.Text(
                 '本批数量 ${_value(quantity)}  ·  '
+                '当前状态 ${_statusLabel(card.status, autoPromoteWhenReady: card.autoPromoteWhenReady)}  ·  '
                 '${_value(assignment)}  ·  '
                 '${_value(card.planBeginDate)} 至 ${_value(card.planEndDate)}',
                 style: const pw.TextStyle(fontSize: 9),
@@ -641,6 +955,22 @@ pw.Widget _pdfMetadata(ProductionWorkCardView view, ProductionWorkCard card) {
           ],
         ),
     ],
+  );
+}
+
+pw.Widget _pdfOperationalNotice(ProductionWorkCard card) {
+  final notice = _workCardOperationalNotice(card)!;
+  return pw.Container(
+    width: double.infinity,
+    padding: const pw.EdgeInsets.all(7),
+    decoration: pw.BoxDecoration(
+      color: PdfColors.grey200,
+      border: pw.Border.all(width: 0.7, color: PdfColors.grey700),
+    ),
+    child: pw.Text(
+      notice,
+      style: const pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+    ),
   );
 }
 
@@ -768,6 +1098,41 @@ pw.Widget _pdfSignatures() {
   );
 }
 
+pw.Widget _pdfShopFloorRecordArea() {
+  return pw.Container(
+    width: double.infinity,
+    height: 112,
+    padding: const pw.EdgeInsets.fromLTRB(8, 6, 8, 4),
+    decoration: pw.BoxDecoration(
+      border: pw.Border.all(width: 0.6, color: PdfColors.grey700),
+    ),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          '现场记录（异常 / 换料 / 停线 / 交接；手写内容不回写系统）',
+          style: const pw.TextStyle(
+            fontSize: 8.5,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+        pw.SizedBox(height: 5),
+        for (var index = 0; index < 4; index++)
+          pw.Expanded(
+            child: pw.Container(
+              width: double.infinity,
+              decoration: const pw.BoxDecoration(
+                border: pw.Border(
+                  bottom: pw.BorderSide(width: 0.35, color: PdfColors.grey500),
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
 pw.Widget _pdfFooter(
   pw.Context context,
   ProductionWorkCardView view,
@@ -815,15 +1180,36 @@ pw.Widget _pdfCell(
 
 String _statusLabel(String status, {bool autoPromoteWhenReady = true}) =>
     switch (status) {
-      'READY' => '可开工',
+      'READY' => '已齐套待派工',
       'WAITING' => autoPromoteWhenReady ? '待料 / 齐套自动转产' : '人工暂缓',
       'DISPATCHED' => '已派工',
       'IN_PROGRESS' => '生产中',
-      'COMPLETED' => '已完成',
+      'COMPLETED' => '已完成 · 仅供存档',
       'CANCELLED' => '已取消',
       'REVERSED' => '已反向',
       _ => status,
     };
+
+String? _workCardOperationalNotice(ProductionWorkCard card) {
+  final zeroMaterial = card.materialRequirementMode == 'ZERO_MATERIAL';
+  return switch (card.status) {
+    'READY' when zeroMaterial => '已齐套待派工：本段无生产领料需求；仍须完成车间派工，并由系统确认开工。',
+    'READY' => '已齐套待派工：库存已预留并生成领料需求；仍须仓库实际发料完成后，由系统确认开工。',
+    'WAITING' =>
+      card.autoPromoteWhenReady
+          ? '系统待料 · 禁止开工：物料齐套并完成仓库实发后，系统才会推进后续状态。'
+          : '人工暂缓 · 禁止开工：必须先解除暂缓，再完成齐套、仓库实发和系统状态确认。',
+    'DISPATCHED' when zeroMaterial => '已派工但尚未确认开工：本段无生产领料需求，仍须由系统确认后进入生产中。',
+    'DISPATCHED' => '已派工但尚未确认开工：仍须仓库实际发料完成，并由系统校验后进入生产中。',
+    'COMPLETED' => '已完成 · 仅供存档：本打印件不得再次作为开工、领料或派工指令。',
+    _ => null,
+  };
+}
+
+bool _isExecutionCardPrintableStatus(String status) => switch (status) {
+  'READY' || 'WAITING' || 'DISPATCHED' || 'IN_PROGRESS' || 'COMPLETED' => true,
+  _ => false,
+};
 
 String _routeLabel(String route) => switch (route) {
   'BUY' => '采购',

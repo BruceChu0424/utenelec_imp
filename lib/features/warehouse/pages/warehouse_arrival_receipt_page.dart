@@ -42,6 +42,7 @@ import '../../purchase/config/purchase_doc_config.dart';
 import '../../purchase/models/purchase_doc.dart';
 import '../../subcontract/config/subcontract_doc_config.dart';
 import '../../subcontract/models/subcontract_doc.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -182,6 +183,12 @@ class _WarehouseArrivalReceiptPageState
         context.appError('${line.item.goodsName} 的本次实收必须大于 0');
         return;
       }
+      final weightText = line.weight.text.trim();
+      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
+        context.appError('${line.item.goodsName} 的实际重量必须大于 0');
+        return;
+      }
       itemsBody.add({
         'goodsId': line.item.goodsId,
         'qty': qty,
@@ -192,6 +199,7 @@ class _WarehouseArrivalReceiptPageState
         if (line.item.unitId != null) 'unitId': line.item.unitId,
         // 委外进仓明细带单位换算率（与委外编辑页口径一致）；采购收货不需要。
         if (!_isPurchase) 'unitRate': line.item.unitRate,
+        'weight': ?weight,
         // 不带 price：价格对仓库不可见，收货审核时服务端按订货明细权威回填金额。
       });
     }
@@ -204,7 +212,8 @@ class _WarehouseArrivalReceiptPageState
       confirmLabel: '确认登记送检',
       message:
           '确认后按本次实收数量登记到货并直接送品质部待检(IQC)：'
-          '检验合格放行后库存增加；实到超过财务批准量时系统自动隔离并通知财务审核组，'
+          '检验合格后转仓库待入库任务，仓库确认实物与库位后库存才增加；'
+          '实到超过财务批准量时系统自动隔离并通知财务审核组，'
           '不会入库、不会生成应付。单价按订货单自动带入，无需填写。',
     );
     if (confirmed != true) return;
@@ -469,7 +478,7 @@ class _WarehouseArrivalReceiptPageState
                           const SizedBox(width: UtenSpacing.s8),
                           Expanded(
                             child: Text(
-                              '表格可左右滑动；数量、库位、系列和物料编码可直接编辑。',
+                              '表格可左右滑动；业务量、实际重量、库位、系列和物料编码可直接编辑。',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
@@ -514,7 +523,8 @@ class _WarehouseArrivalReceiptPageState
     return Semantics(
       container: true,
       label:
-          '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
+          '请按实际到货业务量登记；需要重量统计的货品同时填写实称总重量。'
+          '超出财务批准剩余量时不会直接入库，'
           '系统会隔离并通知财务审核组共享处理。',
       child: Card(
         color: theme.colorScheme.tertiaryContainer,
@@ -533,7 +543,7 @@ class _WarehouseArrivalReceiptPageState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '请按实际到货数量登记',
+                      '请按实际到货业务量和实称重量登记',
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
                         fontWeight: FontWeight.w700,
@@ -549,7 +559,7 @@ class _WarehouseArrivalReceiptPageState
                     ),
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '本页只登记数量与库位，不涉及价格与金额。'
+                      '本页登记带单位的业务量、可选实称总重量与库位，不涉及价格与金额。'
                       '实到数量超过财务批准剩余量时仍可如实填写——超出部分不会入库、'
                       '不会生成应付，系统会自动隔离并通知财务审核组共享处理。',
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -630,6 +640,25 @@ class _WarehouseArrivalReceiptPageState
       ),
     ),
     EditableGridColumn(
+      key: 'weight',
+      label: '实际重量',
+      width: 130,
+      numeric: true,
+      textOf: (line) => line.weight.text,
+      listenableOf: (line) => line.weight,
+      cellBuilder: (context, line) => Semantics(
+        textField: true,
+        label: '${line.item.goodsName} 实际重量',
+        child: TextField(
+          key: ValueKey('warehouse-arrival-weight-${line.item.orderItemId}'),
+          controller: line.weight,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textAlign: TextAlign.right,
+          decoration: const InputDecoration(hintText: '可选', isDense: true),
+        ),
+      ),
+    ),
+    EditableGridColumn(
       key: 'stockPlace',
       label: '库位号',
       width: 140,
@@ -677,9 +706,14 @@ class _WarehouseArrivalReceiptPageState
   ];
 
   Widget _buildBottomBar(ThemeData theme) {
-    final total = _lines.fold<double>(
-      0,
-      (sum, line) => sum + (double.tryParse(line.qty.text.trim()) ?? 0),
+    final totals = measurementTotalsText(
+      _lines.map(
+        (line) => MeasuredAmount(
+          value: double.tryParse(line.qty.text.trim()) ?? 0,
+          unitId: line.item.unitId,
+          unitName: line.item.unitName,
+        ),
+      ),
     );
     return SafeArea(
       child: Container(
@@ -693,7 +727,7 @@ class _WarehouseArrivalReceiptPageState
         child: LayoutBuilder(
           builder: (context, constraints) {
             final summary = Text(
-              '明细 ${_lines.length} 行 · 实收合计 ${procurementQty(total)}',
+              '明细 ${_lines.length} 行 · 实收 $totals',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -808,21 +842,24 @@ class _WarehouseArrivalReceiptPageState
   }
 }
 
-/// 一行到货登记明细的本地状态（数量 + 库位/系列/编码学习字段）。
+/// 一行到货登记明细的本地状态（业务量 + 实际总重量 + 库位/系列/编码学习字段）。
 class _ArrivalReceiptLine extends EditableGridRow {
   _ArrivalReceiptLine(this.item, {required this.onChanged})
     : qty = TextEditingController(
         text: procurementQty(item.approvedRemainingQty),
       ),
+      weight = TextEditingController(),
       stockPlace = TextEditingController(text: item.goodsStockPlace ?? ''),
       series = TextEditingController(text: item.goodsSeries ?? ''),
       goodsCode = TextEditingController(text: item.goodsCode) {
     qty.addListener(onChanged);
+    weight.addListener(onChanged);
   }
 
   final ProcurementReceiptPrefillItem item;
   final VoidCallback onChanged;
   final TextEditingController qty;
+  final TextEditingController weight;
   final TextEditingController stockPlace;
   final TextEditingController series;
   final TextEditingController goodsCode;
@@ -830,7 +867,9 @@ class _ArrivalReceiptLine extends EditableGridRow {
   @override
   void dispose() {
     qty.removeListener(onChanged);
+    weight.removeListener(onChanged);
     qty.dispose();
+    weight.dispose();
     stockPlace.dispose();
     series.dispose();
     goodsCode.dispose();

@@ -103,8 +103,9 @@ class _ProductionDailyReportDetailPageState
   }
 
   Future<void> _approve() => _doAction(
-    '审核后只累计完工申报量 fqty，并为每条明细生成生产成品质检任务；'
-        '此时不会增加库存或 iqty，只有品质通过后才生成仓库待点收单。确认继续？',
+    '审核后只累计完工申报量 fqty，并生成仓库到货登记任务；'
+        '此时不会增加库存或 iqty。仓库登记成品仓与库位并送品质部检查，'
+        '品质放行后再进入最终点收。确认继续？',
     (repo) => repo.approve(widget.id),
     '已审核',
     reviewerResponsibility: true,
@@ -250,7 +251,6 @@ class _ProductionDailyReportDetailPageState
       _KV('日期', d.billDate),
       _KV('制单员', d.makerName),
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
-      if (d.warehouseId != null) _KV('仓库', names.warehouse(d.warehouseId)),
       if (d.departmentId != null || (d.workshopName ?? '').isNotEmpty)
         _KV(
           '车间',
@@ -336,6 +336,13 @@ class _ProductionDailyReportDetailPageState
               width: 112,
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
+            ),
+            MasterColumnDef(
+              key: 'weight',
+              label: '实际重量',
+              width: 100,
+              type: 'number',
+              value: (it) => it.weight?.toStringAsFixed(4),
             ),
             MasterColumnDef(
               key: 'planNo',

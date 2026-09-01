@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
+import com.uten.imp.application.port.ProcurementIqcRejectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
@@ -40,8 +41,8 @@ class ProcurementInspectionBatchContractTest {
                 mock(TxSessionVars.class),
                 purchase,
                 subcontract,
-                mock(PreplanAnalysisPegPort.class),
-                mock(BusinessEventPublisher.class));
+                mock(BusinessEventPublisher.class),
+                mock(ProcurementIqcRejectionPort.class));
         UUID receiptId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
 

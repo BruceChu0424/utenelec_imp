@@ -1,14 +1,14 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（V429；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（V443/V446；保留主档、人事、权限与治理证据）
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
---   · CLEAR 192 张：销售、采购、库存、生产、委外、财务、工资、通知、访客、
+--   · CLEAR 212/214/219 张：V443 为212张，V446新增两张 IQC 仓库入库事实表后为214张，V447新增五张交接事实表后为219张；
 --     建议、任务认领和业务 outbox。
---   · PRESERVE 92 张：主档、人事、账号/权限、系统配置、Flyway、审计日志、
+--   · PRESERVE 95 张：V442 的四张单位/迁移计量治理证据表明确保留；PostGIS 扩展表不进入业务策略计数；其余为主档、人事、账号/权限、系统配置、Flyway、审计日志、
 --     人事附件、导入/迁移证据、编号终身占用和单调流水。账户主档保留，
 --     init/收/付/调整/当前余额五个金额字段在业务事实清空后同事务归零；
 --     客户/供应商期初往来、货品 legacy 期初库存、安全库存、20 项成本金额/费率及
@@ -30,7 +30,7 @@
 --
 -- 先备份（示例；不要覆盖既有备份）：
 --   $resetStamp = Get-Date -Format 'yyyyMMdd_HHmmss'
---   $backupName = "uten_imp_pre_reset_v429_$resetStamp.dump"
+--   $backupName = "uten_imp_pre_reset_v431_or_v440_$resetStamp.dump"
 --   docker exec uten-imp-postgres pg_dump -U uten -d uten_imp -Fc \
 --       -f "/tmp/$backupName"
 --   docker exec uten-imp-postgres pg_restore -l "/tmp/$backupName"
@@ -252,10 +252,16 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('production_daily_reports', 'CLEAR'),
 ('production_execution_segment_events', 'CLEAR'),
 ('production_execution_segments', 'CLEAR'),
+('production_finished_arrival_registration_items', 'CLEAR'),
+('production_finished_arrival_registrations', 'CLEAR'),
+('production_finished_in_confirm_batch_items', 'CLEAR'),
+('production_finished_in_confirm_batches', 'CLEAR'),
 ('production_fqc_cancellation_events', 'CLEAR'),
 ('production_fqc_contribution_adjustments', 'CLEAR'),
 ('production_fqc_decision_events', 'CLEAR'),
 ('production_fqc_inspections', 'CLEAR'),
+('production_fqc_pass_all_batch_items', 'CLEAR'),
+('production_fqc_pass_all_batches', 'CLEAR'),
 ('production_fqc_legacy_exemptions', 'CLEAR'),
 ('production_fqc_recovery_allocation_events', 'CLEAR'),
 ('production_fqc_recovery_authorizations', 'CLEAR'),
@@ -372,6 +378,9 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('visitor_refresh_tokens', 'CLEAR'),
 ('visitor_sms_codes', 'CLEAR'),
 ('warehouse_arrival_registration_commands', 'CLEAR'),
+('warehouse_arrival_exception_stock_in_batch_items', 'CLEAR'),
+('warehouse_arrival_exception_stock_in_batches', 'CLEAR'),
+('warehouse_goods_place_preferences', 'CLEAR'),
 ('website_inquiries', 'CLEAR'),
 ('accounts', 'PRESERVE'),
 ('attachment_object_outbox', 'PRESERVE'),
@@ -453,7 +462,6 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('role_permissions', 'PRESERVE'),
 ('roles', 'PRESERVE'),
 ('settlement_methods', 'PRESERVE'),
-('spatial_ref_sys', 'PRESERVE'),
 ('supplier_categories', 'PRESERVE'),
 ('suppliers', 'PRESERVE'),
 ('system_master_category_registry', 'PRESERVE'),
@@ -467,6 +475,71 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('users', 'PRESERVE'),
 ('warehouses', 'PRESERVE');
 
+-- V436/V440 add six business tables. Support the current live V431 catalog and
+-- the forward V440+ catalog without inventing absent tables; the count gate
+-- below permits only all-six-absent or all-six-present.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('procurement_iqc_rejection_cases', 'CLEAR'),
+('procurement_iqc_rejection_commands', 'CLEAR'),
+('procurement_iqc_rejection_events', 'CLEAR'),
+('procurement_iqc_replacement_allocations', 'CLEAR'),
+('subcontract_outbound_issue_reservation_allocations', 'CLEAR'),
+('subcontract_outbound_preparation_commands', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V443 adds the append-only shipment finance decision ledger. It is a
+-- business-process fact and must be cleared before its parent shipment during
+-- a deliberately authorized local/test reset.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('sales_shipment_finance_release_events', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V446 immutable warehouse confirmations are business transaction facts.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('procurement_iqc_stock_in_batch_items', 'CLEAR'),
+('procurement_iqc_stock_in_batches', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V447 cross-analysis subcontract handoff ledgers are append-only business
+-- transaction facts.  Keep the reset usable at V446, but only accept all five
+-- V447 tables together.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('preplan_subcontract_entitlement_handoff_slices', 'CLEAR'),
+('preplan_subcontract_requirement_handoff_events', 'CLEAR'),
+('preplan_subcontract_requirement_handoff_items', 'CLEAR'),
+('preplan_subcontract_requirement_handoffs', 'CLEAR'),
+('preplan_subcontract_requirement_supply_claims', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
+-- V442 measurement learning adds four business-derived projections/events and
+-- four governed migration/unit-evidence tables. Keep the script usable before
+-- and after V442, but reject a partially applied catalog.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('legacy_measurement_exceptions', 'PRESERVE'),
+('legacy_measurement_profile_snapshots', 'PRESERVE'),
+('legacy_measurement_source_registry', 'PRESERVE'),
+('measurement_capture_decision_events', 'CLEAR'),
+('measurement_capture_evidence', 'CLEAR'),
+('measurement_capture_line_snapshots', 'CLEAR'),
+('measurement_capture_profiles', 'CLEAR'),
+('unit_measurement_profiles', 'PRESERVE')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
 DO $$
 DECLARE
     duplicate_tables TEXT;
@@ -474,6 +547,13 @@ DECLARE
     invalid_policy_tables TEXT;
     clear_count BIGINT;
     preserve_count BIGINT;
+    measurement_table_count BIGINT;
+    v440_business_table_count BIGINT;
+    v443_business_table_count BIGINT;
+    v446_business_table_count BIGINT;
+    v447_business_table_count BIGINT;
+    applied_migration_count BIGINT;
+    applied_max_version INTEGER;
     unsafe_fk_edges TEXT;
 BEGIN
     SELECT string_agg(table_name, ', ' ORDER BY table_name)
@@ -497,6 +577,21 @@ BEGIN
     WHERE n.nspname = 'public'
       AND c.relkind IN ('r', 'p')
       AND c.relispartition = FALSE
+      AND c.relname <> 'spatial_ref_sys'
+      AND NOT EXISTS (
+          SELECT 1
+          FROM pg_depend dependency
+          JOIN pg_extension extension
+            ON extension.oid = dependency.refobjid
+          WHERE dependency.classid = 'pg_class'::regclass
+            AND dependency.objid = c.oid
+            AND dependency.deptype = 'e'
+      )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM pg_extension extension
+          WHERE c.oid = ANY(COALESCE(extension.extconfig, ARRAY[]::OID[]))
+      )
       AND p.table_name IS NULL;
 
     IF unknown_tables IS NOT NULL THEN
@@ -529,10 +624,121 @@ BEGIN
     INTO clear_count, preserve_count
     FROM reset_business_table_policy;
 
-    IF clear_count <> 192 OR preserve_count <> 92 THEN
+    SELECT count(*)
+    INTO measurement_table_count
+    FROM reset_business_table_policy
+    WHERE table_name IN (
+        'legacy_measurement_exceptions',
+        'legacy_measurement_profile_snapshots',
+        'legacy_measurement_source_registry',
+        'measurement_capture_decision_events',
+        'measurement_capture_evidence',
+        'measurement_capture_line_snapshots',
+        'measurement_capture_profiles',
+        'unit_measurement_profiles'
+    );
+
+    IF measurement_table_count <> 8 THEN
         RAISE EXCEPTION
-            'V429 白名单数量异常：CLEAR %（应为192），PRESERVE %（应为92）',
-            clear_count, preserve_count;
+            'V443/V446 要求 V442 计量学习表完整存在，当前 %/8',
+            measurement_table_count;
+    END IF;
+
+    SELECT count(*)
+    INTO v440_business_table_count
+    FROM reset_business_table_policy
+    WHERE table_name IN (
+        'procurement_iqc_rejection_cases',
+        'procurement_iqc_rejection_commands',
+        'procurement_iqc_rejection_events',
+        'procurement_iqc_replacement_allocations',
+        'subcontract_outbound_issue_reservation_allocations',
+        'subcontract_outbound_preparation_commands'
+    );
+
+    IF v440_business_table_count <> 6 THEN
+        RAISE EXCEPTION
+            'V443/V446 要求 V436/V440 业务表完整存在，当前 %/6',
+            v440_business_table_count;
+    END IF;
+
+    SELECT count(*)
+    INTO v443_business_table_count
+    FROM reset_business_table_policy
+    WHERE table_name = 'sales_shipment_finance_release_events';
+
+    IF v443_business_table_count <> 1 THEN
+        RAISE EXCEPTION
+            'V443 财审事件表必须存在，当前 %/1',
+            v443_business_table_count;
+    END IF;
+
+    SELECT count(*)
+    INTO v446_business_table_count
+    FROM reset_business_table_policy
+    WHERE table_name IN (
+        'procurement_iqc_stock_in_batch_items',
+        'procurement_iqc_stock_in_batches'
+    );
+
+    IF v446_business_table_count NOT IN (0, 2) THEN
+        RAISE EXCEPTION
+            'V446 IQC 入库表只出现 %/2，拒绝在部分迁移目录上重置',
+            v446_business_table_count;
+    END IF;
+
+    SELECT count(*) FILTER (WHERE success),
+           max(version::INTEGER) FILTER (
+               WHERE success AND version ~ '^[0-9]+$'
+           )
+    INTO applied_migration_count, applied_max_version
+    FROM flyway_schema_history;
+
+    IF (applied_max_version, applied_migration_count) NOT IN (
+        (443, 405),
+        (446, 408),
+        (447, 409)
+    ) THEN
+        RAISE EXCEPTION
+            '仅允许 V443/405、V446/408 或 V447/409 目录，当前 V%/%',
+            applied_max_version, applied_migration_count;
+    END IF;
+
+    SELECT count(*)
+    INTO v447_business_table_count
+    FROM reset_business_table_policy
+    WHERE table_name IN (
+        'preplan_subcontract_entitlement_handoff_slices',
+        'preplan_subcontract_requirement_handoff_events',
+        'preplan_subcontract_requirement_handoff_items',
+        'preplan_subcontract_requirement_handoffs',
+        'preplan_subcontract_requirement_supply_claims'
+    );
+
+    IF v447_business_table_count NOT IN (0, 5) THEN
+        RAISE EXCEPTION
+            'V447 委外前置自制权益交接表只出现 %/5，拒绝在部分迁移目录上重置',
+            v447_business_table_count;
+    END IF;
+    IF v447_business_table_count = 5 AND v446_business_table_count <> 2 THEN
+        RAISE EXCEPTION
+            'V447 目录必须同时包含完整 V446 IQC 仓库入库事实表';
+    END IF;
+
+    IF preserve_count <> 95
+       OR NOT (
+           (v446_business_table_count = 0
+                AND v447_business_table_count = 0 AND clear_count = 212)
+           OR (v446_business_table_count = 2
+                AND v447_business_table_count = 0 AND clear_count = 214)
+           OR (v446_business_table_count = 2
+                AND v447_business_table_count = 5 AND clear_count = 219)
+       ) THEN
+        RAISE EXCEPTION
+            'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V442表 %/8，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5',
+            clear_count, preserve_count, measurement_table_count,
+            v440_business_table_count, v443_business_table_count,
+            v446_business_table_count, v447_business_table_count;
     END IF;
 
     SELECT string_agg(

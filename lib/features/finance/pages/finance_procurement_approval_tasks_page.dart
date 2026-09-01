@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -164,7 +165,7 @@ class _FinanceProcurementApprovalTasksPageState
       context.appWarning('该任务缺少有效的订货类型或单据编号，请刷新后重试');
       return;
     }
-    goFrom(context, route);
+    context.push(route);
   }
 
   List<FinanceProcurementApprovalTask> get _selectedTasks => [
@@ -567,6 +568,13 @@ class _FinanceProcurementApprovalTasksPageState
                   ),
                   const SizedBox(height: UtenSpacing.s8),
                   search,
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    '单击选择，双击或长按查看订货详情',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               );
             }
@@ -577,7 +585,7 @@ class _FinanceProcurementApprovalTasksPageState
                 SizedBox(width: 360, child: search),
                 const Spacer(),
                 Text(
-                  '共 ${result.total} 笔 · 单击选择，双击详情',
+                  '共 ${result.total} 笔 · 单击选择，双击或长按详情',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),

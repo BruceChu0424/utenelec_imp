@@ -131,7 +131,7 @@ abstract interface class ProcurementInspectionRepository {
     String receiptId,
   );
 
-  /// PASS 合格放行（进可用库存 + 整单结案后唤醒生产）/ FAIL 不合格（只记事实）。
+  /// PASS 合格放行（形成仓库待入库切片）/ FAIL 不合格（只记质量事实）。
   /// baseQty 可空 = 全部剩余待检量；PASS reason 可空，FAIL 原因必填；
   /// idempotencyKey 必填（服务端幂等）。
   Future<void> dispose({

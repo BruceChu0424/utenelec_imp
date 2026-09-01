@@ -22,6 +22,18 @@ String? validateSubcontractOrderPrice({
   return null;
 }
 
+/// 委外商业税率由财务审批冻结，不能用 null 或越界值让后端猜测。
+String? validateSubcontractTaxRate(String value, {required bool required}) {
+  final text = value.trim();
+  if (text.isEmpty) return required ? '请明确填写税率；免税或零税率请填 0' : null;
+  final parsed = double.tryParse(text);
+  if (parsed == null) return '税率格式不正确，请填写 0 到 100 之间的数字';
+  if (!parsed.isFinite || parsed < 0 || parsed > 100) {
+    return '税率必须在 0 到 100 之间';
+  }
+  return null;
+}
+
 /// Saves one subcontract document and, for orders only, immediately submits
 /// the saved draft to the configured finance reviewer.
 ///

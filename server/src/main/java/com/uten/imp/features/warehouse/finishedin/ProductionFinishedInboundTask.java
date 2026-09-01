@@ -7,6 +7,9 @@ import java.util.UUID;
 
 /** Warehouse-owned projection for production FINISHED_IN drafts awaiting count. */
 public record ProductionFinishedInboundTask(
+        String taskStage,
+        UUID taskId,
+        UUID reportId,
         UUID documentId,
         String documentNo,
         LocalDate documentDate,

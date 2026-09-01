@@ -42,6 +42,7 @@ import '../../basic_data/widgets/client_ship_address_sheet.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/auth/permissions.dart';
@@ -130,13 +131,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   /// 对应输入框描红；字段改值即时清除。
   final Set<String> _errors = {};
 
-  /// 已挂「件数自动汇总」监听的数量控制器（随行增删同步挂载/卸除）。
+  /// 已挂计量汇总刷新监听的数量控制器（随行增删同步挂载/卸除）。
   final Set<TextEditingController> _qtyListened = {};
 
   @override
   void initState() {
     super.initState();
-    // 明细行增删 → 重新挂载数量监听并重算件数（行内数量改动走各行 qty 监听）。
+    // 明细行增删 → 重新挂载数量监听并刷新按单位分组的业务量。
     _grid.addListener(_onGridRowsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
@@ -145,7 +146,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   void dispose() {
     _grid.removeListener(_onGridRowsChanged);
     for (final c in _qtyListened) {
-      c.removeListener(_recalcParcelCount);
       c.removeListener(_recalcQtyTotal);
     }
     _qtyListened.clear();
@@ -269,9 +269,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             ..outItemId = it.outItemId
             ..colorId = it.colorId
             ..unitId = it.unitId
+            ..unitRate = it.unitRate
             ..solution = it.solution
             ..responsible = it.responsible;
           row.qty.text = it.qty?.toString() ?? '';
+          row.weight.text = it.weight?.toString() ?? '';
           row.price.text = it.price?.toString() ?? '';
           // 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
           if (it.machiningPrice != null) {
@@ -359,6 +361,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         // 颜色/单位直接回填货品主档 UUID，单元格只读显示。
         ..colorId = g.colorId
         ..unitId = g.unitId
+        ..unitRate = 1
         ..stockPlaceNotifier.value = g.stockPlace;
       // 订单/出货：单价由货品主档自动带入、锁定（出货亦可由来源订货单引入；金额=数量×单价）。
       if (widget.docType == SalesDocType.order ||
@@ -382,8 +385,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       }
       _grid.addRows(extraRows);
     }
-    // 货品选定后该行数量才计入件数（先填数量后选货品的情形）。
-    _recalcParcelCount();
+    _recalcQtyTotal();
   }
 
   /// 实物出入库单据（出货/其它出货/退货）：按货品主档补全各行库位号（拣货/上架指引）。
@@ -533,41 +535,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   void _onGridRowsChanged() {
     final current = _grid.rows.map((r) => r.qty).toSet();
     for (final c in _qtyListened.difference(current)) {
-      c.removeListener(_recalcParcelCount);
       c.removeListener(_recalcQtyTotal);
     }
     for (final c in current.difference(_qtyListened)) {
-      c.addListener(_recalcParcelCount);
       c.addListener(_recalcQtyTotal);
     }
     _qtyListened
       ..clear()
       ..addAll(current);
-    _recalcParcelCount();
     _recalcQtyTotal();
   }
 
-  /// 件数 = 明细各行（已选货品）数量之和，四舍五入取整；无有效行返回 null。
-  int? _computedParcelCount() {
-    var sum = 0.0;
-    var has = false;
-    for (final r in _grid.rows) {
-      if (r.goods == null) continue;
-      has = true;
-      sum += double.tryParse(r.qty.text.trim()) ?? 0;
-    }
-    return has ? sum.round() : null;
-  }
-
-  /// 件数自动汇总（仅出货类 hasShipInfo 单据）：数量改动/行增删时刷新只读框。
-  void _recalcParcelCount() {
-    if (!_cfg.hasShipInfo) return;
-    final n = _computedParcelCount();
-    final text = n == null ? '' : n.toString();
-    if (_parcelCount.text != text) _parcelCount.text = text;
-  }
-
-  /// 网格底部「总数量」= 各行数量之和（行增删/数量改动时实时刷新 footer）。
+  /// 仅用作 footer 刷新信号；展示值由 footer 按 unitId 分组重算，绝不跨单位相加。
   void _recalcQtyTotal() {
     var sum = 0.0;
     for (final r in _grid.rows) {
@@ -674,11 +653,25 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       return;
     }
     final rows = _grid.rows;
+    final parcelText = _parcelCount.text.trim();
+    final parcelCount = parcelText.isEmpty ? null : int.tryParse(parcelText);
+    if (_cfg.hasShipInfo &&
+        parcelText.isNotEmpty &&
+        (parcelCount == null || parcelCount < 0)) {
+      context.appError('物流件数必须为不小于 0 的整数');
+      return;
+    }
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
       final qty = double.tryParse(r.qty.text) ?? 0;
       final price = double.tryParse(r.price.text);
+      final weightText = r.weight.text.trim();
+      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
+        context.appError('${r.goods!.name} 的实际重量必须大于 0');
+        return;
+      }
       // 补列：按 docType 序列化对应字段（空文本不传，后端按 nullable 处理）。
       double? parseExtra(TextEditingController c) {
         final t = c.text.trim();
@@ -701,6 +694,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         if (r.outItemId != null) 'outItemId': r.outItemId,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
+        if (r.unitRate != null) 'unitRate': r.unitRate,
+        'weight': ?weight,
         // 行备注：5 类单据通用（空文本不传，后端按 null 处理）。
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       };
@@ -777,9 +772,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         // 物流/快递单号：一张出货单一个；订单详情聚合展示全部出货单的单号。
         if (_logisticsNo.text.trim().isNotEmpty)
           'logisticsNo': _logisticsNo.text.trim(),
-        // 件数由明细数量自动汇总（不依赖只读框文本）。
-        if (_computedParcelCount() != null)
-          'parcelCount': _computedParcelCount(),
+        // 物流件数是独立包装事实，不能由 kg/个/套等业务量相加推导。
+        'parcelCount': ?parcelCount,
       },
       if (_cfg.hasOutType && _outType.text.trim().isNotEmpty)
         'outType': _outType.text.trim(),
@@ -1230,18 +1224,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                         labelText: '物流单号(发货后可填)',
                                       ),
                                     ),
-                                    // 件数：按明细数量自动汇总，只读（保存时同样按明细重算）。
-                                    TextField(
+                                    TextFormField(
                                       controller: _parcelCount,
-                                      readOnly: true,
+                                      keyboardType: TextInputType.number,
                                       decoration: const InputDecoration(
-                                        labelText: '件数(系统自动生成)',
-                                        hintText: '按明细数量自动汇总',
-                                        filled: true,
-                                        suffixIcon: Icon(
-                                          Icons.calculate_outlined,
-                                          size: 16,
-                                        ),
+                                        labelText: '物流件数',
+                                        hintText: '按实际包装填写，不从明细数量推导',
                                       ),
                                     ),
                                   ],
@@ -1335,7 +1323,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           amountUsesDiscount: _amountUsesDiscount,
                         ),
                         cloneRow: (r) => r.clone(),
-                        // 网格底部「添加行」上方：总数量 + 总金额（右对齐实时汇总）。
+                        // 网格底部：业务量严格按单位 UUID 分组；金额仍可在同币种单据内汇总。
                         footer: Wrap(
                           alignment: WrapAlignment.end,
                           crossAxisAlignment: WrapCrossAlignment.center,
@@ -1344,8 +1332,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           children: [
                             ValueListenableBuilder<double>(
                               valueListenable: _totalQtyNotifier,
-                              builder: (_, q, _) =>
-                                  Text('总数量 ${q.toStringAsFixed(2)}'),
+                              builder: (_, _, _) => Text(
+                                '业务量 ${measurementTotalsText(_grid.rows.where((row) => row.goods != null).map((row) => MeasuredAmount(value: double.tryParse(row.qty.text.trim()) ?? 0, unitId: row.unitId, unitName: names.unitEntries[row.unitId])))}',
+                              ),
                             ),
                             ValueListenableBuilder<double>(
                               valueListenable: _grid.totalListenable,

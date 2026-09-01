@@ -7,6 +7,7 @@ import com.uten.imp.features.purchase.receipt.ReceiptPriceMasker;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -47,11 +49,14 @@ class ProcurementArrivalGuardPostgresTest {
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
-        Flyway.configure()
+        var configuration = Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+                .locations("classpath:db/migration");
+        String target = System.getProperty("uten.test.flyway.target");
+        if (target != null && !target.isBlank()) {
+            configuration.target(MigrationVersion.fromVersion(target));
+        }
+        configuration.load().migrate();
     }
 
     @AfterAll
@@ -79,6 +84,279 @@ class ProcurementArrivalGuardPostgresTest {
         assertEquals(0L, page.getTotal());
         assertEquals(0L, assertDoesNotThrow(service::countExpectations));
         assertTrue(assertDoesNotThrow(service::countExpectationsByType).isEmpty());
+    }
+
+    @Test
+    void subcontractExpectationAppearsOnlyForTheActuallyOutboundBatch() throws Exception {
+        UUID unitId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        UUID supplierId = UUID.randomUUID();
+        UUID currencyId = UUID.randomUUID();
+        UUID settlementMethodId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID orderItemId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        UUID approvalCaseId = UUID.randomUUID();
+        UUID expectationId = UUID.randomUUID();
+        Identity actor;
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            actor = loadIdentity(connection);
+            setReplica(connection, true);
+            executeSql(connection, """
+                    INSERT INTO units(id, code, name, status)
+                    VALUES (?, ?, 'piece', '使用')
+                    """, unitId, "ARR-REL-U-" + unitId);
+            executeSql(connection, """
+                    INSERT INTO goods(id, code, name, unit_id, code_sequence)
+                    VALUES (?, ?, 'outbound released goods', ?,
+                            (SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
+                    """, goodsId, "ARR-REL-G-" + goodsId, unitId);
+            executeSql(connection, """
+                    INSERT INTO warehouses(id, code, name, status)
+                    VALUES (?, ?, 'outbound release warehouse', '使用')
+                    """, warehouseId, "ARR-REL-W-" + warehouseId);
+            executeSql(connection, """
+                    INSERT INTO currencies(id, code, name, exchange_rate, status)
+                    VALUES (?, ?, 'outbound release currency', 1, '使用')
+                    """, currencyId, "ARR-REL-C-" + currencyId);
+            executeSql(connection, """
+                    INSERT INTO settlement_methods(id, code, name, status)
+                    VALUES (?, ?, 'outbound release settlement', '使用')
+                    """, settlementMethodId, "ARR-REL-S-" + settlementMethodId);
+            executeSql(connection, """
+                    INSERT INTO suppliers(
+                        id, code, name, status, category_id,
+                        code_sequence, code_managed)
+                    SELECT ?, ?, 'outbound release supplier', '使用', category.id,
+                           (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM suppliers),
+                           FALSE
+                    FROM supplier_categories category
+                    WHERE category.is_deleted = FALSE
+                    ORDER BY category.id
+                    LIMIT 1
+                    """, supplierId, "ARR-REL-SUP-" + supplierId);
+            executeSql(connection, """
+                    INSERT INTO subcontract_orders(
+                        id, bill_no, bill_date, supplier_id, warehouse_id,
+                        currency_id, exchange_rate, tax_rate,
+                        settlement_method_id, total_original, total_local, status)
+                    VALUES (?, ?, DATE '2026-08-31', ?, ?, ?, 1, 0, ?, 0, 0, 1)
+                    """, orderId, "EO-ARR-REL-" + orderId,
+                    supplierId, warehouseId, currencyId, settlementMethodId);
+            executeSql(connection, """
+                    INSERT INTO subcontract_order_items(
+                        id, bill_no, bill_date, order_id, line_no,
+                        goods_id, unit_id, unit_rate, qty, price,
+                        amount_original, amount_local,
+                        goods_code_snapshot, goods_name_snapshot,
+                        goods_snapshot_source, goods_snapshot_locked_at)
+                    VALUES (?, ?, DATE '2026-08-31', ?, 1,
+                            ?, ?, 1, 5, 0, 0, 0, ?, 'outbound released goods',
+                            'MASTER_AT_APPROVAL', now())
+                    """, orderItemId, "EO-ARR-REL-" + orderId, orderId,
+                    goodsId, unitId, "ARR-REL-G-" + goodsId);
+            executeSql(connection, """
+                    INSERT INTO procurement_order_approval_cases(
+                        id, order_type, order_id, attempt, bill_no_snapshot,
+                        amount_snapshot, submission_snapshot, snapshot_hash,
+                        submitted_by_user_id, submitted_by_employee_id,
+                        assignee_user_id, assignee_employee_id,
+                        assignee_name_snapshot, status,
+                        decided_by_user_id, decided_by_employee_id, decided_at)
+                    VALUES (?, 'SUBCONTRACT', ?, 1, ?, 0, '{}'::jsonb,
+                            repeat('a',64), ?, ?, ?, ?, ?, 'APPROVED', ?, ?, now())
+                    """, approvalCaseId, orderId, "EO-ARR-REL-" + orderId,
+                    actor.userId(), actor.employeeId(), actor.userId(), actor.employeeId(),
+                    actor.name(), actor.userId(), actor.employeeId());
+            executeSql(connection, """
+                    INSERT INTO inbound_expectations(
+                        id, order_type, order_id, approval_case_id,
+                        bill_no_snapshot, warehouse_id, expected_date,
+                        owner_employee_id, status, created_by)
+                    VALUES (?, 'SUBCONTRACT', ?, ?, ?, ?, DATE '2026-09-10',
+                            ?, 'OPEN', ?)
+                    """, expectationId, orderId, approvalCaseId,
+                    "EO-ARR-REL-" + orderId, warehouseId,
+                    actor.employeeId(), actor.userId());
+            executeSql(connection, """
+                    INSERT INTO inbound_expectation_items(
+                        id, expectation_id, order_item_id, line_no,
+                        goods_id, unit_id, unit_rate,
+                        ordered_qty, accepted_qty, expected_date)
+                    VALUES (?, ?, ?, 1, ?, ?, 1, 5, 0, DATE '2026-09-10')
+                    """, UUID.randomUUID(), expectationId, orderItemId, goodsId, unitId);
+            executeSql(connection, """
+                    INSERT INTO subcontract_material_plans(
+                        id, order_id, order_bill_no, status, created_by, updated_by)
+                    VALUES (?, ?, ?, 'OPEN', ?, ?)
+                    """, planId, orderId, "EO-ARR-REL-" + orderId,
+                    actor.userId(), actor.userId());
+            executeSql(connection, """
+                    INSERT INTO subcontract_material_plan_items(
+                        id, plan_id, order_item_id, line_no,
+                        parent_goods_id, goods_id, unit_id,
+                        unit_rate, bom_unit_qty, planned_qty, issued_qty,
+                        flow_mode, preparation_status, prepared_qty,
+                        bom_has_children_snapshot, preparation_bom_fingerprint,
+                        preparation_warehouse_id, created_by, updated_by)
+                    VALUES (?, ?, ?, 1, ?, ?, ?, 1, 1, 5, 0,
+                            'DIRECT_OUTBOUND', 'READY_OUTBOUND', 5,
+                            FALSE, repeat('b',64), ?, ?, ?)
+                    """, planItemId, planId, orderItemId, goodsId, goodsId,
+                    unitId, warehouseId, actor.userId(), actor.userId());
+            setReplica(connection, false);
+            connection.commit();
+        }
+
+        ProcurementArrivalControlService service = service();
+        assertEquals(0L, service.expectations(1, 20, "SUBCONTRACT", "").getTotal());
+        assertEquals(0L, service.countExpectations());
+
+        UUID issueId = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            setReplica(connection, true);
+            executeSql(connection, """
+                    INSERT INTO subcontract_material_issues(
+                        id, bill_no, bill_date, warehouse_id, status, created_by)
+                    VALUES (?, ?, DATE '2026-08-31', ?, 1, ?)
+                    """, issueId, "EC-ARR-REL-" + issueId,
+                    warehouseId, actor.userId());
+            executeSql(connection, """
+                    INSERT INTO subcontract_material_issue_items(
+                        id, bill_no, bill_date, issue_id, order_item_id, line_no,
+                        goods_id, unit_id, unit_rate, qty,
+                        at_supplier_qty, consumed_qty, plan_item_id,
+                        goods_code_snapshot, goods_name_snapshot,
+                        goods_snapshot_source, goods_snapshot_locked_at)
+                    VALUES (?, ?, DATE '2026-08-31', ?, ?, 1,
+                            ?, ?, 1, 2, 2, 0, ?, ?, 'outbound released goods',
+                            'MASTER_AT_APPROVAL', now())
+                    """, UUID.randomUUID(), "EC-ARR-REL-" + issueId,
+                    issueId, orderItemId, goodsId, unitId, planItemId,
+                    "ARR-REL-G-" + goodsId);
+            setReplica(connection, false);
+            connection.commit();
+        }
+
+        var released = service.expectations(1, 20, "SUBCONTRACT", "");
+        assertEquals(1L, released.getTotal());
+        assertEquals(0, new BigDecimal("2.0000")
+                .compareTo(released.getItems().getFirst().remainingQty()));
+        assertEquals(0, new BigDecimal("2.0000")
+                .compareTo(released.getItems().getFirst().items().getFirst().remainingQty()));
+        assertEquals(1L, service.countExpectationsByType().get("SUBCONTRACT"));
+
+        UUID receiptId = UUID.randomUUID();
+        UUID receiptItemId = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            setReplica(connection, true);
+            executeSql(connection, """
+                    INSERT INTO subcontract_receipts(
+                        id, bill_no, bill_date, warehouse_id, status, created_by)
+                    VALUES (?, ?, DATE '2026-08-31', ?, 1, ?)
+                    """, receiptId, "EI-ARR-REL-" + receiptId,
+                    warehouseId, actor.userId());
+            executeSql(connection, """
+                    INSERT INTO subcontract_receipt_items(
+                        id, bill_no, bill_date, receipt_id, order_item_id, line_no,
+                        goods_id, unit_id, unit_rate, qty,
+                        goods_code_snapshot, goods_name_snapshot,
+                        goods_snapshot_source, goods_snapshot_locked_at)
+                    VALUES (?, ?, DATE '2026-08-31', ?, ?, 1,
+                            ?, ?, 1, 2, ?, 'outbound released goods',
+                            'MASTER_AT_APPROVAL', now())
+                    """, receiptItemId, "EI-ARR-REL-" + receiptId,
+                    receiptId, orderItemId, goodsId, unitId,
+                    "ARR-REL-G-" + goodsId);
+            setReplica(connection, false);
+            connection.commit();
+        }
+
+        assertEquals(0L, service.expectations(1, 20, "SUBCONTRACT", "").getTotal());
+        assertEquals(0L, service.countExpectations());
+
+        UUID rejectionCaseId = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            setReplica(connection, true);
+            executeSql(connection, """
+                    INSERT INTO procurement_iqc_rejection_cases(
+                        id, receipt_type, receipt_id, receipt_item_id,
+                        inspection_item_id, order_item_id, receipt_bill_no,
+                        order_bill_no, supplier_id, currency_id, exchange_rate,
+                        tax_rate, settlement_method_id, goods_id, unit_id,
+                        unit_rate, received_base_qty, received_qty,
+                        received_amount_original, received_amount_local,
+                        failed_base_qty, failed_qty, failed_amount_original,
+                        failed_amount_local, owner_user_id, status, row_version,
+                        return_reference, return_date, return_note,
+                        return_recorded_by, return_recorded_at, created_by, updated_by)
+                    VALUES (?, 'SUBCONTRACT', ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?,
+                            1, 2, 2, 0, 0, 2, 2, 0, 0, ?, 'RETURN_RECORDED', 1,
+                            'RET-ARR-REL', DATE '2026-09-01', 'physical IQC return',
+                            ?, now(), ?, ?)
+                    """, rejectionCaseId, receiptId, receiptItemId, UUID.randomUUID(),
+                    orderItemId, "EI-ARR-REL-" + receiptId,
+                    "EO-ARR-REL-" + orderId, supplierId, currencyId,
+                    settlementMethodId, goodsId, unitId, actor.userId(),
+                    actor.userId(), actor.userId(), actor.userId());
+            setReplica(connection, false);
+            connection.commit();
+        }
+
+        var replacementReleased = service.expectations(1, 20, "SUBCONTRACT", "");
+        assertEquals(1L, replacementReleased.getTotal());
+        assertEquals(0, new BigDecimal("2")
+                .compareTo(replacementReleased.getItems().getFirst().remainingQty()));
+
+        UUID replacementReceiptId = UUID.randomUUID();
+        UUID replacementReceiptItemId = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            setReplica(connection, true);
+            executeSql(connection, """
+                    INSERT INTO subcontract_receipts(
+                        id, bill_no, bill_date, warehouse_id, status, created_by)
+                    VALUES (?, ?, DATE '2026-09-02', ?, 1, ?)
+                    """, replacementReceiptId,
+                    "EI-ARR-REPL-" + replacementReceiptId,
+                    warehouseId, actor.userId());
+            executeSql(connection, """
+                    INSERT INTO subcontract_receipt_items(
+                        id, bill_no, bill_date, receipt_id, order_item_id, line_no,
+                        goods_id, unit_id, unit_rate, qty,
+                        goods_code_snapshot, goods_name_snapshot,
+                        goods_snapshot_source, goods_snapshot_locked_at)
+                    VALUES (?, ?, DATE '2026-09-02', ?, ?, 1,
+                            ?, ?, 1, 1, ?, 'outbound released goods',
+                            'MASTER_AT_APPROVAL', now())
+                    """, replacementReceiptItemId,
+                    "EI-ARR-REPL-" + replacementReceiptId,
+                    replacementReceiptId, orderItemId, goodsId, unitId,
+                    "ARR-REL-G-" + goodsId);
+            executeSql(connection, """
+                    INSERT INTO procurement_iqc_replacement_allocations(
+                        id, case_id, replacement_receipt_type,
+                        replacement_receipt_id, replacement_receipt_item_id,
+                        allocated_base_qty, allocated_qty,
+                        allocated_amount_original, allocated_amount_local,
+                        status, row_version, created_by)
+                    VALUES (?, ?, 'SUBCONTRACT', ?, ?, 1, 1, 0, 0, 'ACTIVE', 1, ?)
+                    """, UUID.randomUUID(), rejectionCaseId,
+                    replacementReceiptId, replacementReceiptItemId, actor.userId());
+            setReplica(connection, false);
+            connection.commit();
+        }
+
+        var partiallyReplaced = service.expectations(1, 20, "SUBCONTRACT", "");
+        assertEquals(1L, partiallyReplaced.getTotal());
+        assertEquals(0, BigDecimal.ONE
+                .compareTo(partiallyReplaced.getItems().getFirst().remainingQty()));
     }
 
     @Test
@@ -556,6 +834,37 @@ class ProcurementArrivalGuardPostgresTest {
             throw new IllegalStateException("test business identifier sequence exhausted");
         }
         return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
+    }
+
+    private static ProcurementArrivalControlService service() {
+        JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        return new ProcurementArrivalControlService(
+                jdbc,
+                new ObjectMapper(),
+                mock(BusinessEventPublisher.class),
+                mock(SecurityContextCurrentUser.class),
+                mock(TxSessionVars.class),
+                mock(FinanceReviewerEligibilityPort.class),
+                mock(ReceiptPriceMasker.class));
+    }
+
+    private static void executeSql(
+            Connection connection, String sql, Object... values) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (int index = 0; index < values.length; index++) {
+                statement.setObject(index + 1, values[index]);
+            }
+            assertEquals(1, statement.executeUpdate());
+        }
+    }
+
+    private static void setReplica(Connection connection, boolean replica)
+            throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SET LOCAL session_replication_role = "
+                    + (replica ? "replica" : "origin"));
+        }
     }
 
     private static Connection connection() throws Exception {

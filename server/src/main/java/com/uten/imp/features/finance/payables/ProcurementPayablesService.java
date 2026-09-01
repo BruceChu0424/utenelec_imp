@@ -39,6 +39,7 @@ public class ProcurementPayablesService {
             "outstandingLocal", "ledger.amount_balance");
 
     private final EntityManager em;
+    private final SupplierPayableHoldGuard payableHoldGuard;
 
     @Transactional(readOnly = true)
     public Page list(
@@ -74,7 +75,7 @@ public class ProcurementPayablesService {
         long total = ((Number) count.getSingleResult()).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
 
-        return new Page(summary(filter), rows.stream().map(this::item).toList(),
+        return new Page(summary(filter), items(rows),
                 safePage, safeSize, total, totalPages);
     }
 
@@ -140,7 +141,7 @@ public class ProcurementPayablesService {
             return new PaymentPreview(false, "部分应付已不存在、已红冲或无权引用",
                     null, null, null, null, "0.0000", "0.0000", List.of());
         }
-        List<Item> items = rows.stream().map(this::item).toList();
+        List<Item> items = items(rows);
         UUID supplierId = items.getFirst().supplierId();
         UUID currencyId = items.getFirst().currencyId();
         if (items.stream().anyMatch(value -> !Objects.equals(supplierId, value.supplierId()))) {
@@ -152,6 +153,12 @@ public class ProcurementPayablesService {
         if (items.stream().anyMatch(value -> !"PAYABLE".equals(value.openItemKind())
                 || decimal(value.outstandingOriginal()).signum() <= 0)) {
             return previewFailure("付款只能引用仍有正数未付余额的应付项目", items);
+        }
+        if (items.stream().anyMatch(Item::paymentHeld)) {
+            String reason = items.stream().filter(Item::paymentHeld)
+                    .map(Item::holdReason).filter(Objects::nonNull)
+                    .findFirst().orElse("IQC待检或不合格退回/贷项尚未闭环");
+            return previewFailure(reason, items);
         }
         BigDecimal original = items.stream().map(Item::outstandingOriginal)
                 .map(ProcurementPayablesService::decimal).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -183,7 +190,7 @@ public class ProcurementPayablesService {
         if (rows.size() != 1) {
             throw new ApiException(ErrorCode.NOT_FOUND, "应付项目不存在或已失效");
         }
-        return item(rows.getFirst());
+        return items(rows).getFirst();
     }
 
     private Summary summary(Filter filter) {
@@ -340,14 +347,28 @@ public class ProcurementPayablesService {
                 """;
     }
 
-    private Item item(Object[] row) {
+    private List<Item> items(List<Object[]> rows) {
+        List<UUID> ids = rows.stream().map(row -> uuid(row[0])).toList();
+        Map<UUID, SupplierPayableHoldGuard.HoldInfo> holds =
+                payableHoldGuard.holdInfos(ids);
+        return rows.stream().map(row -> item(row, holds)).toList();
+    }
+
+    private Item item(
+            Object[] row,
+            Map<UUID, SupplierPayableHoldGuard.HoldInfo> holds) {
+        UUID ledgerId = uuid(row[0]);
+        SupplierPayableHoldGuard.HoldInfo hold = holds.getOrDefault(
+                ledgerId,
+                new SupplierPayableHoldGuard.HoldInfo(false, null, BigDecimal.ZERO));
         return new Item(
-                uuid(row[0]), text(row[1]), text(row[2]), text(row[3]), uuid(row[4]), text(row[5]),
+                ledgerId, text(row[1]), text(row[2]), text(row[3]), uuid(row[4]), text(row[5]),
                 uuid(row[6]), text(row[7]), text(row[8]), date(row[9]), date(row[10]), text(row[11]),
                 uuid(row[12]), text(row[13]), text(row[14]), integer(row[15]), uuid(row[16]), text(row[17]),
                 text(row[18]), rate(row[19]), money(row[20]), money(row[21]), money(row[22]),
                 money(row[23]), money(row[24]), money(row[25]), money(row[26]), money(row[27]),
-                text(row[28]), integer(row[29]) == null ? 0 : integer(row[29]), text(row[30]));
+                text(row[28]), integer(row[29]) == null ? 0 : integer(row[29]), text(row[30]),
+                hold.held(), hold.reason(), money(hold.failedBaseQty()));
     }
 
     private static String upper(String value) {

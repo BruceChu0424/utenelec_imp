@@ -108,6 +108,9 @@ class AuditEventInterpreterTest {
                 Map.entry("finance_asset_accounting_periods", "资产会计期间"),
                 Map.entry("finance_asset_posting_runs", "折旧摊销过账批次"),
                 Map.entry("finance_asset_posting_lines", "折旧摊销过账明细"),
+                Map.entry("warehouse_goods_place_preferences", "仓库货品默认库位"),
+                Map.entry("procurement_iqc_stock_in_batches", "IQC合格仓库入库批次"),
+                Map.entry("procurement_iqc_stock_in_batch_items", "IQC合格仓库入库明细"),
                 Map.entry("production_fqc_replenishment_cycle_cancellations",
                         "FQC补产周期取消记录"),
                 Map.entry("deferred_expenses", "待摊费用"));
@@ -144,19 +147,52 @@ class AuditEventInterpreterTest {
     }
 
     @Test
+    void labelsWarehouseGoodsPlacePreferenceFieldsInChinese() {
+        AuditLog log = new AuditLog();
+        log.setAction("update");
+        log.setTargetType("warehouse_goods_place_preferences");
+        log.setBefore("{\"place\":\"A31-3-1\",\"selection_count\":1,"
+                + "\"source_registration_id\":\"10000000-0000-0000-0000-000000000001\","
+                + "\"source_registered_at\":\"2026-08-30T08:00:00Z\","
+                + "\"last_selected_by\":\"20000000-0000-0000-0000-000000000001\","
+                + "\"last_selected_at\":\"2026-08-30T08:00:00Z\"}");
+        log.setAfter("{\"place\":\"B02-1-4\",\"selection_count\":2,"
+                + "\"source_registration_id\":\"10000000-0000-0000-0000-000000000002\","
+                + "\"source_registered_at\":\"2026-08-31T08:00:00Z\","
+                + "\"last_selected_by\":\"20000000-0000-0000-0000-000000000002\","
+                + "\"last_selected_at\":\"2026-08-31T08:00:00Z\"}");
+        log.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+
+        assertEquals("仓库货品默认库位", event.objectLabel());
+        assertTrue(event.changeSummary().contains("默认库位：A31-3-1 → B02-1-4"));
+        assertTrue(event.changeSummary().contains("采用次数：1 → 2"));
+        assertTrue(event.changeSummary().contains("来源送检登记："));
+        assertTrue(event.changeSummary().contains("来源登记时间："));
+        assertTrue(event.changeSummary().contains("最近选择人："));
+        assertTrue(event.changeSummary().contains("最近选择时间："));
+    }
+
+    @Test
     void interpretsSalesDetailViewsWithBillNumberOrHistoryFallback() {
         AuditLog withBill = new AuditLog();
         withBill.setAction("view_sales_order_detail");
         withBill.setTargetType("sales_orders");
         withBill.setTargetId(UUID.randomUUID().toString());
         withBill.setAfter("{\"view_metadata_kind\":\"business_detail_view\","
-                + "\"view_display_name\":\"SO-2026-001\"}");
+                + "\"target_display_name\":\"销售订货单\","
+                + "\"target_business_code\":\"SO-2026-001\","
+                + "\"target_legacy_code\":null}");
         withBill.setEventSource("business");
         withBill.setResult("success");
 
         AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(withBill);
         assertEquals("查看销售订单详情", event.actionLabel());
         assertEquals("销售订单", event.objectLabel());
+        assertEquals("销售订货单", event.targetDisplayName());
+        assertEquals("SO-2026-001", event.targetBusinessCode());
+        assertEquals("", event.targetLegacyCode());
         assertEquals("SO-2026-001", event.targetName());
         assertEquals("", event.changeSummary());
         assertEquals("查看销售订单详情 SO-2026-001", event.summary());
@@ -171,11 +207,46 @@ class AuditEventInterpreterTest {
         historyOnly.setResult("success");
         assertEquals("销售报价单(旧系统编号 11)",
                 interpreter.interpret(historyOnly).targetName());
+        assertEquals("", interpreter.interpret(historyOnly).targetDisplayName());
+        assertEquals("", interpreter.interpret(historyOnly).targetBusinessCode());
+        assertEquals("", interpreter.interpret(historyOnly).targetLegacyCode());
         assertEquals("查看销售报价历史单据",
                 interpreter.interpret(historyOnly).actionLabel());
         assertEquals("销售报价", interpreter.interpret(historyOnly).objectLabel());
         assertEquals("查看销售报价历史单据 销售报价单(旧系统编号 11)",
                 interpreter.interpret(historyOnly).summary());
+    }
+
+    @Test
+    void separatesSnapshotNameBusinessCodeAndLegacyCodeWithoutGuessing() {
+        AuditLog snapshot = new AuditLog();
+        snapshot.setAction("update");
+        snapshot.setTargetType("clients");
+        snapshot.setBefore("{\"name\":\"华南客户\",\"code\":\"KH-001\","
+                + "\"legacy_id\":17,\"alias\":\"不要猜测\"}");
+        snapshot.setAfter("{\"name\":\"华南客户\",\"code\":\"KH-002\","
+                + "\"legacy_id\":17,\"alias\":\"仍不猜测\"}");
+        snapshot.setResult("success");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(snapshot);
+
+        assertEquals("华南客户", event.targetDisplayName());
+        assertEquals("KH-002", event.targetBusinessCode());
+        assertEquals("17", event.targetLegacyCode());
+        assertEquals("华南客户", event.targetName(),
+                "the compatibility field keeps the historical name-first behavior");
+
+        AuditLog unknown = new AuditLog();
+        unknown.setAction("update");
+        unknown.setTargetType("clients");
+        unknown.setAfter("{\"alias\":\"华南\",\"serial\":\"X-9\"}");
+        unknown.setResult("success");
+        AuditEventInterpreter.InterpretedEvent unknownEvent =
+                interpreter.interpret(unknown);
+        assertEquals("", unknownEvent.targetDisplayName());
+        assertEquals("", unknownEvent.targetBusinessCode());
+        assertEquals("", unknownEvent.targetLegacyCode());
+        assertEquals("", unknownEvent.targetName());
     }
 
     @Test
@@ -367,7 +438,8 @@ class AuditEventInterpreterTest {
 
         AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
 
-        assertTrue(event.changeSummary().contains("其他字段：1 → 101"), event.changeSummary());
+        assertTrue(event.changeSummary().contains("未登记字段：1 → 101"),
+                event.changeSummary());
         assertTrue(event.changeSummary().contains("另有 2 项变更见「数据变更」标签页"),
                 event.changeSummary());
     }
@@ -576,10 +648,10 @@ class AuditEventInterpreterTest {
 
         AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
 
-        assertEquals("其他操作", event.actionLabel());
+        assertEquals("未登记操作", event.actionLabel());
         assertEquals("", event.objectLabel());
         assertEquals("结果待核查", event.resultLabel());
-        assertEquals("其他操作（结果待核查）", event.summary());
+        assertEquals("未登记操作（结果待核查）", event.summary());
         assertTrue(event.summary().contains("结果待核查"));
         assertTrue(!event.summary().contains("其他业务对象"), event.summary());
         assertTrue(!event.summary().contains("internal_"), event.summary());

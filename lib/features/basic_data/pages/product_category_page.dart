@@ -1969,7 +1969,7 @@ class _DetailPaneState extends State<_DetailPane> {
       key: 'stockQty',
       label: '库存量',
       width: 100,
-      type: 'money',
+      type: 'number',
       value: (g) => g.stockQty?.toStringAsFixed(2),
     ),
   ];

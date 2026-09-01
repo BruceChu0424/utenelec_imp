@@ -93,9 +93,11 @@ public class DepartmentPermissionAdminService {
                             p.getId(),
                             p.getCode(),
                             p.getName(),
-                            normalizedActionType(p.getActionType()),
-                            p.getDescription(),
-                            p.isAssignable())).toList()));
+                             normalizedActionType(p.getActionType()),
+                             p.getDescription(),
+                             p.isAssignable(),
+                             p.isBulkAssignable(),
+                             p.getSensitivity())).toList()));
         }
         groups.sort(Comparator
                 .comparingInt((Group g) -> {

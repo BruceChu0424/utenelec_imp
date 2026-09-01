@@ -204,6 +204,7 @@ public class SalesOrderService {
                     GROUP BY si.order_item_id
                 ) draft ON draft.order_item_id = i.id
                 WHERE o.status = 1 AND o.is_closed = false AND o.is_stopped = false
+                  AND o.finance_confirmed = true
                   AND COALESCE(o.finance_rejected, false) = false
                   AND COALESCE(o.is_deleted,false) = false AND COALESCE(i.is_deleted,false) = false
                   AND GREATEST(COALESCE(i.reserved_qty,0)
@@ -241,7 +242,8 @@ public class SalesOrderService {
                       WHERE i.order_id = o.id AND i.is_deleted = false AND i.chain_status IN (2,3,4))),
                   COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM sales_order_items i
                       WHERE i.order_id = o.id AND i.is_deleted = false AND i.chain_status IN (5,6))),
-                  COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM sales_order_items i
+                  COUNT(*) FILTER (WHERE o.finance_confirmed = true
+                      AND EXISTS (SELECT 1 FROM sales_order_items i
                       WHERE i.order_id = o.id AND i.is_deleted = false
                         AND COALESCE(i.reserved_qty,0) > 0)),
                   COUNT(*) FILTER (WHERE o.is_closed

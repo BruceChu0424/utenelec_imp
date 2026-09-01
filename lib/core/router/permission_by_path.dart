@@ -112,6 +112,9 @@ List<String>? requiredAnyPermFor(String location) {
       location.startsWith('/finance/sales-order-confirmations/')) {
     return const [Perm.salesOrderFinanceView];
   }
+  if (routePath == RouteName.financeSalesShipmentAudit) {
+    return const [Perm.financeShipmentAudit];
+  }
   if (location == RouteName.financeArrivalExceptions ||
       location.startsWith('${RouteName.financeArrivalExceptions}/')) {
     return const [Perm.financeOrderApprovalView];
@@ -154,16 +157,9 @@ List<String>? requiredAnyPermFor(String location) {
     ];
   }
   if (location == RouteName.operationsSubcontractWorkbench) {
-    return const [
-      Perm.subcontractInquiryView,
-      Perm.subcontractApplicationView,
-      Perm.subcontractOrderView,
-      Perm.subcontractReceiptView,
-      Perm.subcontractMaterialIssueView,
-      Perm.subcontractReturnView,
-      Perm.subcontractMaterialReturnView,
-      Perm.subcontractWasteView,
-    ];
+    // 委外分解页的首屏权威是计划下达的只读申请；
+    // create/decompose 只是页内动作，不能反向授予申请阅读。
+    return const [Perm.subcontractApplicationView];
   }
   // 工程研发部任务中心。
   if (location == RouteName.rdTaskCenter) {
@@ -191,7 +187,64 @@ List<String>? requiredAnyPermFor(String location) {
   if (location.startsWith('/stock/')) return const [Perm.stockView];
   // 仓库管理（8 单据，stock_doc:view 全员 / edit 归 PMC）
   if (location == RouteName.warehouse) {
-    return const [Perm.stockDocView, Perm.warehouseInboundView];
+    return const [
+      Perm.stockDocView,
+      Perm.warehouseInboundView,
+      Perm.salesShipmentWarehouseWork,
+      Perm.warehousePurchaseReceiptHistoryView,
+      Perm.warehouseSubcontractReceiptHistoryView,
+      Perm.warehouseSubcontractOutboundHistoryView,
+      Perm.subcontractOutboundView,
+      Perm.warehouseSubcontractFinishedReturnHistoryView,
+      Perm.warehouseSubcontractMaterialReturnHistoryView,
+      Perm.warehouseSubcontractWasteHistoryView,
+      Perm.warehouseIqcReturnView,
+      Perm.warehouseIqcStockInView,
+    ];
+  }
+  if (routePath == RouteName.warehousePurchaseReceiptHistory ||
+      routePath.startsWith('${RouteName.warehousePurchaseReceiptHistory}/')) {
+    return const [Perm.warehousePurchaseReceiptHistoryView];
+  }
+  if (routePath == RouteName.warehouseSubcontractReceiptHistory ||
+      routePath.startsWith(
+        '${RouteName.warehouseSubcontractReceiptHistory}/',
+      )) {
+    return const [Perm.warehouseSubcontractReceiptHistoryView];
+  }
+  if (routePath == RouteName.warehouseSubcontractOutboundHistory ||
+      routePath.startsWith(
+        '${RouteName.warehouseSubcontractOutboundHistory}/',
+      )) {
+    return const [Perm.warehouseSubcontractOutboundHistoryView];
+  }
+  if (routePath == RouteName.warehouseSubcontractFinishedReturnHistory ||
+      routePath.startsWith(
+        '${RouteName.warehouseSubcontractFinishedReturnHistory}/',
+      )) {
+    return const [Perm.warehouseSubcontractFinishedReturnHistoryView];
+  }
+  if (routePath == RouteName.warehouseSubcontractMaterialReturnHistory ||
+      routePath.startsWith(
+        '${RouteName.warehouseSubcontractMaterialReturnHistory}/',
+      )) {
+    return const [Perm.warehouseSubcontractMaterialReturnHistoryView];
+  }
+  if (routePath == RouteName.warehouseSubcontractWasteHistory ||
+      routePath.startsWith('${RouteName.warehouseSubcontractWasteHistory}/')) {
+    return const [Perm.warehouseSubcontractWasteHistoryView];
+  }
+  if (routePath == RouteName.warehouseIqcReturns ||
+      routePath.startsWith('${RouteName.warehouseIqcReturns}/')) {
+    return const [Perm.warehouseIqcReturnView];
+  }
+  if (routePath == RouteName.warehouseIqcStockIns ||
+      routePath.startsWith('${RouteName.warehouseIqcStockIns}/')) {
+    return const [Perm.warehouseIqcStockInView];
+  }
+  if (routePath == RouteName.warehouseSalesOutbound ||
+      routePath.startsWith('${RouteName.warehouseSalesOutbound}/')) {
+    return const [Perm.salesShipmentWarehouseWork];
   }
   // 待检处置任务中心 + 单据处置页：同查看权限（处置动作由页面内 handle 权限把关）。
   if (location == RouteName.warehouseInspections ||
@@ -205,6 +258,13 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.productionQualityInspectionView,
     ];
   }
+  // 检测记录按事件只读；IQC/FQC 分支仍由各自后端权限与对象范围裁剪。
+  if (routePath == RouteName.qualityInspectionRecords) {
+    return const [
+      Perm.procurementInspectionView,
+      Perm.productionQualityInspectionView,
+    ];
+  }
   if (location == RouteName.productionFqcInspections) {
     return const [Perm.productionQualityInspectionView];
   }
@@ -212,7 +272,10 @@ List<String>? requiredAnyPermFor(String location) {
       location == RouteName.warehouseArrivalExceptions) {
     return const [Perm.warehouseInboundView];
   }
-  if (location == RouteName.warehouseProductionFinishedInboundTasks) {
+  if (location == RouteName.warehouseProductionFinishedInboundTasks ||
+      location.startsWith(
+        '${RouteName.warehouseProductionFinishedArrivalRegistrationBase}/',
+      )) {
     return const [Perm.stockDocView];
   }
   // 到货异常确认入库是独立高影响动作，不再借用收货单编辑权限。
@@ -227,11 +290,17 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.warehouseShelfLabels) {
     return const [Perm.stockView];
   }
-  // 委外出仓工作台（V304+V305）：仓库执行材料出仓；独立权限点，权限管理授权才可见/可操作。
+  // 委外目标件出仓工作台（V436；LEGACY_BOM_COMPONENT 历史兼容）：独立权限点，
+  // 权限管理授权后才可见/可操作。
   if (location == RouteName.warehouseSubcontractOutbound ||
       location.startsWith('${RouteName.warehouseSubcontractOutbound}/')) {
     // 首屏任务/详情查询要求 view；handle 只是页面内动作，不能替代查看权限。
     return const [Perm.subcontractOutboundView];
+  }
+  if (routePath == RouteName.procurementIqcRejections ||
+      routePath.startsWith('${RouteName.procurementIqcRejections}/')) {
+    // 查看是页面硬门槛；退回、抵扣、无贷项关闭和红冲都不能替代查看权限。
+    return const [Perm.procurementIqcRejectionView];
   }
   if (location == RouteName.procurementArrivalExceptions ||
       location.startsWith('${RouteName.procurementArrivalExceptions}/')) {
@@ -313,6 +382,25 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.paymentStyleView];
   }
 
+  // 出货财务审核复用只读出货列表/详情：finance_shipment_audit 可查看并审核，
+  // 但绝不放开 /new 或 /edit；这些路径仍走下方单据 create/edit 权限。
+  final salesSegments = routePath.split('/');
+  final isShipmentList = routePath == '/sales/shipments';
+  final isShipmentDetail =
+      salesSegments.length == 4 &&
+      salesSegments[1] == 'sales' &&
+      salesSegments[2] == 'shipments' &&
+      salesSegments[3].isNotEmpty &&
+      salesSegments[3] != 'new' &&
+      salesSegments[3] != 'edit';
+  if (isShipmentList || isShipmentDetail) {
+    return const [
+      Perm.salesShipmentView,
+      Perm.financeShipmentAudit,
+      Perm.salesShipmentWarehouseWork,
+    ];
+  }
+
   // ===== 销售管理（综合营销部；sales_<quote|order|shipment|other_shipment|return>:view/edit）=====
   if (location == RouteName.sales) {
     // hub：任一销售单据 view 即可见
@@ -361,7 +449,14 @@ List<String>? requiredAnyPermFor(String location) {
       location.startsWith('${RouteName.subcontractReport}/')) {
     return const [Perm.subcontractReportView];
   }
+  if (routePath == RouteName.subcontractPreparations) {
+    return const [Perm.subcontractPreparationView];
+  }
   if (location.startsWith('/subcontract/')) {
+    // V436 新出仓流不允许从历史发料页空白新建。
+    if (routePath == '/subcontract/material-issues/new') {
+      return const [Perm.subcontractMaterialIssueView];
+    }
     if (_isOrderDetailPath(location, 'subcontract')) {
       return const [Perm.subcontractOrderView, Perm.financeOrderApprovalView];
     }
@@ -456,6 +551,8 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.financeReconciliationView,
       Perm.accountView,
       Perm.financeOrderApprovalView,
+      Perm.salesOrderFinanceView,
+      Perm.financeShipmentAudit,
     ];
   }
   if (location == RouteName.financeArAp) {
@@ -585,6 +682,16 @@ List<String> requiredAllPermsFor(String location) {
     DocumentPermissionCatalog.salesBySegment,
   );
   if (salesView != null) return [salesView];
+
+  final uri = Uri.tryParse(location);
+  if (uri?.path == '/subcontract/orders/new' &&
+      uri!.queryParameters.containsKey('applicationItemIds')) {
+    return const [
+      Perm.subcontractOrderView,
+      Perm.subcontractApplicationView,
+      Perm.subcontractOrderDecompose,
+    ];
+  }
 
   final subcontractView = _documentRouteViewDependency(
     location,

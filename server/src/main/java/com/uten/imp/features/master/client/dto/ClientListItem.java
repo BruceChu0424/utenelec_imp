@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.client.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.uten.imp.features.master.client.ClientSalesPaymentType;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -49,6 +50,7 @@ public class ClientListItem {
     @JsonProperty("taxId")
     private String taxId;               // 纳税号（Tax_ID）
     private BigDecimal credit;          // 信誉额度（Credit）
+    private BigDecimal creditFloor;     // 铺底额；未配置按 0
     private String website;             // 网址（Http）
     private String status;              // 状态（使用/禁用，详情用，不进表格列）
     private Integer legacyId;
@@ -57,6 +59,7 @@ public class ClientListItem {
     private String ownerEmployeeName;
     private UUID defaultSettlementMethodId;
     private String defaultSettlementMethodName;
+    private ClientSalesPaymentType salesPaymentType;
     private boolean writable;
     private boolean accessManageable;
 }

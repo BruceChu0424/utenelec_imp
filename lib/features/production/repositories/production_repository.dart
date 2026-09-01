@@ -462,6 +462,58 @@ class ProductionPlanRepository {
     return PagedResult.fromJson(json, MaterialAnalysisListItem.fromJson);
   }
 
+  /// Production-owned subcontract preparation queue. The server decides
+  /// visibility, status, blockers and allowed actions per target order line.
+  Future<PagedResult<SubcontractPreparationTask>> subcontractPreparationTasks({
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+    String? status,
+    String? planItemId,
+    String? sourceAnalysisId,
+    String? sourceMaterialLineId,
+  }) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/subcontract-preparations',
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (status?.trim().isNotEmpty == true) 'status': status!.trim(),
+        if (planItemId?.trim().isNotEmpty == true)
+          'planItemId': planItemId!.trim(),
+        if (sourceAnalysisId?.trim().isNotEmpty == true)
+          'sourceAnalysisId': sourceAnalysisId!.trim(),
+        if (sourceMaterialLineId?.trim().isNotEmpty == true)
+          'sourceMaterialLineId': sourceMaterialLineId!.trim(),
+      },
+    ); // ENDPOINT
+    return PagedResult.fromJson(json, SubcontractPreparationTask.fromJson);
+  }
+
+  /// Starts the server-authoritative MAKE preparation analysis for one
+  /// subcontract target line. [warehouseId] is supplied only when the task
+  /// explicitly says warehouse selection is required.
+  Future<SubcontractPreparationStartResult> startSubcontractPreparation({
+    required String planItemId,
+    required int expectedVersion,
+    required String idempotencyKey,
+    String? warehouseId,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/subcontract-preparations/$planItemId/start',
+      body: {
+        'expectedVersion': expectedVersion,
+        'idempotencyKey': idempotencyKey,
+        if (warehouseId?.trim().isNotEmpty == true)
+          'warehouseId': warehouseId!.trim(),
+      },
+    ); // ENDPOINT
+    return SubcontractPreparationStartResult.fromJson(
+      (json as Map).cast<String, dynamic>(),
+    );
+  }
+
   /// Production-scoped approved sales-order candidates. This endpoint omits
   /// price data and does not require broad sales module visibility.
   Future<MaterialAnalysisSalesCandidatePage> materialAnalysisSalesCandidates({

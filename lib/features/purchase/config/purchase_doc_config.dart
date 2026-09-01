@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../shared/auth/document_permission_set.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/purchase_doc.dart';
 
 class PurchaseDocConfig {
@@ -14,6 +15,7 @@ class PurchaseDocConfig {
     required this.shortLabel,
     required this.icon,
     required this.permissions,
+    this.commercialViewPerm,
     this.hasSupplier = false,
     this.hasCurrency = false,
     this.hasSettlement = false,
@@ -47,6 +49,17 @@ class PurchaseDocConfig {
   final String shortLabel; // 申请
   final IconData icon;
   final DocumentPermissionSet permissions;
+
+  /// Exact permission for commercial fields on this document page.
+  /// Purchase requests have no commercial price fact and keep this null.
+  final String? commercialViewPerm;
+
+  bool canViewCommercial(Iterable<String> granted) {
+    final pagePermission = commercialViewPerm;
+    return pagePermission != null &&
+        (granted.contains(pagePermission) ||
+            granted.contains(Perm.financeViewAll));
+  }
 
   String get listPerm => permissions.view;
   String? get createPerm => permissions.create;
@@ -121,6 +134,7 @@ class PurchaseDocConfig {
     shortLabel: '订货',
     icon: Icons.shopping_cart_checkout_outlined,
     permissions: DocumentPermissionCatalog.purchaseOrder,
+    commercialViewPerm: Perm.purchaseOrderPriceView,
     hasSupplier: true,
     hasCurrency: true,
     hasSettlement: true,
@@ -145,6 +159,7 @@ class PurchaseDocConfig {
     shortLabel: '收货',
     icon: Icons.inbox_outlined,
     permissions: DocumentPermissionCatalog.purchaseReceipt,
+    commercialViewPerm: Perm.purchaseReceiptPriceView,
     hasSupplier: true,
     hasCurrency: true,
     hasSettlement: true,
@@ -164,6 +179,7 @@ class PurchaseDocConfig {
     shortLabel: '退货',
     icon: Icons.outbound_outlined,
     permissions: DocumentPermissionCatalog.purchaseReturn,
+    commercialViewPerm: Perm.purchaseReturnPriceView,
     hasSupplier: true,
     hasCurrency: true,
     hasSettlement: true,

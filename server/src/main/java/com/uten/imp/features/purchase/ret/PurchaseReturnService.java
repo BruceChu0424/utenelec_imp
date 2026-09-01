@@ -10,6 +10,9 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
+import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
+import com.uten.imp.common.finance.ProcurementReturnHeaderAuthority;
+import com.uten.imp.common.finance.ProcurementReturnQualityPolicy;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.payables.SupplierPaymentTermService;
 import com.uten.imp.features.finance.payables.SupplierPeriodIdentityGuard;
@@ -127,7 +130,7 @@ public class PurchaseReturnService {
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
         PurchaseReturn r = new PurchaseReturn();
-        applyHeader(req, r);
+        applyHeader(req, r, returnHeader(req));
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户
         r.setStatus(STATUS_DRAFT);
         returnRepo.save(r);
@@ -143,7 +146,7 @@ public class PurchaseReturnService {
         PurchaseReturn r = requireReturnForUpdate(id);
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
-        applyHeader(req, r);
+        applyHeader(req, r, returnHeader(req));
         itemRepo.deleteByReturnId(id);
         itemRepo.flush();
         List<ReturnItemDto> items = saveItems(r, req.getItems());
@@ -181,6 +184,13 @@ public class PurchaseReturnService {
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
+        ProcurementReturnQualityPolicy.lockInspectionRows(
+                em,
+                "PURCHASE",
+                items.stream().map(PurchaseReturnItem::getReceiptItemId).toList());
         requireNonNegativeStoredCommercial(r, items);
         normalizePersistedItemUnits(items);
         sourceIntegrity.validatePurchaseReturn(
@@ -205,9 +215,6 @@ public class PurchaseReturnService {
                 PurchaseGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
                 PurchaseGoodsSnapshot.MASTER_AT_APPROVAL,
                 OffsetDateTime.now());
-        stockService.lockInventory(items.stream()
-                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
-                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (PurchaseReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_OUT, now, null);
@@ -280,7 +287,7 @@ public class PurchaseReturnService {
                 ts, StockService.TYPE_PURCHASE_RETURN, StockService.SRC_PURCHASE_RETURN,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? "红冲" : null));
+                direction < 0 ? "红冲" : null, it.getWeight()));
     }
 
     /** 逐行校验退量不超过来源收货明细可退余量（已收 − 已退），超退给业务 409。 */
@@ -320,37 +327,37 @@ public class PurchaseReturnService {
     }
 
     private void recalcOrderClosed(UUID orderItemId) {
-        em.createNativeQuery("""
-                UPDATE purchase_orders o SET is_closed = (
-                    SELECT COALESCE(bool_and(
-                        COALESCE(i.qty,0) - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0) <= 0
-                    ), true)
-                    FROM purchase_order_items i
-                    WHERE i.order_id = o.id AND COALESCE(i.is_deleted, false) = false
-                ) WHERE o.id = (SELECT order_id FROM purchase_order_items WHERE id = :iid)
-                """).setParameter("iid", orderItemId).executeUpdate();
+        ProcurementOrderClosurePolicy.recalculate(
+                em, ProcurementOrderClosurePolicy.PURCHASE, orderItemId);
     }
 
-    private void applyHeader(ReturnSaveRequest req, PurchaseReturn r) {
+    private ProcurementReturnHeaderAuthority.Header returnHeader(ReturnSaveRequest req) {
+        return ProcurementReturnHeaderAuthority.derive(
+                em,
+                "PURCHASE",
+                req == null || req.getItems() == null ? List.of()
+                        : req.getItems().stream()
+                            .map(ReturnItemLine::getReceiptItemId).toList());
+    }
+
+    private void applyHeader(
+            ReturnSaveRequest req,
+            PurchaseReturn r,
+            ProcurementReturnHeaderAuthority.Header header) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_RETURN));
         }
         r.setBillDate(req.getBillDate());
-        r.setSupplierId(req.getSupplierId());
+        r.setSupplierId(header.supplierId());
         r.setWarehouseId(req.getWarehouseId());
-        r.setCurrencyId(req.getCurrencyId());
-        r.setExchangeRate(req.getExchangeRate());
-        r.setTaxRate(req.getTaxRate());
+        r.setCurrencyId(header.currencyId());
+        r.setExchangeRate(header.exchangeRate());
+        r.setTaxRate(header.taxRate());
         r.setReceiverId(req.getReceiverId());
-        if (!(req.getSettlementMethodId() == null && req.getSettlementStyleLegacy() == null
-                && r.getSettlementMethodId() == null && r.getSettlementStyleLegacy() != null)) {
-            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
-                    em, req.getSettlementMethodId(), req.getSettlementStyleLegacy(), "结帐方式");
-            r.setSettlementMethodId(settlement == null ? null : settlement.id());
-            r.setSettlementStyleLegacy(settlement == null || settlement.legacyId() == null
-                    ? null : settlement.legacyId().shortValue());
-        }
+        r.setSettlementMethodId(header.settlementMethodId());
+        r.setSettlementStyleLegacy(header.settlementStyleLegacy() == null
+                ? null : header.settlementStyleLegacy().shortValue());
         r.setRemark(req.getRemark());
     }
 
@@ -552,7 +559,8 @@ public class PurchaseReturnService {
     }
 
     private boolean purchasePriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewPurchase();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewPurchaseReturn();
     }
 
     private static ReturnItemDto maskItemPrices(ReturnItemDto it) {

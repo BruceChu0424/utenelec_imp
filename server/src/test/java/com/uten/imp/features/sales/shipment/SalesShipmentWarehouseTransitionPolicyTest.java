@@ -80,8 +80,10 @@ class SalesShipmentWarehouseTransitionPolicyTest {
         SalesShipment legacy = shipment((short) 0, SalesShipment.WORK_LEGACY_PENDING);
         assertDoesNotThrow(() ->
                 SalesShipmentService.requireFinanceAuditEditableState(pending));
-        assertDoesNotThrow(() ->
-                SalesShipmentService.requireFinanceAuditEditableState(legacy));
+        ApiException legacyReadOnly = assertThrows(
+                ApiException.class,
+                () -> SalesShipmentService.requireFinanceAuditEditableState(legacy));
+        assertEquals(ErrorCode.CONFLICT, legacyReadOnly.getCode());
 
         ApiException started = assertThrows(
                 ApiException.class,
@@ -124,6 +126,28 @@ class SalesShipmentWarehouseTransitionPolicyTest {
                         .requireFinanceAuditClearedForMutation(shipment));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
+    }
+
+    @Test
+    void legacyPendingDirectApprovalIsReadOnlyAndCannotCreateInventoryOrArFacts() {
+        SalesShipment legacy = shipment((short) 0, SalesShipment.WORK_LEGACY_PENDING);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> SalesShipmentService.rejectRetiredDirectApproval(legacy));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        org.assertj.core.api.Assertions.assertThat(error.getMessage())
+                .contains("已转为只读")
+                .contains("按当前订单关联流程重新开单");
+
+        ApiException mutation = assertThrows(
+                ApiException.class,
+                () -> SalesShipmentService.requireLegacyShipmentMutable(legacy));
+        assertEquals(ErrorCode.CONFLICT, mutation.getCode());
+        org.assertj.core.api.Assertions.assertThat(mutation.getMessage())
+                .contains("只读迁移异常")
+                .contains("两审流程重新开单");
     }
 
     @Test

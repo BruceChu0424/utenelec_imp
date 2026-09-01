@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/admin/models/audit_log_entry.dart';
 import 'package:uten_imp/features/admin/repositories/audit_log_repository.dart';
 
 void main() {
@@ -152,7 +153,19 @@ void main() {
     'session events use keyset cursor and a stable audit snapshot',
     () async {
       final api = _CaptureApi({
-        'items': <dynamic>[],
+        'items': [
+          {
+            'id': 42,
+            'action': 'view_sales_order_detail_history',
+            'actionLabel': '查看销售订单历史单据',
+            'objectLabel': '销售订单',
+            'targetName': 'SO-2026-001(旧系统编号 86)',
+            'targetDisplayName': '销售订货单',
+            'targetBusinessCode': 'SO-2026-001',
+            'targetLegacyCode': '86',
+            'resultLabel': '成功',
+          },
+        ],
         'nextCursorAt': '2026-08-30T00:30:00Z',
         'nextCursorId': 77,
         'hasMore': true,
@@ -160,7 +173,7 @@ void main() {
       });
       final repository = DioAuditLogRepository(api);
 
-      await repository.sessionEvents(
+      final page = await repository.sessionEvents(
         sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
         cursorAt: '2026-08-30T01:00:00Z',
         cursorId: 88,
@@ -177,6 +190,9 @@ void main() {
         'cursorId': 88,
         'snapshotAuditId': 9001,
       });
+      expect(page.items.single.targetDisplayName, '销售订货单');
+      expect(page.items.single.targetBusinessCode, 'SO-2026-001');
+      expect(page.items.single.targetLegacyCode, '86');
     },
   );
 
@@ -214,6 +230,22 @@ void main() {
     expect(summary.actorDisplay, '王小明（sales01）');
     expect(summary.statusLabel, '正常退出');
     expect(summary.snapshotAuditId, 9001);
+  });
+
+  test('full audit detail parses structured business object evidence', () {
+    final detail = AuditLogDetail.fromJson({
+      'id': 42,
+      'action': 'view_sales_order_detail_history',
+      'targetName': 'SO-2026-001(旧系统编号 86)',
+      'targetDisplayName': '销售订货单',
+      'targetBusinessCode': 'SO-2026-001',
+      'targetLegacyCode': '86',
+    });
+
+    expect(detail.targetDisplayName, '销售订货单');
+    expect(detail.targetBusinessCode, 'SO-2026-001');
+    expect(detail.targetLegacyCode, '86');
+    expect(detail.targetName, 'SO-2026-001(旧系统编号 86)');
   });
 }
 

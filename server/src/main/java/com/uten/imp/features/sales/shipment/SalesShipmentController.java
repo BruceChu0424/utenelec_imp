@@ -44,24 +44,29 @@ public class SalesShipmentController {
     private final AuditDetailViewRecorder viewAudit;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('sales_shipment:view')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
     public PageResponse<ShipmentListItem> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) UUID clientId,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) Boolean arPosted,
+            @RequestParam(required = false) Short financeAudit,
+            @RequestParam(required = false) String warehouseWorkStatus,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(new ShipmentQueryFilter(keyword, clientId, warehouseId, status, arPosted, dateFrom, dateTo), page, size, sort, order);
+        return service.list(new ShipmentQueryFilter(
+                keyword, clientId, warehouseId, status, arPosted, financeAudit,
+                warehouseWorkStatus,
+                dateFrom, dateTo), page, size, sort, order);
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('sales_shipment:view')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
     public ShipmentDetail detail(@PathVariable UUID id) {
         ShipmentDetail detail = service.detail(id);
         viewAudit.record(
@@ -124,14 +129,21 @@ public class SalesShipmentController {
         return service.transitionWarehouseWork(id, req);
     }
 
-    /** C6 财务审核发货：现金结算客户须审后仓库才可审核出货；返回结算方式+未收余额辅助核对。 */
+    /** 财务审核前只读核对：客户货款类型、结算方式、应收、铺底和超出铺底额。 */
+    @GetMapping("/{id}/finance-audit-info")
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    public java.util.Map<String, Object> financeAuditInfo(@PathVariable UUID id) {
+        return service.financeAuditInfo(id);
+    }
+
+    /** 所有客户出货均须先财务放行，之后仓库才收到待拣货通知。 */
     @PostMapping("/{id}/finance-audit")
     @PreAuthorize("hasAuthority('finance_shipment_audit')")
     public java.util.Map<String, Object> financeAudit(@PathVariable UUID id) {
         return service.financeAudit(id);
     }
 
-    /** C6 财务反审（仅未审核出货的单据）。 */
+    /** 财务反审（仅仓库开始拣货前且当前已财审的单据）。 */
     @PostMapping("/{id}/finance-audit-reverse")
     @PreAuthorize("hasAuthority('finance_shipment_audit')")
     public java.util.Map<String, Object> financeAuditReverse(@PathVariable UUID id) {

@@ -171,7 +171,7 @@ public class MaterialAnalysisSupplyWakeupService {
                       AND inspection.receipt_type = :sourceType
                       AND inspection.receipt_id = :sourceDocumentId
                       AND inspection.status IN ('PARTIAL', 'RESOLVED')
-                      AND inspection.passed_base_qty > 0
+                      AND inspection.warehouse_stocked_base_qty > 0
                       AND (
                           (:sourceType = 'PURCHASE' AND EXISTS (
                               SELECT 1 FROM purchase_receipts receipt

@@ -14,6 +14,15 @@ class SubcontractMaterialPlanLine {
     required this.plannedQty,
     required this.issuedQty,
     required this.draftQty,
+    this.flowMode = 'LEGACY_BOM_COMPONENT',
+    this.preparationStatus = 'LEGACY_READY',
+    this.preparedQty = 0,
+    this.readyOutboundQty = 0,
+    this.remainingQtySnapshot,
+    this.preparationAnalysisId,
+    this.preparationAnalysisItemId,
+    this.blocker,
+    this.allowedActions = const {},
   });
 
   final String planItemId;
@@ -27,8 +36,20 @@ class SubcontractMaterialPlanLine {
   final double plannedQty;
   final double issuedQty;
   final double draftQty;
+  final String flowMode;
+  final String preparationStatus;
+  final double preparedQty;
+  final double readyOutboundQty;
+  final double? remainingQtySnapshot;
+  final String? preparationAnalysisId;
+  final String? preparationAnalysisItemId;
+  final String? blocker;
+  final Set<String> allowedActions;
+
+  bool get isLegacyBomComponent => flowMode == 'LEGACY_BOM_COMPONENT';
 
   double get remainingQty {
+    if (remainingQtySnapshot case final value?) return value < 0 ? 0 : value;
     final r = plannedQty - issuedQty - draftQty;
     return r < 0 ? 0 : r;
   }
@@ -45,7 +66,29 @@ class SubcontractMaterialPlanLine {
         bomUnitQty: (json['bomUnitQty'] as num?)?.toDouble() ?? 0,
         plannedQty: (json['plannedQty'] as num?)?.toDouble() ?? 0,
         issuedQty: (json['issuedQty'] as num?)?.toDouble() ?? 0,
-        draftQty: (json['draftQty'] as num?)?.toDouble() ?? 0,
+        draftQty:
+            (json['draftReservedQty'] as num?)?.toDouble() ??
+            (json['draftQty'] as num?)?.toDouble() ??
+            0,
+        flowMode:
+            json['flowMode']?.toString().trim().toUpperCase() ??
+            'LEGACY_BOM_COMPONENT',
+        preparationStatus:
+            json['preparationStatus']?.toString().trim().toUpperCase() ??
+            'LEGACY_READY',
+        preparedQty: (json['preparedQty'] as num?)?.toDouble() ?? 0,
+        readyOutboundQty:
+            (json['readyOutboundQty'] as num?)?.toDouble() ??
+            (json['remainingQty'] as num?)?.toDouble() ??
+            0,
+        remainingQtySnapshot: (json['remainingQty'] as num?)?.toDouble(),
+        preparationAnalysisId: json['preparationAnalysisId'] as String?,
+        preparationAnalysisItemId: json['preparationAnalysisItemId'] as String?,
+        blocker: json['blocker'] as String?,
+        allowedActions: {
+          for (final action in (json['allowedActions'] as List? ?? const []))
+            if (action != null) action.toString(),
+        },
       );
 }
 
@@ -61,6 +104,10 @@ class SubcontractProgressDoc {
     this.totalQty,
     this.totalLocal,
     this.iqcStatus,
+    this.warehouseStockInStatus,
+    this.iqcPassedBaseQty,
+    this.warehouseStockedBaseQty,
+    this.pendingStockInBaseQty,
     this.deductAmount,
     this.deductPosted,
   });
@@ -76,6 +123,19 @@ class SubcontractProgressDoc {
 
   /// IQC 聚合状态（仅进仓单）：PENDING / PARTIAL / RESOLVED。
   final String? iqcStatus;
+
+  /// V446 仓库实际入库状态。只有服务端明确返回 STOCKED 才表示已进入库存；
+  /// null/未知值必须失败关闭，不能从 IQC RESOLVED 或当前库存反推。
+  final String? warehouseStockInStatus;
+  final double? iqcPassedBaseQty;
+  final double? warehouseStockedBaseQty;
+  final double? pendingStockInBaseQty;
+
+  bool get qualityResolved => iqcStatus?.trim().toUpperCase() == 'RESOLVED';
+
+  /// Missing/unknown server projection is deliberately not treated as stocked.
+  bool get warehouseStocked =>
+      warehouseStockInStatus?.trim().toUpperCase() == 'STOCKED';
 
   /// 损耗建议索赔金额（仅损耗单；不自动扣款或冲应付）。
   final double? deductAmount;
@@ -94,6 +154,12 @@ class SubcontractProgressDoc {
         totalQty: (json['totalQty'] as num?)?.toDouble(),
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
         iqcStatus: json['iqcStatus'] as String?,
+        warehouseStockInStatus: json['warehouseStockInStatus'] as String?,
+        iqcPassedBaseQty: (json['iqcPassedBaseQty'] as num?)?.toDouble(),
+        warehouseStockedBaseQty: (json['warehouseStockedBaseQty'] as num?)
+            ?.toDouble(),
+        pendingStockInBaseQty: (json['pendingStockInBaseQty'] as num?)
+            ?.toDouble(),
         deductAmount: (json['deductAmount'] as num?)?.toDouble(),
         deductPosted: json['deductPosted'] as bool?,
       );

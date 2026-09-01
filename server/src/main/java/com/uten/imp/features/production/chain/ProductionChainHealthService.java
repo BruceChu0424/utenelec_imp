@@ -654,6 +654,11 @@ public class ProductionChainHealthService {
                     JOIN production_plans plan ON plan.id = plan_item.plan_id
                     WHERE report_item.execution_segment_id IS NOT NULL
                       AND report_item.is_deleted = FALSE AND %s
+                      AND EXISTS (
+                          SELECT 1
+                          FROM production_finished_arrival_registration_items
+                               arrival_item
+                          WHERE arrival_item.source_report_item_id = report_item.id)
                       AND NOT EXISTS (
                           SELECT 1 FROM production_fqc_inspections inspection
                           WHERE inspection.source_report_item_id = report_item.id)

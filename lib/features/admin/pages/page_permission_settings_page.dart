@@ -762,13 +762,38 @@ class _PagePermissionSettingsPageState
                       ),
                       value: value,
                       onChanged: permission.editable && !_saving
-                          ? (next) => setState(() {
-                              if (next == storedValue) {
-                                _pending.remove(permission.code);
-                              } else {
-                                _pending[permission.code] = next;
+                          ? (next) async {
+                              if (next &&
+                                  !permission.bulkAssignable &&
+                                  !value) {
+                                final confirmed = await UtenDialog.show(
+                                  context,
+                                  title: '确认单项授权',
+                                  content: Text(
+                                    [
+                                      '“',
+                                      permission.name,
+                                      '”会开放',
+                                      permission.sensitivity ==
+                                              'SENSITIVE_COMMERCIAL'
+                                          ? '商业敏感数据'
+                                          : '敏感能力',
+                                      '。请确认该员工确需访问本页数据。',
+                                    ].join(),
+                                  ),
+                                  confirmLabel: '确认授权',
+                                  danger: true,
+                                );
+                                if (!mounted || confirmed != true) return;
                               }
-                            })
+                              setState(() {
+                                if (next == storedValue) {
+                                  _pending.remove(permission.code);
+                                } else {
+                                  _pending[permission.code] = next;
+                                }
+                              });
+                            }
                           : null,
                       secondary: Icon(
                         permission.editable
@@ -779,6 +804,8 @@ class _PagePermissionSettingsPageState
                         name: permission.name,
                         actionType: permission.actionType,
                         description: permission.description,
+                        bulkAssignable: permission.bulkAssignable,
+                        sensitivity: permission.sensitivity,
                       ),
                       subtitle: Text(
                         permission.reason?.trim().isNotEmpty == true

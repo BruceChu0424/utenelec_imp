@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -170,6 +171,114 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('finance-payables-open-filters')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('finance-payables-open-filters')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('筛选应付记录'), findsOneWidget);
+    expect(find.text('业务类型'), findsWidgets);
+    expect(find.text('结算状态'), findsWidgets);
+
+    await tester.tap(find.text('采购'));
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['businessType'], 'PURCHASE');
+
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
+    expect(find.text('筛选(1)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('wide scroll collapses summary before table body takes over', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _PageApi(itemCount: 60);
+    tester.view.physicalSize = const Size(1440, 760);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          financePayablesRepositoryProvider.overrideWithValue(
+            FinancePayablesRepository(api),
+          ),
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          settlementMethodOptionsProvider.overrideWith((_) async => const []),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.arApLedgerView,
+            Perm.financeViewAll,
+          }),
+        ],
+        child: const MaterialApp(home: FinancePayablesPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final nestedFinder = find.byType(NestedScrollView);
+    final summaryFinder = find.byKey(
+      const ValueKey('finance-payables-summary-panel'),
+    );
+    final tableFinder = find.byWidgetPredicate(
+      (widget) => widget is MasterDataTableView<FinancePayableItem>,
+    );
+    final table = tester.widget<MasterDataTableView<FinancePayableItem>>(
+      tableFinder,
+    );
+    final nestedState = tester.state<NestedScrollViewState>(nestedFinder);
+    final pointer = TestPointer(7, PointerDeviceKind.mouse);
+    final tableCenter = tester.getCenter(tableFinder);
+
+    expect(table.primary, isTrue);
+    expect(
+      find.byKey(const ValueKey('finance-payables-table-toolbar')),
+      findsOneWidget,
+    );
+    expect(nestedState.innerController.offset, 0);
+    final summaryTopBefore = tester.getTopLeft(summaryFinder).dy;
+
+    await tester.sendEventToBinding(pointer.hover(tableCenter));
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 80)));
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(summaryFinder).dy, lessThan(summaryTopBefore));
+    expect(nestedState.innerController.offset, closeTo(0, 0.5));
+
+    final outer = nestedState.outerController;
+    final remainingHeader =
+        outer.position.maxScrollExtent - outer.position.pixels;
+    await tester.sendEventToBinding(pointer.scroll(Offset(0, remainingHeader)));
+    await tester.pumpAndSettle();
+
+    expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
+    expect(nestedState.innerController.offset, closeTo(0, 0.5));
+
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
+    await tester.pumpAndSettle();
+
+    expect(nestedState.innerController.offset, greaterThan(0));
+    final innerOffset = nestedState.innerController.offset;
+
+    await tester.sendEventToBinding(pointer.scroll(Offset(0, -innerOffset)));
+    await tester.pumpAndSettle();
+
+    expect(nestedState.innerController.offset, closeTo(0, 0.5));
+    expect(outer.position.pixels, closeTo(outer.position.maxScrollExtent, 0.5));
+
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, -80)));
+    await tester.pumpAndSettle();
+
+    expect(outer.position.pixels, lessThan(outer.position.maxScrollExtent));
+    expect(summaryFinder, findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -182,8 +291,9 @@ void main() {
 }
 
 class _PageApi extends ApiClient {
-  _PageApi() : super(Dio());
+  _PageApi({this.itemCount = 1}) : super(Dio());
 
+  final int itemCount;
   Map<String, dynamic>? lastQuery;
 
   @override
@@ -207,34 +317,35 @@ class _PageApi extends ApiClient {
         'pendingLossCases': 2,
       },
       'items': <Map<String, dynamic>>[
-        <String, dynamic>{
-          'id': 'ap-1',
-          'businessType': 'SUBCONTRACT',
-          'openItemKind': 'PAYABLE',
-          'sourceDocType': 'SUBCONTRACT_RECEIPT',
-          'sourceDocNo': 'SWI-001',
-          'supplierCode': 'V60001',
-          'supplierName': '精密加工厂',
-          'billDate': '2026-08-20',
-          'dueDate': '2026-08-31',
-          'settlementMethodName': '月结',
-          'currencyCode': '001',
-          'currencyName': '人民币',
-          'grossOriginal': '10000.00',
-          'grossLocal': '10000.00',
-          'paidOriginal': '4000.00',
-          'paidLocal': '4000.00',
-          'offsetOriginal': '800.00',
-          'offsetLocal': '800.00',
-          'outstandingOriginal': '5200.00',
-          'outstandingLocal': '5200.00',
-          'status': 'OVERDUE',
-          'overdueDays': 7,
-        },
+        for (var index = 1; index <= itemCount; index++)
+          <String, dynamic>{
+            'id': 'ap-$index',
+            'businessType': 'SUBCONTRACT',
+            'openItemKind': 'PAYABLE',
+            'sourceDocType': 'SUBCONTRACT_RECEIPT',
+            'sourceDocNo': 'SWI-$index',
+            'supplierCode': 'V60001',
+            'supplierName': '精密加工厂',
+            'billDate': '2026-08-20',
+            'dueDate': '2026-08-31',
+            'settlementMethodName': '月结',
+            'currencyCode': '001',
+            'currencyName': '人民币',
+            'grossOriginal': '10000.00',
+            'grossLocal': '10000.00',
+            'paidOriginal': '4000.00',
+            'paidLocal': '4000.00',
+            'offsetOriginal': '800.00',
+            'offsetLocal': '800.00',
+            'outstandingOriginal': '5200.00',
+            'outstandingLocal': '5200.00',
+            'status': 'OVERDUE',
+            'overdueDays': 7,
+          },
       ],
       'page': 1,
-      'size': 20,
-      'total': 1,
+      'size': itemCount,
+      'total': itemCount,
       'totalPages': 1,
     };
   }

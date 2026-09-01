@@ -26,6 +26,8 @@ class SalesDocFilter {
     this.closed,
     this.chain,
     this.sellerId,
+    this.financeAudit,
+    this.warehouseWorkStatus,
   });
   final String? keyword;
   final String? clientId;
@@ -36,6 +38,8 @@ class SalesDocFilter {
   final bool? closed; // 结案筛选（订货工作台「本月完成」卡用）
   final List<int>? chain; // 订单行链路状态组（统计卡钻取，逗号拼接多值）
   final String? sellerId; // 按销售员筛选（生产计划选来源单按跟单员收敛）
+  final int? financeAudit; // 出货财务审核：0 待审 / 1 已审
+  final String? warehouseWorkStatus; // 出货仓库作业状态
 }
 
 class SalesRepository {
@@ -65,6 +69,10 @@ class SalesRepository {
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
       if (filter.closed != null) 'closed': filter.closed,
+      if (filter.financeAudit != null) 'financeAudit': filter.financeAudit,
+      if (filter.warehouseWorkStatus != null &&
+          filter.warehouseWorkStatus!.trim().isNotEmpty)
+        'warehouseWorkStatus': filter.warehouseWorkStatus!.trim(),
       if (filter.chain != null && filter.chain!.isNotEmpty)
         'chain': filter.chain!.join(','),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
@@ -140,18 +148,24 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
-  /// C6 财务审核发货（仅出货单）：返回结算方式+未收余额辅助核对。
-  Future<Map<String, dynamic>> financeAudit(String id) async {
-    final json = await api.post('${_doc(id)}/finance-audit'); // ENDPOINT
-    return json;
+  /// 财务审核前预览：所有客户都先核对货款类型、结账方式、未收与铺底。
+  Future<ShipmentFinanceAuditInfo> financeAuditInfo(String id) async {
+    final json = await api.get('${_doc(id)}/finance-audit-info');
+    return ShipmentFinanceAuditInfo.fromJson(json);
   }
 
-  /// C6 财务反审（仅未审核出货的单据）。
-  Future<Map<String, dynamic>> financeAuditReverse(String id) async {
+  /// 财务审核发货（仅出货单）；调用方必须先展示 [financeAuditInfo]。
+  Future<ShipmentFinanceAuditInfo> financeAudit(String id) async {
+    final json = await api.post('${_doc(id)}/finance-audit'); // ENDPOINT
+    return ShipmentFinanceAuditInfo.fromJson(json);
+  }
+
+  /// 财务反审（仅仓库尚未开始作业的出货草稿）。
+  Future<ShipmentFinanceAuditInfo> financeAuditReverse(String id) async {
     final json = await api.post(
       '${_doc(id)}/finance-audit-reverse',
     ); // ENDPOINT
-    return json;
+    return ShipmentFinanceAuditInfo.fromJson(json);
   }
 
   /// 恢复已中止订单（POST /{id}/stopped?stopped=false）。

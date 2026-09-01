@@ -18,8 +18,9 @@ class ProductionMaterialAnalysisWorkflowContractTest {
 
         assertThat(source).contains("activeOpenActionQty");
         assertThat(source).contains("status IN ('OPEN','CREATED','IN_PROGRESS')");
-        assertThat(source).contains("inspection.passed_base_qty");
-        assertThat(source).contains("inspection.status = 'RESOLVED'");
+        assertThat(source).contains("inspection.warehouse_stocked_base_qty");
+        assertThat(source).contains("'PARTIAL','RESOLVED'");
+        assertThat(source).doesNotContain("THEN inspection.passed_base_qty");
         assertThat(source).contains("returned_qty");
         assertThat(source).doesNotContain("action.status IN ('OPEN','CREATED','IN_PROGRESS','DONE')");
         assertThat(source).contains("Comparator.comparingInt(ActionGroup::sourcePriority)");
@@ -220,6 +221,47 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         // 幂等哈希必须覆盖数量，防止同键不同量误重放。
         assertThat(commands).contains("\"QTY|\"");
         assertThat(commands).contains("\"|SAFETY|\"");
+    }
+
+    @Test
+    void makeNotifyRequiresFullResidualUntilDelegatedQuantityExists() throws Exception {
+        String contracts = source("features/production/analysis/MaterialAnalysisContracts.java");
+        String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
+
+        assertThat(contracts).contains(
+                "MAKE 在显式 delegated_qty 落地前必须等于全部实时余量");
+        assertThat(commands).contains(
+                "\"MAKE\".equals(group.route()) && requested.compareTo(delta) != 0");
+        assertThat(commands).contains("自制任务当前必须按全部剩余需求");
+        assertThat(commands).contains("本批生产数量请在子件任务创建后的计划向导中填写");
+    }
+
+    @Test
+    void materialViewExposesExactRequirementStateAndMakeChildOwner() throws Exception {
+        String contracts = source("features/production/analysis/MaterialAnalysisContracts.java");
+        String service = source("features/production/analysis/MaterialAnalysisService.java");
+
+        assertThat(contracts).contains("String requirementState");
+        assertThat(contracts).contains("UUID delegatedToAnalysisLineId");
+        assertThat(contracts).contains("String delegatedToSourceRef");
+        assertThat(contracts).contains("BigDecimal delegatedToRequestedQty");
+        assertThat(contracts).contains(
+                "REQUIREMENT_STATE_DELEGATED_TO_MAKE_CHILD");
+        assertThat(contracts).contains("REQUIREMENT_STATE_INACTIVE_PARENT_COVERED");
+        assertThat(contracts).contains("REQUIREMENT_STATE_INACTIVE_PARENT_ROUTE");
+        assertThat(contracts).contains("REQUIREMENT_STATE_INACTIVE_REFERENCE");
+        assertThat(contracts).contains("REQUIREMENT_STATE_TRANSFERRED_TO_PLAN");
+
+        // Owner identity is the persisted MAKE_COMPONENT parent relation plus
+        // the exact analysis-item/node-key ancestry; goods identity is display
+        // context only and is never the ownership join.
+        assertThat(service).contains("parent_material.id = child.parent_analysis_material_id");
+        assertThat(service).contains(
+                "child.id, child.source_ref, child.requested_qty");
+        assertThat(service).contains("SELECT m.id, m.analysis_item_id, m.node_key");
+        assertThat(service).contains(
+                "cursor.analysisItemId(), cursor.parentNodeKey()");
+        assertThat(service).contains("row.requiredQty().signum() > 0");
     }
 
     @Test

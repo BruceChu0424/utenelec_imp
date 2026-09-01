@@ -63,6 +63,7 @@ public class PreplanStockEntitlementService {
                       AND positive.beneficiary_analysis_material_id = :materialId
                       AND positive.event_type IN (
                           'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
+                          'SUBCONTRACT_HANDOFF_IN',
                           'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                     UNION ALL
                     SELECT lineage.lot_id,
@@ -75,7 +76,8 @@ public class PreplanStockEntitlementService {
                          lineage.current_positive_event_id
                     JOIN preplan_stock_entitlement_events counter_negative
                       ON current_positive.event_type IN (
-                         'RESTORE', 'MAKE_DELEGATE_IN')
+                         'RESTORE', 'MAKE_DELEGATE_IN',
+                         'SUBCONTRACT_HANDOFF_IN')
                      AND counter_negative.id =
                          current_positive.counter_event_id
                     JOIN preplan_stock_entitlement_events source_positive
@@ -94,7 +96,8 @@ public class PreplanStockEntitlementService {
                            FROM preplan_stock_entitlement_events negative
                            WHERE negative.source_entitlement_event_id = positive.id
                              AND negative.event_type IN (
-                                 'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                                 'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                                 'REALLOCATE_OUT',
                                  'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                        ), 0) AS remaining_qty,
                        reservation.goods_id, reservation.color_id,
@@ -113,7 +116,9 @@ public class PreplanStockEntitlementService {
                   AND (
                       positive.event_type IN ('ORIGIN_IQC', 'ORIGIN_MAKE')
                       OR (
-                          positive.event_type IN ('RESTORE', 'MAKE_DELEGATE_IN')
+                          positive.event_type IN (
+                              'RESTORE', 'MAKE_DELEGATE_IN',
+                              'SUBCONTRACT_HANDOFF_IN')
                           AND EXISTS (
                               SELECT 1
                               FROM entitlement_lineage lineage
@@ -133,7 +138,8 @@ public class PreplanStockEntitlementService {
                       FROM preplan_stock_entitlement_events negative
                       WHERE negative.source_entitlement_event_id = positive.id
                         AND negative.event_type IN (
-                            'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                            'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                            'REALLOCATE_OUT',
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
                 ORDER BY positive.created_at, positive.id
@@ -170,7 +176,8 @@ public class PreplanStockEntitlementService {
                            FROM preplan_stock_entitlement_events negative
                            WHERE negative.source_entitlement_event_id = positive.id
                              AND negative.event_type IN (
-                                 'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                                  'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                                  'REALLOCATE_OUT',
                                  'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                        ), 0) AS remaining_qty,
                        reservation.goods_id, reservation.color_id,
@@ -182,6 +189,7 @@ public class PreplanStockEntitlementService {
                  AND reservation.owner_type = 'PREPLAN_ANALYSIS'
                 WHERE positive.event_type IN (
                         'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
+                        'SUBCONTRACT_HANDOFF_IN',
                         'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                   AND positive.beneficiary_analysis_id = :analysisId
                   AND positive.beneficiary_analysis_material_id = :materialId
@@ -194,7 +202,8 @@ public class PreplanStockEntitlementService {
                       FROM preplan_stock_entitlement_events negative
                       WHERE negative.source_entitlement_event_id = positive.id
                         AND negative.event_type IN (
-                            'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                            'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                            'REALLOCATE_OUT',
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
                 ORDER BY positive.created_at, positive.id
@@ -228,7 +237,8 @@ public class PreplanStockEntitlementService {
                                    WHERE negative.source_entitlement_event_id =
                                        positive.id
                                      AND negative.event_type IN (
-                                         'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                                         'MAKE_DELEGATE_OUT',
+                                         'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
                                          'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                                ), 0) AS remaining_qty,
                                reservation.goods_id, reservation.color_id,
@@ -241,6 +251,7 @@ public class PreplanStockEntitlementService {
                         WHERE positive.id = :eventId
                           AND positive.event_type IN (
                               'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
+                              'SUBCONTRACT_HANDOFF_IN',
                               'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                           AND positive.qty - COALESCE((
                               SELECT SUM(negative.qty)
@@ -248,7 +259,8 @@ public class PreplanStockEntitlementService {
                               WHERE negative.source_entitlement_event_id =
                                   positive.id
                                 AND negative.event_type IN (
-                                    'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                                    'MAKE_DELEGATE_OUT',
+                                    'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
                                     'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                           ), 0) > 0
                         """ + lock).setParameter("eventId", positiveEventId));
@@ -256,6 +268,17 @@ public class PreplanStockEntitlementService {
             throw conflict("Entitlement lot is no longer available");
         }
         return AvailableLot.from(rows.getFirst());
+    }
+
+    /** Returns a current positive lot, or {@code null} when it has no balance. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public AvailableLot availableLotOrNull(
+            UUID positiveEventId, boolean forUpdate) {
+        try {
+            return requireAvailableLot(positiveEventId, forUpdate);
+        } catch (ApiException unavailable) {
+            return null;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -780,7 +803,9 @@ public class PreplanStockEntitlementService {
         boolean validPair = ("REALLOCATE_OUT".equals(outEventType)
                 && "REALLOCATE_IN".equals(inEventType))
                 || ("PRIORITY_OUT".equals(outEventType)
-                && "PRIORITY_IN".equals(inEventType));
+                && "PRIORITY_IN".equals(inEventType))
+                || ("SUBCONTRACT_HANDOFF_OUT".equals(outEventType)
+                && "SUBCONTRACT_HANDOFF_IN".equals(inEventType));
         if (!validPair) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "Unsupported entitlement event pair");
@@ -922,7 +947,8 @@ public class PreplanStockEntitlementService {
                                    WHERE negative.source_entitlement_event_id =
                                        positive.id
                                      AND negative.event_type IN (
-                                         'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                                         'MAKE_DELEGATE_OUT',
+                                         'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
                                          'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                                ), 0) AS remaining_qty,
                                reservation.goods_id, reservation.color_id,
@@ -942,7 +968,8 @@ public class PreplanStockEntitlementService {
                               WHERE negative.source_entitlement_event_id =
                                   positive.id
                                 AND negative.event_type IN (
-                                    'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                                    'MAKE_DELEGATE_OUT',
+                                    'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
                                     'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                           ), 0) > 0
                         ORDER BY reservation.created_at, reservation.id,
@@ -1106,7 +1133,8 @@ public class PreplanStockEntitlementService {
                            FROM preplan_stock_entitlement_events negative
                            WHERE negative.source_entitlement_event_id = positive.id
                              AND negative.event_type IN (
-                                 'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                                 'MAKE_DELEGATE_OUT',
+                                 'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
                                  'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                        ), 0) AS remaining_qty,
                        reservation.goods_id, reservation.color_id,
@@ -1119,13 +1147,15 @@ public class PreplanStockEntitlementService {
                 WHERE positive.beneficiary_analysis_id = :analysisId
                   AND positive.event_type IN (
                       'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
+                      'SUBCONTRACT_HANDOFF_IN',
                       'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                   AND positive.qty - COALESCE((
                       SELECT SUM(negative.qty)
                       FROM preplan_stock_entitlement_events negative
                       WHERE negative.source_entitlement_event_id = positive.id
                         AND negative.event_type IN (
-                            'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                            'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                            'REALLOCATE_OUT',
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
                   AND reservation.qty - reservation.consumed_qty
@@ -1152,7 +1182,8 @@ public class PreplanStockEntitlementService {
                            FROM preplan_stock_entitlement_events negative
                            WHERE negative.source_entitlement_event_id = positive.id
                              AND negative.event_type IN (
-                                 'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                                 'MAKE_DELEGATE_OUT',
+                                 'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
                                  'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                        ), 0) AS remaining_qty,
                        reservation.goods_id, reservation.color_id,
@@ -1163,13 +1194,15 @@ public class PreplanStockEntitlementService {
                 WHERE positive.stock_reservation_id = :reservationId
                   AND positive.event_type IN (
                       'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
+                      'SUBCONTRACT_HANDOFF_IN',
                       'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                   AND positive.qty - COALESCE((
                       SELECT SUM(negative.qty)
                       FROM preplan_stock_entitlement_events negative
                       WHERE negative.source_entitlement_event_id = positive.id
                         AND negative.event_type IN (
-                            'MAKE_DELEGATE_OUT', 'REALLOCATE_OUT',
+                            'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                            'REALLOCATE_OUT',
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
                 ORDER BY positive.created_at, positive.id

@@ -13,25 +13,41 @@ class ProcurementInspectionDeterminismContractTest {
     private static final Path JAVA = Path.of("src/main/java/com/uten/imp");
 
     @Test
-    void dispositionUsesCanonicalDimensionThenWholeReceiptRowLocking() throws Exception {
+    void dispositionOnlyReleasesWhileWarehouseCommandOwnsStockAndProductionSideEffects()
+            throws Exception {
         String source = source(
                 "features/warehouse/inbound/ProcurementInspectionService.java");
+        String stockIn = source(
+                "features/warehouse/inbound/ProcurementIqcStockInService.java");
+        int dispositionStart = source.indexOf("public void dispose(");
+        int dispositionEnd = source.indexOf(
+                "\n    private void publishIqcStockInPending", dispositionStart);
+        String disposition = source.substring(dispositionStart, dispositionEnd);
 
         assertOrdered(source,
                 "lockReceiptMutationDimensions(receiptType, receiptId);",
                 "FROM procurement_inspection_items");
-        assertThat(source)
+        assertThat(disposition)
                 .contains("WHERE receipt_type = :rt AND receipt_id = :rid")
                 .contains("ORDER BY id\n                        FOR UPDATE")
-                .contains("lockPurchaseReceiptMutationDimensions(receiptId)")
-                .contains("lockSubcontractReceiptMutationDimensions(receiptId)")
-                .contains("if (isReplay(eventId, inspectionItemId, action, requested, reason)) {")
+                .contains("Boolean replayRequiresWarehouseStockIn = replayRequiresWarehouseStockIn(")
+                .contains("switch (replayNotification(action, replayRequiresWarehouseStockIn))")
+                .contains("case NONE ->")
                 .contains("boolean wholeReceiptResolved = allResolved(receiptType, receiptId)")
                 .contains("if (\"PASS\".equals(action))")
-                .contains("advanceProductionAfterInspectionPass(")
+                .contains("publishIqcStockInPending(")
+                .contains("releasedAmount, releasedWeight, releasedWeightUnitId")
+                .doesNotContain("stockService.recordMovement(")
+                .doesNotContain("advanceProductionAfterInspectionPass(")
+                .doesNotContain("attributeInspectionPass(");
+        assertThat(stockIn)
+                .contains("event.released_amount_local")
+                .contains("event.released_weight")
+                .contains("stockService.recordMovement(")
+                .contains("preplanAnalysisPeg.attributeInspectionStockIn(")
+                .contains("advanceProductionAfterStockIn(")
                 .contains("purchaseSupply.afterPurchaseInspectionPassed(")
-                .contains("subcontractSupply.afterSubcontractInspectionPassed(")
-                .contains("wakeIfWholeReceiptResolved(");
+                .contains("subcontractSupply.afterSubcontractInspectionPassed(");
     }
 
     @Test
@@ -54,20 +70,23 @@ class ProcurementInspectionDeterminismContractTest {
     }
 
     @Test
-    void reversalPreservesAppendOnlyEvidenceAndV222Projection() throws Exception {
+    void reversalUsesOnlyWarehouseStockedProjectionAndKeepsQualityEvidence() throws Exception {
         String source = source(
                 "features/warehouse/inbound/ProcurementInspectionService.java");
 
         assertThat(source)
-                .contains("receivedAmount, receivedBase, BigDecimal.ZERO, passed")
+                .contains("warehouse_stocked_base_qty,")
+                .contains("warehouse_stocked_amount_local,")
+                .contains("warehouse_stocked_weight,")
                 .contains("SET passed_base_qty = 0,")
                 .contains("failed_base_qty = 0,")
+                .contains("warehouse_stocked_base_qty = 0,")
                 .contains("status = 'REVERSED'")
-                .contains("\"RECEIPT_REVERSED\", passed");
+                .contains("\"RECEIPT_REVERSED\", stocked");
     }
 
     @Test
-    void planningConsumptionUsesQualifiedQtyWhileInboundUsesPhysicalOutstandingQty()
+    void readinessUsesWarehouseStockedQtyWhilePlanningKeepsQualityDispositionFacts()
             throws Exception {
         String purchaseTransition = source(
                 "features/production/fulfillment/"
@@ -81,15 +100,15 @@ class ProcurementInspectionDeterminismContractTest {
                 "features/production/analysis/MaterialAnalysisCommandService.java");
 
         assertThat(purchaseTransition)
-                .contains("inspection.passed_base_qty")
+                .contains("inspection.warehouse_stocked_base_qty")
                 .contains("inspection.status IN (")
                 .contains("'PARTIAL', 'RESOLVED'")
-                .contains("inspection.passed_base_qty > 0")
+                .contains("inspection.warehouse_stocked_base_qty > 0")
                 .contains(":IQC_PASS:")
                 .contains("AND status = 1");
         assertThat(readiness)
                 .contains("THEN inspection")
-                .contains(".passed_base_qty")
+                .contains(".warehouse_stocked_base_qty")
                 .contains("WHEN inspection.status IN (")
                 .contains("'PARTIAL', 'RESOLVED'")
                 .contains("receipt.doc_type = 'FINISHED_IN'")
@@ -99,7 +118,10 @@ class ProcurementInspectionDeterminismContractTest {
         assertThat(occurrences(readiness, "'PARTIAL', 'RESOLVED'"))
                 .isEqualTo(2);
         assertThat(analysis)
-                .contains("THEN inspection.passed_base_qty")
+                .contains("THEN inspection.warehouse_stocked_base_qty")
+                .contains("inspection.passed_base_qty")
+                .contains("> inspection.warehouse_stocked_base_qty")
+                .doesNotContain("THEN inspection.passed_base_qty")
                 .contains("COALESCE(i.qty,0)-COALESCE(i.received_qty,0)")
                 .contains("o.is_closed = FALSE")
                 .contains("到货质检存在不合格且原采购需求已无在途")
@@ -109,7 +131,8 @@ class ProcurementInspectionDeterminismContractTest {
                 .contains("request.is_closed = TRUE")
                 .contains("application.is_closed = TRUE");
         assertThat(commands)
-                .contains("THEN inspection.passed_base_qty")
+                .contains("THEN inspection.warehouse_stocked_base_qty")
+                .doesNotContain("THEN inspection.passed_base_qty")
                 .doesNotContain("COALESCE(item.received_qty,0)");
     }
 

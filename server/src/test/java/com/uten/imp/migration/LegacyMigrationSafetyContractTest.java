@@ -157,7 +157,7 @@ class LegacyMigrationSafetyContractTest {
                 .contains("record_run_file ()")
                 .contains("migrate_reconciliation.sql")
                 .contains("reconcile_full_bootstrap")
-                .contains("reconciliation_state\" != \"20|0")
+                .contains("reconciliation_state\" != \"24|0")
                 .contains("sourcetargetbusinessreconciliationrequired")
                 .contains("reconciliation_status=not_run")
                 .contains("git -c \"$here/../..\" status --porcelain=v1 --untracked-files=all");
@@ -169,11 +169,17 @@ class LegacyMigrationSafetyContractTest {
                 .contains("exact_authority_rows")
                 .contains("unresolved_current_uuid_relations")
                 .contains("unresolved_default_settlement_methods")
+                .contains("invalid_credit_floor")
+                .contains("unresolved_sales_payment_types")
+                .contains("unresolved_sales_shipment_finance_gate_exceptions")
+                .contains("v_sales_shipment_finance_gate_migration_exceptions")
+                .contains("including legacy_pending")
+                .contains("legacy_approved_orders_missing_finance_compatibility")
                 .contains("active_placeholder_or_deleted_goods_edges")
                 .contains("unresolved_reject_rows")
                 .contains("retained_fk_anchor_goods");
         assertThat(occurrences(reconciliation,
-                "select :'run_id'::uuid")).isEqualTo(20);
+                "select :'run_id'::uuid")).isEqualTo(24);
     }
 
     @Test

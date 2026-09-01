@@ -18,6 +18,8 @@ public record PagePermissionEmployeePermissionsDto(
             String actionType,
             String description,
             boolean assignable,
+            boolean bulkAssignable,
+            String sensitivity,
             boolean actorEffective,
             boolean targetBaseEffective,
             boolean effective,

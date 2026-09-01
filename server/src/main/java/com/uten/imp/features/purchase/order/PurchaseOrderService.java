@@ -13,6 +13,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.finance.ProcurementCommercialSnapshotPolicy;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.NativeQueryResults;
@@ -136,24 +137,6 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             throw new ApiException(ErrorCode.NOT_FOUND, "采购订货单不存在");
         }
         return assembleDetail(o);
-    }
-
-    /**
-     * Read-back used only after the approve/reject command has succeeded. The
-     * controller already requires the review authority; the service also
-     * verifies authoritative reviewer eligibility without changing normal
-     * detail or list scope.
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    OrderDetail financeDecisionResultDetail(UUID id, FinanceApproval decision) {
-        if (!approvalProjection.isCurrentActorEligibleReviewer()) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "采购订货单不存在");
-        }
-        requireDecisionReceipt(decision);
-        PurchaseOrder o = requireOrder(id);
-        List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(o.getId()).stream()
-                .map(this::toItemDto).toList();
-        return toDetail(o, items, decision);
     }
 
     private OrderDetail assembleDetail(PurchaseOrder o) {
@@ -302,6 +285,12 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         }
         normalizePersistedItemUnits(items);
         requireActiveSettlementMethod(order.getSettlementMethodId(), "采购订货");
+        ProcurementCommercialSnapshotPolicy.requireComplete(
+                em,
+                order.getCurrencyId(),
+                order.getExchangeRate(),
+                order.getTaxRate(),
+                "采购订货");
         requireFinanceCommercialAuthority(order, items);
         sourceIntegrity.validatePurchaseOrder(items.stream()
                 .map(item -> new LinkedDocumentIntegrityService.QuantityLinkedLine(
@@ -459,12 +448,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
 
     private static void requireFinanceCommercialAuthority(
             PurchaseOrder order, List<PurchaseOrderItem> items) {
-        BigDecimal rate = order.getExchangeRate() == null
-                ? BigDecimal.ONE
-                : order.getExchangeRate();
-        if (rate.signum() <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "采购订货汇率必须大于0");
-        }
+        BigDecimal rate = order.getExchangeRate();
         BigDecimal totalOriginal = BigDecimal.ZERO;
         BigDecimal totalLocal = BigDecimal.ZERO;
         for (PurchaseOrderItem item : items) {
@@ -853,7 +837,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     private boolean purchasePriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewPurchase();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewPurchaseOrder();
     }
 
     private static OrderItemDto maskItemPrices(OrderItemDto it) {
@@ -885,18 +870,6 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
 
-
-    private static void requireDecisionReceipt(FinanceApproval decision) {
-        if (decision == null
-                || decision.caseId() == null
-                || decision.version() < 2
-                || !("APPROVED".equals(decision.status())
-                || "REJECTED".equals(decision.status()))) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "财务审批结果已变化，请刷新任务后重试");
-        }
-    }
 
     private String restrictionReason(boolean financePending) {
         if (financePending) {

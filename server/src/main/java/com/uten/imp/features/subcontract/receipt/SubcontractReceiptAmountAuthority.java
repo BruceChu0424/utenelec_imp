@@ -2,6 +2,7 @@ package com.uten.imp.features.subcontract.receipt;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.finance.ProcurementIqcReplacementAllocationService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ public class SubcontractReceiptAmountAuthority {
 
     private final EntityManager em;
     private final SubcontractReceiptItemRepository itemRepo;
+    private final ProcurementIqcReplacementAllocationService replacementAllocation;
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void apply(SubcontractReceipt receipt, List<SubcontractReceiptItem> items) {
@@ -39,7 +41,8 @@ public class SubcontractReceiptAmountAuthority {
             List<Object[]> rows = em.createNativeQuery("""
                     SELECT source_item.price, source_order.supplier_id,
                            source_order.currency_id, source_order.exchange_rate,
-                           source_order.settlement_method_id, source_order.status,
+                           source_order.settlement_method_id, source_order.tax_rate,
+                           source_order.status,
                            COALESCE(source_item.arrival_overage_posted_qty,0),
                            source_item.qty, source_item.amount_original, source_item.amount_local
                     FROM subcontract_order_items source_item
@@ -56,21 +59,25 @@ public class SubcontractReceiptAmountAuthority {
             UUID sourceCurrencyId = (UUID) source[2];
             BigDecimal sourceRate = decimal(source[3]);
             UUID sourceSettlementMethodId = (UUID) source[4];
-            short sourceStatus = ((Number) source[5]).shortValue();
-            BigDecimal postedOverageQty = decimal(source[6]);
-            BigDecimal sourceQty = decimal(source[7]);
-            BigDecimal sourceOriginal = decimal(source[8]);
-            BigDecimal sourceLocal = decimal(source[9]);
+            BigDecimal sourceTaxRate = decimal(source[5]);
+            short sourceStatus = ((Number) source[6]).shortValue();
+            BigDecimal postedOverageQty = decimal(source[7]);
+            BigDecimal sourceQty = decimal(source[8]);
+            BigDecimal sourceOriginal = decimal(source[9]);
+            BigDecimal sourceLocal = decimal(source[10]);
             if (sourceStatus != APPROVED || sourcePrice == null || sourcePrice.signum() < 0
                     || sourceCurrencyId == null || sourceRate == null || sourceRate.signum() <= 0
                     || sourceSettlementMethodId == null || sourceQty == null || sourceQty.signum() <= 0
+                    || sourceTaxRate == null || sourceTaxRate.signum() < 0
+                    || sourceTaxRate.compareTo(new BigDecimal("100")) > 0
                     || sourceOriginal == null || sourceOriginal.signum() < 0
                     || sourceLocal == null || sourceLocal.signum() < 0) {
                 throw conflict("委外进仓来源订单未财务批准或商业快照不完整；历史空结算方式必须先专项核验");
             }
             requireHeaderMatches(receipt.getSupplierId(), receipt.getCurrencyId(),
-                    receipt.getExchangeRate(), receipt.getSettlementMethodId(),
-                    sourceSupplierId, sourceCurrencyId, sourceRate, sourceSettlementMethodId);
+                    receipt.getExchangeRate(), receipt.getSettlementMethodId(), receipt.getTaxRate(),
+                    sourceSupplierId, sourceCurrencyId, sourceRate, sourceSettlementMethodId,
+                    sourceTaxRate);
             @SuppressWarnings("unchecked")
             List<BigDecimal> currentAllowance = em.createNativeQuery("""
                     SELECT approved_excess_qty FROM procurement_arrival_exceptions
@@ -107,13 +114,33 @@ public class SubcontractReceiptAmountAuthority {
             if (((Number) prior[3]).longValue() != 0) {
                 throw conflict("委外订单历史有效进仓数量或金额不完整，必须先专项核对");
             }
+            BigDecimal rawPriorQty=decimal(prior[0]);
+            BigDecimal rawPriorOriginal=decimal(prior[1]);
+            BigDecimal rawPriorLocal=decimal(prior[2]);
+            var released=replacementAllocation.releasedCapacity(
+                    "SUBCONTRACT",item.getOrderItemId());
+            BigDecimal effectivePriorQty=rawPriorQty.subtract(released.qty());
+            BigDecimal effectivePriorOriginal=money(
+                    rawPriorOriginal.subtract(released.amountOriginal()));
+            BigDecimal effectivePriorLocal=money(
+                    rawPriorLocal.subtract(released.amountLocal()));
+            if(effectivePriorQty.signum()<0||effectivePriorOriginal.signum()<0
+                    ||effectivePriorLocal.signum()<0){
+                throw conflict("委外IQC失败退回释放额度超过历史有效进仓累计");
+            }
             ReceiptAmounts amounts = sourceAmounts(
                     item.getQty(), sourcePrice, sourceRate,
                     authorized.qty(), authorized.original(), authorized.local(),
-                    decimal(prior[0]), decimal(prior[1]), decimal(prior[2]));
+                    effectivePriorQty,effectivePriorOriginal,effectivePriorLocal);
             item.setPrice(sourcePrice);
             item.setAmountOriginal(amounts.original());
             item.setAmountLocal(amounts.local());
+            itemRepo.saveAndFlush(item);
+            replacementAllocation.allocateForReceiptItem(
+                    "SUBCONTRACT",receipt.getId(),item.getId(),item.getOrderItemId(),
+                    item.getQty(),item.getUnitRate(),amounts.original(),amounts.local(),
+                    authorized.qty(),authorized.original(),authorized.local(),
+                    rawPriorQty,rawPriorOriginal,rawPriorLocal);
             totalOriginal = totalOriginal.add(amounts.original());
             totalLocal = totalLocal.add(amounts.local());
         }
@@ -132,13 +159,16 @@ public class SubcontractReceiptAmountAuthority {
 
     static void requireHeaderMatches(
             UUID supplierId, UUID currencyId, BigDecimal rate, UUID settlementMethodId,
+            BigDecimal taxRate,
             UUID sourceSupplierId, UUID sourceCurrencyId, BigDecimal sourceRate,
-            UUID sourceSettlementMethodId) {
+            UUID sourceSettlementMethodId, BigDecimal sourceTaxRate) {
         if (!Objects.equals(supplierId, sourceSupplierId)
                 || !Objects.equals(currencyId, sourceCurrencyId)
                 || rate == null || sourceRate == null || rate.compareTo(sourceRate) != 0
-                || !Objects.equals(settlementMethodId, sourceSettlementMethodId)) {
-            throw conflict("委外进仓委外商、币种、汇率或结算方式与财务批准订单不一致");
+                || !Objects.equals(settlementMethodId, sourceSettlementMethodId)
+                || taxRate == null || sourceTaxRate == null
+                || taxRate.compareTo(sourceTaxRate) != 0) {
+            throw conflict("委外进仓委外商、币种、汇率、税率或结算方式与财务批准订单不一致");
         }
     }
 

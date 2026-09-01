@@ -1,6 +1,6 @@
 # 销售—生产—仓库—采购—委外全链路可执行场景矩阵
 
-> 当前复核日期：2026-08-14。V234/V247–V250 是既有迁移基线；当前工作树头为 V289/270，V288/V289 已接通同一分析内现货借用的数据库守卫、服务和 Flutter UI。自动 V238→V289 非空演练、隔离 PostgreSQL 和聚焦测试都不能替代公司数据克隆、真实 HTTP/浏览器、显式 MAKE 分批委派、历史对账、真实岗位 UAT 和签名发布；V202/V190/V238/V244 数字仅是早期场景快照。
+> 当前复核日期：2026-08-30。V234/V247–V250 是既有迁移基线；当前共享工作树目录包含源码候选至 V430，共 392 个文件/392 个唯一版本。V288/V289 已接通同一分析内现货借用，后续前向迁移继续扩展生产/仓库等链路，但 V430 只是工作树文件边界，不是目标库迁移或部署证据。自动非空演练、隔离 PostgreSQL 和聚焦测试都不能替代公司数据克隆、真实 HTTP/浏览器、显式 MAKE 分批委派、历史对账、真实岗位 UAT 和签名发布；V202/V190/V238/V244 数字仅是早期场景快照。
 > 本文是测试资源，不替代业务需求，也不构成生产放行结论。
 > 生产节点任务新口径以 `docs/99-决策记录-ADR/ADR-033-生产物料节点任务化与自底向上备料.md` 为准；其余需求以 `docs/07-业务链路/04-生产订单排产与执行全链路需求.md` 为准；
 > 计划申请、订货财务审批和超量到货以 `docs/99-决策记录-ADR/ADR-019-计划需求分解与采购委外财务审批.md` 为准；
@@ -59,7 +59,7 @@
 18. 实到超过财务批准剩余量时，本次审核必须在库存、订单累计和 AP 之前失败并持久化财务异常；批准追加量只绑定原收货单，仓库再审后才过账。
 19. 财务未接受的数量只形成原下单人的供应商退回任务；原下单人只能确认实物退回，不能改变财务接受量。
 20. 完整 BOM 树每个路径都是独立节点任务；共享库存可按仓货色分配，但任务、action allocation、委派和反向不得按货号合并。
-21. 父件只按实际短缺展开后代：BUY 截断，MAKE 展开，有我方供料 BOM 的 SUBCONTRACT 展开；`required=0` 只能表示“本批无需补货”。
+21. 父件只按实际短缺展开后代：BUY 截断，MAKE 展开，有我方供料 BOM 的 SUBCONTRACT 展开；`required=0` 只能表示当前路径没有活动需求，必须结合服务端 `requirementState` 解释 child 接管、父件覆盖、父件路线、参考项、已转计划或中性未激活。
 22. MAKE 下层实际齐套后才创建 `MAKE_COMPONENT`；已委派数量在父树只读。BUY/委外不生成生产计划，正式计划仍只由 MAKE/root 生成并遵守 generate/approve/READY/预留/DRAW 边界。
 
 ## 3. 统一锁序与失败语义
@@ -108,15 +108,15 @@
 | SC-36 | 委外供应商库存守恒 | 分批发料、耗用、良/不良退料、损耗、期末对账 | 按供应商/地点/物料/批次/所有权守恒；差异有责任与版本化合同 | 供应商持有库存/在制实体和逐需求清账未落地 | `[BLOCKED][RED][MANUAL]` |
 | SC-37 | MAKE 子计划供给父需求 | V176 子计划生成、确认自己的包、尝试通用删除/红冲，再完工/入库、改量、取消 | 派生子计划登记为父包 `SUBPLAN` 单据；通用删除/红冲 fail-closed；父包不能越过子计划自己的已确认包；最终仍须由 supply peg 证明子产出回供父需求且反向守恒 | `ProductionMakeSubplanLifecycleContractTest` 已覆盖登记和生命周期防孤儿；父需求↔子计划明细↔`FINISHED_IN` peg/唤醒/反向仍缺 | `[PARTIAL][RED]` |
 | SC-38 | 销售商业事实、财务锁与脱敏 | 客户端篡改价格/汇率/原本币金额/成本/币税条件，分批出货，`finance_audit=1` 后再编辑/删除/驳回，无价格权查看 | 订单原币额=qty×price×discount，订单不形成新本币事实；出货按来源原币金额和数量比例计额，`SHIPPED` 才锁财务汇率形成发运/AR 本币；不兼容条件拒绝合单；财务已审先反审才可变；无权商业字段为空 | 商业权威/出货/状态测试已有；正式价目、折扣/税额最终结算及多次分批舍入尾差 condition/invoice 引擎仍缺 | `[PARTIAL][RED][MANUAL]` |
-| SC-39 | 聚合工作台、财务任务与对象权限 | 计划、采购、委外、财务、仓库及原下单人分别登录并深链 | `department+actionDocType` 精确映射；采购/委外只能看只读申请并分解订货；财务任务只投递审批实例快照账号；仓库看未来入库/异常；退回任务只投递原下单人；无权列表和已知 UUID 直调均拒绝 | `FulfillmentWorkbenchAccessPolicyTest`、`ProcurementApprovalProjectionQueryTest`、Flutter 财务/仓库/订货工作台测试；真实多账号 HTTP/浏览器对象范围 UAT 未完成 | `[GREEN][MANUAL]` |
+| SC-39 | 聚合工作台、财务任务与对象权限 | 计划、采购、委外、财务、仓库及原下单人分别登录并深链 | `department+actionDocType` 精确映射；采购/委外只能看只读申请并分解订货；财务 PENDING 任务进入持 `view` 人员可见的共享队列，决定动作再按实时审核资格与 `approve/reject` 分权；仓库看未来入库/异常；退回任务只投递原下单人；无权列表和已知 UUID 直调均拒绝 | `FulfillmentWorkbenchAccessPolicyTest`、`ProcurementApprovalProjectionQueryTest`、Flutter 财务/仓库/订货工作台测试；真实多账号 HTTP/浏览器对象范围 UAT 未完成 | `[GREEN][MANUAL]` |
 | SC-40 | 销售退货冻结、需求重开与客户处置 | 新退货审核、分批良品释放/报废/返工、未处置/处置后红冲；客户选择退款/换货/补发/维修；误判处置 | 审核不改可售库存，但重开替换需求并清空旧确认；不直接加预留；仅 `GOOD_RELEASE` 入库；事件不可改删；V220 客户处置经审批并写追加式事件；处置后整单红冲阻断，纠错须追加补偿而非改历史 | V189 覆盖冻结/三类质量处置，V220 已落 `customer_disposition`、审批和追加式事件；仍缺处置级复核纠错/补偿命令、历史对账、完整 RMA/QMS 与岗位 UAT | `[PARTIAL][RED][MANUAL]` |
-| SC-41 | 财务订货审批越权（审核组） | 财务部门持权者 A/B、非财务持权者、不在财务部门的超管分别尝试审批 | 财务部门树内持 `finance_order_approval:review` 的任一员工可通过/驳回（互为备份）；非财务持权者与不在财务部门的超管被服务层资格判定拒绝；乐观锁防并发双审；任务对所有持 view 权限财务人员可见；处理追加事件且幂等 | V229/ADR-027 审批投影与契约测试；真实多账号正反向 UAT 未完成 | `[GREEN][MANUAL]` |
+| SC-41 | 财务订货审批越权（审核组） | `view` only、`view+approve`、`view+reject`、双动作财务人员、跨部门个人点名、已撤销 inactive grant、非财务持权者及不在财务部门的超管分别尝试审批 | 共享任务只要求 `finance_order_approval:view`；批准与驳回分别要求 `finance_order_approval:approve` / `finance_order_approval:reject` 且通过实时审核资格，二者不可互替；inactive override/permission 不构成点名资格；业务详情始终只读，正式决定只接受 `caseId+version` 的财务任务批协议；并发或旧 case/version 仅一次成功 | V328/ADR-027、`WorkflowReviewerEligibilitySqlContractTest`、`ProcurementFinanceApprovalTaskActionPolicyTest`、batch 校验与 Flutter 任务中心测试；真实多账号正反向 UAT 未完成 | `[GREEN][MANUAL]` |
 | SC-42 | 订 10、实到 100 超量处置 | 仓库登记 100，财务分别拒绝超量、自定义追加 5、批准全部 | 首次仓库审核返回专用 409 且库存/订单累计/AP 均未动；三种结果分别为入库/退回 `10/90`、`15/85`、`100/0`；全收/自定义必填原因；追加量仅原收货可用，仓库再审后才过账 | V201/V202、`ProcurementArrivalWorkflowContractTest`、`ProcurementArrivalGuardPostgresTest` 2/2；三岗位实物演练未完成 | `[GREEN][MANUAL]` |
 | SC-43 | 未接受数量供应商退回 | 财务处置后原采购/委外下单人领取退回任务并确认实物退回 | 任务按原订单创建人精确归属；其他人和管理员对象旁路失败；确认人只能记录退回，不得修改财务接受量；数量和原因可审计 | V201/V202 与到货工作流契约测试；供应商签收、运输损耗及线下责任 UAT 未完成 | `[PARTIAL][MANUAL]` |
 | SC-44 | 销售出货→正式 AR→分批收款→总账 | 外币订单无汇率审核、现金客户财务放行、出货草稿篡改本币、缺开账汇率交接、分批 SHIPPED、收款缺/错到账汇率、同人审核、部分/超额/跨币核销、红冲后重跑期间 | 订单与待收计划只保留币种/原币；财务放行不写汇率或 AR；出货草稿本币为空；`SHIPPED` 原子扣库存/消费预留/回写订单并按财务开账汇率立正式 AR；收款逐行显式到账汇率且制审分离，服务端重算本币/汇兑并同事务更新 AR、账户、流水；GL 按期间从现行审核事实重建且平衡 | `SalesOrderExchangeRateAuthorityTest`、`SalesShipmentFinanceRatePolicyTest`、`FinanceReceiptSettlementTest`、`GlPostingServiceReceiptAccountingTest` 已覆盖定向契约；目标 PostgreSQL 真实 HTTP、历史空币种整链修复/对账和销售/仓库/财务多岗位 UAT 未完成 | `[PARTIAL][RED][MANUAL]` |
-| SC-45 | 完整树与逐路径节点任务 | 打开含 4 层 BOM、同货多路径和无激活后代的分析 | 根与全部分支默认展开；每行显示目标仓在手/合格可用、本批需求、缺口、状态和操作；同货多路径身份不同；`required=0` 只显示“本批无需补货”且仍显示现货 | 当前源码候选与 Flutter 页面/模型 25/25 覆盖；真实浏览器、目标库和岗位验收待完成 | `[PARTIAL][RED][MANUAL]` |
+| SC-45 | 完整树与逐路径节点任务 | 打开含 4 层 BOM、同货多路径、无激活后代和已转交 MAKE child 的分析 | 根与全部分支默认展开；`ACTIVE` 行显示本批需求与合格库存保障；同货多路径身份不同；`required=0` 必须由服务端 `requirementState` 区分父件覆盖、父件路线、参考项、已转计划或 `DELEGATED_TO_MAKE_CHILD`，委派行指向精确 child 且不再显示“需 0 / 已保障 0”噪声 | 后端 behavior 41/41、workflow contract 19/19、Flutter 物料分析 78/78 和本矩阵契约 2/2 覆盖需求状态解析、精确委派去向、正需求零保障、同货多路径隔离与响应式语义；真实浏览器、目标库和岗位验收待完成 | `[PARTIAL][RED][MANUAL]` |
 | SC-46 | 路线驱动的后代激活 | 父件需求 100、合格现货 40，分别确认 BUY、MAKE、带/不带供料 BOM 的 SUBCONTRACT | 只按短缺 60 传播；BUY 后代不激活；MAKE 激活下层；有供料 BOM 的委外激活我方供料，无 BOM 不虚构需求；改路线按版本重算且旧 action 不残留为有效覆盖 | 当前源码候选与后端定向 29/29 覆盖核心展开/门禁；并发、完整改道/反向和真实 PostgreSQL/HTTP 仍缺 | `[PARTIAL][RED][MANUAL]` |
-| SC-47 | MAKE 齐套后委派 | MAKE 节点下层先缺料、后部分/全部齐套；并发点击安排生产 | 未齐套拒绝 child item；齐套正数量批次幂等创建 `MAKE_COMPONENT`，对应后代转 child ownership；父树不可重复 route/notify/allocate/generate；若允许部分委派，未委派余量必须可恢复 | 当前候选有下层门禁、child ownership 投影与定向测试；无 V251 显式 `delegated_qty`，部分委派/反向及 PG/HTTP 并发、真实岗位证据仍缺 | `[PARTIAL][RED][MANUAL]` |
+| SC-47 | MAKE 齐套后委派 | MAKE 节点下层先缺料、后部分/全部齐套；并发点击安排生产 | 未齐套拒绝 child item；齐套后按全部实时余量幂等创建 `MAKE_COMPONENT`，对应后代转 child ownership；父树不可重复 route/notify/allocate/generate；详情以精确 `requirementState + delegatedTo*` 公开 child 去向，不能用裸 0 掩盖 | 当前候选有下层门禁、全量 child ownership、精确只读归属投影与定向测试；仍无显式 `delegated_qty`，部分委派/完整反向及 PG/HTTP 并发、真实岗位证据仍缺 | `[PARTIAL][RED][MANUAL]` |
 | SC-48 | 节点动作与计划类型 | 分别操作 BUY、SUBCONTRACT、MAKE 和根产品，计划生成成功/失败后刷新 | BUY/委外只形成物料任务；只有 MAKE/root 生成生产计划草稿；成功留在分析页并显示计划深链，失败保留选择并明确提示；不得前端手改生产状态 | 当前源码候选与 Flutter 页面/模型 25/25 覆盖一键 MAKE/向导/留页/状态；真实后端、登录态浏览器和岗位验收待完成 | `[PARTIAL][RED][MANUAL]` |
 | SC-49 | 计划审批与节点状态投影 | 草稿待审、批准、实际领料、报工、完工入库及反向 | generate 零预留；approve 原子 READY/完整预留/DRAW；已领料来自实际 issue，生产中来自执行/报工，完工来自审核入库；反向后节点状态同步且原事实保留 | 既有审批/领料/执行局部证据可复用；ADR-033 节点投影与同页整链未验收 | `[PARTIAL][RED][MANUAL]` |
 

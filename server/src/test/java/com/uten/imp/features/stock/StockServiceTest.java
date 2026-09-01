@@ -83,6 +83,90 @@ class StockServiceTest {
     }
 
     @Test
+    void actualTotalWeightIsPersistedAndNotMultipliedByUnitRate() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+        BigDecimal actualWeight = new BigDecimal("5.0000");
+
+        service.recordMovement(new StockService.MovementRequest(
+                OffsetDateTime.now(), StockService.TYPE_PURCHASE_RECEIPT,
+                "TEST", UUID.randomUUID(), UUID.randomUUID(),
+                goodsId, null, warehouseId, StockService.DIR_IN,
+                new BigDecimal("20"), UUID.randomUUID(), new BigDecimal("10"),
+                BigDecimal.ZERO, null, actualWeight));
+
+        var movement = org.mockito.ArgumentCaptor.forClass(StockMovement.class);
+        verify(movementRepo).save(movement.capture());
+        assertEquals(actualWeight, movement.getValue().getWeight());
+        verify(balanceRepo).upsertBalance(
+                warehouseId, goodsId, null, new BigDecimal("20"),
+                BigDecimal.ZERO, actualWeight,
+                movement.getValue().getTransactionDate());
+    }
+
+    @Test
+    void negativeActualWeightIsRejectedBeforeWritingLedger() {
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        assertThrows(IllegalArgumentException.class, () -> service.recordMovement(
+                new StockService.MovementRequest(
+                        OffsetDateTime.now(), StockService.TYPE_PURCHASE_RECEIPT,
+                        "TEST", UUID.randomUUID(), UUID.randomUUID(),
+                        UUID.randomUUID(), null, UUID.randomUUID(),
+                        StockService.DIR_IN, BigDecimal.ONE, UUID.randomUUID(),
+                        BigDecimal.ONE, BigDecimal.ZERO, null,
+                        new BigDecimal("-0.0001"))));
+
+        verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
+        verify(balanceRepo, never()).upsertBalance(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void outboundCannotMakeKnownWeightBalanceNegative() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockBalance balance = new StockBalance();
+        balance.setWarehouseId(warehouseId);
+        balance.setGoodsId(goodsId);
+        balance.setQty(new BigDecimal("10"));
+        balance.setWeight(new BigDecimal("4.5000"));
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
+                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.recordMovement(new StockService.MovementRequest(
+                        OffsetDateTime.now(), StockService.TYPE_SALES_OUT,
+                        "TEST", UUID.randomUUID(), UUID.randomUUID(),
+                        goodsId, null, warehouseId, StockService.DIR_OUT,
+                        BigDecimal.ONE, UUID.randomUUID(), BigDecimal.ONE,
+                        BigDecimal.ZERO, null, new BigDecimal("5.0000"))));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
+        verify(balanceRepo, never()).upsertBalance(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void normalOutboundCannotConsumeReservedOrSafetyStock() {
         UUID warehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();

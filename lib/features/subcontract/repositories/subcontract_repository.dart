@@ -142,29 +142,6 @@ class SubcontractRepository {
     return SubcontractDocDetail.fromJson(json);
   }
 
-  Future<SubcontractDocDetail> approveFinance(
-    String id, {
-    required int expectedVersion,
-  }) async {
-    final json = await api.post(
-      '${_doc(id)}/approve',
-      body: {'expectedVersion': expectedVersion},
-    );
-    return SubcontractDocDetail.fromJson(json);
-  }
-
-  Future<SubcontractDocDetail> rejectFinance(
-    String id, {
-    required int expectedVersion,
-    required String reason,
-  }) async {
-    final json = await api.post(
-      '${_doc(id)}/reject',
-      body: {'expectedVersion': expectedVersion, 'reason': reason.trim()},
-    );
-    return SubcontractDocDetail.fromJson(json);
-  }
-
   Future<SubcontractDocDetail> reverse(String id) async {
     final json = await api.post('${_doc(id)}/reverse');
     return SubcontractDocDetail.fromJson(json);

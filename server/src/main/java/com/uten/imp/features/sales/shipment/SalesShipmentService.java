@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.SettlementMethodReferenceResolver;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
@@ -109,7 +110,7 @@ public class SalesShipmentService {
     private final com.uten.imp.features.master.client.ClientShipAddressService clientShipAddressService;
 
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('sales_shipment:view')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
     public PageResponse<ShipmentListItem> list(ShipmentQueryFilter f, int page, int size, String sort, String order) {
         var readScope = accessPolicy.scope(
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_WORK_AUTHORITY);
@@ -133,6 +134,14 @@ public class SalesShipmentService {
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.arPosted() != null) ps.add(cb.equal(root.get("arPosted"), f.arPosted()));
+            if (f.financeAudit() != null) ps.add(cb.equal(root.get("financeAudit"), f.financeAudit()));
+            if (f.warehouseWorkStatus() != null
+                    && !f.warehouseWorkStatus().isBlank()) {
+                ps.add(cb.equal(
+                        root.get("warehouseWorkStatus"),
+                        f.warehouseWorkStatus().trim()
+                                .toUpperCase(java.util.Locale.ROOT)));
+            }
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
@@ -160,7 +169,7 @@ public class SalesShipmentService {
     }
 
     @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('sales_shipment:view')")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','finance_shipment_audit','sales_shipment:warehouse-work')")
     public ShipmentDetail detail(UUID id) {
         SalesShipment s = requireReadableShipment(id);
         List<SalesShipmentItem> entities = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
@@ -197,9 +206,9 @@ public class SalesShipmentService {
         applyTotals(s, items);
         recordWarehouseEvent(
                 s, null, SalesShipment.WORK_PENDING_PICK,
-                "创建待拣货任务", currentUser.requireEmployeeId(),
+                "创建出货任务，等待财务放行", currentUser.requireEmployeeId(),
                 OffsetDateTime.now());
-        chainNotice.notifyShipmentPendingPick(s.getId());
+        chainNotice.notifyShipmentPendingFinanceAudit(s.getId());
         clientShipAddressService.learn(s.getClientId(), s.getShipAddr(), s.getLinkPhone());
         return toDetail(s, items, true);
     }
@@ -231,7 +240,8 @@ public class SalesShipmentService {
                        o.client_id, o.currency_id, o.bill_no,
                        o.owner_employee_id, o.status, o.is_stopped, o.is_closed,
                        o.tax_rate, o.payment_style_id, o.seller_id, o.id,
-                       o.settlement_method_id, o.finance_rejected
+                       o.settlement_method_id, o.finance_rejected,
+                       o.finance_confirmed
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE i.id IN (:ids) AND COALESCE(i.is_deleted,false) = false AND COALESCE(o.is_deleted,false) = false
@@ -252,6 +262,14 @@ public class SalesShipmentService {
             if (line.getQty() == null || line.getQty().signum() <= 0) {
                 throw new ApiException(ErrorCode.BUSINESS, "本次数量必须大于 0(订单 " + r[9] + ")");
             }
+            if (line.getWeight() != null && (line.getWeight().signum() < 0
+                    || line.getWeight().scale() > 4
+                    || line.getWeight().precision() - line.getWeight().scale() > 14)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "本次实际总重量必须为非负数，最多 14 位整数和 4 位小数(订单 "
+                                + r[9] + ")");
+            }
             if (reserved.signum() <= 0 || line.getQty().compareTo(reserved) > 0) {
                 throw new ApiException(ErrorCode.BUSINESS,
                         "订单 " + r[9] + " 可发预留不足(可发 " + reserved.stripTrailingZeros().toPlainString() + ")，请刷新后重试");
@@ -263,6 +281,10 @@ public class SalesShipmentService {
                 throw new ApiException(
                         ErrorCode.CONFLICT, "订单 " + r[9] + " 已被财务驳回，不可创建出货作业");
             }
+            if (!Boolean.TRUE.equals(r[20])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "订单 " + r[9] + " 尚未完成财务确认，不可创建出货作业");
+            }
             UUID owner = (UUID) r[10];
             accessPolicy.requireWritable(owner, "只能对本人负责的销售订单批量发货", writeScope);
             ShipmentItemLine l = new ShipmentItemLine();
@@ -272,6 +294,7 @@ public class SalesShipmentService {
             l.setUnitId((UUID) r[3]);
             l.setUnitRate((BigDecimal) r[4]);
             l.setQty(line.getQty());
+            l.setWeight(line.getWeight());
             l.setPrice((BigDecimal) r[5]);
             l.setSourceDocNo((String) r[9]);
             Integer paymentStyle = r[15] == null
@@ -316,6 +339,7 @@ public class SalesShipmentService {
     public ShipmentDetail update(UUID id, ShipmentSaveRequest req) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id);
+        requireLegacyShipmentMutable(s);
         if (s.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -354,13 +378,13 @@ public class SalesShipmentService {
     public void delete(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id);
+        requireLegacyShipmentMutable(s);
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS,
                     "只有草稿或已驳回草稿可删除；已出库单据必须保留历史");
         }
         requireFinanceAuditClearedForMutation(s);
         if (!SalesShipment.WORK_PENDING_PICK.equals(s.getWarehouseWorkStatus())
-                && !SalesShipment.WORK_LEGACY_PENDING.equals(s.getWarehouseWorkStatus())
                 && !SalesShipment.WORK_CANCELLED.equals(s.getWarehouseWorkStatus())) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "仓库作业已开始或仍在异常处理；须先完成退拣并恢复待拣货，才可删除");
@@ -381,22 +405,18 @@ public class SalesShipmentService {
 
     // ======================== C6 财务发货审核 ========================
 
-    /** 现金结算由 UUID 主档的不可变 CASH system role 决定；旧整数不参与判断。 */
-    private void assertFinanceAudited(SalesShipment s) {
-        ClientSettlementDefaults defaults = loadClientSettlementDefaults(
-                s.getClientId(), false);
-        var method = resolveEffectiveSettlementMethod(s, defaults);
-        assertFinanceAudited(s, isCashSettlement(method));
-    }
-
-    private void assertFinanceAudited(SalesShipment s, boolean cash) {
-        if (cash && (s.getFinanceAudit() == null || s.getFinanceAudit() != 1)) {
-            throw new ApiException(ErrorCode.BUSINESS, "现金结算客户须财务审核发货后再审核出货单");
+    /** V443：所有非历史兼容出货单都必须先有真实财务放行事实。 */
+    static void assertFinanceAudited(SalesShipment s) {
+        boolean pendingPhysicalWork = SalesShipment.WORK_PENDING_PICK.equals(
+                s.getWarehouseWorkStatus());
+        if ((s.getFinanceGateVersion() == null || s.getFinanceGateVersion() >= 1
+                || pendingPhysicalWork)
+                && (s.getFinanceAudit() == null || s.getFinanceAudit() != 1)) {
+            throw new ApiException(ErrorCode.BUSINESS, "所有客户出货均须先完成财务审核，再由仓库作业");
         }
     }
 
-    /** 财务审核发货：现金结算=查到款后审（审核人自行核对收款，接口返回客户未收余额辅助）；
-     *  月结等其它结算=直接审。草稿/已审单据均可审（已审出货单不再允许反审）。 */
+    /** 财务审核发货：所有客户逐张人工放行；标签不自动决定是否可发货。 */
     @Transactional
     @PreAuthorize("hasAuthority('finance_shipment_audit')")
     public Map<String, Object> financeAudit(UUID id) {
@@ -406,6 +426,9 @@ public class SalesShipmentService {
         if (s.getFinanceAudit() != null && s.getFinanceAudit() == 1) {
             throw new ApiException(ErrorCode.BUSINESS, "已财务审核，请勿重复操作");
         }
+        ClientSettlementDefaults clientDefaults = loadClientSettlementDefaults(
+                s.getClientId(), true);
+        requireClassifiedSalesPaymentType(clientDefaults.salesPaymentType());
         List<SalesShipmentItem> items =
                 itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
@@ -415,11 +438,18 @@ public class SalesShipmentService {
         assertStoredOrderLinks(s, items, true, FINANCE_AUDIT_AUTHORITY);
         requireNonNegativeStoredCommercial(items);
         requireNonNegativeTotals(s);
+        UUID actorUserId = currentUser.requireId();
+        OffsetDateTime decisionTime = OffsetDateTime.now();
+        s.setFinanceGateVersion((short) 1);
         s.setFinanceAudit((short) 1);
-        s.setFinanceAuditorId(currentUser.requireId());
-        s.setFinanceAuditedAt(OffsetDateTime.now());
+        s.setFinanceAuditorId(actorUserId);
+        s.setFinanceAuditedAt(decisionTime);
         shipmentRepo.save(s);
-        return financeAuditInfo(s);
+        Map<String, Object> info = financeAuditInfo(s);
+        appendFinanceReleaseEvent(
+                s, "RELEASED", actorUserId, decisionTime, info);
+        chainNotice.notifyShipmentPendingPick(s.getId(), s.getFinanceAuditedAt());
+        return info;
     }
 
     /** 财务反审：仅未审核出货（status=0）的单据可回退财务审核。 */
@@ -429,43 +459,181 @@ public class SalesShipmentService {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_AUDIT_AUTHORITY);
         requireFinanceAuditEditableState(s);
+        if (s.getFinanceAudit() == null || s.getFinanceAudit() != 1) {
+            throw new ApiException(ErrorCode.BUSINESS, "该出货单尚未财务审核，不能反审");
+        }
+        UUID actorUserId = currentUser.requireId();
+        OffsetDateTime decisionTime = OffsetDateTime.now();
         s.setFinanceAudit((short) 0);
         s.setFinanceAuditorId(null);
         s.setFinanceAuditedAt(null);
         shipmentRepo.save(s);
-        return financeAuditInfo(s);
+        Map<String, Object> info = financeAuditInfo(s);
+        appendFinanceReleaseEvent(
+                s, "REVOKED", actorUserId, decisionTime, info);
+        chainNotice.notifyShipmentFinanceReleaseRevoked(s.getId());
+        return info;
     }
 
-    /** 财务审核辅助信息：结算方式 + 客户未收余额（立帐−收款）。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
+    public Map<String, Object> financeAuditInfo(UUID id) {
+        return financeAuditInfo(requireReadableShipment(id));
+    }
+
+    /** 财务审核辅助信息：标签、UUID 结算方式、权威未结应收、铺底和原始差值。 */
     private Map<String, Object> financeAuditInfo(SalesShipment s) {
         ClientSettlementDefaults defaults = loadClientSettlementDefaults(
                 s.getClientId(), false);
         var method = resolveEffectiveSettlementMethod(s, defaults);
         Object[] c = (Object[]) em.createNativeQuery("""
                 SELECT c.name,
-                       (SELECT COALESCE(SUM(CASE WHEN l.direction='AR' THEN l.amount_original_local ELSE 0 END),0)
-                        FROM ar_ap_ledger l WHERE l.client_id=c.id AND l.is_deleted=false AND l.status=1)
-                       - (SELECT COALESCE(SUM(r.amount_local),0)
-                        FROM finance_receipts r WHERE r.client_id=c.id AND COALESCE(r.is_deleted,false)=false AND r.status=1)
+                       (SELECT COALESCE(SUM(COALESCE(l.amount_balance, 0)), 0)
+                        FROM ar_ap_ledger l
+                        WHERE l.client_id=c.id
+                          AND l.direction='AR'
+                          AND l.open_item_kind='RECEIVABLE'
+                          AND l.source_doc_type<>'DIRECT_RECEIPT'
+                          AND l.is_deleted=false
+                          AND l.status=1),
+                       COALESCE(c.credit_floor, 0),
+                       c.sales_payment_type,
+                       (SELECT COALESCE(SUM(ABS(l.amount_balance_original)), 0)
+                        FROM ar_ap_ledger l
+                        JOIN finance_receipts receipt ON receipt.id=l.source_doc_id
+                        WHERE l.client_id=c.id
+                          AND l.currency_id=:currencyId
+                          AND l.direction='AR'
+                          AND l.open_item_kind='CUSTOMER_PREPAYMENT'
+                          AND l.source_doc_type='DIRECT_RECEIPT'
+                          AND l.status=1
+                          AND COALESCE(l.is_deleted, FALSE)=FALSE
+                          AND receipt.receipt_kind='CUSTOMER_PREPAYMENT'
+                          AND receipt.status=1
+                          AND COALESCE(receipt.is_deleted, FALSE)=FALSE),
+                       (SELECT COALESCE(SUM(ABS(l.amount_balance)), 0)
+                        FROM ar_ap_ledger l
+                        JOIN finance_receipts receipt ON receipt.id=l.source_doc_id
+                        WHERE l.client_id=c.id
+                          AND l.currency_id=:currencyId
+                          AND l.direction='AR'
+                          AND l.open_item_kind='CUSTOMER_PREPAYMENT'
+                          AND l.source_doc_type='DIRECT_RECEIPT'
+                          AND l.status=1
+                          AND COALESCE(l.is_deleted, FALSE)=FALSE
+                          AND receipt.receipt_kind='CUSTOMER_PREPAYMENT'
+                          AND receipt.status=1
+                          AND COALESCE(receipt.is_deleted, FALSE)=FALSE)
                 FROM clients c WHERE c.id = :id
-                """).setParameter("id", s.getClientId()).getSingleResult();
-        return Map.of(
-                "shipmentId", s.getId(),
-                "financeAudit", s.getFinanceAudit(),
-                "clientName", c[0] == null ? "" : c[0],
+                """)
+                .setParameter("id", s.getClientId())
+                .setParameter("currencyId", s.getCurrencyId())
+                .getSingleResult();
+        BigDecimal outstanding = c[1] == null
+                ? BigDecimal.ZERO : (BigDecimal) c[1];
+        BigDecimal creditFloor = c[2] == null
+                ? BigDecimal.ZERO : (BigDecimal) c[2];
+        String paymentType = c[3] == null ? "" : c[3].toString();
+        BigDecimal availablePrepaymentOriginal = c[4] == null
+                ? BigDecimal.ZERO : (BigDecimal) c[4];
+        BigDecimal availablePrepaymentLocal = c[5] == null
+                ? BigDecimal.ZERO : (BigDecimal) c[5];
+        return Map.ofEntries(
+                Map.entry("shipmentId", s.getId()),
+                Map.entry("financeAudit", s.getFinanceAudit()),
+                Map.entry("clientName", c[0] == null ? "" : c[0]),
                 // priceStyle is retained only as a display-compatible snapshot.
-                "priceStyle", method == null || method.legacyId() == null
-                        ? -1 : method.legacyId(),
-                "settlementMethodId", method == null ? "" : method.id().toString(),
-                "settlementMethodCode", method == null || method.code() == null
-                        ? "" : method.code(),
-                "settlementMethodName", method == null || method.name() == null
-                        ? "" : method.name(),
-                "cashClient", isCashSettlement(method),
-                "outstanding", c[1] == null ? java.math.BigDecimal.ZERO : c[1]);
+                Map.entry("priceStyle", method == null || method.legacyId() == null
+                        ? -1 : method.legacyId()),
+                Map.entry("settlementMethodId", method == null ? "" : method.id().toString()),
+                Map.entry("settlementMethodCode", method == null || method.code() == null
+                        ? "" : method.code()),
+                Map.entry("settlementMethodName", method == null || method.name() == null
+                        ? "" : method.name()),
+                Map.entry("cashClient", isCashSettlement(method)),
+                Map.entry("salesPaymentType", paymentType),
+                Map.entry("salesPaymentTypeLabel", salesPaymentTypeLabel(paymentType)),
+                Map.entry("outstanding", outstanding),
+                Map.entry("creditFloor", creditFloor),
+                Map.entry("overFloor", outstanding.subtract(creditFloor)),
+                Map.entry("availablePrepaymentOriginal", availablePrepaymentOriginal),
+                Map.entry("availablePrepaymentLocal", availablePrepaymentLocal));
     }
 
-    /** 仓库作业状态机：在出货草稿上推进 待拣→拣货中→已拣/异常 等目标态，按目标态分别设防（开始拣货前必须已财务审核+明细非空+拣货容量足够；登记异常必填原因），历史无拣货事实的草稿(LEGACY_PENDING)走旧流程不放行。 */
+    private static String salesPaymentTypeLabel(String value) {
+        return switch (value) {
+            case "MONTHLY" -> "月结";
+            case "CASH" -> "现金";
+            case "DEPOSIT" -> "定金";
+            default -> "待人工分类";
+        };
+    }
+
+    private void appendFinanceReleaseEvent(
+            SalesShipment shipment,
+            String eventType,
+            UUID actorUserId,
+            OffsetDateTime occurredAt,
+            Map<String, Object> info) {
+        String paymentType = Objects.toString(
+                info.get("salesPaymentType"), "").trim();
+        String settlementMethod = Objects.toString(
+                info.get("settlementMethodId"), "").trim();
+        em.createNativeQuery("""
+                INSERT INTO sales_shipment_finance_release_events (
+                    shipment_id, event_type, actor_user_id, occurred_at,
+                    client_id, client_name, currency_id, sales_payment_type,
+                    settlement_method_id, shipment_total_original,
+                    formal_ar_outstanding_local,
+                    credit_floor_local, over_floor_local,
+                    available_prepayment_original,
+                    available_prepayment_local)
+                VALUES (
+                    :shipmentId, :eventType, :actorUserId, :occurredAt,
+                    :clientId, :clientName, :currencyId, :salesPaymentType,
+                    :settlementMethodId, :shipmentTotalOriginal,
+                    :formalOutstanding,
+                    :creditFloor, :overFloor,
+                    :availablePrepaymentOriginal,
+                    :availablePrepaymentLocal)
+                """)
+                .setParameter("shipmentId", shipment.getId())
+                .setParameter("eventType", eventType)
+                .setParameter("actorUserId", actorUserId)
+                .setParameter("occurredAt", occurredAt)
+                .setParameter("clientId", shipment.getClientId())
+                .setParameter("clientName", Objects.toString(
+                        info.get("clientName"), ""))
+                .setParameter("currencyId", shipment.getCurrencyId())
+                .setParameter("salesPaymentType",
+                        paymentType.isEmpty() ? null : paymentType)
+                .setParameter("settlementMethodId",
+                        settlementMethod.isEmpty()
+                                ? null : UUID.fromString(settlementMethod))
+                .setParameter("shipmentTotalOriginal",
+                        shipment.getTotalOriginal())
+                .setParameter("formalOutstanding",
+                        snapshotMoney(info, "outstanding"))
+                .setParameter("creditFloor",
+                        snapshotMoney(info, "creditFloor"))
+                .setParameter("overFloor",
+                        snapshotMoney(info, "overFloor"))
+                .setParameter("availablePrepaymentOriginal",
+                        snapshotMoney(info, "availablePrepaymentOriginal"))
+                .setParameter("availablePrepaymentLocal",
+                        snapshotMoney(info, "availablePrepaymentLocal"))
+                .executeUpdate();
+    }
+
+    private static BigDecimal snapshotMoney(
+            Map<String, Object> info, String key) {
+        Object value = info.get(key);
+        if (value instanceof BigDecimal decimal) return decimal;
+        if (value == null) return BigDecimal.ZERO;
+        return new BigDecimal(value.toString());
+    }
+
+    /** 仓库作业状态机：在出货草稿上推进 待拣→拣货中→已拣/异常 等目标态，按目标态分别设防（开始拣货前必须已财务审核+明细非空+拣货容量足够；登记异常必填原因）；LEGACY_PENDING 是只读迁移异常，只能人工核对后重建当前两审任务。 */
     @Transactional
     @PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
     public ShipmentDetail transitionWarehouseWork(
@@ -481,10 +649,14 @@ public class SalesShipmentService {
         if (s.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "仓库作业前必须指定出货仓");
         }
+        // Every warehouse transition, including exception registration and recovery,
+        // belongs to a finance-released physical task. Deep command calls must not
+        // bypass the task-list release filter.
+        assertFinanceAudited(s);
         String current = s.getWarehouseWorkStatus();
         if (SalesShipment.WORK_LEGACY_PENDING.equals(current)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "历史草稿未记录拣货事实，请按历史审核流程处理");
+                    "历史出货草稿是只读迁移异常，请人工核对后按当前财审→仓库两审流程重新开单");
         }
         String target = req.getTargetStatus().trim()
                 .toUpperCase(java.util.Locale.ROOT);
@@ -614,6 +786,29 @@ public class SalesShipmentService {
                     ErrorCode.VALIDATION_FAILED,
                     "仓库目标状态仅支持开始拣货、拣货完成、异常、恢复或交接出库");
         }
+    }
+
+    /**
+     * Exact target states offered to a warehouse client for the current state.
+     *
+     * <p>The command still revalidates every transition, inventory lock and finance-release
+     * precondition in {@link #transitionWarehouseWork(UUID,
+     * com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest)}.</p>
+     */
+    public static List<String> allowedWarehouseTransitionTargets(String current) {
+        if (SalesShipment.WORK_PENDING_PICK.equals(current)) {
+            return List.of(SalesShipment.WORK_PICKING, SalesShipment.WORK_EXCEPTION);
+        }
+        if (SalesShipment.WORK_PICKING.equals(current)) {
+            return List.of(SalesShipment.WORK_PICKED, SalesShipment.WORK_EXCEPTION);
+        }
+        if (SalesShipment.WORK_PICKED.equals(current)) {
+            return List.of(SalesShipment.WORK_SHIPPED, SalesShipment.WORK_EXCEPTION);
+        }
+        if (SalesShipment.WORK_EXCEPTION.equals(current)) {
+            return List.of(SalesShipment.WORK_PENDING_PICK);
+        }
+        return List.of();
     }
 
     /**
@@ -818,12 +1013,16 @@ public class SalesShipmentService {
     }
 
     static void requireFinanceAuditEditableState(SalesShipment shipment) {
+        if (SalesShipment.WORK_LEGACY_PENDING.equals(
+                shipment.getWarehouseWorkStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "历史出货草稿是只读迁移异常，请人工重建当前两审任务");
+        }
         if (shipment.getStatus() == null || shipment.getStatus() != STATUS_DRAFT
                 || shipment.isRejected()
-                || (!SalesShipment.WORK_PENDING_PICK.equals(
-                        shipment.getWarehouseWorkStatus())
-                    && !SalesShipment.WORK_LEGACY_PENDING.equals(
-                        shipment.getWarehouseWorkStatus()))) {
+                || !SalesShipment.WORK_PENDING_PICK.equals(
+                        shipment.getWarehouseWorkStatus())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "财务审核或反审只允许在仓库开始拣货前；已开始作业须先退拣并恢复待拣货");
@@ -856,8 +1055,8 @@ public class SalesShipmentService {
                     "货物已出库或历史交接事实未知，不能直接红冲增加库存；请走销售退货与收货检验流程");
         }
         // 已审核单据若仓库执行状态缺失，则无法证实货物确未出库，同样不得直接红冲。
-        // 历史迁移草稿以 WORK_LEGACY_PENDING 显式标记（且状态为草稿），不落入此分支，
-        // 兼容路径保持不变；缺失状态（NULL）不等同于"货物未出库"。
+        // 历史迁移草稿以 WORK_LEGACY_PENDING 显式标记且只读，不落入已审反向分支；
+        // 缺失状态（NULL）不等同于"货物未出库"。
         if (shipment.getStatus() != null
                 && shipment.getStatus() == STATUS_APPROVED
                 && shipment.getWarehouseWorkStatus() == null) {
@@ -872,17 +1071,19 @@ public class SalesShipmentService {
     public ShipmentDetail approve(UUID id) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id);
-        if (!SalesShipment.WORK_LEGACY_PENDING.equals(s.getWarehouseWorkStatus())) {
+        return rejectRetiredDirectApproval(s);
+    }
+
+    static ShipmentDetail rejectRetiredDirectApproval(SalesShipment shipment) {
+        if (SalesShipment.WORK_LEGACY_PENDING.equals(
+                shipment.getWarehouseWorkStatus())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "新流程出货单须由仓库依次完成开始拣货、拣货完成、交接出库");
+                    "历史出货草稿缺少当前订单关联、财审和仓库作业事实，已转为只读；请人工核对后按当前订单关联流程重新开单");
         }
-        recordWarehouseEvent(
-                s, SalesShipment.WORK_LEGACY_PENDING,
-                SalesShipment.WORK_SHIPPED,
-                "历史兼容审核，不表示已采集物流交接事实",
-                currentUser.requireEmployeeId(), OffsetDateTime.now());
-        return approveLocked(s);
+        throw new ApiException(
+                ErrorCode.CONFLICT,
+                "当前出货单须由仓库依次完成开始拣货、拣货完成、交接出库");
     }
 
     private ShipmentDetail approveLocked(
@@ -900,9 +1101,18 @@ public class SalesShipmentService {
         if (s.getClientId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "出货单需指定客户");
         }
-        // C6 财务发货审核及 AR 账期：在任何库存变更前锁定有效客户的结账方式/账期快照。
-        ClientSettlementSnapshot settlement = lockClientSettlementSnapshot(s);
-        assertFinanceAudited(s, settlement.cashSettlement());
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime recognitionTimestamp = s.getHandedOverAt() == null
+                ? now : s.getHandedOverAt();
+        LocalDate recognitionDate = recognitionTimestamp
+                .atZoneSameInstant(BusinessTime.ZONE)
+                .toLocalDate();
+        // V443: AR starts only at final warehouse confirmation.  The draft
+        // document date remains on the shipment, while ledger/due dates use
+        // the SHIPPED business date.
+        ClientSettlementSnapshot settlement =
+                lockClientSettlementSnapshot(s, recognitionDate);
+        assertFinanceAudited(s);
         List<SalesShipmentItem> items = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
@@ -918,7 +1128,6 @@ public class SalesShipmentService {
         assertStoredShipmentPolicy(items);
         requireNonNegativeStoredCommercial(items);
         requireNonNegativeTotals(s);
-        OffsetDateTime now = OffsetDateTime.now();
         captureGoodsSnapshots(items, true, now);
         applyFinancePostingRate(s, items);
         stockService.lockInventory(items.stream()
@@ -953,7 +1162,7 @@ public class SalesShipmentService {
             arApService.postArAp(new ArApPostingRequest(
                     "AR",
                     StockService.SRC_SALES_SHIPMENT,
-                    s.getId(), s.getBillNo(), s.getBillDate(),
+                    s.getId(), s.getBillNo(), recognitionDate,
                     s.getClientId(), null,
                     s.getCurrencyId(), s.getExchangeRate(),
                     s.getTotalLocal(),
@@ -1033,7 +1242,8 @@ public class SalesShipmentService {
         String sql = """
                 SELECT client.default_settlement_method_id,
                        client.price_style,
-                       client.tday
+                       client.tday,
+                       client.sales_payment_type
                 FROM clients client
                 WHERE client.id = :clientId
                   AND COALESCE(client.is_deleted, false) = false
@@ -1049,7 +1259,21 @@ public class SalesShipmentService {
         return new ClientSettlementDefaults(
                 row[0] == null ? null : (UUID) row[0],
                 row[1] == null ? null : ((Number) row[1]).intValue(),
-                row[2] == null ? null : ((Number) row[2]).intValue());
+                row[2] == null ? null : ((Number) row[2]).intValue(),
+                row[3] == null ? null : row[3].toString());
+    }
+
+    static void requireClassifiedSalesPaymentType(String salesPaymentType) {
+        if (salesPaymentType == null || salesPaymentType.isBlank()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "客户货款类型尚未分类，请先在客户资料选择月结、现金或定金");
+        }
+        if (!Set.of("MONTHLY", "CASH", "DEPOSIT").contains(salesPaymentType)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "客户货款类型无效，请先修复客户主档后再财务放行");
+        }
     }
 
     private SettlementMethodReferenceResolver.SettlementMethodReference
@@ -1076,14 +1300,14 @@ public class SalesShipmentService {
     }
 
     private ClientSettlementSnapshot lockClientSettlementSnapshot(
-            SalesShipment shipment) {
+            SalesShipment shipment, LocalDate recognitionDate) {
         ClientSettlementDefaults defaults = loadClientSettlementDefaults(
                 shipment.getClientId(), true);
         var method = resolveEffectiveSettlementMethod(shipment, defaults);
         return settlementSnapshot(
                 method == null ? null : method.legacyId(),
                 defaults.settlementDays(),
-                shipment.getBillDate(),
+                recognitionDate,
                 method == null ? null : method.id(),
                 isCashSettlement(method));
     }
@@ -1091,11 +1315,11 @@ public class SalesShipmentService {
     static ClientSettlementSnapshot settlementSnapshot(
             Integer settlementStyleLegacy,
             Integer settlementDays,
-            LocalDate billDate,
+            LocalDate recognitionDate,
             UUID settlementMethodId,
             boolean cashSettlement) {
-        if (billDate == null) {
-            throw new ApiException(ErrorCode.CONFLICT, "发运日期缺失，无法确认应收到期日");
+        if (recognitionDate == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "仓库出库确认日期缺失，无法确认应收到期日");
         }
         long days = settlementDays != null && settlementDays > 0
                 ? settlementDays.longValue()
@@ -1103,7 +1327,7 @@ public class SalesShipmentService {
         try {
             return new ClientSettlementSnapshot(
                     settlementStyleLegacy(settlementStyleLegacy),
-                    billDate.plusDays(days),
+                    recognitionDate.plusDays(days),
                     settlementMethodId,
                     cashSettlement);
         } catch (DateTimeException ex) {
@@ -1121,7 +1345,8 @@ public class SalesShipmentService {
     record ClientSettlementDefaults(
             UUID defaultSettlementMethodId,
             Integer legacyShadow,
-            Integer settlementDays) {
+            Integer settlementDays,
+            String salesPaymentType) {
     }
 
     static void applyPostingRateSnapshot(
@@ -1219,6 +1444,7 @@ public class SalesShipmentService {
     public ShipmentDetail reject(UUID id, String reason) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id, REJECT_AUTHORITY);
+        requireLegacyShipmentMutable(s);
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿(待备货)出货单可驳回；已审核请走红冲");
         }
@@ -1226,8 +1452,7 @@ public class SalesShipmentService {
             throw new ApiException(ErrorCode.BUSINESS, "该出货单已驳回");
         }
         requireFinanceAuditClearedForMutation(s);
-        if (!SalesShipment.WORK_PENDING_PICK.equals(s.getWarehouseWorkStatus())
-                && !SalesShipment.WORK_LEGACY_PENDING.equals(s.getWarehouseWorkStatus())) {
+        if (!SalesShipment.WORK_PENDING_PICK.equals(s.getWarehouseWorkStatus())) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "仓库作业已开始或仍在异常处理；须先完成退拣并恢复待拣货，才可驳回释放订单预留");
         }
@@ -1346,7 +1571,7 @@ public class SalesShipmentService {
                 ts, StockService.TYPE_SALES_OUT, StockService.SRC_SALES_SHIPMENT,
                 s.getId(), it.getId(), it.getGoodsId(), it.getColorId(), s.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲"));
+                direction < 0 ? null : "红冲", it.getWeight()));
     }
 
     /** sales_order_items.shipped_qty += delta（delta=±qty）。 */
@@ -1522,9 +1747,9 @@ public class SalesShipmentService {
      * A sales shipment is a fulfilment document, not a miscellaneous
      * stock-out shortcut. Every new-flow line must therefore originate from a
      * sales-order line so shipment policy, ownership and hard reservation are
-     * all server-enforced. Historical LEGACY_PENDING rows remain readable and
-     * approvable through the compatibility path; ad-hoc outbound belongs to
-     * the dedicated other-shipment document.
+     * all server-enforced. Historical LEGACY_PENDING rows remain readable but
+     * are never executable; ad-hoc outbound belongs to the dedicated
+     * other-shipment document.
      */
     private void requireOrderLinkedNewShipment(ShipmentSaveRequest request) {
         if (request.getItems() == null || request.getItems().isEmpty()
@@ -1562,7 +1787,8 @@ public class SalesShipmentService {
                        o.seller_id, i.price, i.amount_original, i.qty,
                        i.discount, i.machining_price, i.client_no,
                        i.client_model, i.source_doc_no, o.id,
-                       o.settlement_method_id, o.finance_rejected
+                       o.settlement_method_id, o.finance_rejected,
+                       o.finance_confirmed
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE i.id IN (:ids)
@@ -1617,6 +1843,10 @@ public class SalesShipmentService {
             if (Boolean.TRUE.equals(row[25])) {
                 throw new ApiException(
                         ErrorCode.CONFLICT, "来源订单 " + row[10] + " 已被财务驳回，不可创建出货作业");
+            }
+            if (!Boolean.TRUE.equals(row[26])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "来源订单 " + row[10] + " 尚未完成财务确认，不可发货");
             }
             if (enforceCommercialSource) {
                 CommercialTerms terms = commercialTerms(row);
@@ -1819,10 +2049,10 @@ public class SalesShipmentService {
             BigDecimal drafted = row[3] == null ? BigDecimal.ZERO : (BigDecimal) row[3];
             // deliberately did not invent reservations for migrated open
             // orders. A new warehouse task must not silently turn that
-            // unknown history into a hard promise. Existing LEGACY_PENDING
-            // drafts retain their compatibility lane; new-flow documents fail
-            // early until a per-order migration reconciliation activates the
-            // chain explicitly.
+            // unknown history into a hard promise. LEGACY_PENDING drafts are
+            // read-only migration exceptions; new-flow documents fail early
+            // until a per-order migration reconciliation activates the chain
+            // explicitly.
             requireActivatedReservationChain(
                     requireActivatedChain, chainStatus);
             if (chainStatus > 0
@@ -2298,12 +2528,13 @@ public class SalesShipmentService {
                 || isNegative(line.getAmountOriginal())
                 || isNegative(line.getAmountLocal())
                 || isNegative(line.getCostAmount())
+                || isNegative(line.getWeight())
                 || isNegative(line.getMaterialPrice())
                 || isNegative(line.getDieCastPrice())
                 || isNegative(line.getMachiningPrice())) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "出货数量必须大于 0，价格与金额不得为负数");
+                    "出货数量必须大于 0，实际总重量、价格与金额不得为负数");
         }
     }
 
@@ -2315,6 +2546,7 @@ public class SalesShipmentService {
                     || isNegative(item.getAmountOriginal())
                     || isNegative(item.getAmountLocal())
                     || isNegative(item.getCostAmount())
+                    || isNegative(item.getWeight())
                     || isNegative(item.getMaterialPrice())
                     || isNegative(item.getDieCastPrice())
                     || isNegative(item.getMachiningPrice())) {
@@ -2348,6 +2580,7 @@ public class SalesShipmentService {
                 canViewCommercial ? s.getTotalLocal() : null,
                 s.getStatus(), s.isClosed(), s.isArPosted(),
                 s.getLegacyId(), s.isRejected(), writable && isEditableState(s), canReject,
+                s.getFinanceAudit(), s.getFinanceGateVersion(),
                 s.getWarehouseWorkStatus(), canManageWarehouseWork);
     }
 
@@ -2437,10 +2670,8 @@ public class SalesShipmentService {
                 && !shipment.isRejected()
                 && (shipment.getFinanceAudit() == null
                     || shipment.getFinanceAudit() != 1)
-                && (SalesShipment.WORK_PENDING_PICK.equals(
-                        shipment.getWarehouseWorkStatus())
-                    || SalesShipment.WORK_LEGACY_PENDING.equals(
-                        shipment.getWarehouseWorkStatus()));
+                && SalesShipment.WORK_PENDING_PICK.equals(
+                        shipment.getWarehouseWorkStatus());
     }
 
     private boolean isEditableState(SalesShipment shipment) {
@@ -2449,10 +2680,17 @@ public class SalesShipmentService {
                 && !shipment.isRejected()
                 && (shipment.getFinanceAudit() == null
                     || shipment.getFinanceAudit() != 1)
-                && (SalesShipment.WORK_PENDING_PICK.equals(
-                        shipment.getWarehouseWorkStatus())
-                    || SalesShipment.WORK_LEGACY_PENDING.equals(
-                        shipment.getWarehouseWorkStatus()));
+                && SalesShipment.WORK_PENDING_PICK.equals(
+                        shipment.getWarehouseWorkStatus());
+    }
+
+    static void requireLegacyShipmentMutable(SalesShipment shipment) {
+        if (SalesShipment.WORK_LEGACY_PENDING.equals(
+                shipment.getWarehouseWorkStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "历史出货草稿是只读迁移异常，请人工核对后按当前订单关联两审流程重新开单");
+        }
     }
 
     private boolean isWarehouseManageableState(SalesShipment shipment) {

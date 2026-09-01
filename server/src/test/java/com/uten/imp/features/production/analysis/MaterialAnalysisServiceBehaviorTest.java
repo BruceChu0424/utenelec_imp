@@ -38,14 +38,25 @@ import static org.mockito.Mockito.when;
 class MaterialAnalysisServiceBehaviorTest {
 
     @Test
+    void subcontractHandoffFutureCapacityPreventsDuplicateSupplyWithoutFakingStock() {
+        assertThat(MaterialAnalysisService.unboundDemandSupplyGap(
+                bd("10"), BigDecimal.ZERO, BigDecimal.ZERO, bd("6")))
+                .isEqualByComparingTo("4.0000");
+        assertThat(MaterialAnalysisService.unboundDemandSupplyGap(
+                bd("10"), bd("2"), bd("4"), bd("6")))
+                .isEqualByComparingTo("0.0000");
+    }
+
+    @Test
     void manualSourceRequiresAStableReference() {
         MaterialAnalysisService service = service(mock(EntityManager.class),
                 mock(ProductionDocumentAccessPolicy.class));
         PreviewItem missingReference = manualItem("   ");
 
         ApiException error = assertThrows(ApiException.class, () -> invokePrivate(
-                service, "normalizePreviewItems", new Class<?>[]{List.class},
-                List.of(missingReference)));
+                service, "normalizePreviewItems",
+                new Class<?>[]{List.class, boolean.class, UUID.class},
+                List.of(missingReference), false, null));
 
         assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
     }
@@ -1047,6 +1058,41 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
+    void subcontractPreparationTakeoverReducesOnlyItsParentOutputShare() {
+        UUID itemId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine source = allocationSource(
+                itemId, UUID.randomUUID(), unitId, 0, "10");
+        MaterialAnalysisService.BomNode parent = diagnosticNode(
+                itemId, UUID.randomUUID(), unitId, "subcontract-parent", null,
+                1, "10", "1", "SUBCONTRACT", true);
+        MaterialAnalysisService.BomNode child = diagnosticNode(
+                itemId, UUID.randomUUID(), unitId,
+                "subcontract-parent/child", "subcontract-parent",
+                2, "10", "2", "BUY", false);
+        String parentKey = itemId + "|subcontract-parent";
+
+        MaterialAnalysisService.NestedDiagnosticPlan partial =
+                MaterialAnalysisService.allocateNestedDiagnostics(
+                        List.of(source), List.of(parent, child), Map.of(),
+                        Map.of(parentKey, "SUBCONTRACT"), Set.of(),
+                        Map.of(parentKey, bd("4")),
+                        MaterialAnalysisService.BorrowTuning.NONE);
+        assertThat(node(partial, "subcontract-parent/child")
+                .snapshotRequiredQty()).isEqualByComparingTo("12.0000");
+
+        MaterialAnalysisService.NestedDiagnosticPlan complete =
+                MaterialAnalysisService.allocateNestedDiagnostics(
+                        List.of(source), List.of(parent, child), Map.of(),
+                        Map.of(parentKey, "SUBCONTRACT"), Set.of(),
+                        Map.of(parentKey, bd("10")),
+                        MaterialAnalysisService.BorrowTuning.NONE);
+        assertThat(node(complete, "subcontract-parent/child")
+                .snapshotRequiredQty()).isEqualByComparingTo("0.0000");
+        assertThat(complete.hasUncoveredDirectChild(parent)).isFalse();
+    }
+
+    @Test
     void delegatedMakeMovesDescendantDemandToTheChildAnalysisItem() {
         UUID itemId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
@@ -1068,6 +1114,168 @@ class MaterialAnalysisServiceBehaviorTest {
         assertThat(node(delegated, "make-parent/child").snapshotRequiredQty())
                 .isEqualByComparingTo("0.0000");
         assertThat(delegated.hasUncoveredDirectChild(makeParent)).isFalse();
+    }
+
+    @Test
+    void requirementProjectionUsesExactMakeChildOwnerPerBomPath() {
+        UUID analysisItemId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        UUID repeatedMakeGoodsId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine source = allocationSource(
+                analysisItemId, UUID.randomUUID(), unitId, 0, "10");
+        MaterialAnalysisService.MaterialRow delegatedParent = requirementRow(
+                analysisItemId, "make-a", null, 1,
+                "10", "10", "MAKE", "MAKE", "START", repeatedMakeGoodsId);
+        MaterialAnalysisService.MaterialRow delegatedDescendant = requirementRow(
+                analysisItemId, "make-a/part", "make-a", 2,
+                "0", "0", "BUY", null, "START");
+        MaterialAnalysisService.MaterialRow delegatedGrandchild = requirementRow(
+                analysisItemId, "make-a/part/deep", "make-a/part", 3,
+                "0", "0", "BUY", null, "START");
+        MaterialAnalysisService.MaterialRow coveredSiblingParent = requirementRow(
+                analysisItemId, "make-b", null, 1,
+                "10", "0", "MAKE", "MAKE", "START", repeatedMakeGoodsId);
+        MaterialAnalysisService.MaterialRow coveredSiblingDescendant = requirementRow(
+                analysisItemId, "make-b/part", "make-b", 2,
+                "0", "0", "BUY", null, "START");
+        UUID otherAnalysisItemId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine otherSource = allocationSource(
+                otherAnalysisItemId, UUID.randomUUID(), unitId, 0, "10");
+        MaterialAnalysisService.MaterialRow sameNodeOtherItemParent = requirementRow(
+                otherAnalysisItemId, "make-a", null, 1,
+                "10", "0", "MAKE", "MAKE", "START", repeatedMakeGoodsId);
+        MaterialAnalysisService.MaterialRow sameNodeOtherItemChild = requirementRow(
+                otherAnalysisItemId, "make-a/part", "make-a", 2,
+                "0", "0", "BUY", null, "START");
+        Map<MaterialAnalysisService.MaterialNodeIdentity,
+                MaterialAnalysisService.MaterialRow> rows = Map.of(
+                delegatedParent.nodeIdentity(), delegatedParent,
+                delegatedDescendant.nodeIdentity(), delegatedDescendant,
+                delegatedGrandchild.nodeIdentity(), delegatedGrandchild,
+                coveredSiblingParent.nodeIdentity(), coveredSiblingParent,
+                coveredSiblingDescendant.nodeIdentity(), coveredSiblingDescendant,
+                sameNodeOtherItemParent.nodeIdentity(), sameNodeOtherItemParent,
+                sameNodeOtherItemChild.nodeIdentity(), sameNodeOtherItemChild);
+        UUID childAnalysisLineId = UUID.randomUUID();
+        MaterialAnalysisService.DelegatedRequirementOwner owner =
+                new MaterialAnalysisService.DelegatedRequirementOwner(
+                        delegatedParent.id(), childAnalysisLineId,
+                        "自制备料 2026-08-30 abcd", bd("10"));
+        Map<MaterialAnalysisService.MaterialNodeIdentity,
+                MaterialAnalysisService.DelegatedRequirementOwner> owners = Map.of(
+                delegatedParent.nodeIdentity(), owner);
+
+        MaterialAnalysisService.RequirementProjection delegated =
+                MaterialAnalysisService.requirementProjection(
+                        delegatedDescendant, rows, owners, source);
+        MaterialAnalysisService.RequirementProjection sibling =
+                MaterialAnalysisService.requirementProjection(
+                        coveredSiblingDescendant, rows, owners, source);
+        MaterialAnalysisService.RequirementProjection deep =
+                MaterialAnalysisService.requirementProjection(
+                        delegatedGrandchild, rows, owners, source);
+        MaterialAnalysisService.RequirementProjection otherItem =
+                MaterialAnalysisService.requirementProjection(
+                        sameNodeOtherItemChild, rows, owners, otherSource);
+        MaterialAnalysisService.RequirementProjection positiveParent =
+                MaterialAnalysisService.requirementProjection(
+                        delegatedParent, rows, owners, source);
+
+        assertThat(delegated.state())
+                .isEqualTo(REQUIREMENT_STATE_DELEGATED_TO_MAKE_CHILD);
+        assertThat(delegated.delegatedToAnalysisLineId())
+                .isEqualTo(childAnalysisLineId);
+        assertThat(delegated.delegatedToSourceRef())
+                .isEqualTo("自制备料 2026-08-30 abcd");
+        assertThat(delegated.delegatedToRequestedQty())
+                .isEqualByComparingTo("10");
+        assertThat(sibling.state())
+                .isEqualTo(REQUIREMENT_STATE_INACTIVE_PARENT_COVERED);
+        assertThat(sibling.delegatedToAnalysisLineId()).isNull();
+        assertThat(deep.state())
+                .isEqualTo(REQUIREMENT_STATE_DELEGATED_TO_MAKE_CHILD);
+        assertThat(deep.delegatedToAnalysisLineId()).isEqualTo(childAnalysisLineId);
+        assertThat(otherItem.state())
+                .isEqualTo(REQUIREMENT_STATE_INACTIVE_PARENT_COVERED);
+        assertThat(otherItem.delegatedToAnalysisLineId()).isNull();
+        assertThat(positiveParent.state()).isEqualTo(REQUIREMENT_STATE_ACTIVE);
+    }
+
+    @Test
+    void zeroDescendantExplainsSubcontractPreparationOwnership() {
+        UUID itemId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine source = allocationSource(
+                itemId, UUID.randomUUID(), unitId, 0, "10");
+        MaterialAnalysisService.MaterialRow parent = requirementRow(
+                itemId, "subcontract-parent", null, 1,
+                "10", "10", "SUBCONTRACT", "SUBCONTRACT", "START");
+        MaterialAnalysisService.MaterialRow child = requirementRow(
+                itemId, "subcontract-parent/child", "subcontract-parent", 2,
+                "0", "0", "BUY", null, "START");
+        Map<MaterialAnalysisService.MaterialNodeIdentity,
+                MaterialAnalysisService.MaterialRow> rows = Map.of(
+                parent.nodeIdentity(), parent, child.nodeIdentity(), child);
+
+        MaterialAnalysisService.RequirementProjection projection =
+                MaterialAnalysisService.requirementProjection(
+                        child, rows, Map.of(), Set.of(parent.nodeIdentity()), source);
+
+        assertThat(projection.state()).isEqualTo(
+                REQUIREMENT_STATE_DELEGATED_TO_SUBCONTRACT_PREPARATION);
+        assertThat(projection.delegatedToAnalysisLineId()).isNull();
+    }
+
+    @Test
+    void requirementProjectionExplainsRouteReferencePlanAndNeutralZero() {
+        UUID itemId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        MaterialAnalysisService.SourceLine activeSource = allocationSource(
+                itemId, UUID.randomUUID(), unitId, 0, "10");
+        MaterialAnalysisService.SourceLine transferredSource = allocationSource(
+                itemId, UUID.randomUUID(), unitId, 0, "10", "10", "0");
+        MaterialAnalysisService.MaterialRow buyParent = requirementRow(
+                itemId, "buy-parent", null, 1,
+                "10", "10", "BUY", "BUY", "START");
+        MaterialAnalysisService.MaterialRow buyChild = requirementRow(
+                itemId, "buy-parent/child", "buy-parent", 2,
+                "0", "0", "MAKE", null, "START");
+        Map<MaterialAnalysisService.MaterialNodeIdentity,
+                MaterialAnalysisService.MaterialRow> routedRows = Map.of(
+                buyParent.nodeIdentity(), buyParent,
+                buyChild.nodeIdentity(), buyChild);
+        MaterialAnalysisService.MaterialRow referenceParent = requirementRow(
+                itemId, "reference-parent", null, 1,
+                "10", "10", "MAKE", "MAKE", "REFERENCE");
+        MaterialAnalysisService.MaterialRow referenceChild = requirementRow(
+                itemId, "reference-parent/child", "reference-parent", 2,
+                "0", "0", "BUY", null, "START");
+        Map<MaterialAnalysisService.MaterialNodeIdentity,
+                MaterialAnalysisService.MaterialRow> referenceRows = Map.of(
+                referenceParent.nodeIdentity(), referenceParent,
+                referenceChild.nodeIdentity(), referenceChild);
+        MaterialAnalysisService.MaterialRow transferred = requirementRow(
+                itemId, "transferred", null, 1,
+                "0", "0", "BUY", null, "START");
+        MaterialAnalysisService.MaterialRow neutral = requirementRow(
+                itemId, "neutral", null, 1,
+                "0", "0", "BUY", null, "START");
+
+        assertThat(MaterialAnalysisService.requirementProjection(
+                buyChild, routedRows, Map.of(), activeSource).state())
+                .isEqualTo(REQUIREMENT_STATE_INACTIVE_PARENT_ROUTE);
+        assertThat(MaterialAnalysisService.requirementProjection(
+                referenceChild, referenceRows,
+                Map.of(), activeSource).state())
+                .isEqualTo(REQUIREMENT_STATE_INACTIVE_REFERENCE);
+        assertThat(MaterialAnalysisService.requirementProjection(
+                transferred, Map.of(transferred.nodeIdentity(), transferred),
+                Map.of(), transferredSource).state())
+                .isEqualTo(REQUIREMENT_STATE_TRANSFERRED_TO_PLAN);
+        assertThat(MaterialAnalysisService.requirementProjection(
+                neutral, Map.of(neutral.nodeIdentity(), neutral),
+                Map.of(), activeSource).state())
+                .isEqualTo(REQUIREMENT_STATE_INACTIVE);
     }
 
     @Test
@@ -1435,13 +1643,23 @@ class MaterialAnalysisServiceBehaviorTest {
     private static MaterialAnalysisService service(
             EntityManager em, ProductionDocumentAccessPolicy access) {
         return new MaterialAnalysisService(
-                em, mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class), access);
+                em, mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class),
+                access, mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
     }
 
     private static MaterialAnalysisService.SourceLine allocationSource(
             UUID itemId, UUID goodsId, UUID unitId, int priority, String demand) {
+        return allocationSource(
+                itemId, goodsId, unitId, priority, demand, "0", "0");
+    }
+
+    private static MaterialAnalysisService.SourceLine allocationSource(
+            UUID itemId, UUID goodsId, UUID unitId, int priority,
+            String requested, String submitted, String approved) {
         Object[] row = sourceRow(itemId, goodsId, unitId);
-        row[17] = bd(demand);
+        row[17] = bd(requested);
+        row[18] = bd(submitted);
+        row[19] = bd(approved);
         row[35] = priority;
         return MaterialAnalysisService.SourceLine.from(row);
     }
@@ -1534,9 +1752,12 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ONE, BigDecimal.ONE,
                 BigDecimal.ONE, bd("100"), BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), bd("90"), null,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), bd("90"),
+                BigDecimal.ZERO, null,
                 "BUY", confirmedRoute, routeConfirmed, null,
-                true, false, BigDecimal.ZERO, BigDecimal.ZERO, List.of(),
+                true, false, REQUIREMENT_STATE_ACTIVE,
+                null, null, null,
+                BigDecimal.ZERO, BigDecimal.ZERO, List.of(),
                 List.of(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 List.of(), List.of(), List.of());
@@ -1551,7 +1772,7 @@ class MaterialAnalysisServiceBehaviorTest {
             UUID analysisItemId, UUID goodsId, UUID unitId, String path,
             int depth, BigDecimal shortage) {
         return new MaterialAnalysisService.MaterialRow(
-                UUID.randomUUID(), analysisItemId, goodsId, "M-01",
+                UUID.randomUUID(), analysisItemId, path, goodsId, "M-01",
                 "Shared material", null, null, null, unitId, "piece",
                 depth, path, "parent", UUID.randomUUID(), "START", "PER_UNIT",
                 BigDecimal.ONE, true, true, BigDecimal.ONE, BigDecimal.ONE,
@@ -1559,6 +1780,31 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, shortage, null,
                 "BUY", "BUY", null,
                 false);
+    }
+
+    private static MaterialAnalysisService.MaterialRow requirementRow(
+            UUID analysisItemId, String nodeKey, String parentNodeKey, int depth,
+            String required, String shortage, String suggestion,
+            String confirmedRoute, String controlStage) {
+        return requirementRow(
+                analysisItemId, nodeKey, parentNodeKey, depth,
+                required, shortage, suggestion, confirmedRoute, controlStage,
+                UUID.randomUUID());
+    }
+
+    private static MaterialAnalysisService.MaterialRow requirementRow(
+            UUID analysisItemId, String nodeKey, String parentNodeKey, int depth,
+            String required, String shortage, String suggestion,
+            String confirmedRoute, String controlStage, UUID goodsId) {
+        return new MaterialAnalysisService.MaterialRow(
+                UUID.randomUUID(), analysisItemId, nodeKey,
+                goodsId, "M-" + nodeKey, nodeKey, null,
+                null, null, UUID.randomUUID(), "piece", depth, nodeKey,
+                parentNodeKey, null, controlStage, "PER_UNIT", BigDecimal.ONE,
+                true, true, BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE,
+                bd(required), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, bd(shortage), null,
+                suggestion, confirmedRoute, null, false);
     }
 
     private static Query query(List<?> rows) {

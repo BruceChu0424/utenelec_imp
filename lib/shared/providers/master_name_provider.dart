@@ -30,18 +30,21 @@ class GoodsDictEntry {
     this.code,
     this.series,
     this.stockPlace,
+    this.unitId,
   });
 
   final String name;
   final String? code;
   final String? series;
   final String? stockPlace;
+  final String? unitId;
 
   factory GoodsDictEntry.fromJson(Map<String, dynamic> json) => GoodsDictEntry(
     name: (json['name'] ?? '') as String,
     code: json['code'] as String?,
     series: json['series'] as String?,
     stockPlace: json['stockPlace'] as String?,
+    unitId: json['unitId'] as String?,
   );
 }
 

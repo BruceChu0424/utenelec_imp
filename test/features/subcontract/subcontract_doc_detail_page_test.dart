@@ -47,6 +47,8 @@ Map<String, dynamic> _pendingOrderDetail() => {
   'currencyId': 'cny',
   'status': 0,
   'totalLocal': 50.0,
+  'canEdit': true,
+  'canDelete': true,
   'financeApproval': {
     'caseId': 'case-1',
     'status': 'PENDING',
@@ -102,6 +104,44 @@ class _WarehouseReviewerSessionNotifier extends SessionNotifier {
   );
 }
 
+Future<void> _pumpPendingOrder(
+  WidgetTester tester,
+  ApiClient api, {
+  Set<String> permissions = const {
+    Perm.subcontractOrderView,
+    Perm.subcontractOrderEdit,
+    Perm.subcontractOrderDelete,
+    Perm.subcontractOrderSubmitFinance,
+    Perm.financeOrderApprovalView,
+    Perm.financeOrderApprovalApprove,
+    Perm.financeOrderApprovalReject,
+  },
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        subcontractWriteAllDocumentScope(),
+        currentPermissionsProvider.overrideWithValue(permissions),
+        subcontractRepositoryProvider(
+          SubcontractDocType.order,
+        ).overrideWithValue(
+          SubcontractRepository(api, SubcontractDocType.order),
+        ),
+        mn.masterNameServiceProvider.overrideWithValue(
+          mn.MasterNameService(api),
+        ),
+      ],
+      child: const MaterialApp(
+        home: SubcontractDocDetailPage(
+          docType: SubcontractDocType.order,
+          id: 'order-1',
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('委外订货详情(财务待审)完整渲染且始终只读，body 不被底栏挤没', (tester) async {
     tester.view.physicalSize = const Size(1200, 1800);
@@ -116,28 +156,7 @@ void main() {
       return <Object?>[]; // 字典/名称接口一律空列表
     });
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          subcontractWriteAllDocumentScope(),
-          subcontractRepositoryProvider(
-            SubcontractDocType.order,
-          ).overrideWithValue(
-            SubcontractRepository(api, SubcontractDocType.order),
-          ),
-          mn.masterNameServiceProvider.overrideWithValue(
-            mn.MasterNameService(api),
-          ),
-        ],
-        child: const MaterialApp(
-          home: SubcontractDocDetailPage(
-            docType: SubcontractDocType.order,
-            id: 'order-1',
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await _pumpPendingOrder(tester, api);
 
     expect(tester.takeException(), isNull, reason: '页面构建期间不应抛异常');
 
@@ -175,8 +194,120 @@ void main() {
       find.byKey(const Key('subcontract-order-finance-approve')),
       findsNothing,
     );
+    expect(find.text('删除'), findsNothing);
+    expect(find.text('编辑订货单'), findsNothing);
+    expect(find.text('提交财务审核'), findsNothing);
     expect(find.text('返回订货单列表'), findsOneWidget);
     expect(find.textContaining('财务 → 订货审批任务中心'), findsOneWidget);
+  });
+
+  testWidgets('finance-only 委外核单不显示业务历史并返回财务任务中心', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _api(
+      (request) => request.path.contains('/subcontract/orders/order-1')
+          ? _pendingOrderDetail()
+          : <Object?>[],
+    );
+
+    await _pumpPendingOrder(
+      tester,
+      api,
+      permissions: const {Perm.financeOrderApprovalView},
+    );
+
+    expect(find.text('查看历史'), findsNothing);
+    expect(find.text('返回订货审批任务中心'), findsOneWidget);
+  });
+
+  testWidgets('进仓价格权限不能解密委外订货价格', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _api(
+      (request) => request.path.contains('/subcontract/orders/order-1')
+          ? _pendingOrderDetail()
+          : <Object?>[],
+    );
+
+    await _pumpPendingOrder(
+      tester,
+      api,
+      permissions: const {
+        Perm.subcontractOrderView,
+        Perm.subcontractReceiptPriceView,
+      },
+    );
+
+    final table = tester.widget<MasterDataTableView<SubcontractDocItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<SubcontractDocItem>,
+      ),
+    );
+    final keys = {for (final column in table.columns) column.key};
+    expect(keys, isNot(contains('price')));
+    expect(keys, isNot(contains('amount')));
+    expect(find.text('合计(本币)'), findsNothing);
+  });
+
+  testWidgets('订货价格权限只解锁订货商业列', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _api(
+      (request) => request.path.contains('/subcontract/orders/order-1')
+          ? _pendingOrderDetail()
+          : <Object?>[],
+    );
+
+    await _pumpPendingOrder(
+      tester,
+      api,
+      permissions: const {
+        Perm.subcontractOrderView,
+        Perm.subcontractOrderPriceView,
+      },
+    );
+
+    final table = tester.widget<MasterDataTableView<SubcontractDocItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<SubcontractDocItem>,
+      ),
+    );
+    final keys = {for (final column in table.columns) column.key};
+    expect(keys, containsAll(<String>{'price', 'amount'}));
+    expect(find.text('合计(本币)'), findsOneWidget);
+  });
+
+  testWidgets('finance-wide 权限可呈现服务端未脱敏委外金额', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _api(
+      (request) => request.path.contains('/subcontract/orders/order-1')
+          ? _pendingOrderDetail()
+          : <Object?>[],
+    );
+
+    await _pumpPendingOrder(
+      tester,
+      api,
+      permissions: const {Perm.subcontractOrderView, Perm.financeViewAll},
+    );
+
+    final table = tester.widget<MasterDataTableView<SubcontractDocItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<SubcontractDocItem>,
+      ),
+    );
+    expect({
+      for (final column in table.columns) column.key,
+    }, containsAll(<String>{'price', 'amount'}));
   });
 
   testWidgets('委外进仓直接审核确认显示当前审核员责任', (tester) async {

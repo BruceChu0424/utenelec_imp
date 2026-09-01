@@ -80,6 +80,9 @@ class MovementRow {
     this.warehouseId,
     this.direction,
     this.qty,
+    this.unitId,
+    this.unitRate,
+    this.weight,
     this.amountLocal,
     this.remark,
   });
@@ -94,6 +97,9 @@ class MovementRow {
   final String? warehouseId;
   final int? direction;
   final double? qty;
+  final String? unitId;
+  final double? unitRate;
+  final double? weight;
   final double? amountLocal;
   final String? remark;
 
@@ -108,6 +114,9 @@ class MovementRow {
     warehouseId: json['warehouseId'] as String?,
     direction: (json['direction'] as num?)?.toInt(),
     qty: (json['qty'] as num?)?.toDouble(),
+    unitId: json['unitId'] as String?,
+    unitRate: (json['unitRate'] as num?)?.toDouble(),
+    weight: (json['weight'] as num?)?.toDouble(),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
     remark: json['remark'] as String?,
   );
@@ -157,6 +166,7 @@ class InstantInventoryRow {
     this.series,
     this.stockPlace,
     this.pendingQty,
+    this.pendingStockInQty,
   });
 
   final String? goodsId;
@@ -180,6 +190,7 @@ class InstantInventoryRow {
   final String? series; // 物料系列（goods.series）
   final String? stockPlace; // 库位号（goods.stock_place）
   final double? pendingQty; // 待检量（采购/委外收货未放行，>0=货在 IQC 待检）
+  final double? pendingStockInQty; // IQC 已合格、仓库尚未确认入库，不计可用库存
 
   factory InstantInventoryRow.fromJson(Map<String, dynamic> json) =>
       InstantInventoryRow(
@@ -201,5 +212,6 @@ class InstantInventoryRow {
         series: json['series'] as String?,
         stockPlace: json['stockPlace'] as String?,
         pendingQty: (json['pendingQty'] as num?)?.toDouble(),
+        pendingStockInQty: (json['pendingStockInQty'] as num?)?.toDouble(),
       );
 }

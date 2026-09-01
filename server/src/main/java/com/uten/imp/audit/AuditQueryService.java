@@ -100,6 +100,9 @@ public class AuditQueryService {
             new ExportColumn("actionLabel", "做了什么", ExportColumn.TEXT),
             new ExportColumn("objectLabel", "操作对象", ExportColumn.TEXT),
             new ExportColumn("targetName", "对象名称/单号", ExportColumn.TEXT),
+            new ExportColumn("targetDisplayName", "业务对象名称", ExportColumn.TEXT),
+            new ExportColumn("targetBusinessCode", "业务编号/单号", ExportColumn.TEXT),
+            new ExportColumn("targetLegacyCode", "旧系统编号", ExportColumn.TEXT),
             new ExportColumn("pageLabel", "所在页面", ExportColumn.TEXT),
             new ExportColumn("targetId", "对象 ID", ExportColumn.TEXT),
             new ExportColumn("outcome", "操作结果", ExportColumn.TEXT),
@@ -126,9 +129,9 @@ public class AuditQueryService {
             new ExportColumn("deviceCaptureStatus", "设备信息状态", ExportColumn.TEXT),
             new ExportColumn("deviceProfileHash", "设备快照摘要", ExportColumn.TEXT),
             new ExportColumn("ip", "IP 地址", ExportColumn.TEXT),
-            new ExportColumn("httpMethod", "HTTP 方法", ExportColumn.TEXT),
+            new ExportColumn("httpMethod", "请求方式", ExportColumn.TEXT),
             new ExportColumn("httpPath", "HTTP 路径", ExportColumn.TEXT),
-            new ExportColumn("statusCode", "HTTP 状态码", ExportColumn.TEXT),
+            new ExportColumn("statusCode", "请求状态码", ExportColumn.TEXT),
             new ExportColumn("durationMs", "耗时(毫秒)", ExportColumn.TEXT),
             new ExportColumn("requestId", "操作关联编号", ExportColumn.TEXT),
             new ExportColumn("auditId", "审计日志 ID", ExportColumn.TEXT));
@@ -258,6 +261,12 @@ public class AuditQueryService {
         exported.put("actionLabel", row.getActionLabel());
         exported.put("objectLabel", row.getObjectLabel());
         exported.put("targetName", firstNonBlank(row.getTargetName(), ""));
+        exported.put("targetDisplayName",
+                firstNonBlank(row.getTargetDisplayName(), ""));
+        exported.put("targetBusinessCode",
+                firstNonBlank(row.getTargetBusinessCode(), ""));
+        exported.put("targetLegacyCode",
+                firstNonBlank(row.getTargetLegacyCode(), ""));
         exported.put("pageLabel", firstNonBlank(row.getPageLabel(), ""));
         exported.put("targetId", row.getTargetId());
         exported.put("outcome", failed(row) ? "失败" : "成功");
@@ -290,7 +299,7 @@ public class AuditQueryService {
         exported.put("deviceCaptureStatus", value.getDeviceCaptureStatus());
         exported.put("deviceProfileHash", value.getDeviceProfileHash());
         exported.put("ip", row.getIp());
-        exported.put("httpMethod", value.getHttpMethod());
+        exported.put("httpMethod", httpMethodLabel(value.getHttpMethod()));
         exported.put("httpPath", value.getHttpPath());
         exported.put("statusCode", row.getStatusCode());
         exported.put("durationMs", row.getDurationMs());
@@ -318,7 +327,7 @@ public class AuditQueryService {
             case "high" -> "高";
             case "medium" -> "中";
             case "low" -> "低";
-            default -> "未知";
+            default -> "未登记";
         };
     }
 
@@ -331,7 +340,7 @@ public class AuditQueryService {
             case "data_change" -> "数据变更";
             case "system" -> "系统设置";
             case "business" -> "业务操作";
-            default -> "其他事件";
+            default -> "未登记事件类型";
         };
     }
 
@@ -341,7 +350,19 @@ public class AuditQueryService {
             case "database" -> "数据库变更";
             case "security" -> "安全拦截";
             case "business" -> "业务事件";
-            default -> "其他记录来源";
+            default -> "未登记记录来源";
+        };
+    }
+
+    private String httpMethodLabel(String value) {
+        return switch (value == null ? "" : value.trim().toUpperCase(Locale.ROOT)) {
+            case "GET" -> "读取";
+            case "POST" -> "提交";
+            case "PUT" -> "整体更新";
+            case "PATCH" -> "局部更新";
+            case "DELETE" -> "删除";
+            case "HEAD" -> "读取响应信息";
+            default -> "请求方式未记录";
         };
     }
 
@@ -464,6 +485,21 @@ public class AuditQueryService {
                         String.class,
                         root.get("after"),
                         cb.literal("view_display_name"));
+                Expression<String> targetDisplayName = cb.function(
+                        "jsonb_extract_path_text",
+                        String.class,
+                        root.get("after"),
+                        cb.literal("target_display_name"));
+                Expression<String> targetBusinessCode = cb.function(
+                        "jsonb_extract_path_text",
+                        String.class,
+                        root.get("after"),
+                        cb.literal("target_business_code"));
+                Expression<String> targetLegacyCode = cb.function(
+                        "jsonb_extract_path_text",
+                        String.class,
+                        root.get("after"),
+                        cb.literal("target_legacy_code"));
                 // 操作人支持按"姓名"检索：先解析命中的用户 ID，再并入 OR 组。
                 java.util.Set<UUID> nameMatchedActorIds =
                         actorDirectory.findUserIdsByNameKeyword(criteria.keyword());
@@ -473,6 +509,9 @@ public class AuditQueryService {
                         cb.like(cb.lower(root.get("targetType")), pattern, '!'),
                         cb.like(cb.lower(root.get("targetId")), pattern, '!'),
                         cb.like(cb.lower(viewDisplayName), pattern, '!'),
+                        cb.like(cb.lower(targetDisplayName), pattern, '!'),
+                        cb.like(cb.lower(targetBusinessCode), pattern, '!'),
+                        cb.like(cb.lower(targetLegacyCode), pattern, '!'),
                         cb.like(cb.lower(root.get("httpPath")), pattern, '!'),
                         cb.like(cb.lower(requestIdText), pattern, '!')));
                 if (nameMatchedActorIds != null && !nameMatchedActorIds.isEmpty()) {

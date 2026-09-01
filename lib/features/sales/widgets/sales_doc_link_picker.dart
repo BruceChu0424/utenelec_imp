@@ -33,6 +33,7 @@ class SalesLinkedItem {
     this.outItemId,
     this.colorId,
     this.unitId,
+    this.unitRate,
   });
 
   final String goodsId;
@@ -42,6 +43,7 @@ class SalesLinkedItem {
   final String? outItemId;
   final String? colorId;
   final String? unitId;
+  final double? unitRate;
 }
 
 /// 「从上游引入」的确认返回：所选明细 + 上游单据客户 id
@@ -143,6 +145,7 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
           unitId: (it) => it.unitId,
           price: (it) => it.price,
           upstreamItemId: (it) => it.id,
+          unitRate: (it) => it.unitRate,
         ),
         docColumns: (names) => _docColumns(names, upstream),
         goodsName: (names, goodsId) => names.goods(goodsId),
@@ -177,6 +180,7 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
                 : null,
             colorId: d.colorId,
             unitId: d.unitId,
+            unitRate: d.unitRate,
           ),
         )
         .toList(),

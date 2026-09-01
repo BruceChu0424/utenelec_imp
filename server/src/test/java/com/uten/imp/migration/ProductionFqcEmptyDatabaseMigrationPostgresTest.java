@@ -201,14 +201,21 @@ class ProductionFqcEmptyDatabaseMigrationPostgresTest {
                     """)).isEqualTo(1);
             assertThat(scalar(statement, """
                     SELECT COUNT(*)
+                    FROM flyway_schema_history
+                    WHERE version = '432' AND success
+                    """)).isEqualTo(1);
+            assertThat(scalar(statement, """
+                    SELECT COUNT(*)
                     FROM information_schema.tables
                     WHERE table_schema = 'public'
                       AND table_name IN (
                         'production_fqc_inspections',
                         'production_fqc_decision_events',
                         'production_fqc_release_commands',
-                        'production_fqc_release_allocations')
-                    """)).isEqualTo(4);
+                        'production_fqc_release_allocations',
+                        'production_fqc_pass_all_batches',
+                        'production_fqc_pass_all_batch_items')
+                    """)).isEqualTo(6);
             assertThat(scalar(statement, """
                     SELECT COUNT(*)
                     FROM permissions
@@ -222,11 +229,15 @@ class ProductionFqcEmptyDatabaseMigrationPostgresTest {
                     WHERE NOT tgisinternal
                       AND tgname IN (
                         'trg_guard_production_fqc_inspection',
-                        'trg_guard_production_fqc_decision_append_only',
-                        'trg_validate_production_fqc_release_command',
-                        'trg_validate_production_fqc_release_allocation')
-                      AND tgenabled <> 'D'
-                    """)).isEqualTo(4);
+                         'trg_guard_production_fqc_decision_append_only',
+                         'trg_validate_production_fqc_release_command',
+                         'trg_validate_production_fqc_release_allocation',
+                         'trg_validate_production_fqc_pass_all_batch_header',
+                         'trg_validate_production_fqc_pass_all_batch_item',
+                         'trg_guard_production_fqc_pass_all_batch_append_only',
+                         'trg_guard_production_fqc_pass_all_batch_item_append_only')
+                       AND tgenabled <> 'D'
+                    """)).isEqualTo(8);
             assertThat(scalar(statement, """
                     SELECT COUNT(*) FROM production_fqc_inspections
                     """)).isZero();
@@ -279,6 +290,46 @@ class ProductionFqcEmptyDatabaseMigrationPostgresTest {
                             """));
             assertThat(arbitraryAdjustment.getSQLState()).isEqualTo("23514");
         }
+    }
+
+    @Test
+    void qualityDecisionRecordQueriesAndFeedIndexesExecuteOnTheFullSchema()
+            throws Exception {
+        String iqcSql = privateRecordSql(
+                "com.uten.imp.features.warehouse.inbound."
+                        + "ProcurementInspectionRecordQueryService");
+        String fqcSql = privateRecordSql(
+                "com.uten.imp.features.production.quality."
+                        + "ProductionFqcRecordQueryService");
+        try (Connection connection = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(),
+                POSTGRES.getPassword());
+             Statement statement = connection.createStatement()) {
+            try (ResultSet iqc = statement.executeQuery(
+                    "SELECT * FROM (" + iqcSql + ") record WHERE FALSE")) {
+                assertThat(iqc.next()).isFalse();
+            }
+            try (ResultSet fqc = statement.executeQuery(
+                    "SELECT * FROM (" + fqcSql + ") record WHERE FALSE")) {
+                assertThat(fqc.next()).isFalse();
+            }
+            assertThat(scalar(statement, """
+                    SELECT COUNT(*)
+                    FROM pg_indexes
+                    WHERE schemaname = 'public'
+                      AND indexname IN (
+                        'idx_procurement_inspection_events_record_feed',
+                        'idx_production_fqc_decision_events_record_feed',
+                        'idx_production_fqc_cancellation_events_record_feed')
+                    """)).isEqualTo(3);
+        }
+    }
+
+    private static String privateRecordSql(String className) throws Exception {
+        var method = Class.forName(className).getDeclaredMethod("recordSql");
+        method.setAccessible(true);
+        return (String) method.invoke(null);
     }
 
     private static long scalar(Statement statement, String sql) throws Exception {

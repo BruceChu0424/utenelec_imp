@@ -226,6 +226,56 @@ void main() {
   );
 
   testWidgets(
+    'selectable table shows selection summary even without batch commands',
+    (tester) async {
+      var selected = <String>{};
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 640,
+              height: 260,
+              child: StatefulBuilder(
+                builder: (context, setState) => MasterDataTableView<_Row>(
+                  columns: [
+                    MasterColumnDef<_Row>(
+                      key: 'id',
+                      label: 'ID',
+                      width: 240,
+                      value: (row) => row.id,
+                    ),
+                  ],
+                  items: const [_Row('a1'), _Row('a2')],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  selectable: true,
+                  idOf: (row) => row.id,
+                  selectedIds: selected,
+                  onSelectedIdsChanged: (next) =>
+                      setState(() => selected = next),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('已选 0 项'), findsOneWidget);
+      await tester.tap(find.text('a1'));
+      await tester.pump();
+      expect(find.text('已选 1 项'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pump();
+      expect(selected, isEmpty);
+      expect(find.text('已选 0 项'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'batch actions float at bottom-right and remain available in fullscreen',
     (tester) async {
       tester.view.physicalSize = const Size(900, 600);

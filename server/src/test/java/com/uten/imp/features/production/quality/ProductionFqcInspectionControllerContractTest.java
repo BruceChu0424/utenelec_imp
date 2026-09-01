@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.quality;
 
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,6 +32,8 @@ class ProductionFqcInspectionControllerContractTest {
                 .getDeclaredMethod("detail", UUID.class);
         Method decide = ProductionFqcInspectionController.class
                 .getDeclaredMethod("decide", UUID.class, DecisionRequest.class);
+        Method passAll = ProductionFqcInspectionController.class
+                .getDeclaredMethod("passAll", PassAllBatchRequest.class);
 
         assertThat(list.getAnnotation(GetMapping.class)).isNotNull();
         assertThat(detail.getAnnotation(GetMapping.class)).isNotNull();
@@ -45,6 +48,11 @@ class ProductionFqcInspectionControllerContractTest {
         assertThat(decide.getAnnotation(PostMapping.class).value())
                 .containsExactly("/{id}/decisions");
         assertThat(decide.getAnnotation(PreAuthorize.class).value())
+                .contains("production_quality_inspection:view")
+                .contains("production_quality_inspection:approve");
+        assertThat(passAll.getAnnotation(PostMapping.class).value())
+                .containsExactly("/decisions/pass-all");
+        assertThat(passAll.getAnnotation(PreAuthorize.class).value())
                 .contains("production_quality_inspection:view")
                 .contains("production_quality_inspection:approve");
     }

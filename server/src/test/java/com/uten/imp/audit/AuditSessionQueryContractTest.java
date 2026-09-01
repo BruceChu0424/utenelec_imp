@@ -2,12 +2,14 @@ package com.uten.imp.audit;
 
 import com.uten.imp.common.web.ApiException;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -51,6 +53,13 @@ class AuditSessionQueryContractTest {
                         LocalDate.of(2026, 8, 1),
                         1,
                         21));
+        assertThrows(ApiException.class, () ->
+                AuditSessionQueryService.validateSessionScope(
+                        actorId,
+                        LocalDate.MAX,
+                        LocalDate.MAX,
+                        1,
+                        20));
     }
 
     @Test
@@ -148,6 +157,61 @@ class AuditSessionQueryContractTest {
         assertTrue(response.contains("OffsetDateTime nextCursorAt"));
         assertTrue(response.contains("Long nextCursorId"));
         assertFalse(response.contains("Long nextCursor,"));
+    }
+
+    @Test
+    void sessionReadsHaveControllerAndServicePermissionDefenseInDepth()
+            throws Exception {
+        String controller = source("AuditSessionController.java");
+        String permission = "@PreAuthorize(\"hasAuthority('audit_log:view')\")";
+        assertEquals(3, occurrences(controller, permission));
+
+        for (String methodName : java.util.List.of("sessions", "session", "events")) {
+            var method = Arrays.stream(AuditSessionQueryService.class.getDeclaredMethods())
+                    .filter(candidate -> candidate.getName().equals(methodName))
+                    .filter(candidate -> java.lang.reflect.Modifier.isPublic(
+                            candidate.getModifiers()))
+                    .findFirst()
+                    .orElseThrow();
+            assertEquals(
+                    "hasAuthority('audit_log:view')",
+                    method.getAnnotation(PreAuthorize.class).value(),
+                    methodName);
+        }
+    }
+
+    @Test
+    void sessionQueriesExposeArchiveAndSnapshotBoundariesWithoutSilentEmptySuccess()
+            throws IOException {
+        String source = source("AuditSessionQueryService.java");
+        assertTrue(source.contains("hasArchivedSessions("));
+        assertTrue(source.contains("登录会话已转入冷归档"));
+        assertTrue(source.contains("登录会话不存在"));
+        assertTrue(source.contains("登录会话晚于当前查询快照"));
+        assertTrue(source.contains("查询快照编号超出当前审计范围"));
+        assertTrue(source.contains("SessionAvailability availability"));
+        assertTrue(source.contains("archive_presence AS"));
+        assertTrue(source.contains("AS timeline_partial"));
+    }
+
+    @Test
+    void sessionAndTokenLookupsKeepTheExistingIndexContract() throws IOException {
+        String migration = Files.readString(Path.of(
+                "src/main/resources/db/migration/"
+                        + "V428__audit_login_session_correlation.sql"));
+        assertTrue(migration.contains("idx_audit_session_created_id"));
+        assertTrue(migration.contains(
+                "ON audit_log (session_id, created_at DESC, id DESC)"));
+        assertTrue(migration.contains("idx_audit_archive_session_created_id"));
+        assertTrue(migration.contains(
+                "ON audit_log_archive (session_id, created_at DESC, id DESC)"));
+        assertTrue(migration.contains("idx_refresh_tokens_session_id"));
+        assertTrue(migration.contains("idx_visitor_refresh_tokens_session_id"));
+
+        String service = source("AuditSessionQueryService.java");
+        assertTrue(service.contains(
+                "JOIN matched_sessions matched\n"
+                        + "                  ON matched.session_id = token.session_id"));
     }
 
     @Test

@@ -48,7 +48,9 @@ class AuditDetailViewRecorderTest {
                 "view_sales_order_detail_history",
                 "sales_orders",
                 resourceId,
-                "销售订货单(旧系统编号 88)");
+                "销售订货单",
+                null,
+                "88");
     }
 
     @Test
@@ -92,7 +94,7 @@ class AuditDetailViewRecorderTest {
 
         verify(audit).logSuccessfulDetailView(
                 realActorId, "real-admin", "view_sales_order_detail",
-                "sales_orders", resourceId, "SO-001");
+                "sales_orders", resourceId, "销售订货单", "SO-001", null);
     }
 
     @Test
@@ -113,7 +115,9 @@ class AuditDetailViewRecorderTest {
                     "view_sales_order_detail",
                     "sales_orders",
                     resourceId,
-                    "SO-2026-001");
+                    "销售订货单",
+                    "SO-2026-001",
+                    "86");
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }
@@ -125,14 +129,23 @@ class AuditDetailViewRecorderTest {
         var metadata = new ObjectMapper().readTree(value.getAfter());
         assertEquals("business_detail_view",
                 metadata.path("view_metadata_kind").asText());
+        assertEquals("销售订货单",
+                metadata.path("target_display_name").asText());
         assertEquals("SO-2026-001",
-                metadata.path("view_display_name").asText());
-        assertEquals(2, metadata.size());
+                metadata.path("target_business_code").asText());
+        assertEquals("86",
+                metadata.path("target_legacy_code").asText());
+        assertTrue(metadata.path("view_display_name").isMissingNode());
+        assertEquals(4, metadata.size());
         assertEquals(null, value.getStatusCode());
         assertEquals(null, value.getDurationMs());
         AuditLogDetail detail = AuditLogDetail.of(value, new AuditEventInterpreter());
         assertEquals(null, detail.before());
         assertEquals(null, detail.after());
+        assertEquals("销售订货单", detail.targetDisplayName());
+        assertEquals("SO-2026-001", detail.targetBusinessCode());
+        assertEquals("86", detail.targetLegacyCode());
+        assertEquals("SO-2026-001(旧系统编号 86)", detail.targetName());
         assertTrue(Boolean.TRUE.equals(request.getAttribute(
                 AuditRequestContext.MEANINGFUL_EVENT_RECORDED_ATTRIBUTE)));
     }
@@ -152,27 +165,55 @@ class AuditDetailViewRecorderTest {
                 "BJ-001", null, "销售报价单");
         verify(audit).logSuccessfulDetailView(
                 actor.getId(), "seller01", "view_sales_quote_detail",
-                "sales_quotes", modern, "BJ-001");
+                "sales_quotes", modern, "销售报价单", "BJ-001", null);
 
         UUID legacy = UUID.randomUUID();
         recorder.record("view_sales_quote_detail", "sales_quotes", legacy,
                 "BJ-OLD", 12, "销售报价单");
         verify(audit).logSuccessfulDetailView(
                 actor.getId(), "seller01", "view_sales_quote_detail_history",
-                "sales_quotes", legacy, "BJ-OLD(旧系统编号 12)");
+                "sales_quotes", legacy, "销售报价单", "BJ-OLD", "12");
 
         UUID missing = UUID.randomUUID();
         recorder.record("view_sales_quote_detail", "sales_quotes", missing,
                 null, null, "销售报价单");
         verify(audit).logSuccessfulDetailView(
                 actor.getId(), "seller01", "view_sales_quote_detail",
-                "sales_quotes", missing, "销售报价单(业务编号未记录)");
+                "sales_quotes", missing, "销售报价单", null, null);
 
         UUID zeroLegacy = UUID.randomUUID();
         recorder.record("view_sales_quote_detail", "sales_quotes", zeroLegacy,
                 "BJ-002", 0, "销售报价单");
         verify(audit).logSuccessfulDetailView(
                 actor.getId(), "seller01", "view_sales_quote_detail",
-                "sales_quotes", zeroLegacy, "BJ-002");
+                "sales_quotes", zeroLegacy, "销售报价单", "BJ-002", null);
+    }
+
+    @Test
+    void auditEvidenceViewKeepsItsExistingReadableMetadataContract() throws Exception {
+        AuditLogRepository repository = mock(AuditLogRepository.class);
+        AuditService service = new AuditService(
+                repository,
+                new AuditDeviceContext(new ObjectMapper().findAndRegisterModules()));
+
+        service.logSuccessfulAuditView(
+                UUID.randomUUID(),
+                "auditor01",
+                "view_audit_session_detail",
+                "audit_session",
+                "session=known",
+                "王小明 · 2026-08-30 · 会话末尾");
+
+        ArgumentCaptor<AuditLog> saved = ArgumentCaptor.forClass(AuditLog.class);
+        verify(repository).save(saved.capture());
+        var metadata = new ObjectMapper().readTree(saved.getValue().getAfter());
+        assertEquals("audit_evidence_view",
+                metadata.path("view_metadata_kind").asText());
+        assertEquals("王小明 · 2026-08-30 · 会话末尾",
+                metadata.path("view_display_name").asText());
+        assertTrue(metadata.path("target_display_name").isMissingNode());
+        assertTrue(metadata.path("target_business_code").isMissingNode());
+        assertTrue(metadata.path("target_legacy_code").isMissingNode());
+        assertEquals(2, metadata.size());
     }
 }

@@ -29,11 +29,11 @@
 | 紧急故障、强提醒、不容许错过 | `UtenNotify.alert(..., level: urgent)` 或 `UtenNotify.urgentAlert(...)` |
 | 删除等破坏性二次确认 | 仍用 `UtenDialog`（确认对话框，不属于通知） |
 
-> **业务到达提醒不是二选一。** 普通通知只走通知中心 + 顶部条；服务端标为
-> `important/urgent` 的定向关键事件会先保留顶部到达提示，再由
-> `showImportantNoticeDialog` 复用本组件显示居中强提醒。该业务包装层固定
-> `barrierDismissible=false`，并把“弹窗已关闭”“通知已读”“业务已完成”分成三个状态，
-> 详见 [ADR-052](../99-决策记录-ADR/ADR-052-关键业务事件强提醒与驳回修订闭环.md)。
+> **业务到达提醒统一走通知中心 + 顶部非阻塞叠放。** 服务端标为
+> `important/urgent` 的事件只提升语义颜色、标题前缀、停留时间与栈内优先级，
+> 不再由默认到达链弹出居中模态窗。通用 `UtenNotify.alert` 仍可用于当前页面明确发起、
+> 必须立即确认且不属于通知到达的交互。该后置决策见
+> [ADR-059](../99-决策记录-ADR/ADR-059-委外目标件出仓与前置自制准备.md)。
 
 ### 居中弹窗三档紧急度（`UtenAlertLevel`）
 
@@ -44,8 +44,7 @@
 | `urgent` | 紧急 | 红 error / 双感叹号 + 红描边 | ❌ **默认禁止** | 红「已知悉」 |
 
 > urgent 默认 `barrierDismissible=false`，用户必须点按钮显式确认，保证强提醒不会丢失。
-> 通用 `important` 仍允许业务主动选择遮罩关闭；**通知到达链的业务强提醒包装层无论
-> important/urgent 都禁止遮罩和系统返回键静默关闭**，只接受“关闭”或具体主操作。
+> 通用 `important` 仍允许页面业务主动选择遮罩关闭；通知到达链不调用本模态 API。
 > 特殊的页面内即时提示可传 `barrierDismissible: true`，但不得用于服务端关键事件到达。
 
 ## 二、API
@@ -86,7 +85,7 @@ context.notifyBanner('张经理 通过了你的请假申请', onTap: () => conte
 | `onDismissed` | `VoidCallback?` | null | 本条实际显示并完成关闭后调用一次；排队未显示、宿主销毁或 `clear()` 不调用 |
 | `duration` | `Duration?` | 3.2s（error 5s） | 自动消失时长（默认值随文案长度/字段错误自动延长，鼠标悬停时暂停） |
 
-底层行为（AppNotificationService 提供）：任意时刻只挂载队首一条，其余保留 FIFO 队列；队首真实关闭后才挂载下一条。600ms 内同 kind+message 合并去重（`force: true` 可绕过，见 [AppNotification](AppNotification.md)），跨路由切换不丢失，可左/右滑关闭。
+底层行为（AppNotificationService 提供）：最新通知叠在旧通知上，默认收拢，可展开最近 3 条；超过展示上限的通知继续保留在队列中，上层关闭后自动补位，不做 FIFO 丢弃。600ms 内同 kind+message 合并去重（`force: true` 可绕过，见 [AppNotification](AppNotification.md)），跨路由切换不丢失，可左/右滑关闭。
 **停留时长**（适老化）：默认 info/success/warning 3.2s、error 5s；文案每多约 12 字自动 +0.6s，带字段错误再 +1.5s，确保操作人员读得完。**桌面端鼠标悬停在弹条上时暂停倒计时**，移开重新计时；触摸端无此行为。
 
 ### 2.2 通道二：居中弹窗
@@ -205,7 +204,7 @@ UtenNotify.alert → showGeneralDialog → _CenterAlertDialog  ← 居中弹窗�
 
 ## 七、通知模块全链路（features/notice）
 
-通知模块（导航栏「通知」）已同时接通通知箱、未读角标、员工端顶部到达提醒和条件式居中强提醒。
+通知模块（导航栏「通知」）已同时接通通知箱、未读角标和员工端顶部非阻塞到达提醒。
 接收端先用轻量轮询可靠补齐；后续替换为 SSE/WebSocket 时继续复用同一分派入口：
 
 ```mermaid
@@ -215,20 +214,18 @@ flowchart TD
     BASE --> INV[刷新通知列表<br/>+ 未读角标]
     INV --> BADGE[导航栏未读角标]
     INV --> LIST[通知页新卡片]
-    BASE --> QUEUE[queuedIds + 单活动项<br/>未展示不确认]
-    QUEUE --> DISP[dispatchNoticeArrival]
-    DISP --> TOP[全部优先级先进入顶部滑入提示]
-    DISP -->|normal| DELIVER[顶部条真实关闭后确认本机送达]
-    DISP -->|important / urgent| CENTER[showImportantNoticeDialog<br/>居中·无计时·无遮罩/返回关闭]
-    CENTER -->|关闭| ACK[POST popup-ack<br/>只确认已看到]
-    CENTER -->|查看并处理| READ[popup-ack + 标记已读<br/>跳 actionRoute]
-    ACK & READ --> NEXT[播放下一条]
+    BASE --> QUEUE[queuedIds + activeArrivals<br/>每条独立跟踪]
+    QUEUE --> DISP[同一批逐条 dispatchNoticeArrival]
+    DISP --> TOP[全部优先级进入顶部叠放栈<br/>最新在上·最多展开 3 条]
+    TOP -->|每条真实关闭| DELIVER[独立确认本机 delivered]
+    TOP -->|点击主动作| READ[标记已读<br/>跳 actionRoute / 详情]
+    DELIVER --> NEXT[旧通知补位]
 ```
 
-- **接收规则**：`NoticeArrivalListener` 挂在 `MaterialApp.builder` 内的已登录员工根层，并要求当前有效用户拥有 `notice:read`；跳转使用 `appNavigatorKey.currentContext`，所以访问权限拒绝页/404 页时接收器也不会卸载。cursor 与本机 deliveredIds 按账号/模拟身份持久化；首次从纪元分页全部尚未读且尚未确认弹窗的通知。之后每 10s 按 `(publishedAt,id)` 严格高水位升序拉取，每页最多 100 条并循环到 `hasMore=false`；每分钟从纪元全量对账，补回晚提交事件。服务端 `notice_user_states.popup_acknowledged_at` 是跨登录/跨设备的确认权威，本机 deliveredIds 只用于断网和进程内单飞。
-- **分派规则**：normal / important / urgent 都保留顶部滑入提示；normal 在顶部条真实关闭后播放下一条，important / urgent 还必须进入持久居中窗。常规进度、成功回执、共享审批池和部门广播保持 normal，防止弹窗轰炸；只有带明确责任人和恢复动作的关键业务事件可由服务端升级。
-- **点击行为**：普通顶部条点击先标注已读，再跳 `notice.actionRoute`（附 `returnTo=/notice`）；空路由或历史脏路由回退通知详情弹层。强提醒的“关闭”只写 popup ack，不清未读和业务角标；“查看并处理”同时标注已读并跳同一深链，但业务待办仍须真实状态迁移才完成。
-- **排队、确认与恢复**：任意时刻只派发一条。首次登录/全量审计先拉完分页积压，再按 urgent → important → normal、同级业务到达时间升序播放，避免旧普通消息挡住驳回强提醒。强提醒无自动关闭，遮罩、返回键和 Escape 不产生静默确认；员工显式关闭或进入办理后才发送下一条。退出登录或切换模拟身份通过专用 `interruptSignal` 精确移除当前强提醒路由，不写 popup ack、不误关底层页面，防止跨账号泄露。`clear()`、身份切换、进程中断或尚未轮到的排队项不会被误确认，重新登录会由服务端状态补显。popup ack 失败时保留本机 delivered 防止当前设备立即重复轰炸，服务端未确认事实仍可在后续设备/会话安全重现。
+- **接收规则**：`NoticeArrivalListener` 挂在 `MaterialApp.builder` 内的已登录员工根层，并要求当前有效用户拥有 `notice:read`；跳转使用 `appNavigatorKey.currentContext`，所以访问权限拒绝页/404 页时接收器也不会卸载。cursor 与本机 deliveredIds 按账号/模拟身份持久化；首次从纪元分页全部未读且本机未展示的通知。之后每 10s 按 `(publishedAt,id)` 严格高水位升序拉取，每页最多 100 条并循环到 `hasMore=false`；每分钟从纪元全量对账，补回晚提交事件。既有 `popup_acknowledged_at` / popup-ack API 只保留历史兼容，默认 Flutter 到达链不再写入。
+- **分派规则**：同一轮拉到的 normal / important / urgent 全部交给顶部栈，不等待上一条关闭。低优先级先入栈、important / urgent 后入栈，因此最高优先级位于视觉最上层；级别同时决定 info / warning / error 配色和 4s / 6s / 8s 停留时间。
+- **点击行为**：任意优先级顶部条点击均先标注已读，再跳 `notice.actionRoute`（附 `returnTo=/notice`）；空路由或历史脏路由回退通知详情弹层。顶部关闭只确认本设备已真实展示，不清通知未读，不冒充业务完成。
+- **排队、确认与恢复**：每个 active notice ID 独立持有 `onDismissed`；只有真实关闭才加入 deliveredIds 并持久化，重复回调幂等忽略。超过 3 条只限制同时完整展示，队列不删除；`clear()`、身份切换、宿主销毁或进程中断不会误确认，重启/全量对账只重放未关闭项。
 - **业务事件覆盖**：到达 feed 面向当前员工全部可见 Notice；业务模块只负责可靠落库/outbox、接收人、`source_event`、priority、业务操作者/时间/原因和 actionRoute，不直接操作 Flutter 弹层。角标另读真实任务状态；通知未读不能冒充未解决业务。
 
 ## 八、避坑
@@ -241,8 +238,8 @@ flowchart TD
    if (!context.mounted) return;
    UtenNotify.success(context, '完成');
    ```
-4. **业务通知不要直接操作 Overlay/弹窗**：统一落库后由到达 feed 和 `dispatchNoticeArrival` 分派；批量到达严格按服务端升序逐条显示，上一条真实关闭后才发送下一条。
+4. **业务通知不要直接操作 Overlay/弹窗**：统一落库后由到达 feed 和 `dispatchNoticeArrival` 分派；批量到达一次进入顶部叠放层，每条关闭、已读和业务完成仍是独立事实。
 
 ---
 
-**最后更新**：2026-08-27（ADR-052：服务端 popup ack、条件式居中强提醒、关闭/已读/业务完成分层、角标真源分离） · **门面**：`lib/core/ui/uten_notify.dart` · **操作反馈**：`lib/core/ui/action_feedback.dart`（guardAction/guardLoad/guardRun） · **组件**：`lib/core/ui/app_notification.dart`、`lib/core/ui/uten_top_banner_card.dart`、`lib/features/notice/widgets/important_notice_dialog.dart` · **通知模块**：`/api/notices` + `/api/notices/arrivals` + `/api/notices/{id}/popup-ack`
+**最后更新**：2026-08-30（ADR-059：全部到达提醒顶部非阻塞叠放、批次并发派发、逐条 delivered、默认链不写 popup ack） · **门面**：`lib/core/ui/uten_notify.dart` · **操作反馈**：`lib/core/ui/action_feedback.dart`（guardAction/guardLoad/guardRun） · **组件**：`lib/core/ui/app_notification.dart`、`lib/core/ui/app_notification_stack.dart`、`lib/core/ui/uten_top_banner_card.dart` · **通知模块**：`/api/notices` + `/api/notices/arrivals`

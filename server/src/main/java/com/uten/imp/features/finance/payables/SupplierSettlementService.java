@@ -42,6 +42,7 @@ public class SupplierSettlementService {
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final SupplierPaymentTermService paymentTermService;
+    private final SupplierPayableHoldGuard payableHoldGuard;
 
     @Transactional
     public BatchDetail freeze(FreezeRequest request) {
@@ -72,6 +73,8 @@ public class SupplierSettlementService {
         assertNoActiveBatch(request.supplierId(), request.currencyId(), start);
         assertNoUnreplayablePaymentReversals(request.supplierId(), request.currencyId(), end);
         lockLedgers(request.supplierId(), request.currencyId(), end);
+        payableHoldGuard.requireSettlementUnheld(
+                request.supplierId(), request.currencyId(), end);
         List<SnapshotLine> lines = snapshotLines(
                 request.supplierId(), request.currencyId(), start, end);
         assertSettlementMethodConsistency(lines, request.settlementMethodId());

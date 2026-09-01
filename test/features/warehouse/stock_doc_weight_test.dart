@@ -23,7 +23,7 @@ void main() {
     ).readAsStringSync();
 
     expect(source, contains("key: 'weight'"));
-    expect(source, contains("label: '重量'"));
+    expect(source, contains("label: '实际重量'"));
     expect(source, contains('it.weight?.toStringAsFixed(2)'));
 
     for (final quantityKey in [

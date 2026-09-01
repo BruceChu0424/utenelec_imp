@@ -223,9 +223,9 @@ class _SubcontractDocListPageState
               builder: (context, _) {
                 final total = _list.total;
                 final canViewCommercialAmounts =
-                    ref
-                        .watch(currentPermissionsProvider)
-                        .contains(Perm.subcontractReceiptPriceView) &&
+                    _cfg.canViewCommercial(
+                      ref.watch(currentPermissionsProvider),
+                    ) &&
                     !(_list.page?.items.any((item) => item.priceMasked) ??
                         false);
                 // 「顶部折叠 + 表格吸顶内滚」：禁用横幅与标题行随上滑收起，

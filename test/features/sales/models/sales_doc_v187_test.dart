@@ -41,6 +41,8 @@ void main() {
           'totalLocal': 720,
           'warehouseWorkStatus': 'PENDING_PICK',
           'canManageWarehouseWork': true,
+          'financeAudit': 1,
+          'financeAuditedAt': '2026-08-31T09:00:00+08:00',
         });
         final legacyShape = SalesDocListItem.fromJson(const {
           'id': 'shipment-2',
@@ -51,12 +53,38 @@ void main() {
           SalesWarehouseWorkStatus.pendingPick,
         );
         expect(withWorkflow.canManageWarehouseWork, isTrue);
+        expect(withWorkflow.financeAudit, 1);
+        expect(withWorkflow.financeAuditedAt, isNotNull);
         expect(withWorkflow.totalOriginal, 100);
         expect(withWorkflow.totalLocal, 720);
         expect(legacyShape.warehouseWorkStatus, isNull);
         expect(legacyShape.canManageWarehouseWork, isFalse);
       },
     );
+
+    test('finance audit preview preserves server decimal facts', () {
+      final info = ShipmentFinanceAuditInfo.fromJson(const {
+        'shipmentId': 'shipment-1',
+        'financeAudit': 0,
+        'clientName': '月结客户',
+        'salesPaymentType': 'MONTHLY',
+        'settlementMethodName': '月结30天',
+        'outstanding': '1865812.8900',
+        'creditFloor': 50000,
+        'overFloor': '-0.2900',
+        'availablePrepaymentOriginal': '125.5000',
+        'availablePrepaymentLocal': '904.2500',
+      });
+
+      expect(info.shipmentId, 'shipment-1');
+      expect(info.salesPaymentType, 'MONTHLY');
+      expect(info.outstanding, '1865812.8900');
+      expect(info.creditFloor, '50000');
+      expect(info.overFloor, '-0.2900');
+      expect(info.availablePrepaymentOriginal, '125.5000');
+      expect(info.availablePrepaymentLocal, '904.2500');
+      expect(salesShipmentFinanceAuditLabel(info.financeAudit), '待财务审核');
+    });
 
     test(
       'goods identity prefers the document snapshot over current master',
@@ -119,12 +147,20 @@ void main() {
 
     test('legacy, finance, order-link and reverse gates fail closed', () {
       expect(
-        salesShipmentUsesLegacyApproval(SalesWarehouseWorkStatus.legacyPending),
-        isTrue,
+        salesWarehouseWorkStatusLabel(SalesWarehouseWorkStatus.legacyPending),
+        '历史迁移异常',
       );
       expect(
-        salesShipmentUsesLegacyApproval(SalesWarehouseWorkStatus.pendingPick),
+        salesWarehouseWorkStatusHint(SalesWarehouseWorkStatus.legacyPending),
+        contains('历史直接审核流程已停用'),
+      );
+      expect(
+        salesShipmentAllowsFinanceAudit(SalesWarehouseWorkStatus.legacyPending),
         isFalse,
+      );
+      expect(
+        salesShipmentAllowsFinanceAudit(SalesWarehouseWorkStatus.pendingPick),
+        isTrue,
       );
       expect(
         salesShipmentAllowsFinanceAudit(SalesWarehouseWorkStatus.pendingPick),

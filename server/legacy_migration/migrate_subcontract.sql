@@ -459,6 +459,31 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = NULLIF(s.approver_legacy, 0))
 FROM issue_stage s;
 
+-- E_SOutItem.STQTY is a nullable/zero sentinel in the audited export, not an
+-- unconditional authority over QTY.  If a future authoritative export
+-- contains two different positive values, stop for source review instead of
+-- silently choosing either quantity.
+DO $$
+DECLARE
+    conflicting_issue_qty BIGINT;
+BEGIN
+    SELECT count(*)
+      INTO conflicting_issue_qty
+      FROM issue_item_stage s
+     WHERE s.stqty > 0
+       AND s.qty > 0
+       AND s.stqty <> s.qty;
+
+    IF conflicting_issue_qty > 0 THEN
+        RAISE EXCEPTION
+            'legacy subcontract material issue has % rows with conflicting positive STQTY/QTY',
+            conflicting_issue_qty
+            USING ERRCODE = '23514',
+                  HINT = 'Reconcile E_SOutItem.STQTY and QTY in the governed source export before retrying.';
+    END IF;
+END
+$$;
+
 INSERT INTO subcontract_material_issue_items (
     legacy_id, bill_no, bill_date, issue_id, order_item_id, line_no, goods_id, color_id,
     unit_id, unit_rate, qty, amount_local, returned_qty, parent_goods_id, parent_color_id,
@@ -473,7 +498,9 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
-       COALESCE(s.unit_rate, 1), COALESCE(s.stqty, s.qty), s.amount_local,
+       COALESCE(s.unit_rate, 1),
+       COALESCE(NULLIF(s.stqty, 0), s.qty),
+       s.amount_local,
        COALESCE(s.returned_qty, 0),
        (SELECT id FROM goods  WHERE legacy_id = s.parent_goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.parent_color_legacy_id),

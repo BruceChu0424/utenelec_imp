@@ -11,6 +11,8 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
+import com.uten.imp.common.finance.ProcurementIqcReplacementAllocationService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.finance.payables.SupplierPaymentTermService;
@@ -58,17 +60,16 @@ import java.util.UUID;
  *
  * <p>审核（status 0→1，同事务内，对每条明细）：
  * <ol>
- *   <li>{@link StockService#recordMovement} {@code TYPE_SUBCONTRACT_RECEIPT=17, DIR_IN=+1}
- *       —— <b>正向入库（不照搬老库 QTY-= 反向）</b>，design doc 22 §一决策4</li>
+ *   <li>登记 IQC 待检隔离，不写可用库存</li>
  *   <li>回写订货明细 {@code subcontract_order_items.received_qty += qty}</li>
- *   <li>重算订货单 is_closed（{@code qty - received_qty + returned_qty ≤ 0}）</li>
+ *   <li>按 IQC 合格净量重算订货 {@code is_closed}；待检和 FAIL 都不能结案</li>
  * </ol>
- * 立应付 {@link ArApLedgerService#postArAp}（AP, SUBCONTRACT_RECEIPT, +amount）+ 置 {@code ap_posted=true}。
+ * 仓库确认回厂服务事实时按财务批准加工费快照立应付
+ * {@link ArApLedgerService#postArAp}（AP, SUBCONTRACT_RECEIPT, +amount）并置 {@code ap_posted=true}；
+ * IQC PASS 只形成仓库待入库量；仓库确认后才写库存/生产供给，不重复立 AP。
  *
  * <p>红冲（1→-1）：先 {@link ArApLedgerService#reverseArAp}（已核销则抛 IllegalStateException 阻断），
- * 再反向 DIR_OUT + 回减 received_qty + 重算 is_closed + 置 {@code ap_posted=false}。
- *
- * <p>收货库存写入使用正向逻辑（QTY 正向累加）。
+ * 再精确反向仓库已确认库存 + 回减 received_qty + 重算 is_closed + 置 {@code ap_posted=false}。
  */
 @Service
 @RequiredArgsConstructor
@@ -86,6 +87,7 @@ public class SubcontractReceiptService {
     private final StockService stockService;
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final SubcontractReceiptAmountAuthority receiptAmountAuthority;
+    private final ProcurementIqcReplacementAllocationService iqcReplacementAllocation;
     private final ArApLedgerService arApService;
     private final SupplierPaymentTermService paymentTerms;
     private final SupplierPeriodIdentityGuard periodIdentityGuard;
@@ -122,8 +124,11 @@ public class SubcontractReceiptService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
+        // 金额被裁剪时也必须关闭金额排序，否则结果顺序会泄露商业金额高低。
+        boolean priceMasked = !priceMasker.canViewSubcontractReceipt();
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        priceMasked ? Map.of("billDate", "billDate") : ALLOWED_SORT));
         Page<SubcontractReceipt> p = receiptRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
     }
@@ -146,6 +151,7 @@ public class SubcontractReceiptService {
     @PreAuthorize("hasAuthority('subcontract_receipt:create')")
     public ReceiptDetail create(ReceiptSaveRequest req) {
         tx.bind();
+        lockAndRequireDraftOutboundCapacity(req.getItems(), null, List.of());
         SubcontractReceipt r = new SubcontractReceipt();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -157,6 +163,13 @@ public class SubcontractReceiptService {
         return toDetail(r, items);
     }
 
+    /** Dedicated warehouse-arrival gateway; normal creation keeps its exact action. */
+    @Transactional
+    @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
+    public ReceiptDetail createFromWarehouseArrival(ReceiptSaveRequest req) {
+        return create(req);
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
@@ -166,6 +179,12 @@ public class SubcontractReceiptService {
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        List<UUID> previousOrderItemIds = itemRepo.findByReceiptIdOrderByLineNoAsc(id)
+                .stream()
+                .map(SubcontractReceiptItem::getOrderItemId)
+                .filter(Objects::nonNull)
+                .toList();
+        lockAndRequireDraftOutboundCapacity(req.getItems(), id, previousOrderItemIds);
         applyHeader(req, r);
         itemRepo.deleteByReceiptId(id);
         itemRepo.flush();
@@ -187,8 +206,8 @@ public class SubcontractReceiptService {
     }
 
     /**
-     * 审核：status 0→1，库存正向入库（DIR_IN）+ 回写订货 received_qty + 立应付 + ap_posted + 结案重算。
-     * 关键纠偏：老库触发器写 QTY-=（减库存）是反的，新库按方向 +1 正向入库。design doc 22 §一决策4。
+     * 审核：status 0→1，登记 IQC 隔离 + 回写实到量 + 立加工费 AP；
+     * PASS 只放行，仓库确认后才正向入可用库存。
      */
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     @PreAuthorize("hasAuthority('subcontract_receipt:approve')")
@@ -231,6 +250,7 @@ public class SubcontractReceiptService {
                 SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
                 SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
                 OffsetDateTime.now());
+        requireTargetOutboundCapacity(items, id);
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         receiptAmountAuthority.apply(r, items);
@@ -240,11 +260,12 @@ public class SubcontractReceiptService {
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
         OffsetDateTime now = OffsetDateTime.now();
-        // IQC：收货入待检隔离（不写 stock_balances）；合格处置（PASS）才进可用库存 + 唤醒生产。
+        // IQC：收货入待检隔离；PASS 只放行给仓库，仓库确认后才进可用库存并推进生产。
         inspectionService.receive(ProcurementInspectionPort.SUBCONTRACT, id, r.getWarehouseId(),
                 items.stream().map(it -> new ProcurementInspectionPort.ReceivedLine(
                         it.getId(), it.getGoodsId(), it.getColorId(), it.getUnitId(),
-                        it.getUnitRate(), it.getQty(), it.getAmountLocal())).toList(),
+                        it.getUnitRate(), it.getQty(), it.getAmountLocal(),
+                        it.getWeight())).toList(),
                 now);
         for (SubcontractReceiptItem it : items) {
             // ② 回写订货明细 received_qty + 重算订货单 is_closed
@@ -256,13 +277,18 @@ public class SubcontractReceiptService {
                         .executeUpdate();
                 recalcOrderClosed(it.getOrderItemId());
                 // ③ 回厂按冻结 BOM 消费发料子件（守恒：consumed_qty += 回厂父件量×frozen_unit_qty）
-                consumeIssuedMaterials(it.getOrderItemId(), it.getQty(), +1);
+                BigDecimal replacementQty=iqcReplacementAllocation
+                        .activeAllocatedQty("SUBCONTRACT",it.getId());
+                BigDecimal firstReturnQty=it.getQty().subtract(replacementQty);
+                if(firstReturnQty.signum()>0){
+                    consumeIssuedMaterials(it.getOrderItemId(),firstReturnQty,+1);
+                }
             }
         }
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
         postAp(r, r.getTotalOriginal(), totalLocalOf(items), +1);
         r.setStatus(STATUS_APPROVED);
-        // 生产唤醒（onSubcontractReceiptApproved）推迟到 IQC 整单结案（ProcurementInspectionService.dispose）。
+        // 正式生产供给由仓库确认 IQC 合格入库量后推进；整单质检结案只做终态校准。
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         canonicalizeApprover(r);
         r.setApPosted(true);
@@ -271,7 +297,7 @@ public class SubcontractReceiptService {
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         return detail(id);
     }
-    /** Dedicated gateway for a finance-decided arrival exception; normal approve keeps its own authority. */
+    /** Dedicated warehouse-arrival gateway; normal approval keeps its exact action authority. */
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     @PreAuthorize("hasAuthority('warehouse_inbound:stock_in')")
     public ReceiptDetail approveFromWarehouseDecision(UUID id) {
@@ -287,6 +313,11 @@ public class SubcontractReceiptService {
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RECEIPT, id);
         periodIdentityGuard.requireOpenToday(periodIdentity, "委外进仓红冲");
+        List<SubcontractReceiptItem> prelockItems =
+                itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        stockService.lockInventory(prelockItems.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         productionSupply.lockSubcontractReceiptMutationDimensions(id);
         SubcontractReceipt r = requireReceiptForUpdate(id);
         periodIdentityGuard.requireUnchanged(
@@ -297,19 +328,17 @@ public class SubcontractReceiptService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        requireSameInventoryDimensions(prelockItems, items);
         if (items.stream().anyMatch(it ->
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "委外进仓已有退货记录，请先红冲下游退货单");
         }
-        // IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
+        // IQC：红冲前须质检结案；只反向仓库已确认入库量（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.SUBCONTRACT, id);
         productionSupply.beforeSubcontractReceiptReversed(id);
         // 分析备料绑定对称反向：释放本进仓单建立的分析归属预留（V298）。
         preplanAnalysisPeg.releaseForReceipt(ProcurementInspectionPort.SUBCONTRACT, id);
-        // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve 锁序一致，消除并发死锁窗。
-        stockService.lockInventory(items.stream()
-                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
-                .toList());
+        // 库存 advisory 锁已在任何 receipt/inspection/AP 行锁之前取得。
         // 反立帐（若有核销 amount_settled<>0 抛 IllegalStateException，对齐老库文案）
         arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RECEIPT);
         OffsetDateTime now = OffsetDateTime.now();
@@ -328,9 +357,16 @@ public class SubcontractReceiptService {
                         .executeUpdate();
                 recalcOrderClosed(it.getOrderItemId());
                 // 回退回厂消费（consumed_qty -= 回厂父件量×frozen_unit_qty）
-                consumeIssuedMaterials(it.getOrderItemId(), it.getQty(), -1);
+                BigDecimal replacementQty=iqcReplacementAllocation
+                        .activeAllocatedQty("SUBCONTRACT",it.getId());
+                BigDecimal firstReturnQty=it.getQty().subtract(replacementQty);
+                if(firstReturnQty.signum()>0){
+                    consumeIssuedMaterials(it.getOrderItemId(),firstReturnQty,-1);
+                }
             }
         }
+        iqcReplacementAllocation.reverseForReceipt(
+                "SUBCONTRACT",r.getId(),"补货委外进仓红冲");
         r.setStatus(STATUS_REVERSED);
         r.setApPosted(false);
         // The downstream refresh validates the source's terminal state via a
@@ -352,7 +388,25 @@ public class SubcontractReceiptService {
                 ts, StockService.TYPE_SUBCONTRACT_RECEIPT, StockService.SRC_SUBCONTRACT_RECEIPT,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? "红冲" : null));
+                direction < 0 ? "红冲" : null, it.getWeight()));
+    }
+
+    private static void requireSameInventoryDimensions(
+            List<SubcontractReceiptItem> before,
+            List<SubcontractReceiptItem> locked) {
+        Map<UUID, InventoryKey> expected = before.stream().collect(
+                java.util.stream.Collectors.toMap(
+                        SubcontractReceiptItem::getId,
+                        item -> new InventoryKey(item.getGoodsId(), item.getColorId())));
+        Map<UUID, InventoryKey> actual = locked.stream().collect(
+                java.util.stream.Collectors.toMap(
+                        SubcontractReceiptItem::getId,
+                        item -> new InventoryKey(item.getGoodsId(), item.getColorId())));
+        if (!expected.equals(actual)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "委外进仓明细货品/颜色在库存预锁后发生变化，请刷新后重试");
+        }
     }
 
     /** 立应付 AP。sign=+1 进仓（应付增加）/ sign=-1 退货（应付减少，金额转负）。 */
@@ -401,17 +455,10 @@ public class SubcontractReceiptService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /** 重算订货单结案：所有明细 qty - received_qty + returned_qty ≤ 0 → is_closed=true。 */
+    /** 重算订货单结案：新链以 IQC 合格净量为准；无 IQC 的历史单兼容实到净量。 */
     private void recalcOrderClosed(UUID orderItemId) {
-        em.createNativeQuery("""
-                UPDATE subcontract_orders o SET is_closed = (
-                    SELECT COALESCE(bool_and(
-                        COALESCE(i.qty,0) - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0) <= 0
-                    ), true)
-                    FROM subcontract_order_items i
-                    WHERE i.order_id = o.id AND COALESCE(i.is_deleted, false) = false
-                ) WHERE o.id = (SELECT order_id FROM subcontract_order_items WHERE id = :iid)
-                """).setParameter("iid", orderItemId).executeUpdate();
+        ProcurementOrderClosurePolicy.recalculate(
+                em, ProcurementOrderClosurePolicy.SUBCONTRACT, orderItemId);
     }
 
     /**
@@ -527,6 +574,185 @@ public class SubcontractReceiptService {
                     throw new ApiException(ErrorCode.CONFLICT,
                             "委外回厂红冲需回退的子件消费量不足(其它回厂单据已消费该子件)，请人工核销，禁止自动吞并错账");
                 }
+            }
+        }
+    }
+
+    /** V436 new flow: target-item receipt base quantity can never precede outbound. */
+    private void requireTargetOutboundCapacity(
+            List<SubcontractReceiptItem> items, UUID currentReceiptId) {
+        Map<UUID, BigDecimal> currentBaseByOrderItem = new java.util.LinkedHashMap<>();
+        for (SubcontractReceiptItem item : items) {
+            if (item.getOrderItemId() == null) continue;
+            BigDecimal rate = item.getUnitRate() == null
+                    ? BigDecimal.ONE : item.getUnitRate();
+            currentBaseByOrderItem.merge(item.getOrderItemId(),
+                    item.getQty().multiply(rate), BigDecimal::add);
+        }
+        for (Map.Entry<UUID, BigDecimal> entry : currentBaseByOrderItem.entrySet()) {
+            UUID orderItemId = entry.getKey();
+            @SuppressWarnings("unchecked")
+            List<Object[]> flowRows = em.createNativeQuery("""
+                    SELECT plan_item.id
+                    FROM subcontract_material_plan_items plan_item
+                    WHERE plan_item.order_item_id = :orderItemId
+                      AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                      AND plan_item.is_deleted = FALSE
+                    ORDER BY plan_item.id FOR UPDATE
+                    """).setParameter("orderItemId", orderItemId).getResultList();
+            if (flowRows.isEmpty()) continue;
+            BigDecimal issuedBase = decimal(em.createNativeQuery("""
+                    SELECT COALESCE(SUM(issue_item.qty * COALESCE(issue_item.unit_rate,1)),0)
+                    FROM subcontract_material_issue_items issue_item
+                    JOIN subcontract_material_issues issue
+                      ON issue.id = issue_item.issue_id
+                     AND issue.status = 1 AND issue.is_deleted = FALSE
+                    JOIN subcontract_material_plan_items plan_item
+                      ON plan_item.id = issue_item.plan_item_id
+                     AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                    WHERE issue_item.order_item_id = :orderItemId
+                      AND issue_item.is_deleted = FALSE
+                    """).setParameter("orderItemId", orderItemId).getSingleResult());
+            BigDecimal receivedBase = decimal(em.createNativeQuery("""
+                    SELECT COALESCE(SUM(receipt_item.qty * COALESCE(receipt_item.unit_rate,1)),0)
+                    FROM subcontract_receipt_items receipt_item
+                    JOIN subcontract_receipts receipt
+                      ON receipt.id = receipt_item.receipt_id
+                     AND receipt.status = 1 AND receipt.is_deleted = FALSE
+                    WHERE receipt_item.order_item_id = :orderItemId
+                      AND receipt_item.receipt_id <> :currentReceiptId
+                      AND receipt_item.is_deleted = FALSE
+                    """).setParameter("orderItemId", orderItemId)
+                    .setParameter("currentReceiptId", currentReceiptId).getSingleResult());
+            BigDecimal returnedFailureBase=iqcReplacementAllocation
+                    .releasedCapacity("SUBCONTRACT",orderItemId).baseQty();
+            if (receivedBase.add(entry.getValue())
+                    .compareTo(issuedBase.add(returnedFailureBase)) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "委外目标件尚未足额出仓且无足够IQC失败返修额度，禁止超量回仓");
+            }
+        }
+    }
+
+    /**
+     * 新流委外在创建/改写回厂草稿前按订货明细锁定同一把行锁，并扣除其它活动草稿。
+     * 这既防重复登记，也与出仓红冲共享并发边界；没有新流 plan 的历史单继续按旧口径。
+     * 审核时仍由 {@link #requireTargetOutboundCapacity(List, UUID)} 重新锁定并做权威校验。
+     */
+    private void lockAndRequireDraftOutboundCapacity(
+            List<ReceiptItemLine> requestedItems,
+            UUID currentReceiptId,
+            List<UUID> additionalOrderItemIds) {
+        Map<UUID, BigDecimal> requestedQty = new HashMap<>();
+        if (requestedItems != null) {
+            for (ReceiptItemLine item : requestedItems) {
+                if (item == null || item.getOrderItemId() == null || item.getQty() == null) {
+                    continue;
+                }
+                requestedQty.merge(item.getOrderItemId(), item.getQty(), BigDecimal::add);
+            }
+        }
+        List<UUID> orderItemIds = java.util.stream.Stream.concat(
+                        requestedQty.keySet().stream(),
+                        additionalOrderItemIds == null
+                                ? java.util.stream.Stream.empty()
+                                : additionalOrderItemIds.stream())
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+        if (orderItemIds.isEmpty()) return;
+
+        String currentDraftExclusion = currentReceiptId == null
+                ? ""
+                : " AND draft.id <> :currentReceiptId";
+        var query = em.createNativeQuery(("""
+                SELECT order_item.id,
+                       COALESCE(order_item.unit_rate, 1) AS order_unit_rate,
+                       EXISTS (
+                           SELECT 1
+                           FROM subcontract_material_plan_items plan_item
+                           WHERE plan_item.order_item_id = order_item.id
+                             AND plan_item.flow_mode IN (
+                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                             AND plan_item.is_deleted = FALSE
+                       ) AS new_flow,
+                       COALESCE((
+                           SELECT SUM(issue_item.qty * COALESCE(issue_item.unit_rate, 1))
+                           FROM subcontract_material_issue_items issue_item
+                           JOIN subcontract_material_issues issue
+                             ON issue.id = issue_item.issue_id
+                            AND issue.status = 1
+                            AND issue.is_deleted = FALSE
+                           JOIN subcontract_material_plan_items plan_item
+                             ON plan_item.id = issue_item.plan_item_id
+                            AND plan_item.flow_mode IN (
+                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                            AND plan_item.is_deleted = FALSE
+                           WHERE issue_item.order_item_id = order_item.id
+                             AND issue_item.is_deleted = FALSE
+                       ), 0) AS issued_base,
+                       COALESCE((
+                           SELECT SUM(rejection.failed_base_qty)
+                           FROM procurement_iqc_rejection_cases rejection
+                           WHERE rejection.receipt_type = 'SUBCONTRACT'
+                             AND rejection.order_item_id = order_item.id
+                             AND rejection.is_deleted = FALSE
+                             AND rejection.return_recorded_at IS NOT NULL
+                             AND rejection.status IN (
+                                 'RETURN_RECORDED','CREDIT_CONFIRMED',
+                                 'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
+                       ), 0) AS returned_failure_base,
+                       COALESCE((
+                           SELECT SUM(receipt_item.qty * COALESCE(receipt_item.unit_rate, 1))
+                           FROM subcontract_receipt_items receipt_item
+                           JOIN subcontract_receipts receipt
+                             ON receipt.id = receipt_item.receipt_id
+                            AND receipt.status = 1
+                            AND receipt.is_deleted = FALSE
+                           WHERE receipt_item.order_item_id = order_item.id
+                             AND receipt_item.is_deleted = FALSE
+                       ), 0) AS approved_receipt_base,
+                       COALESCE((
+                           SELECT SUM(draft_item.qty * COALESCE(draft_item.unit_rate, 1))
+                           FROM subcontract_receipt_items draft_item
+                           JOIN subcontract_receipts draft
+                             ON draft.id = draft_item.receipt_id
+                            AND draft.status = 0
+                            AND draft.is_deleted = FALSE
+                           WHERE draft_item.order_item_id = order_item.id
+                             AND draft_item.is_deleted = FALSE
+                """ + currentDraftExclusion + """
+                       ), 0) AS active_draft_base
+                FROM subcontract_order_items order_item
+                WHERE order_item.id IN (:orderItemIds)
+                  AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                ORDER BY order_item.id
+                FOR UPDATE OF order_item
+                """)).setParameter("orderItemIds", orderItemIds);
+        if (currentReceiptId != null) {
+            query.setParameter("currentReceiptId", currentReceiptId);
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = query.getResultList();
+        if (rows.size() != orderItemIds.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外回厂来源订货明细不存在或已删除");
+        }
+        for (Object[] row : rows) {
+            UUID orderItemId = (UUID) row[0];
+            if (!Boolean.TRUE.equals(row[2])) continue;
+            BigDecimal requestedBase = requestedQty
+                    .getOrDefault(orderItemId, BigDecimal.ZERO)
+                    .multiply(decimal(row[1]));
+            BigDecimal availableBase = decimal(row[3])
+                    .add(decimal(row[4]))
+                    .subtract(decimal(row[5]))
+                    .subtract(decimal(row[6]))
+                    .max(BigDecimal.ZERO);
+            if (requestedBase.compareTo(availableBase) > 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "委外目标件真实出仓可回厂额度不足，或额度已被其它回厂草稿占用；请刷新预计到货任务");
             }
         }
     }
@@ -686,7 +912,7 @@ public class SubcontractReceiptService {
 
     private ReceiptListItem toList(SubcontractReceipt r) {
         // 价格脱敏（V302）：无 subcontract_receipt:price:view 的角色合计置 null + priceMasked。
-        boolean mask = !priceMasker.canViewSubcontract();
+        boolean mask = !priceMasker.canViewSubcontractReceipt();
         return new ReceiptListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getSupplierId(),
                 r.getWarehouseId(), mask ? null : r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.isApPosted(), r.getLegacyId(), mask);
@@ -733,17 +959,19 @@ public class SubcontractReceiptService {
 
     private ReceiptDetail toDetail(SubcontractReceipt r, List<ReceiptItemDto> items) {
         // 价格脱敏（V302）：主表金额族 + 明细价格族置 null，priceMasked 标记供前端渲染 ***。
-        boolean mask = !priceMasker.canViewSubcontract();
+        boolean mask = !priceMasker.canViewSubcontractReceipt();
         ReceiptSourceRef sourceOrder = singleOrderSource(items);
         List<ReceiptItemDto> safeItems = mask
                 ? items.stream().map(SubcontractReceiptService::maskItemPrices).toList()
                 : items;
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
-                r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
+                r.getSupplierId(), r.getWarehouseId(), mask ? null : r.getCurrencyId(),
+                mask ? null : r.getExchangeRate(), mask ? null : r.getTaxRate(),
                 r.getSenderId(), r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
                 mask ? null : r.getTotalOriginal(), mask ? null : r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), safeItems,
-                r.getSettlementStyleLegacy(), r.getSettlementMethodId(), r.getReceiverLegacyId(), r.getReceiverName(),
+                mask ? null : r.getSettlementStyleLegacy(), mask ? null : r.getSettlementMethodId(),
+                r.getReceiverLegacyId(), r.getReceiverName(),
                 r.getMakerLegacyId(),
                 (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
                 r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt(),
@@ -799,5 +1027,9 @@ public class SubcontractReceiptService {
         return receipt == null || receipt.isDeleted()
                 ? requireReceipt(id)
                 : receipt;
+    }
+
+    private static BigDecimal decimal(Object value) {
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
     }
 }

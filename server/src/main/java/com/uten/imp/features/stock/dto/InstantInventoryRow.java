@@ -13,7 +13,7 @@ import java.util.UUID;
  * 口径与老库一致：
  * <ul>
  *   <li>库存数量 = StockGoods 最新年 FactQTY（迁移）+ 单据审核增量 → stock_balances.qty</li>
- *   <li>库存重量 = FactWeight + 明细 weight×unit_rate 增量 → stock_balances.weight</li>
+ *   <li>库存重量 = FactWeight + 行实际总重量增量 → stock_balances.weight</li>
  *   <li>库存台账金额 = stock_balances.amount_local（多仓时按货品+颜色 SUM）</li>
  *   <li>多排数量 = production_plan_items 可排余量聚合（老库 View_ProductMore）</li>
  *   <li>备注 = goods.paper（老库 B_Goods.Paper，如「外购」）</li>
@@ -57,6 +57,35 @@ public class InstantInventoryRow {
     private String stockPlace;
     /** 待检量（procurement_inspection_items 收货未放行量，基本单位；>0=货在 IQC 待检）。 */
     private BigDecimal pendingQty;
+    /** 品质已放行但仓库尚未确认入库的基本单位量；不属于可用库存。 */
+    private BigDecimal pendingStockInQty;
     /** 当前用户无 goods:cost:view 时库存台账金额已由服务端置空。 */
     private boolean costMasked;
+
+    /** Compatibility constructor for callers created before the V446 pending-stock-in column. */
+    public InstantInventoryRow(
+            UUID goodsId,
+            UUID colorId,
+            String categoryName,
+            String model,
+            String cNumber,
+            String name,
+            String spec,
+            String colorName,
+            String unitName,
+            String remark,
+            BigDecimal weight,
+            BigDecimal qty,
+            BigDecimal costAmount,
+            BigDecimal moreQty,
+            String goodsCode,
+            String series,
+            String stockPlace,
+            BigDecimal pendingQty,
+            boolean costMasked) {
+        this(goodsId, colorId, categoryName, model, cNumber, name, spec,
+                colorName, unitName, remark, weight, qty, costAmount, moreQty,
+                goodsCode, series, stockPlace, pendingQty, BigDecimal.ZERO,
+                costMasked);
+    }
 }

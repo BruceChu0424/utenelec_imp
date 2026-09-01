@@ -214,11 +214,23 @@ public class AuditController {
     }
 
     private void logAuditAccess(String action, String targetId) {
-        var user = currentUser.get().orElseThrow(
-                () -> new IllegalStateException("Authenticated audit investigator is missing"));
+        AuditRequestContext.VerifiedActor verified =
+                AuditRequestContext.verifiedActor(AuditRequestContext.currentRequest());
+        UUID actorId;
+        String actorAccount;
+        if (verified != null) {
+            actorId = verified.actorId();
+            actorAccount = verified.actorAccount();
+        } else {
+            var user = currentUser.get().orElseThrow(
+                    () -> new IllegalStateException(
+                            "Authenticated audit investigator is missing"));
+            actorId = user.getId();
+            actorAccount = user.getLoginAccount();
+        }
         audit.logExplicit(
-                user.getId(),
-                user.getLoginAccount(),
+                actorId,
+                actorAccount,
                 action,
                 "audit_log",
                 targetId,

@@ -58,7 +58,10 @@ class ProductionFqcFinishedInboundServiceTest {
         UUID actorId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
         UUID documentItemId = UUID.randomUUID();
-        BigDecimal quantity = new BigDecimal("1000.0000");
+        BigDecimal reportedQty = new BigDecimal("1000.0000");
+        BigDecimal quantity = new BigDecimal("400.0000");
+        BigDecimal reportWeight = new BigDecimal("25.0000");
+        BigDecimal priorPassQty = new BigDecimal("200.0000");
 
         Query source = query();
         when(source.getResultList()).thenReturn(
@@ -68,8 +71,8 @@ class ProductionFqcFinishedInboundServiceTest {
                         reportItemId, planItemId, segmentId,
                         allocationId, goodsId, null, unitId,
                         BigDecimal.ONE, planId, "SJ202608280001",
-                        quantity, "IN_PROGRESS", inspectionId,
-                        decisionId
+                        reportedQty, "IN_PROGRESS", inspectionId,
+                        decisionId, "A31-3-1", reportWeight, priorPassQty
                 }));
         Query goods = query();
         when(goods.getResultList()).thenReturn(
@@ -123,7 +126,25 @@ class ProductionFqcFinishedInboundServiceTest {
                 .isEqualByComparingTo(quantity);
         assertThat(item.getValue().getReportedQty())
                 .isEqualByComparingTo(quantity);
+        assertThat(item.getValue().getWeight())
+                .isEqualByComparingTo("10.0000");
+        assertThat(item.getValue().getPlace()).isEqualTo("A31-3-1");
         verify(notices).notifyFinishedInboundPending(documentId);
+    }
+
+    @Test
+    void cumulativeWeightProrationLetsFinalPassAbsorbRoundingTail() {
+        BigDecimal total = new BigDecimal("10.0000");
+        BigDecimal reported = new BigDecimal("3.0000");
+        BigDecimal first = ProductionFqcFinishedInboundService.proratedActualWeight(
+                total, reported, BigDecimal.ZERO, BigDecimal.ONE);
+        BigDecimal second = ProductionFqcFinishedInboundService.proratedActualWeight(
+                total, reported, BigDecimal.ONE, BigDecimal.ONE);
+        BigDecimal third = ProductionFqcFinishedInboundService.proratedActualWeight(
+                total, reported, new BigDecimal("2"), BigDecimal.ONE);
+
+        assertThat(first.add(second).add(third)).isEqualByComparingTo(total);
+        assertThat(third).isEqualByComparingTo("3.3333");
     }
 
     private static Query query() {

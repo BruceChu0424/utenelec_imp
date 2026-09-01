@@ -3,8 +3,8 @@
 //
 // - 按账号/模拟身份持久化 (publishedAt,id) 游标；首次由服务端补显未读且未确认到达的通知；
 // - 每 10s 增量拉取、每分钟全量待确认对账，补回晚提交游标后方的通知；
-// - 所有优先级先从顶部下滑；important / urgent 再显示居中持久强提醒；
-// - 强提醒关闭只记 popup ack，主操作才标注已读并跳 actionRoute。
+// - 所有优先级均进入非阻塞顶部叠放层；重要度只改变视觉与停留时长；
+// - 同一批通知逐条跟踪真实关闭回调，点击才标注已读并跳 actionRoute。
 
 import 'dart:async';
 import 'dart:collection';
@@ -21,7 +21,6 @@ import '../../../shared/providers/shared_providers.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 import '../repositories/notice_repository.dart';
-import '../widgets/important_notice_dialog.dart';
 import '../widgets/notice_detail_dialog.dart';
 
 typedef NoticeArrivalLoader =
@@ -171,12 +170,11 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   final Set<String> _deliveredIds = <String>{};
   final Set<String> _queuedIds = <String>{};
   final ListQueue<Notice> _pendingArrivals = ListQueue<Notice>();
-  Notice? _activeArrival;
+  final Map<String, Notice> _activeArrivals = <String, Notice>{};
   int _generation = 0;
   int _requestSequence = 0;
   int? _activeRequest;
   Future<void> _persistTail = Future<void>.value();
-  final ValueNotifier<int> _dialogInterruptionSignal = ValueNotifier<int>(0);
   String? _lastScheduledSnapshot;
   bool _persistDirty = false;
 
@@ -218,7 +216,6 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   @override
   void dispose() {
     _generation++;
-    _dialogInterruptionSignal.value++;
     _timer?.cancel();
     _fullAuditTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -246,7 +243,6 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
 
   void _resetForIdentity() {
     _generation++;
-    _dialogInterruptionSignal.value++;
     _fullAuditTimer?.cancel();
     _fullAuditTimer = null;
     _fullAuditDue = false;
@@ -255,7 +251,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     _deliveredIds.clear();
     _queuedIds.clear();
     _pendingArrivals.clear();
-    _activeArrival = null;
+    _activeArrivals.clear();
     _lastScheduledSnapshot = null;
     _persistDirty = false;
     // 旧请求仍可在网络层完成，但 generation 会丢弃其结果；新身份不必等待它。
@@ -319,8 +315,8 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
         _advanceCursor(nextCursor);
         cursor = nextCursor;
         _prioritizePendingArrivals();
-        // 增量页可以立即播放；首次登录/全量审计先拉完全部页再按紧急度排序，
-        // 避免大量历史普通消息挡住必须先处理的驳回强提醒。
+        // 增量页可以立即入顶部栈；首次登录/全量审计先拉完全部页再排序，
+        // 让低优先级先入栈、重要/紧急最后入栈并保持在视觉最上层。
         if (!fullAudit) _dispatchNext();
         if (!page.hasMore) break;
         pageCount++;
@@ -371,16 +367,18 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
     _queuedIds
       ..clear()
       ..addAll(retained.map((notice) => notice.id));
-    if (_activeArrival case final active?) _queuedIds.add(active.id);
+    _queuedIds.addAll(_activeArrivals.keys);
   }
 
   void _prioritizePendingArrivals() {
     if (_pendingArrivals.length < 2) return;
     final sorted = _pendingArrivals.toList(growable: false)
       ..sort((left, right) {
+        // 顶部栈是“后入在上”：低优先级先派发，important / urgent 后派发，
+        // 最终仍由最高优先级位于最上层；同级按时间由旧到新入栈。
         final byPriority = _noticePriorityRank(
-          right.priority,
-        ).compareTo(_noticePriorityRank(left.priority));
+          left.priority,
+        ).compareTo(_noticePriorityRank(right.priority));
         if (byPriority != 0) return byPriority;
         final byTime = left.publishedAt.compareTo(right.publishedAt);
         return byTime != 0 ? byTime : left.id.compareTo(right.id);
@@ -397,7 +395,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   };
 
   void _dispatchNext() {
-    if (!mounted || _activeArrival != null || _pendingArrivals.isEmpty) return;
+    if (!mounted || _pendingArrivals.isEmpty) return;
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
 
@@ -409,37 +407,39 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
       return;
     }
 
-    final notice = _pendingArrivals.removeFirst();
-    final identityKey = widget.identityKey;
-    _activeArrival = notice;
-    void delivered() => _confirmDelivered(identityKey, notice.id);
-    try {
-      final dispatchContext = routedContext ?? context;
-      final injected = widget.onArrival;
-      if (injected != null) {
-        injected(dispatchContext, notice, delivered);
-      } else {
-        dispatchNoticeArrival(
-          dispatchContext,
-          notice,
-          onDelivered: delivered,
-          interruptSignal: _dialogInterruptionSignal,
-        );
+    final dispatchContext = routedContext ?? context;
+    final injected = widget.onArrival;
+    while (mounted && _pendingArrivals.isNotEmpty) {
+      final notice = _pendingArrivals.removeFirst();
+      final identityKey = widget.identityKey;
+      _activeArrivals[notice.id] = notice;
+      void delivered() => _confirmDelivered(identityKey, notice.id);
+      try {
+        if (injected != null) {
+          injected(dispatchContext, notice, delivered);
+        } else {
+          dispatchNoticeArrival(
+            dispatchContext,
+            notice,
+            onDelivered: delivered,
+          );
+        }
+      } catch (_) {
+        // 未成功进入顶部宿主，不确认 delivered；保留在队首，下一轮再试。
+        _activeArrivals.remove(notice.id);
+        _pendingArrivals.addFirst(notice);
+        return;
       }
-    } catch (_) {
-      // 未成功进入顶部宿主，不确认 delivered；保留在队首，下一轮再试。
-      _activeArrival = null;
-      _pendingArrivals.addFirst(notice);
     }
   }
 
   void _confirmDelivered(String identityKey, String noticeId) {
     if (!mounted ||
         widget.identityKey != identityKey ||
-        _activeArrival?.id != noticeId) {
+        !_activeArrivals.containsKey(noticeId)) {
       return;
     }
-    _activeArrival = null;
+    _activeArrivals.remove(noticeId);
     _queuedIds.remove(noticeId);
     if (_deliveredIds.add(noticeId)) _persistDirty = true;
     _schedulePersist();
@@ -494,14 +494,13 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
 
 /// 分派一条新到达通知。
 ///
-/// 所有优先级先进入顶部条；important / urgent 还会显示不自动消失的居中强提醒。
-/// 强提醒显式关闭只记 popup ack，不标已读；主操作才标已读并跳转。
+/// 所有优先级都进入非阻塞顶部叠放层。important / urgent 仅使用更强语义色和更长
+/// 停留时间，不再默认弹出会中断仓库、生产等当前操作的居中窗口。
 void dispatchNoticeArrival(
   BuildContext context,
   Notice notice, {
   VoidCallback? onOpenDetail,
   VoidCallback? onDelivered,
-  Listenable? interruptSignal,
 }) {
   // 点击可能发生在来源页切换后：提前捕获 app 级 container、router 与根
   // Navigator context，避免延迟回调读取已失效的 WidgetRef/页面 context。
@@ -529,12 +528,14 @@ void dispatchNoticeArrival(
     showNoticeDetailDialog(detailContext, noticeId: notice.id);
   }
 
-  final open =
-      onOpenDetail ??
-      () {
-        markRead();
-        navigateToTarget();
-      };
+  void open() {
+    markRead();
+    if (onOpenDetail != null) {
+      onOpenDetail();
+    } else {
+      navigateToTarget();
+    }
+  }
 
   final (kind, duration, priorityPrefix) = switch (notice.priority) {
     NoticePriority.urgent => (
@@ -571,52 +572,9 @@ void dispatchNoticeArrival(
     kind: kind,
     icon: notice.type.icon,
     duration: duration,
-    onTap: notice.priority == NoticePriority.normal ? open : null,
-    onDismissed: notice.priority == NoticePriority.normal ? onDelivered : null,
+    onTap: open,
+    onDismissed: onDelivered,
     // 两条不同 Notice 即使标题相同，也必须各自显示；ID 去重由协调器负责。
     force: true,
   );
-
-  if (notice.priority != NoticePriority.normal) {
-    unawaited(
-      _showPersistentArrival(
-        context,
-        notice,
-        container: container,
-        onPrimary: onOpenDetail ?? navigateToTarget,
-        onDelivered: onDelivered,
-        interruptSignal: interruptSignal,
-      ),
-    );
-  }
-}
-
-Future<void> _showPersistentArrival(
-  BuildContext context,
-  Notice notice, {
-  required ProviderContainer container,
-  required VoidCallback onPrimary,
-  VoidCallback? onDelivered,
-  Listenable? interruptSignal,
-}) async {
-  final result = await showImportantNoticeDialog(
-    context,
-    notice: notice,
-    interruptSignal: interruptSignal,
-  );
-  if (result == ImportantNoticeDialogResult.interrupted) return;
-  try {
-    await container.read(noticeRepositoryProvider).acknowledgePopup(notice.id);
-  } catch (_) {
-    // popup ack 失败不把用户困在弹窗；本地 delivered 游标仍会阻止本设备重复轰炸。
-  }
-  if (result == ImportantNoticeDialogResult.primary) {
-    try {
-      await markNoticeReadContainer(container, notice.id);
-    } catch (_) {
-      // 跳转优先；未读角标会在下次轮询自愈。
-    }
-    onPrimary();
-  }
-  onDelivered?.call();
 }

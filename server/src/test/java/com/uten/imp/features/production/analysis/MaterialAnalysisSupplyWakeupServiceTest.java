@@ -92,7 +92,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
     }
 
     @Test
-    void partialInspectionPassRefreshesImmediatelyWithReplayStableEventLineage() {
+    void partialWarehouseStockInRefreshesImmediatelyWithReplayStableEventLineage() {
         EntityManager em = mock(EntityManager.class);
         MaterialAnalysisService analysis = mock(MaterialAnalysisService.class);
         BusinessEventPublisher events = mock(BusinessEventPublisher.class);
@@ -139,7 +139,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                 .contains("inspection.id = :inspectionItemId")
                 .contains("inspection.receipt_type = :sourceType")
                 .contains("inspection.status IN ('PARTIAL', 'RESOLVED')")
-                .contains("inspection.passed_base_qty > 0")
+                .contains("inspection.warehouse_stocked_base_qty > 0")
                 .contains("receipt.status = 1")
                 .contains("ORDER BY analysis.id")
                 .contains("FOR UPDATE OF analysis");
@@ -149,7 +149,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
     }
 
     @Test
-    void partialSubcontractPassUsesTheApprovedSubcontractReceiptDimension() {
+    void partialSubcontractWarehouseStockInUsesTheApprovedReceiptDimension() {
         EntityManager em = mock(EntityManager.class);
         MaterialAnalysisService analysis = mock(MaterialAnalysisService.class);
         BusinessEventPublisher events = mock(BusinessEventPublisher.class);

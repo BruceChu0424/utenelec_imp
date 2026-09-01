@@ -270,6 +270,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
         ),
       if (_cfg.type == SalesDocType.shipment)
         MasterColumnDef(
+          key: 'financeAudit',
+          label: '财务审核',
+          width: 120,
+          value: (it) => salesShipmentFinanceAuditLabel(it.financeAudit),
+        ),
+      if (_cfg.type == SalesDocType.shipment)
+        MasterColumnDef(
           key: 'warehouseWorkStatus',
           label: '仓库作业',
           width: 150,

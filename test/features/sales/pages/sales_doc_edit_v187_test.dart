@@ -126,7 +126,10 @@ void main() {
             {
               'id': 'order-item-1',
               'goodsId': 'goods-1',
+              'unitId': 'unit-box',
+              'unitRate': 10,
               'qty': 2,
+              'weight': 5.25,
               'price': 10,
               'discount': 0.8,
             },
@@ -146,6 +149,9 @@ void main() {
         (api.lastPutBody!['items'] as List<dynamic>).single as Map,
       );
       expect(item['id'], 'order-item-1');
+      expect(item['unitId'], 'unit-box');
+      expect(item['unitRate'], 10);
+      expect(item['weight'], 5.25);
       expect(item['amountOriginal'], 16);
       expect(item.containsKey('amountLocal'), isFalse);
     },

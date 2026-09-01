@@ -695,8 +695,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                             key: 'stockPlace',
                             label: '库位号',
                             width: 80,
-                            value: (it) =>
-                                names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+                            value: (it) => it.place?.trim().isNotEmpty == true
+                                ? it.place!
+                                : names.goodsInfo(it.goodsId)?.stockPlace ??
+                                      '—',
                           ),
                           MasterColumnDef(
                             key: 'color',
@@ -712,7 +714,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                           ),
                           MasterColumnDef(
                             key: 'weight',
-                            label: '重量',
+                            label: '实际重量',
                             width: 90,
                             type: 'number',
                             value: (it) => it.weight?.toStringAsFixed(2) ?? '—',
@@ -742,7 +744,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                           ] else if (widget.docType == StockDocType.draw) ...[
                             MasterColumnDef(
                               key: 'qty',
-                              label: '数量',
+                              label: '业务量',
                               width: 90,
                               type: 'number',
                               value: (it) => (it.qty ?? 0).toStringAsFixed(2),
@@ -782,7 +784,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                           ] else
                             MasterColumnDef(
                               key: 'qty',
-                              label: '数量',
+                              label: '业务量',
                               width: 90,
                               type: 'number',
                               value: (it) => (it.qty ?? 0).toStringAsFixed(2),

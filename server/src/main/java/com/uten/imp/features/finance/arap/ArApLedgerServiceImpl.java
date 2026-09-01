@@ -241,9 +241,9 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
     private static String businessType(String direction, String sourceDocType) {
         if ("AR".equals(direction)) return "SALES";
         return switch (sourceDocType) {
-            case "PURCHASE_RECEIPT", "PURCHASE_RETURN" -> "PURCHASE";
+            case "PURCHASE_RECEIPT", "PURCHASE_RETURN", "PURCHASE_IQC_CREDIT" -> "PURCHASE";
             case "SUBCONTRACT_RECEIPT", "SUBCONTRACT_RETURN", "SUBCONTRACT_WASTE",
-                    "SUBCONTRACT_LOSS_OFFSET" -> "SUBCONTRACT";
+                    "SUBCONTRACT_LOSS_OFFSET", "SUBCONTRACT_IQC_CREDIT" -> "SUBCONTRACT";
             default -> "DIRECT";
         };
     }

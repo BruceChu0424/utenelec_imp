@@ -1,7 +1,7 @@
 // 采购单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
 // 计划下达的采购申请始终只读；订货走财务审批；收货/退货才沿用各自的草稿/审核/红冲动作。
-// 所有动作同时受服务端 allowedActions 与权限约束。
+// 财务决定只存在于财务任务中心；本页仅消费业务动作能力与 SUBMIT_FINANCE。
 // 名称解析：供应商/仓库/币种/颜色/单位用 MasterNameService；货品按明细 id 批量 lookup。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,16 +46,18 @@ class PurchaseDocDetailPage extends ConsumerStatefulWidget {
 }
 
 class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
+  static const _financeApprovalTasksPath = '/finance/procurement-approvals';
+
   PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
   PurchaseDocDetail? _detail;
   bool _loading = false;
   bool _busy = false;
 
-  bool get _canViewCommercialAmounts =>
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.purchaseReceiptPriceView) &&
-      !(_detail?.priceMasked ?? false);
+  bool get _canViewCommercialAmounts {
+    return _cfg.canViewCommercial(ref.read(currentPermissionsProvider)) &&
+        !(_detail?.priceMasked ?? false);
+  }
+
   String? _error;
 
   @override
@@ -78,6 +80,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
   bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
   bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
+
+  bool get _financeReviewOnly =>
+      widget.docType == PurchaseDocType.order &&
+      _hasPermission(Perm.financeOrderApprovalView) &&
+      !_hasPermission(_cfg.listPerm);
+
+  String get _defaultBackPath =>
+      _financeReviewOnly ? _financeApprovalTasksPath : RouteName.purchase;
+
+  String get _returnLabel => _financeReviewOnly ? '返回订货审批任务中心' : '返回列表';
 
   Future<void> _load() async {
     if (widget.docType != PurchaseDocType.request) {
@@ -122,7 +134,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   Future<void> _approveDocument() async {
     final message = widget.docType == PurchaseDocType.receipt
         ? '审核后货品进入待检隔离(IQC，不入库存)：品质部在「品质任务中心→待检处置」'
-              '检验，合格放行后库存才增加；同时回写订货已收并立应付。'
+              '检验，合格后转仓库待入库任务；仓库确认实物和库位后库存才增加。'
+              '同时回写订货已收并立应付。'
               '单价按订货单自动带入，无需填写。'
         : '审核后将驱动下游库存和来源回写。';
     await _doAction(
@@ -272,16 +285,17 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
         leading: UtenBackButton(
-          onPressed: () =>
-              popOrBackTo(context, defaultPath: RouteName.purchase),
+          onPressed: () => popOrBackTo(context, defaultPath: _defaultBackPath),
         ),
         actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: () => context.push('/purchase/${_cfg.type.pathSegment}'),
-            child: const Text('查看历史'),
-          ),
+          if (_hasPermission(_cfg.listPerm))
+            UtenButton(
+              type: UtenButtonType.tonal,
+              icon: Icons.history_rounded,
+              onPressed: () =>
+                  context.push('/purchase/${_cfg.type.pathSegment}'),
+              child: const Text('查看历史'),
+            ),
         ],
       ),
       body: SafeArea(
@@ -495,6 +509,13 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
             ),
+            MasterColumnDef(
+              key: 'weight',
+              label: '实际重量',
+              width: 100,
+              type: 'number',
+              value: (it) => it.weight?.toStringAsFixed(4),
+            ),
             if (widget.docType != PurchaseDocType.request &&
                 canViewCommercialAmounts) ...[
               MasterColumnDef(
@@ -684,7 +705,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       );
     } else if (widget.docType == PurchaseDocType.order) {
       final approval = d.financeApproval;
-      if (s == kPurchaseStatusDraft && _canDelete && d.canDelete) {
+      final pending = approval?.isPending == true;
+      if (s == kPurchaseStatusDraft && !pending && _canDelete && d.canDelete) {
         addAction(
           UtenButton(
             type: UtenButtonType.danger,
@@ -694,7 +716,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           ),
         );
       }
-      if (s == kPurchaseStatusDraft && _canEdit && d.canEdit) {
+      if (s == kPurchaseStatusDraft && !pending && _canEdit && d.canEdit) {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,
@@ -707,6 +729,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         );
       }
       if (s == kPurchaseStatusDraft &&
+          !pending &&
           _ordinaryWritable &&
           _hasPermission(Perm.purchaseOrderSubmitFinance) &&
           approval?.canSubmit == true) {
@@ -732,8 +755,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         addAction(
           UtenButton(
             type: UtenButtonType.secondary,
-            onPressed: () => context.go('/purchase/${_cfg.type.pathSegment}'),
-            child: const Text('返回列表'),
+            onPressed: () =>
+                popOrBackTo(context, defaultPath: _defaultBackPath),
+            child: Text(_returnLabel),
           ),
         );
       }

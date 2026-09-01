@@ -60,6 +60,54 @@ void main() {
     expect(find.text('汇率'), findsNothing);
     expect(find.text('合计(本币)'), findsNothing);
   });
+
+  testWidgets('receipt price permission cannot unlock purchase order amounts', (
+    tester,
+  ) async {
+    await _pumpDetail(
+      tester,
+      permissions: const {Perm.purchaseReceiptPriceView},
+      priceMasked: false,
+      docType: PurchaseDocType.order,
+    );
+
+    final keys = _detailColumnKeys(tester);
+    expect(keys, contains('qty'));
+    expect(keys, isNot(contains('price')));
+    expect(keys, isNot(contains('amount')));
+    expect(find.text('合计(本币)'), findsNothing);
+  });
+
+  testWidgets('order price permission unlocks only purchase order amounts', (
+    tester,
+  ) async {
+    await _pumpDetail(
+      tester,
+      permissions: const {Perm.purchaseOrderPriceView},
+      priceMasked: false,
+      docType: PurchaseDocType.order,
+    );
+
+    final keys = _detailColumnKeys(tester);
+    expect(keys, containsAll(<String>{'qty', 'price', 'amount'}));
+    expect(find.text('合计(本币)'), findsOneWidget);
+  });
+
+  testWidgets('finance-wide permission can render unmasked purchase amounts', (
+    tester,
+  ) async {
+    await _pumpDetail(
+      tester,
+      permissions: const {Perm.financeViewAll},
+      priceMasked: false,
+      docType: PurchaseDocType.order,
+    );
+
+    expect(
+      _detailColumnKeys(tester),
+      containsAll(<String>{'qty', 'price', 'amount'}),
+    );
+  });
 }
 
 Set<String> _detailColumnKeys(WidgetTester tester) {
@@ -75,28 +123,27 @@ Future<void> _pumpDetail(
   WidgetTester tester, {
   required Set<String> permissions,
   required bool priceMasked,
+  PurchaseDocType docType = PurchaseDocType.receipt,
 }) async {
   tester.view.physicalSize = const Size(1200, 1600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final api = _TestApi(priceMasked: priceMasked);
+  final id = '${docType.name}-1';
+  final api = _TestApi(priceMasked: priceMasked, docType: docType, id: id);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         writeAllDocumentScope(DocumentDataScope.purchase),
         currentPermissionsProvider.overrideWithValue(permissions),
         purchaseRepositoryProvider(
-          PurchaseDocType.receipt,
-        ).overrideWithValue(PurchaseRepository(api, PurchaseDocType.receipt)),
+          docType,
+        ).overrideWithValue(PurchaseRepository(api, docType)),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
       ],
-      child: const MaterialApp(
-        home: PurchaseDocDetailPage(
-          docType: PurchaseDocType.receipt,
-          id: 'receipt-1',
-        ),
+      child: MaterialApp(
+        home: PurchaseDocDetailPage(docType: docType, id: id),
       ),
     ),
   );
@@ -105,9 +152,12 @@ Future<void> _pumpDetail(
 }
 
 class _TestApi extends ApiClient {
-  _TestApi({required this.priceMasked}) : super(Dio());
+  _TestApi({required this.priceMasked, required this.docType, required this.id})
+    : super(Dio());
 
   final bool priceMasked;
+  final PurchaseDocType docType;
+  final String id;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -120,9 +170,9 @@ class _TestApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.contains('/purchase/receipts/receipt-1')) {
+    if (path.contains('/purchase/${docType.pathSegment}/$id')) {
       return <String, dynamic>{
-        'id': 'receipt-1',
+        'id': id,
         'makerId': 'maker-1',
         'billNo': 'PR-001',
         'billDate': '2026-08-27',

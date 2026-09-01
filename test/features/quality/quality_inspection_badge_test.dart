@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/production_fqc_pending_count_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
@@ -47,6 +49,42 @@ void main() {
     );
     expect(find.text('0'), findsNothing);
   });
+
+  for (final iqcResolvesFirst in [true, false]) {
+    testWidgets(
+      'quality total waits for ${iqcResolvesFirst ? 'FQC' : 'IQC'} before showing a number',
+      (tester) async {
+        final pending = Completer<int>();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              procurementInspectionPendingCountProvider.overrideWith(
+                (ref) async => iqcResolvesFirst ? 4 : pending.future,
+              ),
+              productionFqcPendingCountProvider.overrideWith(
+                (ref) async => iqcResolvesFirst ? pending.future : 2,
+              ),
+            ],
+            child: const MaterialApp(
+              home: Scaffold(
+                body: WorkbenchCardBadge(
+                  kind: WorkbenchBadgeKind.qualityInspection,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+
+        expect(find.text('4'), findsNothing);
+        expect(find.text('2'), findsNothing);
+        pending.complete(iqcResolvesFirst ? 2 : 4);
+        await tester.pumpAndSettle();
+        expect(find.text('6'), findsOneWidget);
+      },
+    );
+  }
 
   testWidgets('quality count failure is not presented as a real zero', (
     tester,
@@ -266,6 +304,8 @@ void main() {
   testWidgets('double-tap opens the inspection detail page and back returns', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
     final repository = _twoItemDispositionRepository();
     final router = GoRouter(
       initialLocation: RouteName.warehouseInspections,
@@ -288,7 +328,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: _taskCenterOverrides(repository),
+        overrides: [
+          ..._taskCenterOverrides(repository),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
         child: _routerApp(router),
       ),
     );
@@ -427,8 +470,27 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('本单待检已全部处理完成'), findsOneWidget);
+      expect(find.textContaining('仓库核对实物和库位后才增加库存'), findsOneWidget);
       expect(find.text('返回任务中心'), findsOneWidget);
       expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsNothing);
+    },
+  );
+
+  test(
+    'IQC PASS refreshes the warehouse stock-in queue and keeps truthful copy',
+    () {
+      final source = File(
+        'lib/features/warehouse/pages/procurement_inspection_workbench_page.dart',
+      ).readAsStringSync();
+
+      expect(
+        RegExp(
+          r'ref\.invalidate\(warehouseIqcStockInPendingCountProvider\)',
+        ).allMatches(source),
+        hasLength(2),
+      );
+      expect(source, contains('已转仓库待入库，尚未增加可用库存'));
+      expect(source, isNot(contains('已自动入库')));
     },
   );
 

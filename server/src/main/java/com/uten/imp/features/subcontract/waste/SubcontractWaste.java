@@ -20,8 +20,9 @@ import java.util.UUID;
  *   <li><b>回写 {@code material_issue_items.wasted_qty += qty}</b>（新库补全老库缺失链路，
  *       design doc 22 §一决策6 / §六）</li>
  * </ol>
- * 发料审核已经扣减公司仓库存，供应商处报损不能再次扣公司仓。损耗本身不新增加工费应付；
- * 仅当 {@code deduct_amount > 0} 时立负应付，作为向委外商追偿的扣款。
+ * 发料审核已经扣减公司仓库存，供应商处报损不能再次扣公司仓。损耗本身不新增或冲减 AP；
+ * {@code deduct_amount} 仅保留 V304 历史/建议金额，新单由财务责任单处理索赔、合法抵销、
+ * 现金赔偿或实物补偿。
  *
  * <p>特有字段：{@code total_weight}（主表汇总重量）；明细含 {@code waste_rate}/{@code cause}/
  * {@code ending_qty}/{@code standard_qty}。
@@ -61,11 +62,11 @@ public class SubcontractWaste extends SoftDeletableEntity {
     @Column(name = "total_weight", precision = 18, scale = 4)
     private BigDecimal totalWeight;
 
-    /** 损耗扣款金额（本币，V304）：NULL/0=公司自行承担；>0 审核立负应付向委外商追偿。 */
+    /** V304 历史/建议索赔金额；新损耗审核不直接立负应付。 */
     @Column(name = "deduct_amount", precision = 18, scale = 4)
     private BigDecimal deductAmount;
 
-    /** 扣款是否已立负应付（V304）；红冲先反立账（已核销拒）。 */
+    /** V304 历史负应付标记；仅旧行查询和受控反向，新单保持 false。 */
     @Column(name = "deduct_posted", nullable = false)
     private boolean deductPosted = false;
 

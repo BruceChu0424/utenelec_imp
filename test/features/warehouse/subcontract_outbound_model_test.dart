@@ -55,4 +55,21 @@ void main() {
       containsPair('unitId', null),
     );
   });
+
+  test('未知新流模式 fail closed，不得按历史发料行放行', () {
+    final line = OutboundPlanLine.fromJson({
+      'planItemId': 'plan-item-future',
+      'orderItemId': 'order-item-future',
+      'goodsId': 'goods-future',
+      'flowMode': 'FUTURE_UNRECOGNIZED_MODE',
+      'preparationStatus': 'READY_OUTBOUND',
+      'plannedQty': 10,
+      'readyOutboundQty': 10,
+      'draftReservedQty': 2,
+    });
+
+    expect(line.flowMode, SubcontractOutboundFlowMode.unknown);
+    expect(line.readyOutboundQty, 0);
+    expect(line.maxEditableQty, 0);
+  });
 }

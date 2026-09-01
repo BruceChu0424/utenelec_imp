@@ -55,16 +55,23 @@ class MaterialAnalysisSupplyProgressServiceTest {
         MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
                 .supplyProgress(scenario.analysisId, scenario.materialLineId);
 
-        assertThat(step(view, "MATERIAL_ISSUED").state()).isEqualTo("DONE");
-        assertThat(step(view, "MATERIAL_ISSUED").detail())
+        assertThat(step(view, "PREPARATION").state()).isEqualTo("DONE");
+        assertThat(step(view, "PREPARATION").detail())
+                .contains("无活动子层级");
+        assertThat(step(view, "TARGET_OUTBOUND").state()).isEqualTo("DONE");
+        assertThat(step(view, "TARGET_OUTBOUND").detail())
                 .isEqualTo("已出仓 10 / 计划 10");
         assertThat(step(view, "RECEIVED").state()).isEqualTo("DONE");
         assertThat(step(view, "QUALITY").state()).isEqualTo("REJECTED");
         assertThat(step(view, "QUALITY").detail()).isEqualTo("全部判定不合格");
+        assertThat(step(view, "STOCKED").state()).isEqualTo("WAITING");
+        assertThat(step(view, "STOCKED").detail())
+                .contains("前置自制入库")
+                .contains("不能提前满足原生产需求");
 
         assertThat(scenario.executions)
                 .filteredOn(execution -> execution.sql().contains(
-                        "FROM subcontract_material_plans p"))
+                        "COUNT(DISTINCT p.id)"))
                 .singleElement()
                 .satisfies(execution -> {
                     assertThat(execution.sql())
@@ -84,6 +91,26 @@ class MaterialAnalysisSupplyProgressServiceTest {
                     assertThat(execution.parameters())
                             .containsEntry("receiptItemIds", List.of(scenario.targetReceiptItemId));
                 });
+    }
+
+    @Test
+    void approvedSubcontractWithoutPlanIsNotReportedAsNoBomSelfSupply() {
+        ProjectionScenario scenario = new ProjectionScenario(false, false);
+        scenario.subcontractPlanExists = false;
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "PREPARATION").state()).isEqualTo("CURRENT");
+        assertThat(step(view, "TARGET_OUTBOUND").state()).isEqualTo("WAITING");
+        assertThat(step(view, "TARGET_OUTBOUND").detail())
+                .contains("计划尚未生成")
+                .doesNotContain("委外商自备料")
+                .doesNotContain("无需发料");
+        assertThat(view.steps()).extracting(
+                        MaterialAnalysisContracts.SupplyProgressStep::detail)
+                .filteredOn(java.util.Objects::nonNull)
+                .allMatch(detail -> !detail.contains("委外商自备料"));
     }
 
     @Test
@@ -133,6 +160,34 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 });
     }
 
+    @Test
+    void makeProgressUsesExactChildItemAndReturnsClickableProductionPlan() {
+        ProjectionScenario scenario = new ProjectionScenario(true, false);
+        scenario.make = true;
+        scenario.shortageQty = BigDecimal.ZERO;
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(view.route()).isEqualTo("MAKE");
+        MaterialAnalysisContracts.SupplyProgressStep plan = step(view, "PLAN");
+        assertThat(plan.docNo()).isEqualTo("SJ-MAKE-001");
+        assertThat(plan.documentType()).isEqualTo("PRODUCTION_PLAN");
+        assertThat(plan.documentId()).isEqualTo(scenario.makePlanId);
+        assertThat(scenario.executions)
+                .filteredOn(execution -> execution.sql().contains(
+                        "FROM production_plans plan"))
+                .singleElement()
+                .satisfies(execution -> {
+                    assertThat(execution.parameters())
+                            .containsEntry("analysisId", scenario.analysisId)
+                            .containsEntry("makeChildAnalysisItemId",
+                                    scenario.makeChildAnalysisItemId);
+                    assertThat(execution.parameters().values())
+                            .doesNotContain(scenario.analysisItemId);
+                });
+    }
+
     private static MaterialAnalysisContracts.SupplyProgressStep step(
             MaterialAnalysisContracts.SupplyProgressView view, String key) {
         return view.steps().stream()
@@ -154,6 +209,8 @@ class MaterialAnalysisSupplyProgressServiceTest {
         private BigDecimal shortageQty = BigDecimal.TEN;
         private BigDecimal delegatedQty = BigDecimal.ZERO;
         private Object[] splitProgress;
+        private boolean make;
+        private boolean subcontractPlanExists = true;
         private final UUID analysisId = UUID.randomUUID();
         private final UUID materialLineId = UUID.randomUUID();
         private final UUID analysisItemId = UUID.randomUUID();
@@ -162,6 +219,8 @@ class MaterialAnalysisSupplyProgressServiceTest {
         private final UUID goodsId = UUID.randomUUID();
         private final UUID colorId = UUID.randomUUID();
         private final UUID externalItemId = UUID.randomUUID();
+        private final UUID makeChildAnalysisItemId = UUID.randomUUID();
+        private final UUID makePlanId = UUID.randomUUID();
         private final UUID orderId = UUID.randomUUID();
         private final UUID targetOrderItemId = UUID.randomUUID();
         private final UUID siblingOrderItemId = UUID.randomUUID();
@@ -216,6 +275,12 @@ class MaterialAnalysisSupplyProgressServiceTest {
             if (sql.contains("SELECT DISTINCT request.bill_no")) {
                 return rows(new Object[]{purchase ? "SQ-001" : "WW-001", AT});
             }
+            if (sql.contains("FROM production_plans plan")) {
+                return make
+                        ? rows(new Object[]{makePlanId, "SJ-MAKE-001", 1,
+                                true, AT, makerId})
+                        : List.of();
+            }
             if (sql.contains("SELECT DISTINCT ord.id")) {
                 return rows(new Object[]{orderId, purchase ? "CG-001" : "WO-001",
                         1, false, AT, makerId, targetOrderItemId});
@@ -224,16 +289,29 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 return rows(new Object[]{"APPROVED", AT, makerId});
             }
             if (sql.contains("FROM subcontract_material_plans p")) {
+                if (sql.contains("pi.flow_mode = 'LEGACY_BOM_COMPONENT'")) {
+                    return subcontractPlanExists
+                            ? rows(new Object[]{1L, 0L, 1L, 0L, 1L, 0L, 0L,
+                                    new BigDecimal("10"), new BigDecimal("10"), 0L})
+                            : rows(new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                                    BigDecimal.ZERO, BigDecimal.ZERO, 0L});
+                }
+                if (!subcontractPlanExists) {
+                    return rows(new Object[]{BigDecimal.ZERO, BigDecimal.ZERO,
+                            BigDecimal.ZERO, 0L, 0L, 0L});
+                }
                 // Target line is fully issued. The sibling line remains open; an order-level
                 // projection would incorrectly return the contaminated second aggregate.
                 return parameters.containsKey("orderItemIds")
                         ? rows(new Object[]{new BigDecimal("10"), new BigDecimal("10"),
-                                BigDecimal.ZERO, 1L})
+                                BigDecimal.ZERO, 1L, 0L, 1L})
                         : rows(new Object[]{new BigDecimal("30"), new BigDecimal("20"),
-                                new BigDecimal("10"), 1L});
+                                new BigDecimal("10"), 1L, 0L, 1L});
             }
             if (sql.contains("FROM subcontract_material_issues i")) {
-                return rows(new Object[]{"FL-001", 1, AT, makerId});
+                return subcontractPlanExists
+                        ? rows(new Object[]{"FL-001", 1, AT, makerId})
+                        : List.of();
             }
             if (sql.contains("FROM purchase_receipt_items receipt_item")) {
                 // Only the sibling order line was received and passed. The old order-id filter
@@ -256,18 +334,24 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 // by receipt header would produce DONE; filtering by target receipt item is FAIL.
                 return parameters.containsKey("receiptItemIds")
                         ? rows(new Object[]{1L, 0L, BigDecimal.ZERO,
-                                new BigDecimal("10"), null})
+                                new BigDecimal("10"), null, BigDecimal.ZERO})
                         : rows(new Object[]{2L, 0L, new BigDecimal("10"),
-                                new BigDecimal("10"), AT});
+                                new BigDecimal("10"), AT,
+                                new BigDecimal("10")});
             }
             if (sql.contains("FROM v_preplan_buy_action_slice_progress progress")) {
                 return splitProgress == null ? List.of() : rows(splitProgress);
             }
             if (sql.contains("FROM preplan_supply_action_allocations allocation")
                     && sql.contains("LIMIT 1")) {
-                return rows(new Object[]{actionId, purchase ? "BUY" : "SUBCONTRACT",
-                        purchase ? "PURCHASE_REQUEST" : "SUBCONTRACT_APPLICATION",
-                        externalItemId, purchase ? "SQ-001" : "WW-001", AT, makerId});
+                return rows(new Object[]{actionId,
+                        make ? "MAKE" : purchase ? "BUY" : "SUBCONTRACT",
+                        make ? "PREPLAN_MAKE_TASK"
+                                : purchase ? "PURCHASE_REQUEST" : "SUBCONTRACT_APPLICATION",
+                        make ? makeChildAnalysisItemId : externalItemId,
+                        make ? "自制备料 2026-08-30 abcd"
+                                : purchase ? "SQ-001" : "WW-001",
+                        AT, makerId});
             }
             throw new AssertionError("Unexpected native query: " + sql);
         }

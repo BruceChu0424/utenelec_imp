@@ -4,6 +4,8 @@
 
 > 当前源码边界（2026-08-29）：Flyway 全局目录最高 V426，共 388 个迁移文件、388 个唯一版本且无重号。V420 是已授权的 BUY 需求 exact/公共安全补库分账，V421 是库存台账金额与货品成本完整性，V422 前向修正安全 action 单位快照和 allocation 反向门禁，V424 审计日志降噪（通知 4 表与系统管道/幂等指令表退出触发器覆盖），V425 审计日志全新开始（清空并重置自增 ID），V426 强化零料直接自制执行段的物料分析逐行谱系。离线 bootstrap 在任何写库前必须消费与当前候选 exact-set 一致的 388 行 checksum manifest，并把 `bootstrap-v10-v426` 写入迁移运行记录。V426 不授权跨越或执行尚未获准的破坏性 V425；若某环境未独立批准 V425，迁移必须在 V424 停止，V426 也保持 NO-GO。V409–V415/V418 的生产质量事实、V419 在线到货命令以及 V420–V422 的在线修复语义均不由离线脚本伪造或回填。脚本存在、空库回放或本地演练都不表示公司目标库已应用 V239–V426，目标库仍以自身 `flyway_schema_history` 为准。
 
+> 2026-08-31 补充：共享工作树已到 V443，共 405 个迁移文件、405 个唯一版本且无重号；V442 是独立计量学习候选，V443 是销售货款/全客户出货财审候选。上方 V426/388 checksum、`EXPECTED_FLYWAY_MIGRATION_COUNT=388` 与 `bootstrap-v10-v426` 仍是尚未重新签发的冻结旧基线，不能拿来执行当前目录。必须重新冻结 405 行 exact-set、checksum manifest、mapping version，并对 V425 逐环境单独授权或在 V424 停止；未完成时全量 bootstrap 保持 NO-GO。
+
 ## 不变量
 
 1. 在线关系只认新库 UUID。`legacy_id`、旧单号、编号、名称和人员文本只用于受控导入、对账或历史只读；不得把本目录的映射逻辑复制进普通 API。
@@ -36,7 +38,20 @@ bash server/legacy_migration/migrate.sh --purchase --confirm-destructive
 
 导出器、`migrate.sh`、全部 `migrate_*.sql` 和 Flyway 目录必须属于同一个无 scoped dirty 的受审 Git 提交。formatVersion 3 manifest 不保存 server、database、连接串或凭据，只保存源 authority、备份摘要、批准引用、UTC 时间、提交、导出器/sidecar 摘要以及每个 CSV 的行数、字节数和 SHA-256。导入时提交或任一字节漂移都会在数据库连接和写入前失败。
 
-全量导入完成后，`migrate_reconciliation.sql` 固定写入 20 项自动结构对账，包括核心 CSV 行数、完整消费清单、四个系统分类根、货品 UUID 关系、客户默认结算 UUID、显式仓库/车间映射、活动 BOM、reject 和历史 FK anchor 统计。任一强制项失败都会保留失败项并使 run 失败。自动结构对账通过仍不代表可切流；金额、数量、来源谱系、编号冲突、审计覆盖、恢复演练和业务/财务签字必须另行完成。
+全量导入完成后，`migrate_reconciliation.sql` 当前固定写入 23 项自动结构对账，包括核心 CSV 行数、完整消费清单、四个系统分类根、货品 UUID 关系、客户默认结算 UUID、客户铺底合法性、客户货款类型未决数、销售订单财务兼容事实、显式仓库/车间映射、活动 BOM、reject 和历史 FK anchor 统计。任一强制项失败都会保留失败项并使 run 失败。自动结构对账通过仍不代表可切流；金额、数量、来源谱系、编号冲突、审计覆盖、恢复演练和业务/财务签字必须另行完成。
+
+V443 客户迁移只接受可证明映射：本机只读聚合为 260 个非删除客户，`B_PStyle` 仅现金 28、月结 16 可用不可变 `system_role` 自动分类，其余 216 不从提货/汇款/代收/空值猜成定金；其中使用中 236（现金 28、月结 15、未决 193），禁用 24（月结 1、未决 23）。禁用客户仍可能保有历史 AR/收款，不从全量标签对账中豁免。10,653 张历史销售订单的 `Deposit` 非零数为 0，也不能证明定金客户。`B_Client.Credit` 保留 legacy 快照，并在铺底尚未人工维护时精确写入 `credit_floor`；未设置按 0。全部 216 个未决标签须人工签收，标签为空不得完成新流出货财审。
+
+历史出货不得批量伪造财审或风险事件。已进入 `PICKING/PICKED/SHIPPED` 的历史事实保留 `finance_gate_version=0`；仍处于活动 `PENDING_PICK` 且能证明尚未开始作业的旧草稿必须升级为版本 1、保持未审，再由财务人工放行。`LEGACY_PENDING` 是只读迁移异常，不得再走旧审核、财审、仓库推进或原位升级；须保留原草稿，并从当前已财务确认订单来源逐行重建版本 1 两审任务。无法证明的行进入异常清单并阻断切换。新流放行/撤回同事务追加 `sales_shipment_finance_release_events` 风险快照；历史不回填。财审只通知仓库，不立 AR；仓库最终确认 `SHIPPED` 的上海业务日才建立完整正式 AR 并起算到期日。
+
+销售 AR 对账必须把正式应收与客户预收分层：未转销 `CUSTOMER_PREPAYMENT` 负余额不得净掉正式 AR 未收；只有已审预收转销才冲减目标 AR。铺底只在客户汇总展示，`超出铺底额=正式 AR 未收-铺底额` 保留负数，不参与核销。当前 23 项结构对账不能替代这组金额/来源人工对账或后续自动守卫。
+
+V442 候选在采购、仓库、销售、委外和生产物理单据导入后运行
+migrate_measurement_profiles.sql。它只消费已审核目标 UUID 事实：正重量模式形成
+PROVISIONAL 建议；旧 Weight 没有单位，不得自动 CONFIRMED。异常进入
+legacy_measurement_exceptions。画像必须绑定同一 formatVersion 3 manifest 的备份摘要、
+批准引用和 Git commit；当前未绑定的本地 CSV 只允许运行
+profile_measurement_evidence.py 做聚合诊断。
 
 ## 人事与秘密
 
@@ -47,7 +62,7 @@ bash server/legacy_migration/migrate.sh --purchase --confirm-destructive
 
 ## PostgreSQL 前向升级演练
 
-本目录的 SQL Server 离线 bootstrap 与既有 PostgreSQL 的 Flyway 前向升级是两条不同链路，不能混用。自动测试 `V238ToCurrentSyntheticMigrationPostgresTest` 从最后一份公司目标库只读基线 V238 构造非空库并升级到当前 V426/388，用于发现空库回放看不到的结构、种子和约束问题；它不包含公司历史业务数据。
+本目录的 SQL Server 离线 bootstrap 与既有 PostgreSQL 的 Flyway 前向升级是两条不同链路，不能混用。`V238ToCurrentSyntheticMigrationPostgresTest` 的 V426/388 描述是冻结旧基线；在测试常量、exact-set 和证据重新签发到 V443/405 前，不得称为“升级到当前”。该测试即使更新后也只从公司目标库只读基线 V238 构造合成非空库，用于发现空库回放看不到的结构、种子和约束问题；它不包含公司历史业务数据。
 
 公司数据只能在独立、可丢弃且可恢复的克隆上运行 `CurrentHeadNonEmptyCloneRehearsalTest`。除 `UTEN_RUN_REHEARSAL_DB_TESTS=true` 外，执行者必须通过私有环境显式提供：
 

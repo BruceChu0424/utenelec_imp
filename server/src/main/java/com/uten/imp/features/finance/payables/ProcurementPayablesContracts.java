@@ -51,7 +51,10 @@ public final class ProcurementPayablesContracts {
             String outstandingLocal,
             String status,
             int overdueDays,
-            String remark) {}
+            String remark,
+            boolean paymentHeld,
+            String holdReason,
+            String failedBaseQty) {}
 
     public record Page(
             Summary summary,

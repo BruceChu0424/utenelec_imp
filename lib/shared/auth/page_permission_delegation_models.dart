@@ -150,6 +150,8 @@ class PageStaffPermissionState {
     required this.editable,
     this.actionType = PermissionActionType.other,
     this.description,
+    this.bulkAssignable = true,
+    this.sensitivity = 'NORMAL',
     this.reason,
   });
 
@@ -157,6 +159,8 @@ class PageStaffPermissionState {
   final String name;
   final PermissionActionType actionType;
   final String? description;
+  final bool bulkAssignable;
+  final String sensitivity;
   final bool baseEffective;
   final bool delegationEnabled;
   final int rowVersion;
@@ -172,6 +176,8 @@ class PageStaffPermissionState {
       name: json['name'] as String? ?? json['code'] as String,
       actionType: PermissionActionType.fromJson(json['actionType']),
       description: _optionalText(json['description']),
+      bulkAssignable: json['bulkAssignable'] as bool? ?? true,
+      sensitivity: json['sensitivity'] as String? ?? 'NORMAL',
       baseEffective:
           (json['baseEffective'] ?? json['targetBaseEffective']) as bool? ??
           false,

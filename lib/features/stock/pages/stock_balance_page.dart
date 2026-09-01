@@ -71,6 +71,7 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
           .whereType<String>()
           .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+      await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _page = r);
     } catch (_) {
@@ -103,6 +104,15 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
         label: '颜色', // TODO(l10n): 补 arb
         width: 120,
         value: (b) => names.color(b.colorId),
+      ),
+      MasterColumnDef(
+        key: 'unit',
+        label: '单位',
+        width: 90,
+        value: (b) {
+          final unitId = names.goodsInfo(b.goodsId)?.unitId;
+          return unitId == null ? '未维护' : names.unit(unitId);
+        },
       ),
       MasterColumnDef(
         key: 'qty',
@@ -149,6 +159,9 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
       context: context,
       balance: balance,
       goodsName: names.goods(goodsId),
+      unitName: names.goodsInfo(goodsId)?.unitId == null
+          ? '未维护'
+          : names.unit(names.goodsInfo(goodsId)?.unitId),
       warehouseName: names.warehouse(balance.warehouseId),
       colorName: names.color(balance.colorId),
       canAdjust: canAdjust,

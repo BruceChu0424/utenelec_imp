@@ -2,6 +2,8 @@ package com.uten.imp.features.subcontract.ret;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.finance.ProcurementReturnQualityPolicy;
+import com.uten.imp.common.finance.ProcurementReturnPayableAuthority;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,12 +36,17 @@ public class SubcontractReturnAmountAuthority {
                 .toList();
         BigDecimal totalOriginal = BigDecimal.ZERO;
         BigDecimal totalLocal = BigDecimal.ZERO;
+        java.util.Set<UUID> validatedReceipts = new java.util.HashSet<>();
         for (SubcontractReturnItem item : ordered) {
             @SuppressWarnings("unchecked")
             List<Object[]> rows = em.createNativeQuery("""
-                    SELECT source_item.price, source_receipt.supplier_id,
+                    SELECT source_item.price, source_item.unit_rate,source_receipt.id,
+                           source_receipt.supplier_id,
                            source_receipt.currency_id, source_receipt.exchange_rate,
+                           source_receipt.settlement_method_id, source_receipt.tax_rate,
                            source_item.order_item_id, source_receipt.status,
+                           source_receipt.ap_posted,
+                           source_receipt.total_original,source_receipt.total_local,
                            source_item.qty, source_item.amount_original, source_item.amount_local
                     FROM subcontract_receipt_items source_item
                     JOIN subcontract_receipts source_receipt
@@ -54,26 +61,50 @@ public class SubcontractReturnAmountAuthority {
             }
             Object[] source = rows.getFirst();
             BigDecimal sourcePrice = decimal(source[0]);
-            UUID sourceSupplierId = (UUID) source[1];
-            UUID sourceCurrencyId = (UUID) source[2];
-            BigDecimal sourceRate = decimal(source[3]);
-            UUID sourceOrderItemId = (UUID) source[4];
-            short sourceStatus = ((Number) source[5]).shortValue();
-            BigDecimal sourceQty = decimal(source[6]);
-            BigDecimal sourceOriginal = decimal(source[7]);
-            BigDecimal sourceLocal = decimal(source[8]);
+            BigDecimal sourceUnitRate = decimal(source[1]);
+            UUID sourceReceiptId = (UUID) source[2];
+            UUID sourceSupplierId = (UUID) source[3];
+            UUID sourceCurrencyId = (UUID) source[4];
+            BigDecimal sourceRate = decimal(source[5]);
+            UUID sourceSettlementMethodId = (UUID) source[6];
+            BigDecimal sourceTaxRate = decimal(source[7]);
+            UUID sourceOrderItemId = (UUID) source[8];
+            short sourceStatus = ((Number) source[9]).shortValue();
+            boolean sourceApPosted = Boolean.TRUE.equals(source[10]);
+            BigDecimal sourceReceiptOriginal = decimal(source[11]);
+            BigDecimal sourceReceiptLocal = decimal(source[12]);
+            BigDecimal sourceQty = decimal(source[13]);
+            BigDecimal sourceOriginal = decimal(source[14]);
+            BigDecimal sourceLocal = decimal(source[15]);
             if (sourceStatus != APPROVED || sourcePrice == null || sourcePrice.signum() < 0
                     || sourceCurrencyId == null || sourceRate == null || sourceRate.signum() <= 0
+                    || sourceSettlementMethodId == null
+                    || sourceTaxRate == null || sourceTaxRate.signum() < 0
+                    || sourceTaxRate.compareTo(new BigDecimal("100")) > 0
+                    || sourceUnitRate == null || sourceUnitRate.signum() <= 0
                     || sourceQty == null || sourceOriginal == null || sourceLocal == null) {
-                throw conflict("委外退货来源进仓的状态、数量、加工单价、币种、汇率或金额不完整，禁止生成应付贷项");
+                throw conflict("委外退货来源进仓的状态、数量、加工单价、币种、汇率、税率、结算方式或金额不完整，禁止生成应付贷项");
             }
             if (!Objects.equals(subcontractReturn.getSupplierId(), sourceSupplierId)
                     || !Objects.equals(subcontractReturn.getCurrencyId(), sourceCurrencyId)
                     || subcontractReturn.getExchangeRate() == null
                     || subcontractReturn.getExchangeRate().compareTo(sourceRate) != 0
+                    || !Objects.equals(subcontractReturn.getSettlementMethodId(), sourceSettlementMethodId)
+                    || subcontractReturn.getTaxRate() == null
+                    || subcontractReturn.getTaxRate().compareTo(sourceTaxRate) != 0
                     || !Objects.equals(item.getOrderItemId(), sourceOrderItemId)) {
-                throw conflict("委外退货委外商、币种、汇率或订单来源与进仓事实不一致");
+                throw conflict("委外退货委外商、币种、汇率、税率、结算方式或订单来源与进仓事实不一致");
             }
+            if (validatedReceipts.add(sourceReceiptId)) {
+                ProcurementReturnPayableAuthority.lockAndValidate(
+                        em, "SUBCONTRACT", sourceReceiptId, sourceSupplierId,
+                        sourceCurrencyId, sourceRate, sourceSettlementMethodId,
+                        sourceReceiptOriginal, sourceReceiptLocal, sourceApPosted);
+            }
+            ProcurementReturnQualityPolicy.ReturnableSource returnable =
+                    ProcurementReturnQualityPolicy.lockAndLimit(
+                            em, "SUBCONTRACT", item.getReceiptItemId(),
+                            sourceQty, sourceUnitRate, sourceOriginal, sourceLocal);
             Object[] prior = (Object[]) em.createNativeQuery("""
                     SELECT COALESCE(SUM(return_item.qty),0),
                            COALESCE(SUM(return_item.amount_original),0),
@@ -89,7 +120,7 @@ public class SubcontractReturnAmountAuthority {
                     .setParameter("currentReturnId", subcontractReturn.getId()).getSingleResult();
             ReturnAmounts amounts = sourceAmounts(
                     item.getQty(), sourcePrice, sourceRate,
-                    sourceQty, sourceOriginal, sourceLocal,
+                    returnable.qty(), returnable.amountOriginal(), returnable.amountLocal(),
                     decimal(prior[0]), decimal(prior[1]), decimal(prior[2]));
             item.setPrice(sourcePrice);
             item.setAmountOriginal(amounts.original());

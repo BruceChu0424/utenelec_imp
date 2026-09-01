@@ -71,6 +71,7 @@ public record SalesOrderFinanceReviewDto(
             String unitName,
             String clientModel,
             BigDecimal qty,
+            BigDecimal weight,
             BigDecimal price,
             BigDecimal discount,
             BigDecimal amountOriginal,

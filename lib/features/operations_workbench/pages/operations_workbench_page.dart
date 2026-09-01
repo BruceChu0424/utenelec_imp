@@ -46,8 +46,7 @@ class _OperationsWorkbenchPageState
   int _page = 1;
   int _requestId = 0;
   String _keyword = '';
-  // 默认「待完成」（open_qty>0，后端 OPEN_ANY 哨兵）：进来先看还要做的事，而非全部。
-  String? _status = kOperationsWorkbenchOpenStatus;
+  String? _status;
   String? _exception;
   final Set<String> _selectedIds = {};
 
@@ -57,6 +56,10 @@ class _OperationsWorkbenchPageState
   @override
   void initState() {
     super.initState();
+    // 委外人员需要先看到所有业务阶段；采购/仓库继续先看仍待处理任务。
+    _status = widget.department == OperationsWorkbenchDepartment.subcontract
+        ? null
+        : kOperationsWorkbenchOpenStatus;
     Future<void>.microtask(_load);
   }
 
@@ -162,7 +165,7 @@ class _OperationsWorkbenchPageState
           route: issue == null ? _subcontractOrderRoute(selected) : null,
         );
       case OperationsWorkbenchDepartment.warehouse:
-        // 仓库任务没有批量命令：使用普通行选择 + 双击打开，不渲染无用途的复选框和选中条。
+        // 仓库任务没有安全批量业务命令：保留表格单选 + 双击打开，不显示复选框。
         return null;
     }
   }
@@ -384,7 +387,12 @@ class _OperationsWorkbenchPageState
                 onClear: () => setState(_selectedIds.clear),
               );
 
-        if (breakpoint.isExpanded) {
+        final useTaskTable =
+            breakpoint.isExpanded ||
+            widget.department == OperationsWorkbenchDepartment.warehouse;
+        final tableSelectable = selectionAction != null;
+
+        if (useTaskTable) {
           // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：任意位置上滑先把概览卡
           // 收完，筛选行与选中操作条随表格上移后钉在顶部常驻，之后表格内部滚动——
           // 表格占满剩余空间，不再被顶部内容挤压。
@@ -411,7 +419,7 @@ class _OperationsWorkbenchPageState
                     data: data,
                     items: data.items,
                     selectedIds: _selectedIds,
-                    selectable: selectionAction != null,
+                    selectable: tableSelectable,
                     loading: _loading,
                     onSelectedIdsChanged: _setSelectedIds,
                     onOpenTask: _openAction,

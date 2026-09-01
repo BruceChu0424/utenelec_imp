@@ -47,8 +47,12 @@ class ProductionFinishedInboundTaskServiceTest {
         when(count.getSingleResult()).thenReturn(1L);
         Query rows = query();
         UUID documentId = UUID.randomUUID();
+        UUID reportId = UUID.randomUUID();
         when(rows.getResultList()).thenReturn(
                 Collections.singletonList(new Object[]{
+                        "FINAL_COUNT",
+                        documentId,
+                        reportId,
                         documentId,
                         "CPRK202608280001",
                         LocalDate.of(2026, 8, 28),
@@ -71,6 +75,9 @@ class ProductionFinishedInboundTaskServiceTest {
         var page = service.list("V51043", 1, 40);
 
         assertEquals(1, page.getTotal());
+        assertEquals("FINAL_COUNT", page.getItems().getFirst().taskStage());
+        assertEquals(documentId, page.getItems().getFirst().taskId());
+        assertEquals(reportId, page.getItems().getFirst().reportId());
         assertEquals(documentId, page.getItems().getFirst().documentId());
         assertEquals(
                 new BigDecimal("1000.0000"),
@@ -84,8 +91,58 @@ class ProductionFinishedInboundTaskServiceTest {
                 value -> value.contains(
                         "document.doc_type = 'FINISHED_IN'")
                         && value.contains("document.status = 0")
+                        && value.contains("'ARRIVAL_REGISTRATION'::text")
+                        && value.contains(
+                        "production_finished_arrival_registrations")
                         && value.contains(
                         "source_daily_report_item_id IS NOT NULL")));
+    }
+
+    @Test
+    void queueMapsArrivalRegistrationWithNullableDocumentAndWarehouse() {
+        EntityManager em = mock(EntityManager.class);
+        ProductionStockTaskAccessPolicy access =
+                mock(ProductionStockTaskAccessPolicy.class);
+        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        Query count = query();
+        when(count.getSingleResult()).thenReturn(1L);
+        Query rows = query();
+        UUID reportId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        when(rows.getResultList()).thenReturn(
+                Collections.singletonList(new Object[]{
+                        "ARRIVAL_REGISTRATION",
+                        reportId,
+                        reportId,
+                        null,
+                        null,
+                        LocalDate.of(2026, 8, 30),
+                        null,
+                        null,
+                        planId,
+                        "SJ202608300001",
+                        "RB202608300001",
+                        "V5多功能三极插座E极插套(酸洗)",
+                        1,
+                        new BigDecimal("10000.0000"),
+                        OffsetDateTime.parse("2026-08-30T05:00:00Z"),
+                        false
+                }));
+        when(em.createNativeQuery(anyString())).thenReturn(count, rows);
+        ProductionFinishedInboundTaskService service =
+                new ProductionFinishedInboundTaskService(em, access);
+
+        var task = service.list("RB202608300001", 1, 40)
+                .getItems().getFirst();
+
+        assertEquals("ARRIVAL_REGISTRATION", task.taskStage());
+        assertEquals(reportId, task.taskId());
+        assertEquals(reportId, task.reportId());
+        assertEquals(null, task.documentId());
+        assertEquals(null, task.documentNo());
+        assertEquals(null, task.warehouseId());
+        assertEquals(planId, task.planId());
+        assertEquals(new BigDecimal("10000.0000"), task.pendingQty());
     }
 
     private static Query query() {

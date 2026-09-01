@@ -30,6 +30,12 @@ abstract interface class ProcurementInboundRepository {
   /// 一键入库：财务已定案(RECEIPT_ADJUSTED)的到货异常，按财务接受量入库+立应付。
   Future<ProcurementArrivalException> stockInAccepted(String id);
 
+  Future<({int processedCount, bool replay, Set<String> processedExceptionIds})>
+  batchStockInAccepted({
+    required List<({String exceptionId, int expectedVersion})> items,
+    required String idempotencyKey,
+  });
+
   /// 到货登记一步完成（登记 + 送检审核）：仓库只登记数量/库位，币族由服务端按
   /// 来源订货单权威回填；正常保存即转品质待检，超量返回 excessQuarantined（已隔离待财务）。
   Future<WarehouseArrivalRegistration> registerArrival({
@@ -150,6 +156,45 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
       ApiEndpoints.warehouseArrivalExceptionStockIn(id),
     );
     return ProcurementArrivalException.fromJson(json);
+  }
+
+  @override
+  Future<({int processedCount, bool replay, Set<String> processedExceptionIds})>
+  batchStockInAccepted({
+    required List<({String exceptionId, int expectedVersion})> items,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.warehouseArrivalExceptionBatchStockIn,
+      body: {
+        'idempotencyKey': idempotencyKey,
+        'items': [
+          for (final item in items)
+            {
+              'exceptionId': item.exceptionId,
+              'expectedVersion': item.expectedVersion,
+            },
+        ],
+      },
+    );
+    final processedExceptionIds = <String>{
+      for (final group
+          in (json['receiptGroups'] as List? ?? const [])
+              .whereType<Map<String, dynamic>>())
+        for (final item
+            in (group['items'] as List? ?? const [])
+                .whereType<Map<String, dynamic>>())
+          if (item['exceptionId']?.toString().isNotEmpty == true)
+            item['exceptionId'].toString(),
+    };
+    return (
+      processedCount:
+          (json['processedExceptions'] as num?)?.toInt() ??
+          (json['processedCount'] as num?)?.toInt() ??
+          0,
+      replay: json['replay'] == true,
+      processedExceptionIds: processedExceptionIds,
+    );
   }
 
   @override

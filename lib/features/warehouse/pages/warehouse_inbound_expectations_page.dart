@@ -15,6 +15,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -73,13 +74,15 @@ class _WarehouseInboundExpectationsPageState
   String get _scopeHint {
     final base = switch (_orderType) {
       ProcurementInboundOrderType.purchase => '只显示财务已批准、可准备收货的采购订货单。',
-      ProcurementInboundOrderType.subcontract => '只显示财务已批准、可准备收货的委外订货单。',
-      _ => '只显示财务已批准、可准备收货的采购和委外订货单。',
+      ProcurementInboundOrderType.subcontract => '只显示目标件已经真实委外出仓、可能回厂的委外订货单。',
+      _ => '采购在财务批准后显示；委外必须先完成目标件真实出仓，才进入预计到货。',
     };
     if (_orderType != null) return base;
     final pending = _inspectionPendingCount;
-    if (pending == null) return '$base已送检任务由品质任务中心跟进，仓库无需操作。';
-    return '$base另有 $pending 张已送检待品质放行，由品质任务中心跟进，仓库无需操作。';
+    if (pending == null) {
+      return '$base已送检任务先由品质处理；合格后转“IQC 合格待入库”由仓库确认。';
+    }
+    return '$base另有 $pending 张已送检待品质放行；合格后转仓库待入库任务。';
   }
 
   void _selectType(ProcurementInboundOrderType? type) {
@@ -212,7 +215,8 @@ class _WarehouseInboundExpectationsPageState
       actionLabel: '送检',
       confirmLabel: '确认送检',
       message:
-          '将把已登记的到货数量送品质部待检(IQC)：检验合格放行后库存增加；'
+          '将把已登记的到货数量送品质部待检(IQC)：检验合格后转仓库待入库任务，'
+          '仓库确认实物与库位后库存才增加；'
           '实到超过财务批准量时系统自动隔离并通知财务审核组，不会入库、不会生成应付。'
           '单价按订货单自动带入，无需填写。',
     );
@@ -231,13 +235,13 @@ class _WarehouseInboundExpectationsPageState
     }
   }
 
-  /// 到货登记/送检结果的下一步提示（正常 → 品质放行自动入库；超量 → 财务定案）。
+  /// 到货登记/送检结果的下一步提示（正常 → 品质检验 → 仓库确认入库；超量 → 财务定案）。
   void _announceRegistration(WarehouseArrivalRegistration registration) {
     switch (registration.outcome) {
       case WarehouseArrivalRegistrationOutcome.submittedForInspection:
         context.appSuccess(
           '到货已送检(${registration.receiptBillNo ?? ''})：'
-          '品质部检验合格后自动入库，无需仓库跟进',
+          '待品质部检验；合格后请在“IQC 合格待入库”核对实物与库位',
         );
       case WarehouseArrivalRegistrationOutcome.excessQuarantined:
         context.appWarning(
@@ -524,40 +528,25 @@ class _WarehouseInboundExpectationsPageState
       value: (expectation) => expectation.expectedDate ?? '—',
     ),
     MasterColumnDef(
-      key: 'orderedQty',
-      label: '订货数量',
-      width: 110,
+      key: 'itemCount',
+      label: '明细行数',
+      width: 100,
       type: 'number',
-      value: (expectation) => procurementQty(expectation.orderedQty),
-    ),
-    MasterColumnDef(
-      key: 'acceptedQty',
-      label: '已收数量',
-      width: 110,
-      type: 'number',
-      value: (expectation) => procurementQty(expectation.acceptedQty),
-    ),
-    MasterColumnDef(
-      key: 'remainingQty',
-      label: '待收数量',
-      width: 110,
-      type: 'number',
-      value: (expectation) => procurementQty(expectation.effectiveRemainingQty),
-    ),
-    MasterColumnDef(
-      key: 'registeredQty',
-      label: '已登记待审',
-      width: 110,
-      type: 'number',
-      value: (expectation) => expectation.registeredQty > 0
-          ? procurementQty(expectation.registeredQty)
-          : '—',
+      value: (expectation) => expectation.items.length.toString(),
     ),
     MasterColumnDef(
       key: 'step',
       label: '到货步骤',
       width: 170,
       value: (expectation) => _stepColumnLabel(expectation),
+      cellColor: (context, expectation) {
+        if (expectation.arrivalStep != InboundArrivalStep.awaitingQuality) {
+          return null;
+        }
+        return Theme.of(context).brightness == Brightness.dark
+            ? UtenColors.warning.withValues(alpha: 0.18)
+            : UtenColors.warningBg;
+      },
     ),
     MasterColumnDef(
       key: 'ownerEmployeeName',
@@ -696,7 +685,7 @@ class _ExpectationDetailDialog extends StatelessWidget {
               ),
               _InfoLine(
                 icon: Icons.inventory_outlined,
-                label: '数量',
+                label: '业务量进度',
                 value:
                     '订货 ${procurementQty(expectation.orderedQty)}，已收 ${procurementQty(expectation.acceptedQty)}，待收 ${procurementQty(expectation.effectiveRemainingQty)}',
               ),
@@ -758,7 +747,7 @@ class _ExpectationDetailDialog extends StatelessWidget {
                     '实到超过财务批准量，已隔离：未入库、未生成应付。'
                         '财务定案后可在「到货异常任务中心」一键入库或办理退回。',
                   InboundArrivalStep.awaitingQuality =>
-                    '已送检待品质部放行：检验合格后自动入库存，仓库无需操作。',
+                    '已送检待品质部放行：合格后转仓库待入库任务，确认实物和库位后才入库存。',
                   InboundArrivalStep.blocked =>
                     '任务数据或服务端授权不完整，请刷新；前端不会代替服务端放行。',
                 },

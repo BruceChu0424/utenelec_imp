@@ -1,6 +1,7 @@
 // 仓库单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
-// StockGridRow：货品(选择) + 数量（非盘点）/ 账面 + 实盘（盘点）→ 盘盈亏自动（AmountRowMixin）。
+// StockGridRow：货品(选择) + 业务数量/实际总重量（非盘点）
+// / 账面 + 实盘（盘点）→ 盘盈亏自动（AmountRowMixin）。
 // 仓库单据无单价/金额概念；「金额」类比为盘点的"盘盈亏 = 实盘 - 账面"（仅 CHECK）。
 // 非盘点类型 amountValue 恒 0（无金额列、无表尾合计）。
 // stockGridColumns(onPickGoods, isCheck)：列 = 货品/数量（非盘点）
@@ -11,7 +12,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart';
 
 /// 仓库明细行。
-/// - 非盘点（isCheck=false）：只填 [qty]（数量）。
+/// - 非盘点（isCheck=false）：填 [qty]（带单位的业务量）和可选 [weight]（本行实际总重量）。
 /// - 盘点（isCheck=true）：填 [bookQty]（账面）+ [checkQty]（实盘）；
 ///   amountNotifier = 盘盈亏 = 实盘 - 账面（订阅两控制器自动重算）。
 class StockGridRow extends EditableGridRow with AmountRowMixin {
@@ -51,6 +52,9 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   /// 非盘点模式的"数量"（对应后端 items.qty）。
   final TextEditingController qty = TextEditingController();
 
+  /// 非盘点模式的本行实际总重量（对应后端 items.weight）；不得由单重静默估算。
+  final TextEditingController weight = TextEditingController();
+
   /// 盘点模式的"账面数量"（对应后端 items.qty；后端按 surplusQty 联动库存）。
   final TextEditingController bookQty = TextEditingController();
 
@@ -67,6 +71,7 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   void dispose() {
     goodsNotifier.dispose();
     qty.dispose();
+    weight.dispose();
     bookQty.dispose();
     checkQty.dispose();
     super.dispose();
@@ -74,7 +79,7 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
 }
 
 /// 仓库明细列。
-/// - isCheck=false：货品 / 编码 / 系列 / 库位 / 颜色 / 单位 / 数量（无金额、无表尾）。
+/// - isCheck=false：货品 / 编码 / 系列 / 库位 / 颜色 / 单位 / 数量 / 实际重量。
 /// - isCheck=true：货品 / 编码 / 系列 / 库位 / 颜色 / 单位 / 账面 / 实盘 / 盘盈亏(自动)。
 ///
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
@@ -239,10 +244,10 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
           builder: (_, v, _) => Text(v.toStringAsFixed(2)),
         ),
       ),
-    ] else
+    ] else ...[
       EditableGridColumn<StockGridRow>(
         key: 'qty',
-        label: '数量',
+        label: '业务量',
         width: 96,
         numeric: true,
         required: true,
@@ -257,5 +262,18 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
           ),
         ),
       ),
+      EditableGridColumn<StockGridRow>(
+        key: 'weight',
+        label: '实际重量',
+        width: 104,
+        numeric: true,
+        cellBuilder: (context, row) => TextField(
+          controller: row.weight,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '可选'),
+        ),
+      ),
+    ],
   ];
 }

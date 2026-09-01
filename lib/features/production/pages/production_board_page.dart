@@ -776,8 +776,12 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                     spacing: UtenSpacing.s12,
                     runSpacing: UtenSpacing.s4,
                     children: [
-                      Text('订货 ${_qtyText(row.qty)}'),
-                      Text('待排 ${_qtyText(row.needQty)}'),
+                      Text(
+                        '订货 ${_qtyText(row.qty)} ${row.unitName ?? '单位未维护'}',
+                      ),
+                      Text(
+                        '待排 ${_qtyText(row.needQty)} ${row.unitName ?? '单位未维护'}',
+                      ),
                       Text('交货 ${_shortDate(row.deliverDate)}'),
                     ],
                   ),
@@ -797,8 +801,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                       Expanded(
                         child: Text(
                           analyzed
-                              ? '可立即生产 ${_qtyText(row.readyNowQty)} · '
-                                    '预计 ${_qtyText(row.readyByDateQty)} · '
+                              ? '可立即生产 ${_qtyText(row.readyNowQty)} '
+                                    '${row.unitName ?? '单位未维护'} · '
+                                    '预计 ${_qtyText(row.readyByDateQty)} '
+                                    '${row.unitName ?? '单位未维护'} · '
                                     '齐套 ${_ratioText(row.readinessRatio)}'
                               : '未分析 · 进入物料分析获取可生产数量',
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -860,6 +866,12 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       },
     ),
     MasterColumnDef(
+      key: 'unit',
+      label: '单位',
+      width: 90,
+      value: (r) => r.unitName ?? '未维护',
+    ),
+    MasterColumnDef(
       key: 'qty',
       label: '订货量',
       width: 100,
@@ -877,7 +889,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     ),
     MasterColumnDef(
       key: 'readyNowQty',
-      label: '可生产几个',
+      label: '可生产量',
       width: 150,
       type: 'number',
       value: (r) => r.readyNowQty == null && r.materialAnalysisId == null
@@ -926,7 +938,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     decoration: InputDecoration(
       labelText: '本次联合分析数量',
       helper: UtenFieldMessage.helper(
-        '待排上限 ${_qtyText(row.needQty)}；最终可生产量由服务端预览确认',
+        '单位 ${row.unitName ?? '未维护'}；待排上限 ${_qtyText(row.needQty)}；'
+        '最终可生产量由服务端预览确认',
       ),
     ),
     onChanged: (value) {
@@ -962,7 +975,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   // 旧的待排产卡片行（_pendingRow/_num，含勾选框+手填排产量）已由 MasterDataTableView 取代（见 _list）。
 
-  /// 右下角操作组：已选时按钮同一行左侧显示所选总数量，与按钮同高、不换行。
+  /// 右下角操作组：所选行可能属于不同货品单位，只显示行数，不做无单位总和。
   Widget _floatingAnalysisAction() {
     final theme = Theme.of(context);
     final canRun = _canShowAnalysisFooter && !_submitting;
@@ -970,7 +983,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     final disabledReason = _selected.isEmpty
         ? '没有新建物料分析权限'
         : '当前选择缺少新建或刷新分析权限，请调整选择';
-    final totalQty = _selected.values.fold<double>(0, (sum, v) => sum + v);
     return UtenFloatingActionGroup(
       children: [
         Row(
@@ -991,7 +1003,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   border: Border.all(color: theme.colorScheme.outlineVariant),
                 ),
                 child: Text(
-                  '总数量 ${_qtyText(totalQty)}',
+                  '已选 ${_selected.length} 行',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),

@@ -40,6 +40,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
   String? _error;
   final Set<String> _selected = {};
   final Map<String, TextEditingController> _qtyCtl = {};
+  final Map<String, TextEditingController> _weightCtl = {};
   String? _warehouseId;
   bool _busy = false;
 
@@ -52,6 +53,9 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
   @override
   void dispose() {
     for (final c in _qtyCtl.values) {
+      c.dispose();
+    }
+    for (final c in _weightCtl.values) {
       c.dispose();
     }
     super.dispose();
@@ -79,6 +83,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
           _qtyCtl[l.orderItemId] = TextEditingController(
             text: _num(l.reservedQty),
           );
+          _weightCtl[l.orderItemId] = TextEditingController();
         }
       });
     } catch (e) {
@@ -124,7 +129,13 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
         _toast('订单 ${l.billNo} 本次数量超过可发 ${_num(reserved)}');
         return;
       }
-      lines.add({'orderItemId': l.orderItemId, 'qty': qty});
+      final weightText = _weightCtl[l.orderItemId]?.text.trim() ?? '';
+      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
+        _toast('订单 ${l.billNo} 的实际重量必须大于 0');
+        return;
+      }
+      lines.add({'orderItemId': l.orderItemId, 'qty': qty, 'weight': ?weight});
     }
     setState(() => _busy = true);
     final today = ChinaDateTime.formatDate(ChinaDateTime.today());
@@ -329,7 +340,26 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
               style: theme.textTheme.bodySmall,
               decoration: const InputDecoration(
                 isDense: true,
-                labelText: '本次数量',
+                labelText: '本次业务量',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          SizedBox(
+            width: 104,
+            child: TextField(
+              controller: _weightCtl[l.orderItemId],
+              enabled: checked && l.writable,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodySmall,
+              decoration: const InputDecoration(
+                isDense: true,
+                labelText: '实际重量',
+                hintText: '可选',
                 border: OutlineInputBorder(),
               ),
             ),

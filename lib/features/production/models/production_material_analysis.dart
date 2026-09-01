@@ -25,6 +25,34 @@ enum MaterialSupplyRoute {
   }
 }
 
+/// 服务端权威的逐 BOM 路径需求激活状态。
+///
+/// `requiredQty == 0` 不能再被客户端统一解释成“无需补货”：它可能是上级
+/// 路线截断、参考节点、已经转入正式计划，或已由 MAKE_COMPONENT child
+/// 接管。客户端只解析并展示该投影，不根据树形或路线自行猜测所有权。
+enum MaterialRequirementState {
+  active('ACTIVE'),
+  delegatedToMakeChild('DELEGATED_TO_MAKE_CHILD'),
+  delegatedToSubcontractPreparation('DELEGATED_TO_SUBCONTRACT_PREPARATION'),
+  inactiveParentCovered('INACTIVE_PARENT_COVERED'),
+  inactiveParentRoute('INACTIVE_PARENT_ROUTE'),
+  inactiveReference('INACTIVE_REFERENCE'),
+  transferredToPlan('TRANSFERRED_TO_PLAN'),
+  inactive('INACTIVE');
+
+  const MaterialRequirementState(this.wireName);
+
+  final String wireName;
+
+  static MaterialRequirementState? fromWire(Object? value) {
+    final text = value?.toString().trim().toUpperCase();
+    for (final state in values) {
+      if (state.wireName == text) return state;
+    }
+    return null;
+  }
+}
+
 class MaterialAnalysisSourceInput {
   const MaterialAnalysisSourceInput({
     this.salesOrderItemId,
@@ -246,6 +274,165 @@ class MaterialAnalysisListItem {
         readyNowQty: _double(json['readyNowQty']) ?? 0,
         readyByDateQty: _double(json['readyByDateQty']) ?? 0,
       );
+}
+
+/// One production-owned task that prepares a subcontract target item before
+/// warehouse outbound.
+///
+/// The server owns the state, blocker, allowed actions, target warehouse and
+/// all quantities. Flutter must not inspect the BOM or infer readiness locally.
+class SubcontractPreparationTask {
+  const SubcontractPreparationTask({
+    required this.planItemId,
+    required this.orderId,
+    required this.orderItemId,
+    required this.status,
+    required this.version,
+    this.orderBillNo,
+    this.targetGoodsId,
+    this.targetGoodsCode,
+    this.targetGoodsName,
+    this.colorId,
+    this.colorName,
+    this.unitId,
+    this.unitName,
+    this.requiredQty = 0,
+    this.preparedQty = 0,
+    this.issuedQty = 0,
+    this.needDate,
+    this.blocker,
+    this.sourceAnalysisId,
+    this.sourceMaterialLineId,
+    this.handoffStatus,
+    this.takeoverQty = 0,
+    this.handedOffEntitlementQty = 0,
+    this.handoffBlocker,
+    this.analysisId,
+    this.analysisItemId,
+    this.preparationWarehouseId,
+    this.preparationWarehouseName,
+    this.warehouseSelectionRequired = false,
+    this.allowedActions = const {},
+    this.updatedAt,
+  });
+
+  final String planItemId;
+  final String orderId;
+  final String orderItemId;
+  final String status;
+  final int version;
+  final String? orderBillNo;
+  final String? targetGoodsId;
+  final String? targetGoodsCode;
+  final String? targetGoodsName;
+  final String? colorId;
+  final String? colorName;
+  final String? unitId;
+  final String? unitName;
+  final double requiredQty;
+  final double preparedQty;
+  final double issuedQty;
+  final String? needDate;
+  final String? blocker;
+
+  /// 原生产分析中被本前置自制任务接管的精确来源节点。
+  /// 直接委外新建的任务没有这两个字段，也不应伪造跨分析交接。
+  final String? sourceAnalysisId;
+  final String? sourceMaterialLineId;
+
+  /// V447 服务端权威的跨分析权益交接状态与数量。
+  final String? handoffStatus;
+  final double takeoverQty;
+  final double handedOffEntitlementQty;
+  final String? handoffBlocker;
+  final String? analysisId;
+  final String? analysisItemId;
+  final String? preparationWarehouseId;
+  final String? preparationWarehouseName;
+  final bool warehouseSelectionRequired;
+  final Set<String> allowedActions;
+  final String? updatedAt;
+
+  bool allows(String action) => allowedActions.contains(action);
+
+  factory SubcontractPreparationTask.fromJson(Map<String, dynamic> json) =>
+      SubcontractPreparationTask(
+        planItemId: _string(json['planItemId']) ?? '',
+        orderId: _string(json['orderId']) ?? '',
+        orderItemId: _string(json['orderItemId']) ?? '',
+        orderBillNo: _string(json['orderBillNo']),
+        targetGoodsId: _string(json['targetGoodsId']),
+        targetGoodsCode: _string(json['targetGoodsCode']),
+        targetGoodsName: _string(json['targetGoodsName']),
+        colorId: _string(json['colorId']),
+        colorName: _string(json['colorName']),
+        unitId: _string(json['unitId']),
+        unitName: _string(json['unitName']),
+        requiredQty: _double(json['requiredQty']) ?? 0,
+        preparedQty: _double(json['preparedQty']) ?? 0,
+        issuedQty: _double(json['issuedQty']) ?? 0,
+        needDate: _string(json['needDate']),
+        status: (_string(json['status']) ?? 'UNKNOWN').toUpperCase(),
+        blocker: _string(json['blocker']),
+        sourceAnalysisId: _string(json['sourceAnalysisId']),
+        sourceMaterialLineId: _string(json['sourceMaterialLineId']),
+        handoffStatus: _string(json['handoffStatus'])?.toUpperCase(),
+        takeoverQty: _double(json['takeoverQty']) ?? 0,
+        handedOffEntitlementQty: _double(json['handedOffEntitlementQty']) ?? 0,
+        handoffBlocker: _string(json['handoffBlocker']),
+        analysisId: _string(json['analysisId']),
+        analysisItemId: _string(json['analysisItemId']),
+        preparationWarehouseId: _string(json['preparationWarehouseId']),
+        preparationWarehouseName: _string(json['preparationWarehouseName']),
+        warehouseSelectionRequired: json['warehouseSelectionRequired'] == true,
+        allowedActions: _stringList(json['allowedActions']).toSet(),
+        version: _int(json['version']) ?? 0,
+        updatedAt: _string(json['updatedAt']),
+      );
+}
+
+class SubcontractPreparationStartResult {
+  const SubcontractPreparationStartResult({
+    required this.planItemId,
+    required this.status,
+    required this.version,
+    this.analysisId,
+    this.analysisItemId,
+    this.sourceAnalysisId,
+    this.sourceMaterialLineId,
+    this.handoffId,
+    this.handoffStatus,
+    this.takeoverQty = 0,
+    this.handedOffEntitlementQty = 0,
+  });
+
+  final String planItemId;
+  final String status;
+  final int version;
+  final String? analysisId;
+  final String? analysisItemId;
+  final String? sourceAnalysisId;
+  final String? sourceMaterialLineId;
+  final String? handoffId;
+  final String? handoffStatus;
+  final double takeoverQty;
+  final double handedOffEntitlementQty;
+
+  factory SubcontractPreparationStartResult.fromJson(
+    Map<String, dynamic> json,
+  ) => SubcontractPreparationStartResult(
+    planItemId: _string(json['planItemId']) ?? '',
+    status: (_string(json['status']) ?? 'UNKNOWN').toUpperCase(),
+    version: _int(json['version']) ?? 0,
+    analysisId: _string(json['analysisId']),
+    analysisItemId: _string(json['analysisItemId']),
+    sourceAnalysisId: _string(json['sourceAnalysisId']),
+    sourceMaterialLineId: _string(json['sourceMaterialLineId']),
+    handoffId: _string(json['handoffId']),
+    handoffStatus: _string(json['handoffStatus'])?.toUpperCase(),
+    takeoverQty: _double(json['takeoverQty']) ?? 0,
+    handedOffEntitlementQty: _double(json['handedOffEntitlementQty']) ?? 0,
+  );
 }
 
 class MaterialAnalysisSalesCandidate {
@@ -644,6 +831,11 @@ class ProductionMaterialAnalysisMaterial {
     this.inboundQty = 0,
     this.shortageQty = 0,
     this.demandSupplyGapQty = 0,
+    this.subcontractHandoffFutureQty = 0,
+    this.requirementState,
+    this.delegatedToAnalysisLineId,
+    this.delegatedToSourceRef,
+    this.delegatedToRequestedQty,
     this.sourceSuggestion,
     this.sourceConfirmed,
     this.routeConfirmed = false,
@@ -714,6 +906,24 @@ class ProductionMaterialAnalysisMaterial {
   /// 这与 [shortageQty] 不同：后者仍包含安全库存硬保护造成的阻断；提交
   /// 采购/委外/自制的“本批生产需求”只能使用本字段，避免合格到货后重复下达。
   final double demandSupplyGapQty;
+
+  /// 已由 V447 从原分析供给分摊接管、但尚未形成当前节点合格库存的数量。
+  /// 它阻止重复下达；只有真实批准订单/计划才会另计入 [inboundQty]。
+  final double subcontractHandoffFutureQty;
+
+  /// 当前路径为什么有/没有本批需求。服务端按需求、父路线与 MAKE child
+  /// ownership 计算；旧响应可为空，界面只做保守兼容展示。
+  final MaterialRequirementState? requirementState;
+
+  /// `DELEGATED_TO_MAKE_CHILD` 对应的系统自制 child analysis item。
+  final String? delegatedToAnalysisLineId;
+
+  /// child 的可读业务来源引用，不是正式生产计划单号。
+  final String? delegatedToSourceRef;
+
+  /// 关联 child 当前总 requested_qty。它不是旧后代单行委派量，也不是本次
+  /// 正式计划量；当前无 delegated_qty 时，服务端强制按全部实时余量创建。
+  final double? delegatedToRequestedQty;
   final MaterialSupplyRoute? sourceSuggestion;
   final MaterialSupplyRoute? sourceConfirmed;
   final bool routeConfirmed;
@@ -750,6 +960,13 @@ class ProductionMaterialAnalysisMaterial {
   MaterialSupplyRoute? get confirmedRoute =>
       routeConfirmed ? sourceConfirmed : null;
 
+  /// Positive server demand always wins. Older responses without the new state
+  /// remain readable, but a zero quantity is conservatively treated as generic
+  /// inactive rather than being relabelled as covered or delegated.
+  MaterialRequirementState get effectiveRequirementState => requiredQty > 0
+      ? MaterialRequirementState.active
+      : requirementState ?? MaterialRequirementState.inactive;
+
   factory ProductionMaterialAnalysisMaterial.fromJson(
     Map<String, dynamic> json,
   ) => ProductionMaterialAnalysisMaterial(
@@ -781,6 +998,14 @@ class ProductionMaterialAnalysisMaterial {
     inboundQty: _double(json['inboundQty']) ?? 0,
     shortageQty: _double(json['shortageQty']) ?? 0,
     demandSupplyGapQty: _demandSupplyGap(json),
+    subcontractHandoffFutureQty:
+        _double(json['subcontractHandoffFutureQty']) ?? 0,
+    requirementState: MaterialRequirementState.fromWire(
+      json['requirementState'],
+    ),
+    delegatedToAnalysisLineId: _string(json['delegatedToAnalysisLineId']),
+    delegatedToSourceRef: _string(json['delegatedToSourceRef']),
+    delegatedToRequestedQty: _double(json['delegatedToRequestedQty']),
     sourceSuggestion: MaterialSupplyRoute.fromWire(
       json['sourceSuggestion'] ?? json['suggestedRoute'],
     ),
@@ -1297,6 +1522,9 @@ class MaterialSupplyProgressStep {
     this.docNo,
     this.at,
     this.operatorName,
+    this.documentType,
+    this.documentId,
+    this.receiptType,
   });
 
   final String key;
@@ -1313,6 +1541,11 @@ class MaterialSupplyProgressStep {
   /// 该步骤责任人姓名（提交人/采购人/审批人/收货人/下达人），无则 null。
   final String? operatorName;
 
+  /// 可跳转单据的稳定类型与 UUID；docNo 只负责展示，不能反查关联。
+  final String? documentType;
+  final String? documentId;
+  final String? receiptType;
+
   bool get isDone => state == 'DONE';
   bool get isCurrent => state == 'CURRENT';
   bool get isRejected => state == 'REJECTED';
@@ -1326,6 +1559,9 @@ class MaterialSupplyProgressStep {
         docNo: _string(json['docNo']),
         at: _string(json['at']),
         operatorName: _string(json['operatorName']),
+        documentType: _string(json['documentType']),
+        documentId: _string(json['documentId']),
+        receiptType: _string(json['receiptType']),
       );
 }
 

@@ -360,7 +360,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
     public void applyPriorityForOriginEvent(UUID originEventId) {
         tx.bind();
         PreplanStockEntitlementService.AvailableLot lot =
-                entitlements.requireAvailableLot(originEventId, true);
+                entitlements.availableLotOrNull(originEventId, true);
+        if (lot == null) return;
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT id, from_analysis_id, from_analysis_material_id,
                        to_analysis_id, to_analysis_material_id,

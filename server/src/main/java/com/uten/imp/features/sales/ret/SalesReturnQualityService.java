@@ -192,7 +192,7 @@ public class SalesReturnQualityService {
                                q.unit_id, q.unit_rate, q.received_base_qty,
                                q.released_base_qty, q.scrapped_base_qty,
                                q.rework_base_qty, q.status,
-                               i.amount_local, r.status
+                               i.amount_local, r.status, i.weight
                         FROM sales_return_quality_items q
                         JOIN sales_return_items i ON i.id = q.return_item_id
                         JOIN sales_returns r ON r.id = q.return_id
@@ -246,11 +246,14 @@ public class SalesReturnQualityService {
             BigDecimal sourceAmount = decimal(row[11]);
             BigDecimal releasedAmount = proratedIncrement(
                     sourceAmount, received, released, requested);
+            BigDecimal releasedWeight = proratedIncrementNullable(
+                    nullableDecimal(row[13]), received, released, requested);
             stockService.recordMovement(new StockService.MovementRequest(
                     now, StockService.TYPE_SALES_RETURN, StockService.SRC_SALES_RETURN,
                     returnId, eventId, goodsId, colorId, warehouseId,
                     StockService.DIR_IN, requested, unitId, unitRate,
-                    releasedAmount, "退货质检良品释放：" + reason));
+                    releasedAmount, "退货质检良品释放：" + reason,
+                    releasedWeight));
             released = released.add(requested);
         } else if ("SCRAP".equals(action)) {
             scrapped = scrapped.add(requested);
@@ -329,7 +332,7 @@ public class SalesReturnQualityService {
                                q.unit_id, q.unit_rate, q.received_base_qty,
                                q.released_base_qty, q.scrapped_base_qty,
                                q.rework_base_qty, q.status,
-                               i.amount_local, r.status
+                               i.amount_local, r.status, i.weight
                         FROM sales_return_quality_items q
                         JOIN sales_return_items i ON i.id = q.return_item_id
                         JOIN sales_returns r ON r.id = q.return_id
@@ -390,11 +393,15 @@ public class SalesReturnQualityService {
             BigDecimal sourceAmount = decimal(row[11]);
             BigDecimal revokedAmount = proratedIncrement(
                     sourceAmount, received, released.subtract(requested), requested);
+            BigDecimal revokedWeight = proratedIncrementNullable(
+                    nullableDecimal(row[13]), received,
+                    released.subtract(requested), requested);
             stockService.recordMovement(new StockService.MovementRequest(
                     now, StockService.TYPE_SALES_RETURN, StockService.SRC_SALES_RETURN,
                     returnId, eventId, goodsId, colorId, warehouseId,
                     StockService.DIR_OUT, requested, unitId, unitRate,
-                    revokedAmount, "退货质检良品释放撤回：" + reason));
+                    revokedAmount, "退货质检良品释放撤回：" + reason,
+                    revokedWeight));
             released = released.subtract(requested);
         } else if ("SCRAP".equals(action)) {
             scrapped = scrapped.subtract(requested);
@@ -651,6 +658,20 @@ public class SalesReturnQualityService {
                 .multiply(alreadyReleasedBaseQty.add(releaseBaseQty))
                 .divide(receivedBaseQty, 4, RoundingMode.HALF_UP);
         return next.subtract(previous);
+    }
+
+    static BigDecimal proratedIncrementNullable(
+            BigDecimal sourceWeight,
+            BigDecimal receivedBaseQty,
+            BigDecimal alreadyReleasedBaseQty,
+            BigDecimal releaseBaseQty) {
+        return sourceWeight == null ? null : proratedIncrement(
+                sourceWeight, receivedBaseQty,
+                alreadyReleasedBaseQty, releaseBaseQty);
+    }
+
+    private static BigDecimal nullableDecimal(Object value) {
+        return value == null ? null : (BigDecimal) value;
     }
 
     private static BigDecimal positiveRate(BigDecimal rate) {

@@ -122,29 +122,6 @@ class PurchaseRepository {
     return PurchaseDocDetail.fromJson(json);
   }
 
-  Future<PurchaseDocDetail> approveFinance(
-    String id, {
-    required int expectedVersion,
-  }) async {
-    final json = await api.post(
-      ApiEndpoints.purchaseApprove(type.pathSegment, id),
-      body: {'expectedVersion': expectedVersion},
-    );
-    return PurchaseDocDetail.fromJson(json);
-  }
-
-  Future<PurchaseDocDetail> rejectFinance(
-    String id, {
-    required int expectedVersion,
-    required String reason,
-  }) async {
-    final json = await api.post(
-      '${ApiEndpoints.purchaseDoc(type.pathSegment, id)}/reject',
-      body: {'expectedVersion': expectedVersion, 'reason': reason.trim()},
-    );
-    return PurchaseDocDetail.fromJson(json);
-  }
-
   Future<PurchaseDocDetail> approve(String id) async {
     final json = await api.post(
       ApiEndpoints.purchaseApprove(type.pathSegment, id),

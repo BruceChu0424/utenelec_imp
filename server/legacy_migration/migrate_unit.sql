@@ -31,6 +31,31 @@ SELECT
     status
 FROM unit_stage;
 
+-- Explicit reviewed legacy identities only. This declares that these three
+-- unit UUIDs are MASS units and records conversion to the imported kg UUID.
+-- It does NOT claim that generic legacy Weight columns are kg, and it never
+-- classifies a goods item from a unit name.
+INSERT INTO unit_measurement_profiles(
+    unit_id,
+    measurement_dimension,
+    canonical_unit_id,
+    to_canonical_factor,
+    provenance
+)
+SELECT source_unit.id,
+       'MASS',
+       kg.id,
+       mapping.to_kg_factor,
+       'LEGACY_EXPLICIT_ID'
+FROM (
+    VALUES
+        (108, 1.000000000000::numeric),
+        (109, 0.001000000000::numeric),
+        (241, 0.500000000000::numeric)
+) mapping(legacy_id, to_kg_factor)
+JOIN units source_unit ON source_unit.legacy_id = mapping.legacy_id
+JOIN units kg ON kg.legacy_id = 108;
+
 COMMIT;
 
 SELECT '✔ 单位 总 ' || count(*) ||

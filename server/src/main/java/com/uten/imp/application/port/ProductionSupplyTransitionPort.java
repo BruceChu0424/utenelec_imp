@@ -24,13 +24,12 @@ public interface ProductionSupplyTransitionPort {
     void onPurchaseReceiptApproved(UUID receiptId);
 
     /**
-     * Advances one IQC PASS slice into material analysis and formal production
-     * fulfillment. Implementations must derive the cumulative qualified
-     * quantity from the inspection ledger and subtract existing effective
-     * receipt allocations, so replay and later PASS decisions are exact.
+     * Advances one warehouse-confirmed IQC stock-in slice into material analysis
+     * and formal production fulfillment. Implementations derive cumulative
+     * warehouse-stocked quantity and subtract existing effective allocations.
      */
     default void afterPurchaseInspectionPassed(
-            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
+            UUID receiptId, UUID inspectionItemId, UUID warehouseStockInItemId) {
         // Optional for test doubles and non-production adapters.
     }
 

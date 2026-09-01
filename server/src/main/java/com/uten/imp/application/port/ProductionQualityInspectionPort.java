@@ -6,15 +6,15 @@ import java.util.UUID;
 /**
  * Integration boundary for production final-quality inspection (FQC).
  *
- * <p>The production-report approval transaction registers one inspection per
- * approved report line.  A later FINISHED_IN producer must register its exact
+ * <p>The warehouse-arrival registration transaction registers one inspection
+ * per approved report line. A later FINISHED_IN producer must register its exact
  * stock-document line here in the same transaction; the implementation accepts
  * only quantity backed by append-only PASS decisions.  The port never mutates
  * stock, report progress, {@code iqty}, or parent MAKE readiness itself.</p>
  */
 public interface ProductionQualityInspectionPort {
 
-    /** Register every exact line of an already-approved, IN_PROGRESS report. */
+    /** Register every warehouse-registered exact line of an approved report. */
     void registerApprovedReport(UUID reportId);
 
     /**

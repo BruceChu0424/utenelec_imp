@@ -17,21 +17,6 @@ abstract interface class FinanceProcurementWorkflowRepository {
   /// 待审任务按订货类型计数（全部/采购/委外筛选卡的全量口径）：{PURCHASE: n, ...}。
   Future<Map<String, int>> approvalTypeCounts();
 
-  /// 页内审批：直接调采购/委外订货的审批端点（HTTP API 即公开契约，
-  /// 不 import 各自 feature 的 repository，守 ADR 前端依赖图）。
-  Future<void> approveOrder(
-    FinanceProcurementOrderType orderType,
-    String orderId,
-    int expectedVersion,
-  );
-
-  Future<void> rejectOrder(
-    FinanceProcurementOrderType orderType,
-    String orderId,
-    int expectedVersion,
-    String reason,
-  );
-
   Future<void> approveOrdersBatch(List<FinanceProcurementDecisionItem> items);
 
   Future<void> rejectOrdersBatch(
@@ -96,31 +81,6 @@ class DioFinanceProcurementWorkflowRepository
   }
 
   @override
-  Future<void> approveOrder(
-    FinanceProcurementOrderType orderType,
-    String orderId,
-    int expectedVersion,
-  ) async {
-    await api.post(
-      '${_orderPath(orderType, orderId)}/approve',
-      body: {'expectedVersion': expectedVersion},
-    );
-  }
-
-  @override
-  Future<void> rejectOrder(
-    FinanceProcurementOrderType orderType,
-    String orderId,
-    int expectedVersion,
-    String reason,
-  ) async {
-    await api.post(
-      '${_orderPath(orderType, orderId)}/reject',
-      body: {'expectedVersion': expectedVersion, 'reason': reason.trim()},
-    );
-  }
-
-  @override
   Future<void> approveOrdersBatch(
     List<FinanceProcurementDecisionItem> items,
   ) async {
@@ -144,17 +104,6 @@ class DioFinanceProcurementWorkflowRepository
         'reason': reason.trim(),
       },
     );
-  }
-
-  /// 采购/委外订货端点根路径（动作后缀与各自 Controller 契约一致）。
-  static String _orderPath(
-    FinanceProcurementOrderType orderType,
-    String orderId,
-  ) {
-    final segment = orderType == FinanceProcurementOrderType.purchase
-        ? 'purchase'
-        : 'subcontract';
-    return '/$segment/orders/$orderId';
   }
 }
 

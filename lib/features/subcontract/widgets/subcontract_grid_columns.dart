@@ -78,7 +78,8 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
       ..upstreamItemId = li.upstreamItemId
       ..maxQty = li.maxQty
       ..colorId = li.colorId
-      ..unitId = li.unitId;
+      ..unitId = li.unitId
+      ..unitRate = li.unitRate;
     r.qty.text = li.qty.toString();
     if (li.price != null) r.price.text = li.price.toString();
     return r;
@@ -110,11 +111,12 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
 /// 损耗(标准用量?/结存数?/损耗率?/损耗原因?)，全部按 [cfg] 的 itemHas* 显隐。
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 /// [arrivalMode]=true（预计到货「登记实际到货」预填场景）：列改为
-/// 货品 / 批准剩余（只读对照）/ 实到数量——价格/重量等列全部隐藏，仓库只登记到货数量。
+/// 货品 / 单位 / 批准剩余（只读对照）/ 实到数量 / 实际重量——价格列隐藏。
 List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   Future<void> Function(SubcontractGridRow row) onPickGoods,
   SubcontractDocConfig cfg, {
   bool arrivalMode = false,
+  Map<String, String> unitEntries = const {},
   Map<String, String> supplierEntries = const {},
   bool supplierRequired = false,
   String? headerSupplierId,
@@ -182,6 +184,20 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           ),
         ),
       ),
+    EditableGridColumn<SubcontractGridRow>(
+      key: 'unit',
+      label: '单位',
+      width: 84,
+      textOf: (r) => unitEntries[r.unitId] ?? '',
+      cellBuilder: (context, row) => Text(
+        unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
+        style: TextStyle(
+          color: row.unitId == null
+              ? Theme.of(context).colorScheme.error
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    ),
     if (showSupplier)
       EditableGridColumn<SubcontractGridRow>(
         key: 'supplier',
@@ -214,7 +230,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       ),
     EditableGridColumn<SubcontractGridRow>(
       key: 'qty',
-      label: arrivalMode ? '实到数量' : '数量',
+      label: arrivalMode ? '实到业务量' : '业务量',
       width: 96,
       numeric: true,
       required: true,
@@ -260,10 +276,10 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
         ),
       ),
-    if (!arrivalMode && cfg.itemHasWeight)
+    if (cfg.itemHasWeight)
       EditableGridColumn<SubcontractGridRow>(
         key: 'weight',
-        label: '重量',
+        label: '实际重量',
         width: 96,
         numeric: true,
         cellBuilder: (context, row) => TextField(

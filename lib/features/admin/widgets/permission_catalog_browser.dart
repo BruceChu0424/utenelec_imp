@@ -335,7 +335,11 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               children: [
                 if (widget.onEnableAll != null)
                   FilledButton.tonalIcon(
-                    onPressed: () => widget.onEnableAll!(allPermissions),
+                    onPressed: () => widget.onEnableAll!(
+                      allPermissions
+                          .where((permission) => permission.bulkAssignable)
+                          .toList(growable: false),
+                    ),
                     icon: const Icon(Icons.done_all_rounded, size: 18),
                     label: Text(widget.enableAllLabel),
                   ),
@@ -454,7 +458,11 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               onSelected: (action) {
                 switch (action) {
                   case _PermissionGroupAction.enable:
-                    widget.onEnableGroup?.call(module.fullPerms);
+                    widget.onEnableGroup?.call(
+                      module.fullPerms
+                          .where((permission) => permission.bulkAssignable)
+                          .toList(growable: false),
+                    );
                     break;
                   case _PermissionGroupAction.disable:
                     widget.onDisableGroup?.call(module.fullPerms);
@@ -502,7 +510,11 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               onSelected: (action) {
                 switch (action) {
                   case _PermissionGroupAction.enable:
-                    widget.onEnableGroup?.call(group.permissions);
+                    widget.onEnableGroup?.call(
+                      group.permissions
+                          .where((permission) => permission.bulkAssignable)
+                          .toList(growable: false),
+                    );
                     break;
                   case _PermissionGroupAction.disable:
                     widget.onDisableGroup?.call(group.permissions);

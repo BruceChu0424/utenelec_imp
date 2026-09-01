@@ -21,6 +21,9 @@ public class MovementRow {
     private UUID warehouseId;
     private Short direction;
     private BigDecimal qty;
+    private UUID unitId;
+    private BigDecimal unitRate;
+    private BigDecimal weight;
     private BigDecimal amountLocal;
     private String remark;
     /** 当前用户无 goods:cost:view 时金额已由服务端置空。 */

@@ -31,7 +31,7 @@ import java.util.UUID;
  *   <li>GET  /api/procurement/inspection?receiptType=&receiptId= → 该单的待检明细投影
  *       （含货品/颜色/来源订货单号，供逐行 PASS/FAIL 处置）</li>
  *   <li>POST /api/procurement/inspection/{receiptType}/{receiptId}/{inspectionItemId}/dispose
- *       → PASS（合格放行：进可用库存 + 整单结案后唤醒生产）/ FAIL（不合格：只记事实）</li>
+ *       → PASS（品质放行：形成仓库待入库任务）/ FAIL（不合格：只记事实）；两者均不直接写库存</li>
  * </ul>
  */
 @RestController
@@ -112,7 +112,7 @@ public class ProcurementInspectionController {
                             (UUID) row[4], dec(row[5]), received, passed, failed,
                             received.subtract(passed).subtract(failed), (String) row[9],
                             (String) row[10], (String) row[11], (String) row[12],
-                            (UUID) row[13], (String) row[14]);
+                            (UUID) row[13], (String) row[14], nullableDec(row[15]));
                 })
                 .toList();
     }
@@ -150,5 +150,9 @@ public class ProcurementInspectionController {
 
     private static BigDecimal dec(Object value) {
         return value == null ? BigDecimal.ZERO : (BigDecimal) value;
+    }
+
+    private static BigDecimal nullableDec(Object value) {
+        return value == null ? null : (BigDecimal) value;
     }
 }

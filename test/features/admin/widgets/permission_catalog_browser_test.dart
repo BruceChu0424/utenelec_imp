@@ -29,6 +29,17 @@ void main() {
           actionType: PermissionActionType.edit,
           description: '修改销售单据草稿',
         ),
+        AdminPermission(
+          id: 'sales-price',
+          code: 'sales:price:view',
+          name: '查看销售价格',
+          category: '销售订货',
+          module: '销售管理',
+          actionType: PermissionActionType.view,
+          description: '查看单价与金额',
+          bulkAssignable: false,
+          sensitivity: 'SENSITIVE_COMMERCIAL',
+        ),
       ],
     ),
     const PermissionCatalogGroup(
@@ -184,6 +195,10 @@ void main() {
       'sales:view',
       'sales:edit',
     });
+    expect(
+      selected?.map((permission) => permission.code),
+      isNot(contains('sales:price:view')),
+    );
   });
 
   testWidgets('subcategory batch action receives the complete subcategory '
@@ -215,6 +230,10 @@ void main() {
       'sales:view',
       'sales:edit',
     });
+    expect(
+      selected?.map((permission) => permission.code),
+      isNot(contains('sales:price:view')),
+    );
   });
 
   testWidgets('does not overflow at compact, medium, and expanded widths', (

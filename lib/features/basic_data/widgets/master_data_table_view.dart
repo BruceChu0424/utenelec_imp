@@ -29,6 +29,7 @@ class MasterColumnDef<T> {
     required this.value,
     this.type = 'text',
     this.sortable = false,
+    this.cellColor,
   });
 
   final String key;
@@ -42,6 +43,10 @@ class MasterColumnDef<T> {
 
   /// 该列是否允许点表头排序（日期/金额/数量等可排序列置 true）。
   final bool sortable;
+
+  /// 单元格语义底色（如待处理步骤用浅警示色）；null = 跟随所在行底色。
+  /// 选中行仍由表格统一使用深绿高亮，避免颜色叠加后文字对比不足。
+  final Color? Function(BuildContext context, T item)? cellColor;
 }
 
 /// 一个可折叠的「前导分组」：渲染在表头之下、主数据行之上（如货品页的「禁用货品」
@@ -179,8 +184,8 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 页面配置了 [rowMenuBuilder] 就获得空菜单手势或伪可交互状态。
   final bool Function(T item)? canShowRowMenu;
 
-  /// 批量业务动作构建器：selectable 时，表头工具条只显示「已选 N 项 + 清除」，
-  /// 本构建器返回的按钮统一悬浮在表格右下角，普通视图和全屏路由都会渲染。
+  /// 批量业务动作构建器：selectable 时，表头工具条始终显示「已选 N 项 + 清除」；
+  /// 本构建器可选，非空时返回的业务按钮统一悬浮在表格右下角，普通视图和全屏路由都会渲染。
   /// 未选中时动作保留位置但灰显并拦截点击，调用方仍应保留空集业务守卫。
   final List<Widget> Function(BuildContext context, Set<String> selectedIds)?
   batchActionsBuilder;
@@ -1100,8 +1105,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                   child: Text(_fullscreen ? '退出全屏' : '全屏'),
                 ),
               // 选择摘要常驻表头上方；真正业务动作由 _buildTableStage 放到右下悬浮区。
-              if (widget.selectable && widget.batchActionsBuilder != null)
-                _buildBatchBar(theme),
+              if (widget.selectable) _buildBatchBar(theme),
               if (widget.toolbarActions != null) ...widget.toolbarActions!,
             ],
           ),
@@ -1643,6 +1647,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                   width: _widths[i],
                   // 列间竖线：逐格勾勒单元格右边界；选中行用白色竖线。
                   decoration: BoxDecoration(
+                    color: selected
+                        ? null
+                        : widget.columns[i].cellColor?.call(context, item),
                     border: Border(
                       right: BorderSide(color: lineColor, width: 0.5),
                     ),

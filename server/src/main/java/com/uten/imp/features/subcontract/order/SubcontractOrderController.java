@@ -1,10 +1,10 @@
 package com.uten.imp.features.subcontract.order;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.RequestUuidSets;
-import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalDecisionRequest;
-import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.RejectionDecisionRequest;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
 import com.uten.imp.features.subcontract.order.dto.OrderCostItemDto;
 import com.uten.imp.features.subcontract.order.dto.OrderDetail;
@@ -30,9 +30,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 委外订货单 API。委外部门从计划申请明细生成草稿并提交财务；只有当前精确
- * 财务负责人可批准/驳回。批准是唯一 0→1 生效点，会回写申请已订量并生成
- * 仓库预计到货任务；订货批准本身不入库存或应付。
+ * 委外订货单业务 API：委外从计划申请生成草稿并提交财务，本 Controller
+ * 不再执行财务决定。正式批准/驳回只走财务任务中心的 case-bound batch 协议；
+ * 历史单笔映射仅为旧客户端返回明确 fail-closed 错误。
  */
 @RestController
 @RequestMapping("/api/subcontract/orders")
@@ -41,7 +41,6 @@ public class SubcontractOrderController {
 
     private final SubcontractOrderService service;
     private final ProcurementFinanceApprovalService financeApproval;
-    private final SubcontractOrderFinanceDecisionCommandService financeDecision;
     private final SubcontractOrderProgressService progressService;
     private final AuditDetailViewRecorder auditViews;
 
@@ -138,24 +137,27 @@ public class SubcontractOrderController {
 
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_order_approval:approve')")
-    public OrderDetail approve(
-            @PathVariable UUID id,
-            @Valid @RequestBody ApprovalDecisionRequest request) {
-        return financeDecision.approve(id, request.expectedVersion());
+    @Deprecated(since = "2026-08-30", forRemoval = true)
+    public void approve(@PathVariable("id") UUID ignoredId) {
+        throw legacySingleDecisionDisabled();
     }
 
     @PostMapping("/{id}/reject")
     @PreAuthorize("hasAuthority('finance_order_approval:reject')")
-    public OrderDetail reject(
-            @PathVariable UUID id,
-            @Valid @RequestBody RejectionDecisionRequest request) {
-        return financeDecision.reject(
-                id, request.expectedVersion(), request.reason());
+    @Deprecated(since = "2026-08-30", forRemoval = true)
+    public void reject(@PathVariable("id") UUID ignoredId) {
+        throw legacySingleDecisionDisabled();
     }
 
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('subcontract_order:reverse')")
     public OrderDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    private static ApiException legacySingleDecisionDisabled() {
+        return new ApiException(
+                ErrorCode.CONFLICT,
+                "单笔订货审批入口已停用，请到财务→订货审批任务中心处理");
     }
 }

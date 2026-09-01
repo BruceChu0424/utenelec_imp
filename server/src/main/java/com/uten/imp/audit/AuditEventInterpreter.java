@@ -50,6 +50,9 @@ public class AuditEventInterpreter {
     private static final DateTimeFormatter BEIJING_MINUTES =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final List<String> GENERIC_VERBS = List.of("查看", "新增", "修改", "删除");
+    private static final Set<String> GENERIC_PAGE_LABELS = Set.of(
+            "系统管理", "基础资料", "销售", "采购", "委外",
+            "生产", "仓库", "财务", "工作台", "访客管理");
     private static final List<String> NON_OBJECT_PATH_SEGMENTS = List.of(
             "list", "count", "pending-count", "host-pending-count", "type-counts",
             "summary", "export", "download", "heartbeat", "capability", "preview",
@@ -91,6 +94,8 @@ public class AuditEventInterpreter {
             Map.entry("view_supplier_settlement_detail", "查看供应商对账单详情"),
             Map.entry("view_subcontract_loss_claim_detail", "查看委外损耗索赔详情"),
             Map.entry("view_procurement_payable_detail", "查看采购应付明细"),
+            Map.entry("view_procurement_iqc_rejection_detail",
+                    "查看采购质检不合格闭环详情"),
             Map.entry("view_procurement_arrival_exception_detail", "查看采购到货异常详情"),
             Map.entry("view_finance_procurement_arrival_exception_detail",
                     "查看采购到货异常财务审批详情"),
@@ -112,6 +117,8 @@ public class AuditEventInterpreter {
             Map.entry("view_subcontract_waste_detail", "查看委外废料详情"),
             Map.entry("view_production_plan_detail", "查看生产计划详情"),
             Map.entry("view_production_daily_report_detail", "查看生产日报详情"),
+            Map.entry("view_procurement_inspection_record_detail", "查看IQC检测决定记录"),
+            Map.entry("view_production_fqc_decision_record_detail", "查看FQC检测决定记录"),
             Map.entry("view_production_fqc_inspection_detail", "查看成品检验详情"),
             Map.entry("view_stock_document_detail", "查看库存单据详情"));
     private static final Set<String> SENSITIVE_DETAIL_TARGETS = Set.of(
@@ -120,6 +127,7 @@ public class AuditEventInterpreter {
             "finance_receipts", "finance_payments", "finance_expenses",
             "finance_other_incomes", "finance_bank_transfers", "ar_ap_ledger",
             "supplier_settlements", "subcontract_loss_claims", "procurement_payables",
+            "procurement_iqc_rejection_cases",
             "procurement_arrival_exceptions", "expense_claims", "fixed_assets",
             "deferred_expenses", "finance_asset_posting_runs");
     private static final Set<String> MASTER_HISTORY_ACTIONS = Set.of(
@@ -131,14 +139,23 @@ public class AuditEventInterpreter {
             "view_supplier_category_detail", "view_department_detail");
 
     /**
-     * 从 before/after 快照里提取"人看得懂"的对象名时优先尝试的字段。
-     * 顺序即优先级：姓名/名称类优先，单据编号其次，编码兜底。
-     * 不取 phone / id_card 等 PII 字段。
+     * 旧日志的 targetName 兼容提取顺序。新日志不得再把名称、业务编号和
+     * 旧系统编号压成一个不可区分的字段。
      */
-    private static final List<String> TARGET_NAME_KEYS = List.of(
-            "view_display_name", "full_name", "name", "title", "doc_no", "bill_no", "voucher_no",
-            "plan_no", "order_no", "request_no", "slip_no", "code",
+    private static final List<String> LEGACY_TARGET_NAME_KEYS = List.of(
+            "view_display_name", "full_name", "name", "title", "doc_no", "bill_no",
+            "voucher_no", "plan_no", "order_no", "request_no", "slip_no", "code",
             "login_account", "history_label");
+    /** 明确属于对象名称或标题的字段；不包含手机号、证件号等敏感字段。 */
+    private static final List<String> TARGET_DISPLAY_NAME_KEYS = List.of(
+            "target_display_name", "full_name", "name", "title");
+    /** 明确属于业务编号、单号或账号编码的字段。 */
+    private static final List<String> TARGET_BUSINESS_CODE_KEYS = List.of(
+            "target_business_code", "doc_no", "bill_no", "voucher_no", "plan_no",
+            "order_no", "request_no", "slip_no", "code", "login_account");
+    /** 只有明确标识为旧系统编号的字段才进入该项，未知字段绝不推断。 */
+    private static final List<String> TARGET_LEGACY_CODE_KEYS = List.of(
+            "target_legacy_code", "legacy_id");
 
     /** 计算变更明细时跳过的纯技术列（不含业务含义或与业务变化无关）。 */
     private static final List<String> META_COLUMNS = List.of(
@@ -177,11 +194,15 @@ public class AuditEventInterpreter {
         }
         String objectLabel = objectLabel(target, path);
         String actionLabel = actionLabel(action, path);
-        String targetName = targetDisplayName(value);
+        TargetEvidence targetEvidence = targetEvidence(value);
+        String targetName = legacyTargetName(value);
         if (targetName.isBlank()) {
+            targetName = targetEvidence.compatibilityTargetName();
+        }
+        if (targetName.isBlank() && !objectLabel.isBlank()) {
             targetName = businessTargetName(value);
         }
-        if (targetName.isBlank()) {
+        if (targetName.isBlank() && !objectLabel.isBlank()) {
             targetName = requestTargetName(value);
         }
         String pageLabel = pageLabel(path);
@@ -197,6 +218,9 @@ public class AuditEventInterpreter {
                 risk,
                 riskReason(risk, action, target, path, result, value.getStatusCode()),
                 category,
+                targetEvidence.displayName(),
+                targetEvidence.businessCode(),
+                targetEvidence.legacyCode(),
                 targetName,
                 pageLabel,
                 resultLabel,
@@ -367,7 +391,7 @@ public class AuditEventInterpreter {
             case "insert", "http_post" -> "新增";
             case "update", "http_put", "http_patch" -> "修改";
             case "delete", "http_delete" -> "删除";
-            default -> "其他操作";
+            default -> "未登记操作";
         };
     }
 
@@ -430,13 +454,16 @@ public class AuditEventInterpreter {
         // 最后只允许回退到已登记的中文页面名；绝不把英文 targetType/path
         // 或“其他业务对象”这类无法核查的泛化描述带到会话时间线。
         // 没有页面映射时宁可留空，交由覆盖测试暴露缺口，也不伪造业务对象。
-        return pageLabel(path);
+        String registeredPage = pageLabel(path);
+        return GENERIC_PAGE_LABELS.contains(registeredPage)
+                ? ""
+                : registeredPage;
     }
 
     /** export_purchase_report → 导出采购报表。 */
     private String exportLabel(String action) {
         String subject = action.substring("export_".length());
-        return "导出" + EXPORT_SUBJECTS.getOrDefault(subject, "其他业务数据");
+        return "导出" + EXPORT_SUBJECTS.getOrDefault(subject, "未登记数据类型");
     }
 
     /**
@@ -643,12 +670,30 @@ public class AuditEventInterpreter {
      * 数据库主键 UUID 对人没有意义；快照里的业务字段才是用户当时看到的东西。
      * 取不到时返回空串，调用方继续用 targetId。
      */
-    private static String targetDisplayName(AuditLog value) {
-        String fromAfter = firstNameKey(parseAuditJson(value.getAfter()));
+    private static String legacyTargetName(AuditLog value) {
+        String fromAfter = firstValueForKeys(
+                parseAuditJson(value.getAfter()), LEGACY_TARGET_NAME_KEYS);
         if (!fromAfter.isBlank()) {
             return fromAfter;
         }
-        return firstNameKey(parseAuditJson(value.getBefore()));
+        return firstValueForKeys(
+                parseAuditJson(value.getBefore()), LEGACY_TARGET_NAME_KEYS);
+    }
+
+    /**
+     * Separates human name/title, business code and legacy code. Each value is
+     * read only from a documented key in the stored metadata or DB snapshot;
+     * targetId and arbitrary strings are intentionally not guessed into these
+     * evidence fields.
+     */
+    private static TargetEvidence targetEvidence(AuditLog value) {
+        JsonNode after = parseAuditJson(value.getAfter());
+        JsonNode before = parseAuditJson(value.getBefore());
+        return new TargetEvidence(
+                firstSnapshotValue(after, before, TARGET_DISPLAY_NAME_KEYS),
+                firstSnapshotValue(after, before, TARGET_BUSINESS_CODE_KEYS),
+                firstSnapshotValue(after, before, TARGET_LEGACY_CODE_KEYS),
+                hasStructuredTargetMetadata(after) || hasStructuredTargetMetadata(before));
     }
 
     /**
@@ -741,20 +786,35 @@ public class AuditEventInterpreter {
         return value;
     }
 
-    private static String firstNameKey(JsonNode node) {
+    private static String firstSnapshotValue(
+            JsonNode after,
+            JsonNode before,
+            List<String> keys) {
+        String fromAfter = firstValueForKeys(after, keys);
+        return fromAfter.isBlank() ? firstValueForKeys(before, keys) : fromAfter;
+    }
+
+    private static String firstValueForKeys(JsonNode node, List<String> keys) {
         if (node == null || !node.isObject()) {
             return "";
         }
-        for (String key : TARGET_NAME_KEYS) {
+        for (String key : keys) {
             JsonNode field = node.get(key);
-            if (field != null && field.isValueNode()) {
-                String text = field.asText();
+            if (field != null && field.isValueNode() && !field.isNull()) {
+                String text = field.asText("");
                 if (text != null && !text.isBlank()) {
                     return text.trim();
                 }
             }
         }
         return "";
+    }
+
+    private static boolean hasStructuredTargetMetadata(JsonNode node) {
+        return node != null && node.isObject()
+                && (node.has("target_display_name")
+                || node.has("target_business_code")
+                || node.has("target_legacy_code"));
     }
 
     /** 把请求路径翻译成用户熟悉的页面名（"哪个页面操作的"）。 */
@@ -851,6 +911,7 @@ public class AuditEventInterpreter {
                 "财务 · 采购到货异常审批");
         values.put("/api/finance/reports", "财务 · 钱流报表");
         values.put("/api/finance", "财务");
+        values.put("/api/warehouse/iqc-stock-ins", "仓库 · IQC合格确认入库");
         values.put("/api/warehouse/inbound", "仓库 · 到货入库");
         values.put("/api/procurement/arrival-exceptions", "采购 · 到货异常");
         values.put("/api/warehouse", "仓库");
@@ -1012,6 +1073,7 @@ public class AuditEventInterpreter {
         values.put("supplier_settlements", "供应商对账单");
         values.put("subcontract_loss_claims", "委外损耗索赔");
         values.put("procurement_payables", "采购应付明细");
+        values.put("procurement_iqc_rejection_cases", "采购质检不合格闭环");
         values.put("purchase_return_items", "采购退货明细");
         values.put("procurement_order_approval_cases", "采购订单审批案卷");
         values.put("procurement_order_approval_events", "采购订单审批事件");
@@ -1019,6 +1081,8 @@ public class AuditEventInterpreter {
         values.put("procurement_arrival_exception_events", "到货异常事件");
         values.put("procurement_inspection_events", "采购质检事件");
         values.put("procurement_inspection_items", "采购质检明细");
+        values.put("procurement_iqc_stock_in_batches", "IQC合格仓库入库批次");
+        values.put("procurement_iqc_stock_in_batch_items", "IQC合格仓库入库明细");
         values.put("inbound_expectations", "到货登记");
         values.put("inbound_expectation_items", "到货登记明细");
         values.put("warehouse_arrival_registration_commands", "到货登记指令");
@@ -1089,6 +1153,7 @@ public class AuditEventInterpreter {
         values.put("production_material_peg_transfers", "生产物料挂钩转移");
         values.put("production_material_subcontract_peg_transfers", "生产委外挂钩转移");
         values.put("production_goods_workshop_preferences", "货品车间偏好");
+        values.put("warehouse_goods_place_preferences", "仓库货品默认库位");
         values.put("production_finished_in_confirmations", "生产完工入库确认");
         values.put("production_finished_in_confirmation_items", "生产完工入库明细");
         values.put("production_finished_in_confirmation_reversals", "生产完工入库冲销");
@@ -1317,6 +1382,9 @@ public class AuditEventInterpreter {
         values.put("legacy_id", "旧系统编号");
         values.put("history_label", "历史单据标识");
         values.put("view_display_name", "查看单据标识");
+        values.put("target_display_name", "业务对象名称");
+        values.put("target_business_code", "业务编号");
+        values.put("target_legacy_code", "旧系统编号");
         values.put("view_metadata_kind", "查看元数据类型");
         values.put("cycle_id", "补产周期");
         values.put("authorization_id", "补产授权");
@@ -1362,6 +1430,12 @@ public class AuditEventInterpreter {
         values.put("series", "系列");
         values.put("barcode", "条码");
         values.put("stock_place", "库位号");
+        values.put("place", "默认库位");
+        values.put("selection_count", "采用次数");
+        values.put("source_registration_id", "来源送检登记");
+        values.put("source_registered_at", "来源登记时间");
+        values.put("last_selected_by", "最近选择人");
+        values.put("last_selected_at", "最近选择时间");
         // 生产
         values.put("workshop", "车间");
         values.put("planned_qty", "计划数量");
@@ -1448,7 +1522,7 @@ public class AuditEventInterpreter {
     }
 
     private static String fieldLabel(String field) {
-        return FIELD_LABELS.getOrDefault(field, "其他字段");
+        return FIELD_LABELS.getOrDefault(field, "未登记字段");
     }
 
     /** 值可读化：空值/布尔/常见状态翻译，时间戳转"yyyy-MM-dd HH:mm(北京时间)"，UUID 取前 8 位，长文本截断。 */
@@ -1589,9 +1663,12 @@ public class AuditEventInterpreter {
 
     static boolean isDetailViewMetadata(AuditLog value) {
         JsonNode after = value == null ? null : parseAuditJson(value.getAfter());
-        return after != null
-                && "business_detail_view".equals(
-                after.path("view_metadata_kind").asText());
+        if (after == null) {
+            return false;
+        }
+        String kind = after.path("view_metadata_kind").asText();
+        return "business_detail_view".equals(kind)
+                || "audit_evidence_view".equals(kind);
     }
 
     private static String normalized(String value) {
@@ -1609,9 +1686,36 @@ public class AuditEventInterpreter {
             String riskLevel,
             String riskReason,
             String category,
+            String targetDisplayName,
+            String targetBusinessCode,
+            String targetLegacyCode,
             String targetName,
             String pageLabel,
             String resultLabel,
             String changeSummary) {
+    }
+
+    private record TargetEvidence(
+            String displayName,
+            String businessCode,
+            String legacyCode,
+            boolean structuredMetadata) {
+
+        private String compatibilityTargetName() {
+            String base = structuredMetadata
+                    ? firstNonBlank(businessCode, displayName)
+                    : firstNonBlank(displayName, businessCode);
+            if (!legacyCode.isBlank()) {
+                return base == null || base.isBlank()
+                        ? "旧系统编号 " + legacyCode
+                        : base + "(旧系统编号 " + legacyCode + ")";
+            }
+            if (structuredMetadata
+                    && (businessCode == null || businessCode.isBlank())
+                    && displayName != null && !displayName.isBlank()) {
+                return displayName + "(业务编号未记录)";
+            }
+            return base == null ? "" : base;
+        }
     }
 }

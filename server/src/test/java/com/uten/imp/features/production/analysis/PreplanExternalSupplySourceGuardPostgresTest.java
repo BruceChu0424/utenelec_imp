@@ -162,14 +162,29 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                     safetyInspectionId, "100", "60", "0", "PARTIAL");
 
             assertSplitProgress(connection, actionId,
+                    "20", "0", "20", "100", "0", "100", "0", "0");
+
+            // PASS is quality evidence only. Simulate the warehouse-confirmed
+            // projection for this read-model test; the dedicated V446 service
+            // integration test proves the immutable batch/movement writer.
+            execute(connection, "SET session_replication_role=replica");
+            execute(connection, """
+                    UPDATE procurement_inspection_items
+                    SET warehouse_stocked_base_qty=passed_base_qty
+                    WHERE id IN (?,?)
+                    """, demandInspectionId, safetyInspectionId);
+            execute(connection, "SET session_replication_role=origin");
+            assertSplitProgress(connection, actionId,
                     "20", "20", "0", "100", "60", "40", "0", "0");
 
+            execute(connection, "SET session_replication_role=replica");
             execute(connection, """
                     UPDATE procurement_inspection_items
                     SET passed_base_qty=60, failed_base_qty=40,
                         status='RESOLVED', updated_at=now()
                     WHERE id=?
                     """, safetyInspectionId);
+            execute(connection, "SET session_replication_role=origin");
             assertSplitProgress(connection, actionId,
                     "20", "20", "0", "100", "60", "0", "0", "40");
 

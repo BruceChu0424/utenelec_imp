@@ -76,6 +76,67 @@ void main() {
 
     expect(captured.data, {'targetStatus': SalesWarehouseWorkStatus.picking});
   });
+
+  test('finance audit preview is GET before the POST command', () async {
+    final captured = <RequestOptions>[];
+    final repository = SalesRepository(
+      _api((request) {
+        captured.add(request);
+        return {
+          'shipmentId': 'shipment-1',
+          'financeAudit': request.method == 'POST' ? 1 : 0,
+          'salesPaymentType': 'CASH',
+          'settlementMethodName': '现金',
+          'outstanding': '100.00',
+          'creditFloor': '20.00',
+          'overFloor': '80.00',
+        };
+      }),
+      SalesDocType.shipment,
+    );
+
+    final preview = await repository.financeAuditInfo('shipment-1');
+    final result = await repository.financeAudit('shipment-1');
+
+    expect(captured.map((request) => request.method), ['GET', 'POST']);
+    expect(
+      captured.first.path,
+      '/sales/shipments/shipment-1/finance-audit-info',
+    );
+    expect(captured.last.path, '/sales/shipments/shipment-1/finance-audit');
+    expect(preview.overFloor, '80.00');
+    expect(result.financeAudit, 1);
+  });
+
+  test(
+    'shipment task filters are forwarded without client-side inference',
+    () async {
+      RequestOptions? captured;
+      final repository = SalesRepository(
+        _api((request) {
+          captured = request;
+          return const {
+            'items': <Map<String, dynamic>>[],
+            'page': 1,
+            'size': 20,
+            'total': 0,
+            'totalPages': 1,
+          };
+        }),
+        SalesDocType.shipment,
+      );
+
+      await repository.list(
+        filter: const SalesDocFilter(
+          financeAudit: 1,
+          warehouseWorkStatus: SalesWarehouseWorkStatus.picking,
+        ),
+      );
+
+      expect(captured?.queryParameters['financeAudit'], 1);
+      expect(captured?.queryParameters['warehouseWorkStatus'], 'PICKING');
+    },
+  );
 }
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {

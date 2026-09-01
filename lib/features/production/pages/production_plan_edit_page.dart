@@ -35,6 +35,7 @@ import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/auth/document_scope_capability.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
@@ -860,8 +861,8 @@ class _ProductionPlanEditPageState
                   children: [
                     ValueListenableBuilder<double>(
                       valueListenable: _grid.totalListenable,
-                      builder: (_, total, _) => Text(
-                        '排产合计 ${total.toStringAsFixed(2)}',
+                      builder: (_, _, _) => Text(
+                        '排产量：${measurementTotalsText(_grid.rows.where((row) => row.goods != null).map((row) => MeasuredAmount(value: double.tryParse(row.qty.text.trim()) ?? 0, unitId: row.unitId, unitName: names.unitEntries[row.unitId])))}',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),

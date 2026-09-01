@@ -237,6 +237,31 @@ class ProductionWorkCardServiceTest {
                 .isEqualTo("NO_PRODUCTION_HARD_GATE");
     }
 
+    @Test
+    void rejectsCancelledReversedOrUnknownExecutionSegmentProjection() {
+        UUID planId = UUID.randomUUID();
+        UUID packageId = UUID.randomUUID();
+        ProductionPlanningPackage planningPackage =
+                new ProductionPlanningPackage();
+        planningPackage.setId(packageId);
+        planningPackage.setPlanId(planId);
+        planningPackage.setStatus("CONFIRMED");
+        planningPackage.setExecutionModelVersion((short) 1);
+        for (String status : List.of("CANCELLED", "REVERSED", "FUTURE_STATUS")) {
+            Object[] row = row(
+                    UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                    UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                    "MAT-01", "Material one", BigDecimal.ONE);
+            row[21] = status;
+
+            assertThatThrownBy(() -> ProductionWorkCardService.assemble(
+                    planningPackage, List.<Object[]>of(row), Instant.now()))
+                    .isInstanceOf(ApiException.class)
+                    .satisfies(error -> assertThat(((ApiException) error).getCode())
+                            .isEqualTo(ErrorCode.CONFLICT));
+        }
+    }
+
     private static Object[] row(
             UUID warehouseId,
             UUID segmentId,

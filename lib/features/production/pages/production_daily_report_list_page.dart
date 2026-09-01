@@ -106,12 +106,6 @@ class _ProductionDailyReportListPageState
       value: (it) => (it.billDate ?? '').substring(0, 10),
     ),
     MasterColumnDef(
-      key: 'warehouse',
-      label: '仓库',
-      width: 160,
-      value: (it) => names.warehouse(it.warehouseId),
-    ),
-    MasterColumnDef(
       key: 'workshop',
       label: '车间',
       width: 140,

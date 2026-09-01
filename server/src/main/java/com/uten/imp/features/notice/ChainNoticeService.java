@@ -1,5 +1,6 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.application.port.SubcontractChainNoticePort;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -41,7 +43,7 @@ import java.util.UUID;
  * sanity check（见 {@link NoticeService#publishForUser} 6 参重载）。
  */
 @Service
-public class ChainNoticeService {
+public class ChainNoticeService implements SubcontractChainNoticePort {
 
     /** 合法类型见 NoticeService.TYPES；此处固定用到的子集。 */
     public static final String TYPE_WORKFLOW = "workflow";
@@ -55,6 +57,8 @@ public class ChainNoticeService {
     static final String EVENT_FINISHED_INBOUND = "PRODUCTION_FINISHED_INBOUND";
     static final String EVENT_FINISHED_INBOUND_PENDING =
             "PRODUCTION_FINISHED_INBOUND_PENDING";
+    static final String EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING =
+            "PRODUCTION_FINISHED_ARRIVAL_PENDING";
     static final String EVENT_FINISHED_INBOUND_REJECTED =
             "PRODUCTION_FINISHED_INBOUND_REJECTED";
     static final String EVENT_FINISHED_INBOUND_REVERSED =
@@ -76,11 +80,25 @@ public class ChainNoticeService {
     static final String EVENT_SEGMENT_DISPATCHED = "PRODUCTION_SEGMENT_DISPATCHED";
     static final String EVENT_SEGMENT_STARTED = "PRODUCTION_SEGMENT_STARTED";
     static final String EVENT_SHIPMENT_APPROVED = "SALES_SHIPMENT_APPROVED";
+    static final String EVENT_SHIPMENT_PENDING_FINANCE =
+            "SALES_SHIPMENT_PENDING_FINANCE_AUDIT";
     static final String EVENT_SHIPMENT_PENDING_PICK =
             "SALES_SHIPMENT_PENDING_PICK";
+    static final String EVENT_SHIPMENT_FINANCE_REVOKED =
+            "SALES_SHIPMENT_FINANCE_RELEASE_REVOKED";
     static final String EVENT_SHIPMENT_REJECTED = "SALES_SHIPMENT_REJECTED";
     static final String EVENT_PREPLAN_SUPPLY_ACTION_CREATED =
             "PREPLAN_SUPPLY_ACTION_CREATED";
+    static final String EVENT_SUBCONTRACT_PREPARATION_REQUIRED =
+            "SUBCONTRACT_PREPARATION_REQUIRED";
+    static final String EVENT_SUBCONTRACT_OUTBOUND_READY =
+            "SUBCONTRACT_OUTBOUND_READY";
+    static final String EVENT_SUBCONTRACT_OUTBOUND_COMPLETED =
+            "SUBCONTRACT_OUTBOUND_COMPLETED";
+    static final String EVENT_SUBCONTRACT_OUTBOUND_REVERSED =
+            "SUBCONTRACT_OUTBOUND_REVERSED";
+    static final String EVENT_SUBCONTRACT_RETURN_DUE =
+            "SUBCONTRACT_RETURN_DUE";
     static final String EVENT_MATERIAL_ANALYSIS_READY =
             "PRODUCTION_MATERIAL_ANALYSIS_READY";
     static final String EVENT_ORDER_CANCELED = "SALES_ORDER_CANCELED";
@@ -114,8 +132,44 @@ public class ChainNoticeService {
     static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
     static final String EVENT_IQC_PENDING = "PROCUREMENT_IQC_PENDING";
     static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
+    static final String EVENT_IQC_STOCK_IN_PENDING =
+            "PROCUREMENT_IQC_STOCK_IN_PENDING";
+    static final String EVENT_SUBCONTRACT_LOSS_OPENED =
+            "SUBCONTRACT_LOSS_CLAIM_OPENED";
+    static final String EVENT_SUBCONTRACT_LOSS_DECIDED =
+            "SUBCONTRACT_LOSS_CLAIM_DECIDED";
+    static final String EVENT_SUBCONTRACT_LOSS_FULFILLED =
+            "SUBCONTRACT_LOSS_CLAIM_FULFILLED";
+    static final String EVENT_SUBCONTRACT_LOSS_REVERSED =
+            "SUBCONTRACT_LOSS_CLAIM_REVERSED";
+    static final String EVENT_PROCUREMENT_IQC_REJECTION_OPENED =
+            "PROCUREMENT_IQC_REJECTION_OPENED";
+    static final String EVENT_PROCUREMENT_IQC_REJECTION_DETECTED =
+            "PROCUREMENT_IQC_REJECTION_DETECTED";
+    static final String EVENT_PROCUREMENT_IQC_REJECTION_RETURNED =
+            "PROCUREMENT_IQC_REJECTION_RETURNED";
+    static final String EVENT_PROCUREMENT_IQC_CREDIT_CONFIRMED =
+            "PROCUREMENT_IQC_CREDIT_CONFIRMED";
+    static final String EVENT_PROCUREMENT_IQC_REJECTION_NO_CREDIT =
+            "PROCUREMENT_IQC_REJECTION_NO_CREDIT";
+    static final String EVENT_PROCUREMENT_IQC_REJECTION_REVERSED =
+            "PROCUREMENT_IQC_REJECTION_REVERSED";
+    static final String EVENT_PROCUREMENT_IQC_REJECTION_FINANCE_EXCEPTION =
+            "PROCUREMENT_IQC_REJECTION_FINANCE_EXCEPTION";
     private static final String IQC_VIEW_AUTHORITY = "procurement_inspection:view";
+    private static final String WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY =
+            "warehouse_iqc_stock_in:view";
     private static final String NOTICE_READ_AUTHORITY = "notice:read";
+    private static final String IQC_REJECTION_VIEW_AUTHORITY =
+            "procurement_iqc_rejection:view";
+    private static final String IQC_REJECTION_VIEW_ALL_AUTHORITY =
+            "procurement_iqc_rejection:view_all";
+    private static final String IQC_REJECTION_CONFIRM_CREDIT_AUTHORITY =
+            "procurement_iqc_rejection:confirm_credit";
+    private static final String IQC_REJECTION_RECORD_RETURN_AUTHORITY =
+            "procurement_iqc_rejection:record_return";
+    private static final String IQC_REJECTION_CLOSE_NO_CREDIT_AUTHORITY =
+            "procurement_iqc_rejection:close_no_credit";
     private static final String PURCHASE_REQUEST_VIEW_AUTHORITY = "purchase_request:view";
     private static final String SUBCONTRACT_APPLICATION_VIEW_AUTHORITY =
             "subcontract_application:view";
@@ -171,6 +225,8 @@ public class ChainNoticeService {
                         deliverFinishedInbound(aggregateId, payload);
                 case EVENT_FINISHED_INBOUND_PENDING ->
                         notifyFinishedInboundPending(aggregateId);
+                case EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING ->
+                        notifyProductionFinishedArrivalPending(aggregateId);
                 case EVENT_FINISHED_INBOUND_REJECTED ->
                         notifyFinishedInboundRejected(
                                 aggregateId,
@@ -203,12 +259,26 @@ public class ChainNoticeService {
                 case EVENT_SEGMENT_STARTED ->
                         notifyExecutionSegmentTransition(aggregateId, true);
                 case EVENT_SHIPMENT_APPROVED -> notifyShipmentApproved(aggregateId);
+                case EVENT_SHIPMENT_PENDING_FINANCE ->
+                        notifyShipmentPendingFinanceAudit(aggregateId);
                 case EVENT_SHIPMENT_PENDING_PICK ->
                         notifyShipmentPendingPick(aggregateId);
+                case EVENT_SHIPMENT_FINANCE_REVOKED ->
+                        notifyShipmentFinanceReleaseRevoked(aggregateId);
                 case EVENT_SHIPMENT_REJECTED ->
                         notifyShipmentRejected(aggregateId, payload.path("reason").asText(""));
                 case EVENT_PREPLAN_SUPPLY_ACTION_CREATED ->
                         notifyPreplanSupplyActionCreated(aggregateId);
+                case EVENT_SUBCONTRACT_PREPARATION_REQUIRED ->
+                        notifySubcontractPreparationRequired(aggregateId);
+                case EVENT_SUBCONTRACT_OUTBOUND_READY ->
+                        notifySubcontractOutboundReady(aggregateId);
+                case EVENT_SUBCONTRACT_OUTBOUND_COMPLETED ->
+                        notifySubcontractOutboundCompleted(aggregateId);
+                case EVENT_SUBCONTRACT_OUTBOUND_REVERSED ->
+                        notifySubcontractOutboundReversed(aggregateId);
+                case EVENT_SUBCONTRACT_RETURN_DUE ->
+                        notifySubcontractReturnDue(aggregateId);
                 case EVENT_MATERIAL_ANALYSIS_READY ->
                         deliverMaterialAnalysisReady(aggregateId, payload);
                 case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
@@ -252,9 +322,31 @@ public class ChainNoticeService {
                 case EVENT_IQC_PENDING ->
                         notifyIqcPendingForQuality(
                                 aggregateId, payload.path("receiptType").asText(""));
+                case EVENT_IQC_STOCK_IN_PENDING ->
+                        notifyIqcStockInPendingForWarehouse(
+                                aggregateId,
+                                payload.path("receiptType").asText(""),
+                                uuidOrNull(payload.path("receiptId").asText(null)));
                 case EVENT_IQC_RESOLVED ->
                         notifyIqcResolvedForPutaway(
                                 aggregateId, payload.path("receiptType").asText(""));
+                case EVENT_SUBCONTRACT_LOSS_OPENED,
+                     EVENT_SUBCONTRACT_LOSS_DECIDED,
+                     EVENT_SUBCONTRACT_LOSS_FULFILLED,
+                     EVENT_SUBCONTRACT_LOSS_REVERSED ->
+                        notifySubcontractLossClaimEvent(eventType, aggregateId);
+                case EVENT_PROCUREMENT_IQC_REJECTION_OPENED,
+                     EVENT_PROCUREMENT_IQC_REJECTION_RETURNED,
+                     EVENT_PROCUREMENT_IQC_CREDIT_CONFIRMED,
+                     EVENT_PROCUREMENT_IQC_REJECTION_NO_CREDIT,
+                     EVENT_PROCUREMENT_IQC_REJECTION_REVERSED,
+                     EVENT_PROCUREMENT_IQC_REJECTION_FINANCE_EXCEPTION ->
+                        notifyProcurementIqcRejectionEvent(eventType, aggregateId);
+                case EVENT_PROCUREMENT_IQC_REJECTION_DETECTED -> {
+                    // Internal projection trigger. The domain handler freezes
+                    // the rejection case first and emits OPENED (or a safe
+                    // FINANCE_EXCEPTION) afterwards; it must not notify twice.
+                }
                 case EVENT_BOM_UPDATED -> notifyBomUpdated(aggregateId);
                 default -> throw new IllegalArgumentException(
                         "Unsupported business outbox event: " + eventType);
@@ -374,19 +466,25 @@ public class ChainNoticeService {
                 boolean reportedComplete =
                         planned.signum() > 0 && produced.compareTo(planned) >= 0;
                 notifyUser(order.ownerUserId(), TYPE_WORKFLOW,
-                        (reportedComplete ? "生产报工完成(待入库)：" : "生产进度更新：")
+                        (reportedComplete
+                                ? "生产报工完成(待仓库登记/质检/点收)："
+                                : "生产进度更新：")
                                 + order.billNo(),
                         "订单 " + order.billNo() + " 货品 " + str(r.get("goods"))
-                                + " 的报工单 " + reportNo + " 已审核，累计合格 "
+                                + " 的报工单 " + reportNo
+                                + " 已审核，累计完工申报 "
                                 + qty(produced) + "/已排产 " + qty(planned)
                                 + "(订单数量 " + qty(bd(r.get("order_qty"))) + ")。"
-                                + (reportedComplete ? "成品入库审核后会再次通知可发货状态。" : ""),
+                                + (reportedComplete
+                                ? "等待仓库登记送检、品质放行和最终点收；"
+                                + "只有最终点收增加可用库存并更新可发货状态。"
+                                : ""),
                         order.route(), EVENT_PRODUCTION_REPORTED);
             }
         });
     }
 
-    /** ②③ 完工/部分完工通知销售：成品入库审核后，按本单补的预留溯源订单行。 */
+    /** ②③ 完工/部分完工通知销售：仓库最终点收后，按本单补的预留溯源订单行。 */
     public void notifyFinishedInbound(UUID stockDocId) {
         if (!isOutboxDelivery()) {
             List<Map<String, String>> allocations = finishedInboundSnapshot(stockDocId)
@@ -589,6 +687,70 @@ public class ChainNoticeService {
                         EVENT_FINISHED_INBOUND_PENDING);
             }
         });
+    }
+
+    /** 新执行段报工审核后，可靠投递仓库目标仓/库位送检登记待办。 */
+    public void notifyProductionFinishedArrivalPending(UUID reportId) {
+        Map<String, Object> report = pendingProductionFinishedArrival(reportId);
+        if (report == null) return;
+        String reportNo = str(report.get("bill_no"));
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING,
+                    "PRODUCTION_DAILY_REPORT",
+                    reportId,
+                    Map.of("reportId", reportId, "reportNo", reportNo),
+                    EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING + ':' + reportId);
+            return;
+        }
+        deliverAtomically(() -> {
+            for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                    "SUB_WH", "stock_doc:view", "stock_doc:approve")) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_TASK,
+                        "待登记生产成品送检：" + reportNo,
+                        "生产报工单 " + reportNo
+                                + " 已审核，请仓库核对实物并登记成品目标仓、库位，"
+                                + "然后送品质终检。通知不代替仓库任务队列、品质放行或库存事实。",
+                        "/warehouse/production-finished-in/tasks",
+                        EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING);
+            }
+        });
+    }
+
+    private Map<String, Object> pendingProductionFinishedArrival(UUID reportId) {
+        if (reportId == null) return null;
+        return one("""
+                SELECT report.id, report.bill_no
+                FROM production_daily_reports report
+                WHERE report.id = ?
+                  AND report.status = 1
+                  AND report.is_deleted = FALSE
+                  AND EXISTS (
+                      SELECT 1
+                      FROM production_daily_report_items report_item
+                      WHERE report_item.report_id = report.id
+                        AND report_item.is_deleted = FALSE)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM production_daily_report_items report_item
+                      WHERE report_item.report_id = report.id
+                        AND report_item.is_deleted = FALSE
+                        AND report_item.execution_segment_id IS NULL)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM production_finished_arrival_registrations registration
+                      WHERE registration.source_report_id = report.id)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM production_fqc_inspections inspection
+                      WHERE inspection.source_report_id = report.id)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM production_fqc_legacy_exemptions exemption
+                      WHERE exemption.source_report_id = report.id)
+                """, reportId);
     }
 
     /** 仓库零实收拒收后，可靠退回生产/计划岗位更正报工或重新交接。 */
@@ -1012,7 +1174,99 @@ public class ChainNoticeService {
     }
 
     /**
-     * 采购/委外收货 IQC 整单结案后通知仓库：合格量已放行入库，不合格量未入库。
+     * Every quality PASS slice immediately becomes a durable warehouse task.
+     * The notification is only a permission-filtered reminder; remaining
+     * quantity and action authority are always re-read from the task API.
+     */
+    public void notifyIqcStockInPendingForWarehouse(
+            UUID passEventId, String receiptType, UUID receiptId) {
+        if (!isOutboxDelivery()) {
+            if (passEventId == null || receiptId == null) return;
+            outbox.publishOnce(
+                    EVENT_IQC_STOCK_IN_PENDING,
+                    "PROCUREMENT_INSPECTION_PASS",
+                    passEventId,
+                    Map.of("receiptType", receiptType, "receiptId", receiptId),
+                    EVENT_IQC_STOCK_IN_PENDING + ':' + passEventId);
+            return;
+        }
+        deliverAtomically(() -> {
+            boolean purchase = "PURCHASE".equals(receiptType);
+            if ((!purchase && !"SUBCONTRACT".equals(receiptType))
+                    || passEventId == null || receiptId == null) {
+                return;
+            }
+            Map<String, Object> task = one("""
+                    SELECT receipt.bill_no,
+                           supplier.name AS supplier_name,
+                           warehouse.name AS warehouse_name,
+                           goods.code AS goods_code,
+                           goods.name AS goods_name,
+                           COALESCE(base_unit.name, source_unit.name) AS unit_name,
+                           event.base_qty
+                               - COALESCE(stocked.stocked_qty, 0) AS remaining_qty
+                    FROM procurement_inspection_events event
+                    JOIN procurement_inspection_items inspection
+                      ON inspection.id = event.inspection_item_id
+                     AND inspection.receipt_type = ?
+                     AND inspection.receipt_id = ?
+                     AND inspection.status <> 'REVERSED'
+                    JOIN %s receipt
+                      ON receipt.id = inspection.receipt_id
+                     AND COALESCE(receipt.is_deleted, FALSE) = FALSE
+                    LEFT JOIN suppliers supplier ON supplier.id = receipt.supplier_id
+                    LEFT JOIN warehouses warehouse
+                      ON warehouse.id = inspection.warehouse_id
+                    LEFT JOIN goods ON goods.id = inspection.goods_id
+                    LEFT JOIN units source_unit
+                      ON source_unit.id = inspection.unit_id
+                    LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
+                    LEFT JOIN LATERAL (
+                        SELECT COALESCE(SUM(item.base_qty), 0) AS stocked_qty
+                        FROM procurement_iqc_stock_in_batch_items item
+                        WHERE item.pass_event_id = event.id
+                    ) stocked ON TRUE
+                    WHERE event.id = ?
+                      AND event.action = 'PASS'
+                      AND event.requires_warehouse_stock_in = TRUE
+                    """.formatted(purchase
+                            ? "purchase_receipts" : "subcontract_receipts"),
+                    receiptType, receiptId, passEventId);
+            if (task == null) return;
+            BigDecimal remaining = bd(task.get("remaining_qty"));
+            if (remaining.signum() <= 0) return;
+            String billNo = str(task.get("bill_no"));
+            String goodsLabel = (str(task.get("goods_code")) + " "
+                    + str(task.get("goods_name"))).strip();
+            String unitName = str(task.get("unit_name"));
+            String content = (purchase ? "采购收货单 " : "委外进仓单 ")
+                    + billNo
+                    + (str(task.get("supplier_name")).isBlank()
+                            ? "" : "(" + str(task.get("supplier_name")) + ")")
+                    + " 的 " + goodsLabel + " 已由品质部放行，待仓库确认入库 "
+                    + qty(remaining)
+                    + (unitName.isBlank() ? "(基本单位)" : " " + unitName)
+                    + (str(task.get("warehouse_name")).isBlank()
+                            ? "。" : "，目标仓库「" + str(task.get("warehouse_name")) + "」。")
+                    + "请核对实物数量和实际库位；确认前不会增加可用库存。";
+            String route = "/warehouse/iqc-stock-ins/" + receiptType + '/' + receiptId;
+            for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                    "SUB_WH", NOTICE_READ_AUTHORITY,
+                    WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY)) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_TASK,
+                        "品质已放行，待仓库入库：" + billNo,
+                        content,
+                        route,
+                        EVENT_IQC_STOCK_IN_PENDING);
+            }
+        });
+    }
+
+    /**
+     * 采购/委外收货 IQC 整单结案结果回执。合格不等于已入库；仓库任务投影
+     * 与 warehouse_stocked_base_qty 才是实际入库权威。
      * 事件由仓库 inbound 模块（ProcurementInspectionService）在结案同事务投递；
      * 本方法只在 outbox 处理事务内做真实通知写入。
      */
@@ -1052,41 +1306,206 @@ public class ChainNoticeService {
                     FROM procurement_inspection_items
                     WHERE receipt_type = ? AND receipt_id = ? AND status <> 'REVERSED'
                     """, receiptType, receiptId);
-            BigDecimal passed = sums == null ? BigDecimal.ZERO : (BigDecimal) sums.get("passed");
-            BigDecimal failed = sums == null ? BigDecimal.ZERO : (BigDecimal) sums.get("failed");
+            BigDecimal passed = sums == null
+                    ? BigDecimal.ZERO : bd(sums.get("passed"));
+            BigDecimal failed = sums == null
+                    ? BigDecimal.ZERO : bd(sums.get("failed"));
             String billNo = str(receipt.get("bill_no"));
             String supplier = str(receipt.get("supplier_name"));
             String warehouse = str(receipt.get("warehouse_name"));
             String content = (purchase ? "采购收货单 " : "委外进仓单 ") + billNo
                     + (supplier.isBlank() ? "" : "(" + supplier + ")")
-                    + " 品质部检验已结案：合格 " + qty(passed) + " 已放行入库"
+                    + " 品质部检验已结案。合格量是否已经进入可用库存，"
+                    + "必须以仓库确认入库任务为准"
                     + (warehouse.isBlank() ? "" : " 至「" + warehouse + "」")
                     + (failed.signum() > 0
-                            ? "；不合格 " + qty(failed) + " 未入库，请核对实物并跟进采购/供应商处置。"
-                            : "，请核对实物上架。");
-            String route = (purchase ? "/purchase/receipts/" : "/subcontract/receipts/")
-                    + receiptId;
-            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
-                sendToUser(
-                        warehouseUser,
-                        TYPE_WORKFLOW,
-                        "品质检验通过，已入库：" + billNo,
-                        content,
-                        route,
-                        EVENT_IQC_RESOLVED);
+                            ? "；本单含不合格实物，请同时跟进退回处置。"
+                            : "。请在仓库专属页面核对剩余待入库切片。");
+            if (hasWarehouseIqcStockInTask(passed)) {
+                String route = "/warehouse/iqc-stock-ins/"
+                        + receiptType + '/' + receiptId;
+                for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                        "SUB_WH", NOTICE_READ_AUTHORITY,
+                        WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY)) {
+                    sendToUser(
+                            warehouseUser,
+                            TYPE_WORKFLOW,
+                            (failed.signum() > 0
+                                    ? "品质检验已结案（含不合格）："
+                                    : "品质检验已结案：") + billNo,
+                            content,
+                            route,
+                            EVENT_IQC_RESOLVED);
+                }
+            }
+            if (!purchase) {
+                notifySubcontractIqcResolvedStakeholders(
+                        receiptId, billNo, passed, failed);
             }
         });
     }
 
-    /** 销售创建待拣货发货单后，给仓库部门投递一次待拣货任务。 */
-    public void notifyShipmentPendingPick(UUID shipmentId) {
+    /**
+     * 委外 IQC 结案除仓库上架回执外，还需回到订单归属人及原物料分析归属人。
+     * 两条链均只按 UUID 外键重读；通知不携带供应商或商业金额。
+     */
+    private void notifySubcontractIqcResolvedStakeholders(
+            UUID receiptId,
+            String receiptBillNo,
+            BigDecimal passed,
+            BigDecimal failed) {
+        String result = subcontractIqcResolutionMessage(
+                receiptBillNo, passed, failed);
+        for (Map<String, Object> order : jdbc.queryForList("""
+                SELECT DISTINCT order_header.id AS order_id,
+                       order_header.bill_no AS order_bill_no,
+                       order_header.maker_id
+                FROM subcontract_receipt_items receipt_item
+                JOIN subcontract_order_items order_item
+                  ON order_item.id = receipt_item.order_item_id
+                 AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                JOIN subcontract_orders order_header
+                  ON order_header.id = order_item.order_id
+                 AND COALESCE(order_header.is_deleted, FALSE) = FALSE
+                WHERE receipt_item.receipt_id = ?
+                  AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
+                ORDER BY order_header.id
+                """, receiptId)) {
+            UUID makerUserId = subcontractMakerUserId(
+                    (UUID) order.get("maker_id"));
+            notifyUser(
+                    makerUserId,
+                    failed.signum() > 0 ? TYPE_URGENT : TYPE_WORKFLOW,
+                    "委外回厂 IQC 已结案：" + str(order.get("order_bill_no")),
+                    result,
+                    "/subcontract/orders/" + order.get("order_id"),
+                    EVENT_IQC_RESOLVED);
+        }
+        notifySubcontractAnalysisMakersIqcResolved(
+                receiptId, receiptBillNo, passed, failed, result);
+    }
+
+    private void notifySubcontractAnalysisMakersIqcResolved(
+            UUID receiptId,
+            String receiptBillNo,
+            BigDecimal passed,
+            BigDecimal failed,
+            String result) {
+        for (Map<String, Object> analysis : jdbc.queryForList("""
+                SELECT DISTINCT material_analysis.id AS analysis_id,
+                       material_analysis.maker_id
+                FROM subcontract_receipt_items receipt_item
+                JOIN subcontract_order_items order_item
+                  ON order_item.id = receipt_item.order_item_id
+                 AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                JOIN subcontract_application_items application_item
+                  ON application_item.id = order_item.application_item_id
+                 AND COALESCE(application_item.is_deleted, FALSE) = FALSE
+                JOIN subcontract_applications application
+                  ON application.id = application_item.application_id
+                 AND COALESCE(application.is_deleted, FALSE) = FALSE
+                JOIN preplan_supply_action_allocations allocation
+                  ON allocation.external_item_id = application_item.id
+                JOIN preplan_supply_actions supply_action
+                  ON supply_action.id = allocation.action_id
+                 AND supply_action.route = 'SUBCONTRACT'
+                 AND supply_action.status <> 'CANCELLED'
+                 AND supply_action.external_document_type =
+                     'SUBCONTRACT_APPLICATION'
+                 AND supply_action.external_document_id = application.id
+                JOIN production_material_analyses material_analysis
+                  ON material_analysis.id = supply_action.analysis_id
+                 AND material_analysis.is_deleted = FALSE
+                WHERE receipt_item.receipt_id = ?
+                  AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
+                ORDER BY material_analysis.id
+                """, receiptId)) {
+            UUID makerUserId = userIdOfEmployee(
+                    (UUID) analysis.get("maker_id"));
+            notifyUser(
+                    makerUserId,
+                    failed.signum() > 0 ? TYPE_URGENT : TYPE_WORKFLOW,
+                    "委外供给 IQC 已结案：" + receiptBillNo,
+                    result + (failed.signum() > 0
+                            ? "请复核不合格量对当前可下达数量和补足需求的影响。"
+                            : "请在原物料分析中查看最新可下达数量。"),
+                    "/production/material-analyses/"
+                            + analysis.get("analysis_id") + "/summary",
+                    EVENT_IQC_RESOLVED);
+        }
+    }
+
+    static boolean hasWarehouseIqcStockInTask(BigDecimal passed) {
+        return passed != null && passed.signum() > 0;
+    }
+
+    static String subcontractIqcResolutionMessage(
+            String receiptBillNo, BigDecimal passed, BigDecimal failed) {
+        boolean hasPass = hasWarehouseIqcStockInTask(passed);
+        boolean hasFail = failed != null && failed.signum() > 0;
+        return "委外进仓单 " + receiptBillNo + " 的 IQC 已结案："
+                + (hasPass
+                ? "存在合格量" + (hasFail ? "，同时存在不合格量。" : "。")
+                    + "合格量只有经仓库确认后才进入可用库存；"
+                : "未形成合格量，不会生成仓库待入库任务；")
+                + "通知不代表委外订单或原物料分析任务已全部完成。";
+    }
+
+    /** 销售创建出货草稿后，只通知具备出货财审权限的人员。 */
+    public void notifyShipmentPendingFinanceAudit(UUID shipmentId) {
         if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SHIPMENT_PENDING_FINANCE,
+                    "SALES_SHIPMENT",
+                    shipmentId,
+                    Map.of(),
+                    EVENT_SHIPMENT_PENDING_FINANCE + ':' + shipmentId);
+            return;
+        }
+        deliverAtomically(() -> {
+            String billNo = oneStr("""
+                    SELECT bill_no
+                    FROM sales_shipments
+                    WHERE id = ?
+                      AND status = 0
+                      AND COALESCE(is_deleted, FALSE) = FALSE
+                      AND COALESCE(rejected, FALSE) = FALSE
+                      AND finance_audit = 0
+                      AND warehouse_work_status = 'PENDING_PICK'
+                    """, shipmentId);
+            if (billNo == null || billNo.isBlank()) return;
+            for (UUID userId : userIdsWithPermissions(
+                    "finance_shipment_audit", NOTICE_READ_AUTHORITY)) {
+                sendToUser(
+                        userId,
+                        TYPE_APPROVAL,
+                        "待出货财务审核：" + billNo,
+                        "销售出货单 " + billNo
+                                + " 已提交财务审核；财务放行后才会通知仓库拣货。",
+                        "/sales/shipments/" + shipmentId,
+                        EVENT_SHIPMENT_PENDING_FINANCE);
+            }
+        });
+    }
+
+    /** 财务放行后，给仓库部门投递待拣货任务。 */
+    public void notifyShipmentPendingPick(UUID shipmentId) {
+        notifyShipmentPendingPick(shipmentId, null);
+    }
+
+    /** 每次真实财务放行使用审核时间形成独立幂等键，允许反审后重新放行再通知。 */
+    public void notifyShipmentPendingPick(
+            UUID shipmentId, java.time.OffsetDateTime financeAuditedAt) {
+        if (!isOutboxDelivery()) {
+            String releaseIdentity = financeAuditedAt == null
+                    ? "legacy"
+                    : financeAuditedAt.toInstant().toString();
             outbox.publishOnce(
                     EVENT_SHIPMENT_PENDING_PICK,
                     "SALES_SHIPMENT",
                     shipmentId,
                     Map.of(),
-                    EVENT_SHIPMENT_PENDING_PICK + ':' + shipmentId);
+                    EVENT_SHIPMENT_PENDING_PICK + ':' + shipmentId + ':' + releaseIdentity);
             return;
         }
         deliverAtomically(() -> {
@@ -1104,6 +1523,8 @@ public class ChainNoticeService {
                       AND shipment.warehouse_work_status = 'PENDING_PICK'
                       AND shipment.status = 0
                       AND shipment.is_deleted = FALSE
+                      AND COALESCE(shipment.rejected, FALSE) = FALSE
+                      AND shipment.finance_audit = 1
                     GROUP BY shipment.bill_no, warehouse.name
                     """, shipmentId);
             if (shipment == null) return;
@@ -1113,7 +1534,9 @@ public class ChainNoticeService {
                     + qty(bd(shipment.get("shipment_qty")))
                     + (warehouse.isBlank() ? "。" : "，出库仓库 " + warehouse + "。")
                     + "请按仓库作业流程核对库存并拣货；通知不代表已占用或已出库。";
-            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
+            for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                    "SUB_WH", NOTICE_READ_AUTHORITY,
+                    "sales_shipment:warehouse-work")) {
                 sendToUser(
                         warehouseUser,
                         TYPE_TASK,
@@ -1121,6 +1544,41 @@ public class ChainNoticeService {
                         content,
                         "/sales/shipments/" + shipmentId,
                         EVENT_SHIPMENT_PENDING_PICK);
+            }
+        });
+    }
+
+    /** 财务在拣货开始前撤回放行时，通知仓库暂停该任务。 */
+    public void notifyShipmentFinanceReleaseRevoked(UUID shipmentId) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(
+                    EVENT_SHIPMENT_FINANCE_REVOKED,
+                    "SALES_SHIPMENT",
+                    shipmentId,
+                    Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
+            String billNo = oneStr("""
+                    SELECT bill_no
+                    FROM sales_shipments
+                    WHERE id = ?
+                      AND status = 0
+                      AND COALESCE(is_deleted, FALSE) = FALSE
+                      AND finance_audit = 0
+                      AND warehouse_work_status = 'PENDING_PICK'
+                    """, shipmentId);
+            if (billNo == null || billNo.isBlank()) return;
+            for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                    "SUB_WH", NOTICE_READ_AUTHORITY,
+                    "sales_shipment:warehouse-work")) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_URGENT,
+                        "出货财务放行已撤回：" + billNo,
+                        "出货单 " + billNo + " 的财务放行已撤回，请暂停拣货并等待重新审核。",
+                        "/sales/shipments/" + shipmentId,
+                        EVENT_SHIPMENT_FINANCE_REVOKED);
             }
         });
     }
@@ -1225,6 +1683,466 @@ public class ChainNoticeService {
                     actionRoute,
                     requiredViewAuthority);
         });
+    }
+
+    /**
+     * A target item with active BOM children must complete the normal MAKE
+     * chain before warehouse outbound. The database task remains authoritative;
+     * this event only points eligible planning/production users to that task.
+     */
+    public void notifySubcontractPreparationRequired(UUID planItemId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SUBCONTRACT_PREPARATION_REQUIRED,
+                    "SUBCONTRACT_MATERIAL_PLAN_ITEM",
+                    planItemId,
+                    Map.of(),
+                    EVENT_SUBCONTRACT_PREPARATION_REQUIRED + ':' + planItemId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> item = subcontractPreparationRequiredSnapshot(
+                    planItemId);
+            if (item == null) return;
+            UUID orderId = (UUID) item.get("order_id");
+            String orderNo = str(item.get("order_bill_no"));
+            String goods = subcontractGoodsLabel(item);
+            String quantity = qty(bd(item.get("planned_qty")));
+            String taskRoute = "/subcontract/preparations?planItemId="
+                    + planItemId;
+            String taskContent = "委外订货单 " + orderNo + " 的目标件 "
+                    + goods + "，数量 " + quantity
+                    + " 存在有效子层级，不能直接委外出仓。请在委外前置自制任务队列"
+                    + "启动物料分析，并按正常自制链完成领料、生产、报工、品质检验和"
+                    + "仓库实收入库；可执行操作以任务实时 allowedActions 为准。";
+            Set<UUID> productionRecipients = new LinkedHashSet<>();
+            productionRecipients.addAll(departmentUserIdsWithAuthorities(
+                    "SUB_PLAN",
+                    NOTICE_READ_AUTHORITY,
+                    "subcontract_preparation:view",
+                    "subcontract_preparation:start"));
+            productionRecipients.addAll(departmentUserIdsWithAuthorities(
+                    "DEPT_PROD",
+                    NOTICE_READ_AUTHORITY,
+                    "subcontract_preparation:view",
+                    "subcontract_preparation:start"));
+            for (UUID recipient : productionRecipients) {
+                sendToUser(
+                        recipient,
+                        TYPE_TASK,
+                        "待启动委外前置自制：" + orderNo,
+                        taskContent,
+                        taskRoute,
+                        EVENT_SUBCONTRACT_PREPARATION_REQUIRED);
+            }
+
+            UUID makerUserId = subcontractMakerUserId(
+                    (UUID) item.get("maker_id"));
+            notifyUser(
+                    makerUserId,
+                    TYPE_WORKFLOW,
+                    "委外前置自制待安排：" + orderNo,
+                    "委外订货单 " + orderNo + " 的目标件 " + goods
+                            + " 需先完成正常自制流程。计划/生产岗位已收到前置任务；"
+                            + "只有品质放行并经仓库实收入库后，目标件才会转入委外出仓。"
+                            + "本通知仅作进度提醒，不代表已领料、已完工或已入库。",
+                    "/subcontract/orders/" + orderId,
+                    EVENT_SUBCONTRACT_PREPARATION_REQUIRED);
+        });
+    }
+
+    /** A prepared target item is now visible in the warehouse outbound queue. */
+    public void notifySubcontractOutboundReady(UUID planItemId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SUBCONTRACT_OUTBOUND_READY,
+                    "SUBCONTRACT_MATERIAL_PLAN_ITEM",
+                    planItemId,
+                    Map.of(),
+                    EVENT_SUBCONTRACT_OUTBOUND_READY + ':' + planItemId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> item = subcontractOutboundReadySnapshot(planItemId);
+            if (item == null) return;
+            UUID planId = (UUID) item.get("plan_id");
+            UUID orderId = (UUID) item.get("order_id");
+            String orderNo = str(item.get("order_bill_no"));
+            String goods = subcontractGoodsLabel(item);
+            BigDecimal remaining = bd(item.get("prepared_qty"))
+                    .min(bd(item.get("planned_qty")))
+                    .subtract(bd(item.get("issued_qty")))
+                    .max(BigDecimal.ZERO);
+            String warehouseContent = "委外订货单 " + orderNo + " 的目标件 "
+                    + goods + " 当前可出仓 " + qty(remaining)
+                    + "(基本单位)。请打开委外出仓任务核对来源仓、库位和实物后拣货并"
+                    + "审核出仓；通知不代表已预留、已拣货或已出仓，可执行操作以任务"
+                    + "实时 allowedActions 为准。";
+            for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                    "SUB_WH",
+                    NOTICE_READ_AUTHORITY,
+                    "subcontract_outbound:view",
+                    "subcontract_outbound:execute")) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_TASK,
+                        "待执行委外目标件出仓：" + orderNo,
+                        warehouseContent,
+                        "/warehouse/subcontract-outbound/" + planId,
+                        EVENT_SUBCONTRACT_OUTBOUND_READY);
+            }
+
+            UUID makerUserId = subcontractMakerUserId(
+                    (UUID) item.get("maker_id"));
+            notifyUser(
+                    makerUserId,
+                    TYPE_WORKFLOW,
+                    "委外目标件已可出仓：" + orderNo,
+                    "委外订货单 " + orderNo + " 的目标件 " + goods
+                            + " 已达到委外出仓条件，仓储部已收到出仓任务。"
+                            + "本通知仅作进度提醒，不代表目标件已经出仓。",
+                    "/subcontract/orders/" + orderId,
+                    EVENT_SUBCONTRACT_OUTBOUND_READY);
+        });
+    }
+
+    /** Approved target-item outbound receipt for the subcontract order maker. */
+    public void notifySubcontractOutboundCompleted(UUID issueId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SUBCONTRACT_OUTBOUND_COMPLETED,
+                    "SUBCONTRACT_MATERIAL_ISSUE",
+                    issueId,
+                    Map.of(),
+                    EVENT_SUBCONTRACT_OUTBOUND_COMPLETED + ':' + issueId);
+            return;
+        }
+        deliverAtomically(() -> {
+            List<Map<String, Object>> orders = jdbc.queryForList("""
+                    SELECT plan.order_id, plan.order_bill_no,
+                           order_header.maker_id,
+                           issue.bill_no AS issue_bill_no,
+                           SUM(issue_item.qty * COALESCE(issue_item.unit_rate, 1))
+                               AS issued_base_qty,
+                           MIN(concat_ws(' ', goods.code, goods.name)) AS first_goods,
+                           COUNT(DISTINCT plan_item.goods_id) AS goods_count
+                    FROM subcontract_material_issues issue
+                    JOIN subcontract_material_issue_items issue_item
+                      ON issue_item.issue_id = issue.id
+                    JOIN subcontract_material_plan_items plan_item
+                      ON plan_item.id = issue_item.plan_item_id
+                     AND plan_item.is_deleted = FALSE
+                     AND plan_item.flow_mode IN (
+                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND')
+                    JOIN subcontract_material_plans plan
+                      ON plan.id = plan_item.plan_id
+                     AND plan.is_deleted = FALSE
+                    JOIN subcontract_orders order_header
+                      ON order_header.id = plan.order_id
+                     AND order_header.status = 1
+                     AND order_header.is_deleted = FALSE
+                    JOIN goods ON goods.id = plan_item.goods_id
+                    WHERE issue.id = ?
+                      AND issue.status = 1
+                      AND issue.is_deleted = FALSE
+                    GROUP BY plan.order_id, plan.order_bill_no,
+                             order_header.maker_id, issue.bill_no
+                    ORDER BY plan.order_id
+                    """, issueId);
+            for (Map<String, Object> order : orders) {
+                UUID makerUserId = subcontractMakerUserId(
+                        (UUID) order.get("maker_id"));
+                UUID orderId = (UUID) order.get("order_id");
+                String orderNo = str(order.get("order_bill_no"));
+                String firstGoods = str(order.get("first_goods"));
+                long goodsCount = ((Number) order.get("goods_count")).longValue();
+                String goods = firstGoods
+                        + (goodsCount > 1 ? " 等 " + goodsCount + " 项" : "");
+                if (makerUserId != null) {
+                    sendToUser(
+                            makerUserId,
+                            TYPE_WORKFLOW,
+                            "委外目标件已出仓：" + orderNo,
+                            "委外出仓单 " + str(order.get("issue_bill_no"))
+                                    + " 已审核，目标件 " + goods + " 已完成出仓 "
+                                    + qty(bd(order.get("issued_base_qty")))
+                                    + "(基本单位)。请在订单进度中跟进加工交期、回厂收货和"
+                                    + "IQC；通知不代表已回厂或品质已结案。",
+                            "/subcontract/orders/" + orderId,
+                            EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
+                }
+                for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                        "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:view")) {
+                    sendToUser(
+                            warehouseUser,
+                            TYPE_TASK,
+                            "委外预计回厂：" + orderNo,
+                            "委外出仓单 " + str(order.get("issue_bill_no"))
+                                    + " 已审核，目标件 " + goods + " 本批已真实出仓 "
+                                    + qty(bd(order.get("issued_base_qty")))
+                                    + "(基本单位)，现在可能回厂。请在预计到货任务中心登记"
+                                    + "实际回厂；通知不代表已经到货。",
+                            "/warehouse/inbound/expectations",
+                            EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
+                }
+            }
+            for (Map<String, Object> analysis : jdbc.queryForList("""
+                    SELECT DISTINCT material_analysis.id AS analysis_id,
+                           material_analysis.maker_id,
+                           issue.bill_no AS issue_bill_no
+                    FROM subcontract_material_issues issue
+                    JOIN subcontract_material_issue_items issue_item
+                      ON issue_item.issue_id = issue.id
+                    JOIN subcontract_material_plan_items plan_item
+                      ON plan_item.id = issue_item.plan_item_id
+                     AND plan_item.is_deleted = FALSE
+                     AND plan_item.flow_mode IN (
+                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND')
+                    JOIN subcontract_order_items order_item
+                      ON order_item.id = issue_item.order_item_id
+                     AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                    JOIN subcontract_application_items application_item
+                      ON application_item.id = order_item.application_item_id
+                     AND COALESCE(application_item.is_deleted, FALSE) = FALSE
+                    JOIN subcontract_applications application
+                      ON application.id = application_item.application_id
+                     AND COALESCE(application.is_deleted, FALSE) = FALSE
+                    JOIN preplan_supply_action_allocations allocation
+                      ON allocation.external_item_id = application_item.id
+                    JOIN preplan_supply_actions supply_action
+                      ON supply_action.id = allocation.action_id
+                     AND supply_action.route = 'SUBCONTRACT'
+                     AND supply_action.status <> 'CANCELLED'
+                     AND supply_action.external_document_type =
+                         'SUBCONTRACT_APPLICATION'
+                     AND supply_action.external_document_id = application.id
+                    JOIN production_material_analyses material_analysis
+                      ON material_analysis.id = supply_action.analysis_id
+                     AND material_analysis.is_deleted = FALSE
+                    WHERE issue.id = ?
+                      AND issue.status = 1
+                      AND issue.is_deleted = FALSE
+                    ORDER BY material_analysis.id
+                    """, issueId)) {
+                UUID makerUserId = userIdOfEmployee(
+                        (UUID) analysis.get("maker_id"));
+                notifyUser(
+                        makerUserId,
+                        TYPE_WORKFLOW,
+                        "委外供给已出仓：" + str(analysis.get("issue_bill_no")),
+                        "委外目标件已完成审核出仓，现等待委外加工、回厂收货和 IQC。"
+                                + "请在原物料分析查看该供给行动进度；本通知不代表已回厂或"
+                                + "品质已结案。",
+                        "/production/material-analyses/"
+                                + analysis.get("analysis_id") + "/summary",
+                        EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
+            }
+        });
+    }
+
+    /** 已审目标件出仓被红冲后，补偿此前“可能回厂”通知并要求以实时任务为准。 */
+    public void notifySubcontractOutboundReversed(UUID issueId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SUBCONTRACT_OUTBOUND_REVERSED,
+                    "SUBCONTRACT_MATERIAL_ISSUE",
+                    issueId,
+                    Map.of(),
+                    EVENT_SUBCONTRACT_OUTBOUND_REVERSED + ':' + issueId);
+            return;
+        }
+        deliverAtomically(() -> {
+            List<Map<String, Object>> orders = jdbc.queryForList("""
+                    SELECT plan.order_id, plan.order_bill_no,
+                           order_header.maker_id,
+                           issue.bill_no AS issue_bill_no,
+                           SUM(issue_item.qty * COALESCE(issue_item.unit_rate, 1))
+                               AS reversed_base_qty
+                    FROM subcontract_material_issues issue
+                    JOIN subcontract_material_issue_items issue_item
+                      ON issue_item.issue_id = issue.id
+                     AND issue_item.is_deleted = FALSE
+                    JOIN subcontract_material_plan_items plan_item
+                      ON plan_item.id = issue_item.plan_item_id
+                     AND plan_item.is_deleted = FALSE
+                     AND plan_item.flow_mode IN (
+                         'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                    JOIN subcontract_material_plans plan
+                      ON plan.id = plan_item.plan_id
+                     AND plan.is_deleted = FALSE
+                    JOIN subcontract_orders order_header
+                      ON order_header.id = plan.order_id
+                     AND order_header.is_deleted = FALSE
+                    WHERE issue.id = ?
+                      AND issue.status = -1
+                      AND issue.is_deleted = FALSE
+                    GROUP BY plan.order_id, plan.order_bill_no,
+                             order_header.maker_id, issue.bill_no
+                    ORDER BY plan.order_id
+                    """, issueId);
+            for (Map<String, Object> order : orders) {
+                UUID orderId = (UUID) order.get("order_id");
+                String orderNo = str(order.get("order_bill_no"));
+                String issueNo = str(order.get("issue_bill_no"));
+                String reversedQty = qty(bd(order.get("reversed_base_qty")));
+                UUID makerUserId = subcontractMakerUserId(
+                        (UUID) order.get("maker_id"));
+                notifyUser(
+                        makerUserId,
+                        TYPE_URGENT,
+                        "委外目标件出仓已红冲：" + orderNo,
+                        "委外出仓单 " + issueNo + " 已红冲，本批目标件出仓 "
+                                + reversedQty + "(基本单位)已撤销。请重新跟进目标件准备和"
+                                + "出仓；实时订单/任务投影为准。",
+                        "/subcontract/orders/" + orderId,
+                        EVENT_SUBCONTRACT_OUTBOUND_REVERSED);
+                for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                        "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:view")) {
+                    sendToUser(
+                            warehouseUser,
+                            TYPE_URGENT,
+                            "委外预计回厂已撤回：" + orderNo,
+                            "委外出仓单 " + issueNo + " 已红冲，本批出仓事实已撤销。"
+                                    + "请刷新预计到货任务中心；若其它有效出仓批次仍有容量，"
+                                    + "对应任务会继续保留。",
+                            "/warehouse/inbound/expectations",
+                            EVENT_SUBCONTRACT_OUTBOUND_REVERSED);
+                }
+            }
+        });
+    }
+
+    /**
+     * Daily supplier-return warning. Delivery rechecks the physical facts so a
+     * delayed event cannot report an order that has already returned in full.
+     * IQC is intentionally not part of this warning; physically returned goods
+     * belong to the quality queue even while inspection remains pending.
+     */
+    private void notifySubcontractReturnDue(UUID orderId) {
+        deliverAtomically(() -> {
+            LocalDate today = BusinessTime.today();
+            SubcontractReturnDueFacts.Snapshot order =
+                    SubcontractReturnDueFacts.findCurrent(
+                            jdbc,
+                            orderId,
+                            today.plusDays(SubcontractReturnDueScheduler.DUE_DAYS));
+            if (order == null || order.deliverDate() == null) return;
+
+            Set<UUID> recipients = new LinkedHashSet<>();
+            UUID orderMaker = subcontractMakerUserId(order.makerEmployeeId());
+            if (orderMaker != null) recipients.add(orderMaker);
+            for (Map<String, Object> analysis : jdbc.queryForList("""
+                    SELECT DISTINCT material_analysis.maker_id
+                    FROM subcontract_order_items order_item
+                    JOIN subcontract_application_items application_item
+                      ON application_item.id = order_item.application_item_id
+                     AND COALESCE(application_item.is_deleted, FALSE) = FALSE
+                    JOIN subcontract_applications application
+                      ON application.id = application_item.application_id
+                     AND COALESCE(application.is_deleted, FALSE) = FALSE
+                    JOIN preplan_supply_action_allocations allocation
+                      ON allocation.external_item_id = application_item.id
+                    JOIN preplan_supply_actions supply_action
+                      ON supply_action.id = allocation.action_id
+                     AND supply_action.route = 'SUBCONTRACT'
+                     AND supply_action.status <> 'CANCELLED'
+                     AND supply_action.external_document_type =
+                         'SUBCONTRACT_APPLICATION'
+                     AND supply_action.external_document_id = application.id
+                    JOIN production_material_analyses material_analysis
+                      ON material_analysis.id = supply_action.analysis_id
+                     AND material_analysis.is_deleted = FALSE
+                    WHERE order_item.order_id = ?
+                      AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                    ORDER BY material_analysis.maker_id
+                    """, orderId)) {
+                UUID analysisMaker = userIdOfEmployee(
+                        (UUID) analysis.get("maker_id"));
+                if (analysisMaker != null) recipients.add(analysisMaker);
+            }
+            if (recipients.isEmpty()) return;
+
+            long daysLeft = ChronoUnit.DAYS.between(today, order.deliverDate());
+            String timing = daysLeft < 0
+                    ? "已逾期 " + (-daysLeft) + " 天"
+                    : daysLeft == 0
+                            ? "今日到期"
+                            : "距约定回厂日 " + daysLeft + " 天";
+            String title = (daysLeft < 0
+                    ? "委外回厂已逾期："
+                    : "委外回厂交期提醒：") + order.billNo();
+            String content = "委外订货单 " + order.billNo() + " " + timing
+                    + "。该单已有审核通过的委外出仓，但仍有加工件尚未物理回厂。"
+                    + "请跟进委外商，并在实物到厂后由仓库登记回厂。"
+                    + "本通知仅作交期提醒，不代表已回厂、IQC 已结案或订单完成；"
+                    + "实际状态以订单全链路进度为准。";
+            String route = "/subcontract/orders/" + orderId;
+            String priority = daysLeft < 0 ? "important" : "normal";
+            for (UUID recipient : recipients) {
+                sendToUser(
+                        recipient,
+                        TYPE_URGENT,
+                        title,
+                        content,
+                        route,
+                        EVENT_SUBCONTRACT_RETURN_DUE,
+                        priority);
+            }
+        });
+    }
+
+    private Map<String, Object> subcontractPreparationRequiredSnapshot(
+            UUID planItemId) {
+        return one("""
+                SELECT item.plan_id, plan.order_id, plan.order_bill_no,
+                       order_header.maker_id, item.planned_qty,
+                       goods.code AS goods_code, goods.name AS goods_name
+                FROM subcontract_material_plan_items item
+                JOIN subcontract_material_plans plan
+                  ON plan.id = item.plan_id
+                 AND plan.status = 'OPEN'
+                 AND plan.is_deleted = FALSE
+                JOIN subcontract_orders order_header
+                  ON order_header.id = plan.order_id
+                 AND order_header.status = 1
+                 AND order_header.is_deleted = FALSE
+                JOIN goods ON goods.id = item.goods_id
+                WHERE item.id = ?
+                  AND item.is_deleted = FALSE
+                  AND item.flow_mode = 'MAKE_THEN_OUTBOUND'
+                  AND item.preparation_status = 'ACTION_REQUIRED'
+                  AND item.planned_qty > 0
+                """, planItemId);
+    }
+
+    private Map<String, Object> subcontractOutboundReadySnapshot(UUID planItemId) {
+        return one("""
+                SELECT item.plan_id, plan.order_id, plan.order_bill_no,
+                       order_header.maker_id, item.planned_qty,
+                       item.prepared_qty, item.issued_qty,
+                       goods.code AS goods_code, goods.name AS goods_name
+                FROM subcontract_material_plan_items item
+                JOIN subcontract_material_plans plan
+                  ON plan.id = item.plan_id
+                 AND plan.status = 'OPEN'
+                 AND plan.is_deleted = FALSE
+                JOIN subcontract_orders order_header
+                  ON order_header.id = plan.order_id
+                 AND order_header.status = 1
+                 AND order_header.is_deleted = FALSE
+                JOIN goods ON goods.id = item.goods_id
+                WHERE item.id = ?
+                  AND item.is_deleted = FALSE
+                  AND item.flow_mode IN ('DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND')
+                  AND item.preparation_status = 'READY_OUTBOUND'
+                  AND LEAST(item.planned_qty, item.prepared_qty) > item.issued_qty
+                """, planItemId);
+    }
+
+    private static String subcontractGoodsLabel(Map<String, Object> item) {
+        String label = (str(item.get("goods_code")) + " "
+                + str(item.get("goods_name"))).strip();
+        return label.isBlank() ? "目标件" : label;
     }
 
     /**
@@ -1905,29 +2823,41 @@ public class ChainNoticeService {
                         actionRoute);
                 return;
             }
+            UUID orderId = (UUID) approval.get("order_id");
+            boolean subcontract = "SUBCONTRACT".equals(str(approval.get("order_type")));
+            String actionRoute = subcontract
+                    ? "/subcontract/orders/" + orderId
+                    : "/purchase/orders/" + orderId;
+            String approvedResult = subcontract
+                    ? "已生成目标件准备/待出仓任务；有子层级的目标件须先完成前置自制，"
+                            + "目标件真实审核出仓后才进入仓库预计到货。"
+                    : "仓储部已收到预计到货提醒。";
             notifyUser(
                     (UUID) approval.get("submitted_by_user_id"),
                     TYPE_WORKFLOW,
                     "财务通过：" + billNo,
                     orderLabel + " " + billNo
-                            + " 已通过财务审核并正式生效，仓储部已收到预计到货提醒。",
-                    "/finance/procurement-approvals");
-            String warehouseName = str(approval.get("warehouse_name"));
-            String expectedDate = str(approval.get("expected_date"));
-            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
-                sendToUser(
-                        warehouseUser,
-                        TYPE_TASK,
-                        "预计到货：" + billNo,
-                        orderLabel + " " + billNo + " 已生效"
-                                + (warehouseName.isBlank()
-                                        ? ""
-                                        : "，目标仓库 " + warehouseName)
-                                + (expectedDate.isBlank()
-                                        ? ""
-                                        : "，预计日期 " + expectedDate)
-                                + "。请在仓库预计到货队列跟进。",
-                        "/warehouse/inbound/expectations");
+                            + " 已通过财务审核并正式生效，" + approvedResult,
+                    actionRoute);
+            if (!subcontract) {
+                String warehouseName = str(approval.get("warehouse_name"));
+                String expectedDate = str(approval.get("expected_date"));
+                for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                        "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:view")) {
+                    sendToUser(
+                            warehouseUser,
+                            TYPE_TASK,
+                            "预计到货：" + billNo,
+                            orderLabel + " " + billNo + " 已生效"
+                                    + (warehouseName.isBlank()
+                                            ? ""
+                                            : "，目标仓库 " + warehouseName)
+                                    + (expectedDate.isBlank()
+                                            ? ""
+                                            : "，预计日期 " + expectedDate)
+                                    + "。请在仓库预计到货队列跟进。",
+                            "/warehouse/inbound/expectations");
+                }
             }
         });
     }
@@ -1990,8 +2920,9 @@ public class ChainNoticeService {
                                 + returnQty
                                 + " 已形成持久任务。请完成实物退回后在本人任务中确认；通知不能代替任务台账。",
                         "/procurement/arrival-exceptions");
-                // 部门广播：让采购/委外整组知晓有一笔退回任务已分配（委外单也归采购部管）。
-                broadcastToPurchaseDept(ownerUser, TYPE_TASK, "供应商退回任务：" + orderNo,
+                broadcastToProcurementReturnFollowers(
+                        str(arrival.get("order_type")), ownerUser,
+                        TYPE_TASK, "供应商退回任务：" + orderNo,
                         orderLabel + " " + orderNo + " 有未接收数量 " + returnQty
                                 + " 待退回，请跟进实物退回。",
                         "/procurement/arrival-exceptions");
@@ -2008,7 +2939,8 @@ public class ChainNoticeService {
                 // 原下单人须在本人任务确认退回；部门内其他人广播知会（去重避免重复通知）。
                 notifyUser(ownerUser, TYPE_TASK, "到货已入库，余量待退：" + orderNo,
                         content, "/procurement/arrival-exceptions");
-                broadcastToPurchaseDept(ownerUser, TYPE_TASK,
+                broadcastToProcurementReturnFollowers(
+                        str(arrival.get("order_type")), ownerUser, TYPE_TASK,
                         "到货已入库，余量待退：" + orderNo, content,
                         "/procurement/arrival-exceptions");
                 return;
@@ -2022,7 +2954,8 @@ public class ChainNoticeService {
             }
 
             BigDecimal accepted = bd(arrival.get("accepted_qty"));
-            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
+            for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                    "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:stock_in")) {
                 if (accepted.signum() > 0) {
                     sendToUser(warehouseUser, TYPE_TASK,
                             "到货数量已由财务审核：" + orderNo,
@@ -2045,16 +2978,306 @@ public class ChainNoticeService {
         });
     }
 
-    /**
-     * 广播到采购部（SUB_PURCHASE，委外单也归采购部管）相关人员，跳过 excludeUser 避免与
-     * 原下单人的定向通知重复；停用/已删除账号由 sendToUser 内部跳过。
-     */
-    private void broadcastToPurchaseDept(UUID excludeUser, String type,
-                                         String title, String content, String route) {
-        for (UUID uid : departmentUserIds("SUB_PURCHASE")) {
+    /** 采购沿用采购池；委外按当前有效任务权限解析，不再硬编码到采购部。 */
+    private void broadcastToProcurementReturnFollowers(
+            String orderType,
+            UUID excludeUser,
+            String type,
+            String title,
+            String content,
+            String route) {
+        Set<UUID> targets = "SUBCONTRACT".equals(orderType)
+                ? userIdsWithPermissions(
+                        "supplier_return_task:view", NOTICE_READ_AUTHORITY)
+                : new LinkedHashSet<>(departmentUserIds("SUB_PURCHASE"));
+        for (UUID uid : targets) {
             if (excludeUser != null && excludeUser.equals(uid)) continue;
             sendToUser(uid, type, title, content, route, null, "normal");
         }
+    }
+
+    private Set<UUID> userIdsWithPermissions(String... required) {
+        Set<String> permissions = Set.of(required);
+        Set<UUID> result = new LinkedHashSet<>();
+        for (UserAccount user : userRepo.findAll()) {
+            if (user == null || user.isDeleted() || !"active".equals(user.getStatus())) continue;
+            if (permissionResolver.permsOf(user).containsAll(permissions)) {
+                result.add(user.getId());
+            }
+        }
+        return result;
+    }
+
+    /** Active users with notice read plus at least one all-case/action permission. */
+    private Set<UUID> userIdsWithNoticeAndAnyPermission(
+            String... anyPermission) {
+        Set<String> alternatives = Set.of(anyPermission);
+        Set<UUID> result = new LinkedHashSet<>();
+        for (UserAccount user : userRepo.findAll()) {
+            if (user == null
+                    || user.isDeleted()
+                    || !"active".equals(user.getStatus())) {
+                continue;
+            }
+            Set<String> permissions = permissionResolver.permsOf(user);
+            if (!permissions.contains(NOTICE_READ_AUTHORITY)) continue;
+            if (alternatives.stream().anyMatch(permissions::contains)) {
+                result.add(user.getId());
+            }
+        }
+        return result;
+    }
+
+    /** IQC task notices must open successfully: notice read + exact page view + one role action. */
+    private Set<UUID> userIdsWithIqcViewAndAnyPermission(
+            String... anyPermission) {
+        Set<UUID> result = userIdsWithNoticeAndAnyPermission(anyPermission);
+        result.removeIf(userId -> !userHasPermissions(
+                userId,
+                NOTICE_READ_AUTHORITY,
+                IQC_REJECTION_VIEW_AUTHORITY));
+        return result;
+    }
+
+    private boolean userHasPermissions(UUID userId, String... required) {
+        if (userId == null) return false;
+        Set<String> permissions = Set.of(required);
+        return userRepo.findById(userId)
+                .filter(user -> !user.isDeleted()
+                        && "active".equals(user.getStatus()))
+                .map(permissionResolver::permsOf)
+                .map(authorities -> authorities.containsAll(permissions))
+                .orElse(false);
+    }
+
+    private void notifySubcontractLossClaimEvent(String eventType, UUID caseId) {
+        deliverAtomically(() -> {
+            Map<String, Object> claim = one("""
+                    SELECT loss.waste_bill_no,loss.status,supplier.name AS supplier_name
+                    FROM subcontract_loss_cases loss
+                    JOIN suppliers supplier ON supplier.id=loss.supplier_id
+                    WHERE loss.id=?
+                    """, caseId);
+            if (claim == null) return;
+            String wasteNo = str(claim.get("waste_bill_no"));
+            String supplier = str(claim.get("supplier_name"));
+            String status = str(claim.get("status"));
+            String title;
+            String content;
+            String type;
+            if (EVENT_SUBCONTRACT_LOSS_OPENED.equals(eventType)) {
+                title = "委外超耗待财务决定：" + wasteNo;
+                content = "委外商 " + supplier + " 的损耗单 " + wasteNo
+                        + " 已形成超耗责任单。请核对公司承担、索赔、合法抵销、现金或实物补偿；"
+                        + "损耗事实本身不会自动冲应付。";
+                type = TYPE_APPROVAL;
+                for (UUID reviewer : userIdsWithPermissions(
+                        "subcontract_loss_claim:review", NOTICE_READ_AUTHORITY)) {
+                    sendToUser(reviewer, type, title, content, "/finance/payables");
+                }
+                return;
+            }
+            if (EVENT_SUBCONTRACT_LOSS_DECIDED.equals(eventType)) {
+                title = "委外超耗责任已决定：" + wasteNo;
+                content = "委外商 " + supplier + " 的超耗责任已更新为 " + status
+                        + "。待履约方案必须继续关联真实资金或实物证据。";
+                type = TYPE_WORKFLOW;
+            } else if (EVENT_SUBCONTRACT_LOSS_FULFILLED.equals(eventType)) {
+                title = "委外超耗履约已登记：" + wasteNo;
+                content = "委外商 " + supplier + " 的超耗补偿履约已登记，当前状态 "
+                        + status + "。请按责任单核对抵销、到账或实物单据。";
+                type = TYPE_WORKFLOW;
+            } else {
+                title = "委外超耗责任已反向：" + wasteNo;
+                content = "委外商 " + supplier + " 的超耗责任/履约发生受控反向，当前状态 "
+                        + status + "。请重新核对后续应付、资金和实物事实。";
+                type = TYPE_URGENT;
+            }
+
+            Set<UUID> financeTargets = new LinkedHashSet<>(userIdsWithPermissions(
+                    "subcontract_loss_claim:view", NOTICE_READ_AUTHORITY));
+            if ("AWAITING_FULFILLMENT".equals(status)) {
+                financeTargets.addAll(userIdsWithPermissions(
+                        "subcontract_loss_claim:fulfill", NOTICE_READ_AUTHORITY));
+            }
+            for (UUID target : financeTargets) {
+                sendToUser(target, type, title, content, "/finance/payables");
+            }
+            List<Map<String, Object>> owners = jdbc.queryForList("""
+                    SELECT DISTINCT owner_user.id AS user_id,orders.id AS order_id
+                    FROM subcontract_loss_case_lines line
+                    JOIN subcontract_order_items order_item ON order_item.id=line.order_item_id
+                    JOIN subcontract_orders orders ON orders.id=order_item.order_id
+                    JOIN users owner_user ON owner_user.employee_id=orders.maker_id
+                    WHERE line.case_id=?
+                      AND owner_user.status='active'
+                      AND COALESCE(owner_user.is_deleted,FALSE)=FALSE
+                    """, caseId);
+            for (Map<String, Object> owner : owners) {
+                UUID ownerUserId = (UUID) owner.get("user_id");
+                if (financeTargets.contains(ownerUserId)) continue;
+                sendToUser(
+                        ownerUserId,
+                        type,
+                        title,
+                        content,
+                        "/subcontract/orders/" + owner.get("order_id"));
+            }
+        });
+    }
+
+    /**
+     * IQC failure, physical supplier return and the AP/credit decision are
+     * separate facts. Notifications therefore point to the durable rejection
+     * case and never copy commercial prices, exchange rates or credit amounts.
+     *
+     * <p>Ordinary {@code :view} is row-scoped: only the order owner may receive
+     * that case. Global finance broadcasts require {@code notice:read} plus an
+     * explicit all-case/action permission, so a user who can read only their
+     * own orders cannot learn another order's rejection details.</p>
+     */
+    private void notifyProcurementIqcRejectionEvent(
+            String eventType, UUID caseId) {
+        deliverAtomically(() -> {
+            Map<String, Object> rejection = one("""
+                    SELECT rejection.receipt_type,
+                           rejection.receipt_bill_no,
+                           rejection.order_bill_no,
+                           rejection.status,
+                           rejection.owner_user_id,
+                           rejection.failed_qty,
+                           goods.code AS goods_code,
+                           goods.name AS goods_name,
+                           unit.name AS unit_name
+                    FROM procurement_iqc_rejection_cases rejection
+                    JOIN goods ON goods.id = rejection.goods_id
+                    LEFT JOIN units unit ON unit.id = rejection.unit_id
+                    WHERE rejection.id = ?
+                      AND COALESCE(rejection.is_deleted, FALSE) = FALSE
+                    """, caseId);
+            if (rejection == null) return;
+
+            String orderNo = str(rejection.get("order_bill_no"));
+            String receiptNo = str(rejection.get("receipt_bill_no"));
+            String goods = (str(rejection.get("goods_code")) + " "
+                    + str(rejection.get("goods_name"))).strip();
+            String failedQty = qty(bd(rejection.get("failed_qty")));
+            String unit = str(rejection.get("unit_name"));
+            String sourceLabel = ("SUBCONTRACT".equals(
+                    str(rejection.get("receipt_type")))
+                    ? "委外订货单 " : "采购订货单 ")
+                    + (orderNo.isBlank() ? "（单号缺失）" : orderNo)
+                    + " 的收货单 "
+                    + (receiptNo.isBlank() ? "（单号缺失）" : receiptNo);
+            String goodsLabel = goods.isBlank()
+                    ? ""
+                    : "，物料 " + goods + "，不合格数量 " + failedQty
+                            + (unit.isBlank() ? "" : " " + unit);
+            String route = "/procurement/iqc-rejections/" + caseId;
+
+            String title;
+            String content;
+            String type;
+            Set<UUID> recipients;
+            if (EVENT_PROCUREMENT_IQC_REJECTION_OPENED.equals(eventType)) {
+                title = "IQC不合格待处置：" + displayNo(orderNo, receiptNo);
+                content = sourceLabel + goodsLabel
+                        + " 已形成独立退回/贷项任务。IQC不合格不会进入可用库存，"
+                        + "实物退回与供应商贷项必须分别留痕；请在任务详情跟进。";
+                type = TYPE_TASK;
+                recipients = userIdsWithIqcViewAndAnyPermission(
+                        IQC_REJECTION_VIEW_ALL_AUTHORITY,
+                        IQC_REJECTION_RECORD_RETURN_AUTHORITY,
+                        IQC_REJECTION_CONFIRM_CREDIT_AUTHORITY,
+                        IQC_REJECTION_CLOSE_NO_CREDIT_AUTHORITY);
+                UUID ownerUserId = (UUID) rejection.get("owner_user_id");
+                if (userHasPermissions(
+                        ownerUserId,
+                        NOTICE_READ_AUTHORITY,
+                        IQC_REJECTION_VIEW_AUTHORITY)) {
+                    recipients.add(ownerUserId);
+                }
+            } else if (EVENT_PROCUREMENT_IQC_REJECTION_RETURNED.equals(eventType)) {
+                title = "IQC退回已登记，待财务结案："
+                        + displayNo(orderNo, receiptNo);
+                content = sourceLabel + goodsLabel
+                        + " 的实物退回证据已登记。请财务核对后选择确认供应商贷项"
+                        + "或无贷项结案；通知不代表应付已自动冲减。";
+                type = TYPE_APPROVAL;
+                recipients = userIdsWithIqcViewAndAnyPermission(
+                        IQC_REJECTION_CONFIRM_CREDIT_AUTHORITY,
+                        IQC_REJECTION_CLOSE_NO_CREDIT_AUTHORITY);
+                UUID ownerUserId = (UUID) rejection.get("owner_user_id");
+                if (userHasPermissions(
+                        ownerUserId,
+                        NOTICE_READ_AUTHORITY,
+                        IQC_REJECTION_VIEW_AUTHORITY)) {
+                    recipients.add(ownerUserId);
+                }
+            } else if (EVENT_PROCUREMENT_IQC_REJECTION_FINANCE_EXCEPTION.equals(
+                    eventType)) {
+                title = "IQC财务处置异常待复核："
+                        + displayNo(orderNo, receiptNo);
+                content = sourceLabel + goodsLabel
+                        + " 的财务动作未完成，任务仍停留在持久状态 "
+                        + str(rejection.get("status"))
+                        + "。请从任务详情核对来源应付、贷项和抵销事实；"
+                        + "不得据此通知手工修改应付余额。";
+                type = TYPE_URGENT;
+                recipients = userIdsWithIqcViewAndAnyPermission(
+                        IQC_REJECTION_VIEW_ALL_AUTHORITY,
+                        IQC_REJECTION_CONFIRM_CREDIT_AUTHORITY,
+                        IQC_REJECTION_CLOSE_NO_CREDIT_AUTHORITY);
+            } else {
+                recipients = new LinkedHashSet<>(userIdsWithPermissions(
+                        NOTICE_READ_AUTHORITY,
+                        IQC_REJECTION_VIEW_ALL_AUTHORITY));
+                UUID ownerUserId = (UUID) rejection.get("owner_user_id");
+                if (userHasPermissions(
+                        ownerUserId,
+                        NOTICE_READ_AUTHORITY,
+                        IQC_REJECTION_VIEW_AUTHORITY)) {
+                    recipients.add(ownerUserId);
+                }
+                if (EVENT_PROCUREMENT_IQC_CREDIT_CONFIRMED.equals(eventType)) {
+                    title = "IQC供应商贷项已确认："
+                            + displayNo(orderNo, receiptNo);
+                    content = sourceLabel + goodsLabel
+                            + " 的供应商贷项与来源应付抵销已受控确认。"
+                            + "具体商业数据仅在持权任务详情中查看。";
+                    type = TYPE_WORKFLOW;
+                } else if (EVENT_PROCUREMENT_IQC_REJECTION_NO_CREDIT.equals(
+                        eventType)) {
+                    title = "IQC无贷项已结案："
+                            + displayNo(orderNo, receiptNo);
+                    content = sourceLabel + goodsLabel
+                            + " 已按留痕原因完成无贷项结案，未生成供应商贷项或自动应付抵销。"
+                            + "具体商业数据仅在持权任务详情中查看。";
+                    type = TYPE_WORKFLOW;
+                } else {
+                    title = "IQC拒收处置已反向："
+                            + displayNo(orderNo, receiptNo);
+                    content = sourceLabel + goodsLabel
+                            + " 的退回/贷项处置发生受控反向，当前持久状态 "
+                            + str(rejection.get("status"))
+                            + "。请按任务详情重新执行后续步骤；通知本身不改变库存或应付。";
+                    type = TYPE_URGENT;
+                }
+            }
+            for (UUID recipient : recipients) {
+                sendToUser(
+                        recipient,
+                        type,
+                        title,
+                        content,
+                        route,
+                        eventType);
+            }
+        });
+    }
+
+    private static String displayNo(String orderNo, String receiptNo) {
+        return orderNo == null || orderNo.isBlank() ? receiptNo : orderNo;
     }
 
     // ---------- 接收人解析与发送 ----------
@@ -2083,6 +3306,11 @@ public class ChainNoticeService {
                 .filter(u -> "active".equals(u.getStatus()) && !u.isDeleted())
                 .map(UserAccount::getId)
                 .orElse(null);
+    }
+
+    /** Current subcontract maker_id is an employee UUID, never a user UUID. */
+    private UUID subcontractMakerUserId(UUID makerIdentity) {
+        return userIdOfEmployee(makerIdentity);
     }
 
     private void notifyUser(UUID userId, String type, String title, String content) {
@@ -2238,12 +3466,19 @@ public class ChainNoticeService {
     /** 部门树候选与当前有效权限求交，个人 revoke 后不会继续收到业务详情。 */
     private List<UUID> departmentUserIdsWithAuthority(
             String departmentCode, String authority) {
+        return departmentUserIdsWithAuthorities(departmentCode, authority);
+    }
+
+    /** 部门树候选与多个当前有效权限取交集。 */
+    private List<UUID> departmentUserIdsWithAuthorities(
+            String departmentCode, String... authorities) {
+        Set<String> required = Set.of(authorities);
         return departmentUserIds(departmentCode).stream()
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
                                 && "active".equals(account.getStatus()))
                         .map(permissionResolver::permsOf)
-                        .map(permissions -> permissions.contains(authority))
+                        .map(permissions -> permissions.containsAll(required))
                         .orElse(false))
                 .toList();
     }

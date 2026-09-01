@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BusinessChainScenarioMatrixTest {
@@ -19,7 +20,7 @@ class BusinessChainScenarioMatrixTest {
     void matrixKeepsEveryRequiredEndToEndScenarioUnique() throws IOException {
         String matrix = Files.readString(MATRIX);
 
-        for (int number = 1; number <= 40; number++) {
+        for (int number = 1; number <= 49; number++) {
             String id = "SC-%02d".formatted(number);
             assertEquals(1, occurrences(matrix, "| " + id + " |"),
                     id + " must appear exactly once as a scenario row");
@@ -53,6 +54,8 @@ class BusinessChainScenarioMatrixTest {
                 "GOOD_RELEASE",
                 "SHIPPED",
                 "finance_audit",
+                "finance_order_approval:approve",
+                "finance_order_approval:reject",
                 "FINISHED_IN",
                 "供应商期末结存",
                 "executionSegmentId",
@@ -66,6 +69,8 @@ class BusinessChainScenarioMatrixTest {
             assertTrue(matrix.contains(required),
                     () -> "business-chain matrix is missing required contract: " + required);
         }
+        assertFalse(matrix.contains("finance_order_approval:review"),
+                "current scenario matrix must not use inactive legacy review permission");
     }
 
     private static int occurrences(String source, String needle) {

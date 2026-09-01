@@ -6,6 +6,7 @@ import com.uten.imp.application.port.ProductionFqcRecoveryPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -13,10 +14,16 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -114,6 +121,101 @@ class ProductionFqcInspectionServiceTest {
                 ProductionFqcInspectionService.normalizeStatusFilter(
                         "cancelled"))
                 .isEqualTo("CANCELLED");
+    }
+
+    @Test
+    void passAllNormalizationRejectsEmptyDuplicateAndOversizedSelections() {
+        assertThatThrownBy(() ->
+                ProductionFqcInspectionService.normalizePassAllBatch(
+                        new PassAllBatchRequest(List.of(), "fqc-batch-empty")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("1-100");
+
+        UUID duplicate = UUID.randomUUID();
+        assertThatThrownBy(() ->
+                ProductionFqcInspectionService.normalizePassAllBatch(
+                        new PassAllBatchRequest(
+                                List.of(duplicate, duplicate),
+                                "fqc-batch-duplicate")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("不能重复");
+
+        List<UUID> tooMany = new ArrayList<>();
+        for (int i = 1; i <= 101; i++) {
+            tooMany.add(new UUID(0, i));
+        }
+        assertThatThrownBy(() ->
+                ProductionFqcInspectionService.normalizePassAllBatch(
+                        new PassAllBatchRequest(
+                                tooMany, "fqc-batch-too-many")))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("1-100");
+    }
+
+    @Test
+    void passAllReverseInputHasOneStableLockOrderAndRequestHash() {
+        UUID first = UUID.fromString(
+                "00000000-0000-0000-0000-000000000001");
+        UUID second = UUID.fromString(
+                "f0000000-0000-0000-0000-000000000002");
+        var forward = ProductionFqcInspectionService.normalizePassAllBatch(
+                new PassAllBatchRequest(
+                        List.of(first, second), "fqc-batch-order-01"));
+        var reverse = ProductionFqcInspectionService.normalizePassAllBatch(
+                new PassAllBatchRequest(
+                        List.of(second, first), "fqc-batch-order-01"));
+
+        assertThat(forward.inspectionIds()).containsExactly(first, second);
+        assertThat(reverse.inspectionIds()).isEqualTo(forward.inspectionIds());
+        assertThat(reverse.requestHash()).isEqualTo(forward.requestHash());
+    }
+
+    @Test
+    void passAllSameKeyReplaysOnlyTheSameNormalizedSelection() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        var request = ProductionFqcInspectionService.normalizePassAllBatch(
+                new PassAllBatchRequest(
+                        List.of(second, first), "fqc-batch-replay-01"));
+        assertThatCode(() ->
+                ProductionFqcInspectionService.requirePassAllReplayCompatible(
+                        request.requestHash(), 2, request))
+                .doesNotThrowAnyException();
+
+        var different = ProductionFqcInspectionService.normalizePassAllBatch(
+                new PassAllBatchRequest(
+                        List.of(first), "fqc-batch-replay-01"));
+        assertThatThrownBy(() ->
+                ProductionFqcInspectionService.requirePassAllReplayCompatible(
+                        request.requestHash(), 2, different))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("不同任务集合");
+    }
+
+    @Test
+    void passAllChildKeysAreDeterministicAndWithinDecisionBoundary() {
+        UUID batchId = UUID.randomUUID();
+        UUID inspectionId = UUID.randomUUID();
+        String first = ProductionFqcInspectionService.passAllChildKey(
+                batchId, inspectionId);
+
+        assertThat(first)
+                .isEqualTo(ProductionFqcInspectionService.passAllChildKey(
+                        batchId, inspectionId))
+                .hasSizeLessThanOrEqualTo(128);
+        assertThat(ProductionFqcInspectionService.normalizeDecisionKey(first))
+                .isEqualTo(first);
+    }
+
+    @Test
+    void passAllServiceKeepsOneAtomicTransactionAndExactPermissions()
+            throws Exception {
+        var method = ProductionFqcInspectionService.class.getMethod(
+                "passAll", PassAllBatchRequest.class);
+        assertThat(method.getAnnotation(Transactional.class)).isNotNull();
+        assertThat(method.getAnnotation(PreAuthorize.class).value())
+                .contains("production_quality_inspection:view")
+                .contains("production_quality_inspection:approve");
     }
 
     @Test

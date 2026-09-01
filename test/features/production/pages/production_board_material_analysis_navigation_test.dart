@@ -42,7 +42,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('可生产几个'), findsOneWidget);
+      expect(find.text('可生产量'), findsOneWidget);
       expect(find.text('3(30%)'), findsOneWidget);
       expect(find.text('未分析'), findsWidgets);
 
@@ -69,8 +69,8 @@ void main() {
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isTrue);
       expect(find.text('联合分析所选 2 项'), findsOneWidget);
-      expect(find.text('总数量 14'), findsOneWidget);
-      // 总数量徽标必须与联合分析按钮同一行、同高且在其左侧。
+      expect(find.text('已选 2 行'), findsOneWidget);
+      // 混合产品单位不求总量；所选行数徽标与联合分析按钮同一行、同高且在其左侧。
       final totalRect = tester.getRect(
         find.byKey(const Key('production-pending-selected-total')),
       );
@@ -85,7 +85,7 @@ void main() {
       await tester.pump();
       expect(tester.widget<Checkbox>(checkboxes.at(0)).value, isFalse);
       expect(find.text('新建物料分析'), findsOneWidget);
-      expect(find.text('总数量 14'), findsNothing);
+      expect(find.text('已选 2 行'), findsNothing);
 
       await tester.tap(checkboxes.at(0));
       await tester.pump();

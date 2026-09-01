@@ -7,9 +7,9 @@ import 'package:uten_imp/features/subcontract/repositories/subcontract_repositor
 
 void main() {
   // 订货单支持从管理卡片直达新建（与销售/采购一致，见 subcontract_doc_config.dart 注释），
-  // 但明细仍必须经「从上游引入」来自计划申请（linkToApplicationItem）；申请单本身只读。
+  // 两条入口并存：可从任务中心带入计划申请，也可直接录入目标委外件；申请单本身只读。
   test(
-    'planning applications are read-only; orders may be created directly but source lines from planning',
+    'planning applications are read-only and orders support analysis or direct target lines',
     () {
       expect(SubcontractDocConfig.application.allowDirectCreate, isFalse);
       expect(SubcontractDocConfig.application.skipListOnCreate, isFalse);
@@ -50,72 +50,60 @@ void main() {
     expect(line.sourcePlanNo, 'PP-001');
   });
 
-  test('order detail trusts finance allowedActions from the server', () {
-    final detail = SubcontractDocDetail.fromJson({
-      'id': 'order-1',
-      'status': 0,
-      'financeApproval': {
-        'caseId': 'case-1',
-        'status': 'PENDING',
-        'attempt': 1,
-        'version': 3,
-        'assigneeName': '财务负责人',
-        'allowedActions': ['APPROVE', 'REJECT'],
-      },
-    });
-
-    expect(detail.financeApproval?.isPending, isTrue);
-    expect(detail.financeApproval?.version, 3);
-    expect(detail.financeApproval?.canApprove, isTrue);
-    expect(detail.financeApproval?.canReject, isTrue);
-    expect(detail.financeApproval?.canSubmit, isFalse);
-  });
-
   test(
-    'repository uses decomposition and finance decision endpoints',
-    () async {
-      final requests = <RequestOptions>[];
-      final repository = SubcontractRepository(
-        _api((request) {
-          requests.add(request);
-          if (request.path.endsWith('/decomposition-preview')) {
-            return <Object?>[];
-          }
-          return {
-            'id': 'order-1',
-            'financeApproval': {
-              'status': 'DRAFT',
-              'attempt': 0,
-              'version': 0,
-              'allowedActions': ['SUBMIT_FINANCE'],
-            },
-          };
-        }),
-        SubcontractDocType.order,
-      );
-
-      await repository.decompositionPreview(['item-1', 'item-1']);
-      await repository.submitFinance('order-1');
-      await repository.approveFinance('order-1', expectedVersion: 2);
-      await repository.rejectFinance(
-        'order-1',
-        expectedVersion: 3,
-        reason: ' 修改价格 ',
-      );
-
-      expect(
-        requests[0].path,
-        '/subcontract/applications/decomposition-preview',
-      );
-      expect(requests[0].data, {
-        'itemIds': ['item-1'],
+    'business order detail keeps finance status without decision helpers',
+    () {
+      final detail = SubcontractDocDetail.fromJson({
+        'id': 'order-1',
+        'status': 0,
+        'financeApproval': {
+          'caseId': 'case-1',
+          'status': 'PENDING',
+          'attempt': 1,
+          'version': 3,
+          'assigneeName': '财务负责人',
+          'allowedActions': ['APPROVE', 'REJECT'],
+        },
       });
-      expect(requests[1].path, '/subcontract/orders/order-1/submit-finance');
-      expect(requests[2].data, {'expectedVersion': 2});
-      expect(requests[3].path, '/subcontract/orders/order-1/reject');
-      expect(requests[3].data, {'expectedVersion': 3, 'reason': '修改价格'});
+
+      expect(detail.financeApproval?.isPending, isTrue);
+      expect(detail.financeApproval?.version, 3);
+      expect(detail.financeApproval?.canSubmit, isFalse);
+      expect(detail.financeApproval?.allowedActions, {'APPROVE', 'REJECT'});
     },
   );
+
+  test('repository uses decomposition and submit-finance endpoints', () async {
+    final requests = <RequestOptions>[];
+    final repository = SubcontractRepository(
+      _api((request) {
+        requests.add(request);
+        if (request.path.endsWith('/decomposition-preview')) {
+          return <Object?>[];
+        }
+        return {
+          'id': 'order-1',
+          'financeApproval': {
+            'status': 'DRAFT',
+            'attempt': 0,
+            'version': 0,
+            'allowedActions': ['SUBMIT_FINANCE'],
+          },
+        };
+      }),
+      SubcontractDocType.order,
+    );
+
+    await repository.decompositionPreview(['item-1', 'item-1']);
+    await repository.submitFinance('order-1');
+
+    expect(requests[0].path, '/subcontract/applications/decomposition-preview');
+    expect(requests[0].data, {
+      'itemIds': ['item-1'],
+    });
+    expect(requests[1].path, '/subcontract/orders/order-1/submit-finance');
+    expect(requests, hasLength(2));
+  });
 }
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {

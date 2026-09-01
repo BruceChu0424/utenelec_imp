@@ -98,6 +98,32 @@ class AuditQueryServiceTest {
     }
 
     @Test
+    void listAndDetailDtosExposeStructuredTargetEvidenceAndLegacyCompatibilityName() {
+        AuditLog log = new AuditLog();
+        log.setAction("view_sales_order_detail_history");
+        log.setTargetType("sales_orders");
+        log.setAfter("{\"view_metadata_kind\":\"business_detail_view\","
+                + "\"target_display_name\":\"销售订货单\","
+                + "\"target_business_code\":\"SO-2026-001\","
+                + "\"target_legacy_code\":\"86\"}");
+        log.setResult("success");
+        log.setEventSource("business");
+
+        AuditLogRow row = AuditLogRow.of(log, new AuditEventInterpreter());
+        AuditLogDetail detail = AuditLogDetail.of(log, new AuditEventInterpreter());
+
+        assertEquals("销售订货单", row.getTargetDisplayName());
+        assertEquals("SO-2026-001", row.getTargetBusinessCode());
+        assertEquals("86", row.getTargetLegacyCode());
+        assertEquals("SO-2026-001(旧系统编号 86)", row.getTargetName());
+        assertEquals("销售订货单", detail.targetDisplayName());
+        assertEquals("SO-2026-001", detail.targetBusinessCode());
+        assertEquals("86", detail.targetLegacyCode());
+        assertEquals("SO-2026-001(旧系统编号 86)", detail.targetName());
+        assertEquals(null, detail.after(), "internal view metadata stays hidden");
+    }
+
+    @Test
     void detailFailsClosedWhenRowWasNeverPresentOrHasBeenArchived() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
@@ -195,7 +221,7 @@ class AuditQueryServiceTest {
         verify((JpaExpression<?>) requestIdPath).cast(String.class);
         verify(root, never()).get("before");
         verify(root, atLeastOnce()).get("after");
-        verify(criteriaBuilder).function(
+        verify(criteriaBuilder, times(4)).function(
                 eq("jsonb_extract_path_text"),
                 eq(String.class),
                 any(Expression.class),
@@ -363,7 +389,10 @@ class AuditQueryServiceTest {
         log.setTargetType("payroll_slips");
         log.setTargetId(UUID.randomUUID().toString());
         log.setBefore("{secret:must-not-export}");
-        log.setAfter("{secret:must-not-export}");
+        log.setAfter("{\"target_display_name\":\"工资条\","
+                + "\"target_business_code\":\"GZ-001\","
+                + "\"target_legacy_code\":\"12\","
+                + "\"secret\":\"must-not-export\"}");
         log.setResult("success");
         log.setEventSource("business");
         log.setHttpMethod("POST");
@@ -386,6 +415,13 @@ class AuditQueryServiceTest {
         assertEquals("中", payload.rows().getFirst().get("riskLevel"));
         assertEquals("数据导出", payload.rows().getFirst().get("eventCategory"));
         assertEquals("成功", payload.rows().getFirst().get("outcome"));
+        assertEquals("工资条",
+                payload.rows().getFirst().get("targetDisplayName"));
+        assertEquals("GZ-001",
+                payload.rows().getFirst().get("targetBusinessCode"));
+        assertEquals("12",
+                payload.rows().getFirst().get("targetLegacyCode"));
+        assertEquals("提交", payload.rows().getFirst().get("httpMethod"));
         assertEquals("2026-07-31 14:00:00(北京时间)",
                 payload.rows().getFirst().get("createdAt"));
         assertFalse(payload.rows().getFirst().containsKey("actionCode"));

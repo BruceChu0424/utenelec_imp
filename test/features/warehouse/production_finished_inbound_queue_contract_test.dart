@@ -1,6 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/router/permission_by_path.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
   test(
@@ -49,4 +52,31 @@ void main() {
       );
     },
   );
+
+  test('arrival registration deep link keeps stock view boundary', () {
+    const reportId = '20000000-0000-0000-0000-000000000001';
+    final location = RoutePath.warehouseProductionFinishedArrivalRegistration(
+      reportId,
+      returnTo: RouteName.warehouseProductionFinishedInboundTasks,
+    );
+    final uri = Uri.parse(location);
+
+    expect(
+      uri.path,
+      '${RouteName.warehouseProductionFinishedArrivalRegistrationBase}/'
+      '$reportId',
+    );
+    expect(
+      uri.queryParameters['returnTo'],
+      RouteName.warehouseProductionFinishedInboundTasks,
+    );
+    expect(requiredAnyPermFor(uri.path), const [Perm.stockDocView]);
+    expect(
+      requiredAnyPermFor(
+        '${RouteName.warehouseProductionFinishedArrivalRegistrationBase}'
+        '-shadow/$reportId',
+      ),
+      isNot(contains(Perm.stockDocView)),
+    );
+  });
 }

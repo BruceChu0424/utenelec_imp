@@ -248,7 +248,7 @@ public class SalesOtherShipmentService {
                 ts, StockService.TYPE_SALES_OTHER_OUT, StockService.SRC_SALES_OTHER_SHIPMENT,
                 s.getId(), it.getId(), it.getGoodsId(), it.getColorId(), s.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲"));
+                direction < 0 ? null : "红冲", it.getWeight()));
     }
 
     private LinkedSource validateLinkedOrderItems(OtherShipmentSaveRequest req) {

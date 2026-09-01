@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.execution;
 
 import com.uten.imp.application.port.ProductionCompletionReversePort;
+import com.uten.imp.application.port.SubcontractPreparationInventoryPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -42,6 +43,7 @@ public class ProductionCompletionReverseService
 
     private final ProductionExecutionReadinessService readiness;
     private final MaterialAnalysisSupplyWakeupService materialAnalysisWakeup;
+    private final SubcontractPreparationInventoryPort subcontractPreparation;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -64,6 +66,11 @@ public class ProductionCompletionReverseService
         }
         readiness.onFinishedInboundApproved(
                 stockDocumentId, warehouseId);
+        subcontractPreparation.afterFinishedInboundApproved(
+                stockDocumentId, warehouseId);
+        // The dedicated outbound reservation must exist before any analysis
+        // refresh reads v_stock_available, otherwise the new target item can
+        // be snapshotted as public stock by another analysis.
         materialAnalysisWakeup.afterFinishedInboundApproved(stockDocumentId);
     }
 
@@ -86,6 +93,7 @@ public class ProductionCompletionReverseService
                     ErrorCode.VALIDATION_FAILED, "成品入库红冲缺少单据标识");
         }
         lockAndRequireApprovedFinishedIn(stockDocumentId);
+        subcontractPreparation.beforeFinishedInboundReversed(stockDocumentId);
         readiness.beforeFinishedInboundReversed(stockDocumentId);
         List<UUID> segmentIds = exactSegmentIds(stockDocumentId);
         if (segmentIds.isEmpty()) {

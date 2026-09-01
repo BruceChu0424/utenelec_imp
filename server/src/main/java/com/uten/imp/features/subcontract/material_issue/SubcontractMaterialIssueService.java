@@ -40,15 +40,17 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * 委外材料出仓单服务：CRUD（主+明细）+ 审核状态机。
+ * 委外出仓单服务：V436 目标件新流 + V304/V221 历史材料行兼容。
  *
- * <p>审核（V221 起）：冻结 BOM 单耗快照 + 建供应商处子件台账（at_supplier_qty = 发料量）
- * + 材料出库（type15, DIR_OUT）。上游完整性（订货明细存在、已财务批准、委外商/父件一致）
- * 由 {@link #lockAndValidateOrderItems} fail-closed 校验。禁止把不同子件数量累计到成品订货行。
+ * <p>V436 计划行只发订货目标件，并先消费本 planItem/warehouse 的专属统一库存预留；
+ * 无足额专属预留即失败。V221 供应商处台账继续记录发出、回仓消费、退回和损耗，
+ * 新流冻结换算率以把回仓单据单位转换为目标件基本单位。历史
+ * {@code LEGACY_BOM_COMPONENT} 行继续按冻结 BOM 子件口径处理。
  * <b>不立应付</b>（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。无 Price（amount 可空）。
  *
  * <p>红冲（1→-1）：反向 DIR_IN + 置 status=-1；已有退料/损耗/回厂消费的发料行禁止红冲
@@ -159,6 +161,7 @@ public class SubcontractMaterialIssueService {
         r.setStatus(STATUS_DRAFT);
         issueRepo.save(r);
         List<MaterialIssueItemDto> items = saveItems(r, req.getItems());
+        planService.reserveDraft(r.getId(), r.getWarehouseId());
         applyTotals(r, items);
         return toDetail(r, items);
     }
@@ -177,6 +180,7 @@ public class SubcontractMaterialIssueService {
         itemRepo.deleteByIssueId(id);
         itemRepo.flush();
         List<MaterialIssueItemDto> items = saveItems(r, req.getItems());
+        planService.reserveDraft(r.getId(), r.getWarehouseId());
         applyTotals(r, items);
         return toDetail(r, items);
     }
@@ -188,6 +192,7 @@ public class SubcontractMaterialIssueService {
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
         requireIssueWritable(r, "subcontract_material_issue:delete");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
+        planService.releaseDraftReservations(id);
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         issueRepo.save(r);
@@ -305,6 +310,7 @@ public class SubcontractMaterialIssueService {
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
+        planService.consumeOutboundReservations(id, r.getWarehouseId());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialIssueItem it : items) {
             applyMovement(r, it, StockService.DIR_OUT, now, null);
@@ -417,6 +423,7 @@ public class SubcontractMaterialIssueService {
                         || positive(it.getConsumedQty()))) {
             throw new ApiException(ErrorCode.BUSINESS, "委外发料已有退料/损耗/回厂消费记录，请先红冲下游单据");
         }
+        requireReturnCapacityAfterReverse(id, items);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -427,11 +434,94 @@ public class SubcontractMaterialIssueService {
             it.setAtSupplierQty(BigDecimal.ZERO);
             itemRepo.save(it);
         }
+        planService.reverseOutboundReservations(id);
         r.setStatus(STATUS_REVERSED);
         issueRepo.save(r);
         // 计划回写（同事务）：issued_qty -= 红冲量；不自动补草稿（工作台「补齐出仓单」）。
         planService.syncAfterIssueReversed(id);
         return detail(id);
+    }
+
+    /**
+     * 与回厂草稿 create/update 共用订货明细行锁。红冲后剩余的真实出仓 + 合法返修
+     * 容量必须仍覆盖已审核回厂和活动草稿；有其它批次足额覆盖时不做无条件阻断。
+     */
+    private void requireReturnCapacityAfterReverse(
+            UUID issueId, List<SubcontractMaterialIssueItem> items) {
+        List<UUID> orderItemIds = items.stream()
+                .map(SubcontractMaterialIssueItem::getOrderItemId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+        if (orderItemIds.isEmpty()) return;
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT order_item.id,
+                       EXISTS (
+                           SELECT 1
+                           FROM subcontract_material_plan_items plan_item
+                           WHERE plan_item.order_item_id = order_item.id
+                             AND plan_item.flow_mode IN (
+                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                             AND plan_item.is_deleted = FALSE
+                       ) AS new_flow,
+                       COALESCE((
+                           SELECT SUM(issue_item.qty * COALESCE(issue_item.unit_rate, 1))
+                           FROM subcontract_material_issue_items issue_item
+                           JOIN subcontract_material_issues issue
+                             ON issue.id = issue_item.issue_id
+                            AND issue.status = 1
+                            AND issue.is_deleted = FALSE
+                           JOIN subcontract_material_plan_items plan_item
+                             ON plan_item.id = issue_item.plan_item_id
+                            AND plan_item.flow_mode IN (
+                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                            AND plan_item.is_deleted = FALSE
+                           WHERE issue_item.order_item_id = order_item.id
+                             AND issue_item.issue_id <> :issueId
+                             AND issue_item.is_deleted = FALSE
+                       ), 0)
+                       + COALESCE((
+                           SELECT SUM(rejection.failed_base_qty)
+                           FROM procurement_iqc_rejection_cases rejection
+                           WHERE rejection.receipt_type = 'SUBCONTRACT'
+                             AND rejection.order_item_id = order_item.id
+                             AND rejection.is_deleted = FALSE
+                             AND rejection.return_recorded_at IS NOT NULL
+                             AND rejection.status IN (
+                                 'RETURN_RECORDED','CREDIT_CONFIRMED',
+                                 'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
+                       ), 0) AS authorized_base_after_reverse,
+                       COALESCE((
+                           SELECT SUM(receipt_item.qty * COALESCE(receipt_item.unit_rate, 1))
+                           FROM subcontract_receipt_items receipt_item
+                           JOIN subcontract_receipts receipt
+                             ON receipt.id = receipt_item.receipt_id
+                            AND receipt.status IN (0, 1)
+                            AND receipt.is_deleted = FALSE
+                           WHERE receipt_item.order_item_id = order_item.id
+                             AND receipt_item.is_deleted = FALSE
+                       ), 0) AS claimed_base
+                FROM subcontract_order_items order_item
+                WHERE order_item.id IN (:orderItemIds)
+                  AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                ORDER BY order_item.id
+                FOR UPDATE OF order_item
+                """).setParameter("issueId", issueId)
+                .setParameter("orderItemIds", orderItemIds)
+                .getResultList();
+        if (rows.size() != orderItemIds.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外出仓来源订货明细不存在或已删除");
+        }
+        for (Object[] row : rows) {
+            if (!Boolean.TRUE.equals(row[1])) continue;
+            if (decimal(row[3]).compareTo(decimal(row[2])) > 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "红冲后目标件真实出仓额度不足以覆盖已审核或草稿回厂，请先处理下游回厂单");
+            }
+        }
     }
 
     private static boolean positive(BigDecimal value) {
@@ -448,7 +538,7 @@ public class SubcontractMaterialIssueService {
                 ts, StockService.TYPE_SUBCONTRACT_MATERIAL_ISSUE, StockService.SRC_SUBCONTRACT_MATERIAL_ISSUE,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲"));
+                direction < 0 ? null : "红冲", it.getWeight()));
     }
 
     private void applyHeader(MaterialIssueSaveRequest req, SubcontractMaterialIssue r) {
@@ -640,7 +730,8 @@ public class SubcontractMaterialIssueService {
     }
 
     private boolean subcontractPriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewSubcontractMaterialCost();
     }
 
     private static MaterialIssueItemDto maskItemPrices(MaterialIssueItemDto it) {

@@ -25,6 +25,21 @@ public final class MaterialAnalysisContracts {
     private MaterialAnalysisContracts() {
     }
 
+    public static final String REQUIREMENT_STATE_ACTIVE = "ACTIVE";
+    public static final String REQUIREMENT_STATE_DELEGATED_TO_MAKE_CHILD =
+            "DELEGATED_TO_MAKE_CHILD";
+    public static final String REQUIREMENT_STATE_DELEGATED_TO_SUBCONTRACT_PREPARATION =
+            "DELEGATED_TO_SUBCONTRACT_PREPARATION";
+    public static final String REQUIREMENT_STATE_INACTIVE_PARENT_COVERED =
+            "INACTIVE_PARENT_COVERED";
+    public static final String REQUIREMENT_STATE_INACTIVE_PARENT_ROUTE =
+            "INACTIVE_PARENT_ROUTE";
+    public static final String REQUIREMENT_STATE_INACTIVE_REFERENCE =
+            "INACTIVE_REFERENCE";
+    public static final String REQUIREMENT_STATE_TRANSFERRED_TO_PLAN =
+            "TRANSFERRED_TO_PLAN";
+    public static final String REQUIREMENT_STATE_INACTIVE = "INACTIVE";
+
     public record PreviewRequest(
             UUID analysisId,
             Long version,
@@ -92,7 +107,9 @@ public final class MaterialAnalysisContracts {
     /**
      * 本次提交的指定数量（缺省 = 剩余缺口全量提交）。
      * actionGroupKey 与 materialLineId 二选一；服务端按操作组解析，
-     * 数量必须大于 0 且不超过该组「缺口 − 在途任务」的实时余量。
+     * BUY/SUBCONTRACT 数量不得超过该组「缺口 − 在途任务」的实时余量；
+     * MAKE 在显式 delegated_qty 落地前必须等于全部实时余量，正式计划批量
+     * 由 child 创建后的 PlanQuantity 单独确认。
      */
     public record SupplyQuantityInput(
             @Size(max = 64) String actionGroupKey,
@@ -384,6 +401,7 @@ public final class MaterialAnalysisContracts {
             BigDecimal inboundQty,
             BigDecimal shortageQty,
             BigDecimal demandSupplyGapQty,
+            BigDecimal subcontractHandoffFutureQty,
             LocalDate expectedReadyDate,
             String sourceSuggestion,
             String sourceConfirmed,
@@ -391,6 +409,10 @@ public final class MaterialAnalysisContracts {
             String routeReason,
             boolean actionable,
             boolean lowerLevelPending,
+            String requirementState,
+            UUID delegatedToAnalysisLineId,
+            String delegatedToSourceRef,
+            BigDecimal delegatedToRequestedQty,
             BigDecimal borrowedInQty,
             BigDecimal borrowedOutQty,
             List<BorrowRef> borrowRefs,
@@ -447,6 +469,7 @@ public final class MaterialAnalysisContracts {
      * 进度一步：state ∈ DONE（已完成）/ CURRENT（进行中）/ WAITING（未开始）/
      * REJECTED（被驳回）；detail 为该步骤的补充说明（数量、待办提示）。
      * operatorName 为该步骤责任人姓名（提交人/采购人/审批人/收货人/下达人），无则 null。
+     * documentType/documentId 是可跳转单据的稳定锚点；docNo 只作展示，禁止反查 UUID。
      */
     public record SupplyProgressStep(
             String key,
@@ -455,7 +478,20 @@ public final class MaterialAnalysisContracts {
             String detail,
             String docNo,
             String at,
-            String operatorName) {
+            String operatorName,
+            String documentType,
+            UUID documentId) {
+
+        public SupplyProgressStep(
+                String key,
+                String label,
+                String state,
+                String detail,
+                String docNo,
+                String at,
+                String operatorName) {
+            this(key, label, state, detail, docNo, at, operatorName, null, null);
+        }
     }
 
     public record SupplyActionView(

@@ -68,21 +68,6 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   ) async {
     rejectedBatches.add((items: List.of(items), reason: reason));
   }
-
-  @override
-  Future<void> approveOrder(
-    FinanceProcurementOrderType orderType,
-    String orderId,
-    int expectedVersion,
-  ) async {}
-
-  @override
-  Future<void> rejectOrder(
-    FinanceProcurementOrderType orderType,
-    String orderId,
-    int expectedVersion,
-    String reason,
-  ) async {}
 }
 
 class _FinanceReviewerSessionNotifier extends SessionNotifier {
@@ -293,7 +278,7 @@ void main() {
         billNo: 'PO-2026-001',
       ),
     ]);
-    await _pumpPage(tester, repository);
+    final router = await _pumpPage(tester, repository);
 
     await tester.tap(find.text('PO-2026-001'));
     await tester.pump(const Duration(milliseconds: 50));
@@ -302,6 +287,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('采购详情 order-1'), findsOneWidget);
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('PO-2026-001'), findsOneWidget);
+    expect(find.text('已选 1 项'), findsOneWidget);
+    expect(
+      find.byKey(const Key('finance-approval-batch-approve')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('search clears selection and compact mode remains card-free', (
@@ -317,13 +310,16 @@ void main() {
     ]);
     await _pumpPage(tester, repository, size: const Size(375, 812));
 
-    var table = tester
-        .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
-          find.byKey(const Key('finance-approval-task-table')),
-        );
-    table.onSelectedIdsChanged?.call({'case-1'});
-    await tester.pump();
+    await tester.tap(find.text('PO-2026-001'));
+    await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('已选 1 项'), findsOneWidget);
+    expect(find.text('单击选择，双击或长按查看订货详情'), findsOneWidget);
+    final approve = find.byKey(const Key('finance-approval-batch-approve'));
+    final reject = find.byKey(const Key('finance-approval-batch-reject'));
+    expect(approve.hitTestable(), findsOneWidget);
+    expect(reject.hitTestable(), findsOneWidget);
+    expect(tester.getRect(approve).bottom, lessThanOrEqualTo(812));
+    expect(tester.getRect(reject).bottom, lessThanOrEqualTo(812));
 
     final search = find.descendant(
       of: find.byKey(const Key('finance-approval-search')),
@@ -334,9 +330,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.lastKeyword, '供应商A');
-    table = tester.widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
-      find.byKey(const Key('finance-approval-task-table')),
-    );
+    final table = tester
+        .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+          find.byKey(const Key('finance-approval-task-table')),
+        );
     expect(table.selectedIds, isEmpty);
     expect(find.byType(Card), findsNothing);
     expect(tester.takeException(), isNull);

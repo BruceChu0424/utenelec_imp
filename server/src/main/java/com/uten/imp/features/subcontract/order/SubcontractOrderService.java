@@ -13,6 +13,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.finance.ProcurementCommercialSnapshotPolicy;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.NativeQueryResults;
@@ -145,19 +146,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             throw new ApiException(ErrorCode.NOT_FOUND, "委外订货单不存在");
         }
         return assembleDetail(r);
-    }
-
-    /** See {@link #detail(UUID)}; this path is only for an approve/reject response. */
-    @Transactional(propagation = Propagation.MANDATORY)
-    OrderDetail financeDecisionResultDetail(UUID id, FinanceApproval decision) {
-        if (!approvalProjection.isCurrentActorEligibleReviewer()) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "委外订货单不存在");
-        }
-        requireDecisionReceipt(decision);
-        SubcontractOrder r = requireOrder(id);
-        List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(r.getId()).stream()
-                .map(this::toItemDto).toList();
-        return toDetail(r, items, decision);
     }
 
     private OrderDetail assembleDetail(SubcontractOrder r) {
@@ -317,6 +305,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         // ②委外自建手工单（application_item_id 为空，无申请来源可校）。两条都是同一张订货单。
         normalizePersistedUnits(items);
         requireActiveSettlementMethod(order.getSettlementMethodId(), "委外订货");
+        ProcurementCommercialSnapshotPolicy.requireComplete(
+                em,
+                order.getCurrencyId(),
+                order.getExchangeRate(),
+                order.getTaxRate(),
+                "委外订货");
         requireFinanceCommercialAuthority(order, items);
         lockAndValidateSourcesIncludingPending(order, items);
         return snapshot(order, items);
@@ -383,6 +377,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     ErrorCode.BUSINESS,
                     "委外订货仍有已审核发料/退料/损耗单，请先红冲下游单据");
         }
+        materialPlanService.requireOrderReversalAllowed(id);
         sourceIntegrity.lockSubcontractApplicationItemsForReversal(
                 items.stream().map(SubcontractOrderItem::getApplicationItemId)
                         .filter(java.util.Objects::nonNull).toList());
@@ -549,12 +544,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     private static void requireFinanceCommercialAuthority(
             SubcontractOrder order, List<SubcontractOrderItem> items) {
-        BigDecimal rate = order.getExchangeRate() == null
-                ? BigDecimal.ONE
-                : order.getExchangeRate();
-        if (rate.signum() <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外订货汇率必须大于0");
-        }
+        BigDecimal rate = order.getExchangeRate();
         BigDecimal totalOriginal = BigDecimal.ZERO;
         BigDecimal totalLocal = BigDecimal.ZERO;
         for (SubcontractOrderItem item : items) {
@@ -950,7 +940,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private boolean subcontractPriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewSubcontractOrder();
     }
 
     private static OrderItemDto maskItemPrices(OrderItemDto it) {
@@ -983,18 +974,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     private static Object[] spreadSource(OrderSourceRef ref) {
         return ref == null ? new Object[]{null, null} : new Object[]{ref.id(), ref.billNo()};
-    }
-
-    private static void requireDecisionReceipt(FinanceApproval decision) {
-        if (decision == null
-                || decision.caseId() == null
-                || decision.version() < 2
-                || !("APPROVED".equals(decision.status())
-                || "REJECTED".equals(decision.status()))) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "财务审批结果已变化，请刷新任务后重试");
-        }
     }
 
     private String restrictionReason(boolean financePending) {

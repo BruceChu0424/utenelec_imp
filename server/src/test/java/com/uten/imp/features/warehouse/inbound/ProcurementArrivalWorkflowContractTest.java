@@ -293,7 +293,8 @@ class ProcurementArrivalWorkflowContractTest {
         assertThat(notices)
                 .contains("financeReviewerUserIds()")
                 .contains("sendToUser(reviewer, TYPE_URGENT")
-                .contains("departmentUserIds(\"SUB_WH\")")
+                .contains("departmentUserIdsWithAuthorities(")
+                .contains("\"SUB_WH\", NOTICE_READ_AUTHORITY")
                 .contains("notifyUser(ownerUser, TYPE_TASK")
                 .doesNotContain("到货超量待决定")
                 .doesNotContain("原下单人已决定接收");
@@ -318,7 +319,7 @@ class ProcurementArrivalWorkflowContractTest {
         assertThat(notices)
                 .contains("\"PROCUREMENT_ARRIVAL_RECEIPT_POSTED\"")
                 .contains("EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED ->")
-                .contains("broadcastToPurchaseDept")
+                .contains("broadcastToProcurementReturnFollowers")
                 .contains("departmentUserIds(\"SUB_PURCHASE\")")
                 .contains("到货已入库，余量待退");
     }

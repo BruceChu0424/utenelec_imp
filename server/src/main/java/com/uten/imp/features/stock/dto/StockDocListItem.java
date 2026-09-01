@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -17,6 +18,8 @@ public class StockDocListItem {
     private LocalDate billDate;
     private UUID warehouseId;
     private UUID toWarehouseId;
+    /** 内部库存过账事实；仓库 API 永不序列化成本。 */
+    @JsonIgnore
     private BigDecimal totalLocal;
     private Short status;
     private boolean closed;

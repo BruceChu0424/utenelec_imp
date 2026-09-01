@@ -6,15 +6,15 @@ import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 
 void main() {
   group('委外发料安全门禁', () {
-    test('发料审核已启用(V221 供应商子件台账上线，前端防御门禁解除)', () {
+    test('目标件出仓审核已启用且历史 BOM 子件守恒保持兼容', () {
       const config = SubcontractDocConfig.materialIssue;
 
-      // 2026-08-16 全链路审计：后端 V221 早已放开发料审核（冻结 BOM 单耗 +
-      // 供应商子件台账守恒），前端旧门禁是防御性残留且导致 UI 全链卡死，已移除。
-      // 安全兜底在后端：发出=消耗+退回+损耗+期末结存 守恒 + CAS + 409。
+      // V436 新流只审核服务端已放行的订货目标件；LEGACY_BOM_COMPONENT 历史行
+      // 仍按冻结 BOM 单耗和供应商子件台账守恒。两者都由后端 CAS/数量守恒兜底。
       expect(config.approvalEnabled, isTrue);
       expect(config.approvalBlockedReason, isNull);
-      expect(config.approveEffect, contains('冻结 BOM 单耗'));
+      expect(config.approveEffect, contains('目标件出仓'));
+      expect(config.approveEffect, contains('历史 BOM 子件发料'));
       expect(SubcontractDocConfig.receipt.approvalEnabled, isTrue);
     });
 

@@ -8,7 +8,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
@@ -53,6 +56,49 @@ void main() {
     expect(find.text('成品类Pro'), findsWidgets);
     expect(clients.listCallsAfterSave, isTrue);
   });
+
+  testWidgets(
+    'legacy client Credit is labeled and disabled while floor stays separate',
+    (tester) async {
+      final categories = _FakeClientCategoryRepository();
+      final clients = _FakeClientRepository(includeLegacy: true);
+      await _pumpPage(tester, categories, clients);
+
+      await tester.tap(find.text('成品类(C-FIN)'));
+      await tester.pumpAndSettle();
+      expect(find.text('信用额度 / 旧库 Credit 快照'), findsOneWidget);
+
+      final legacyRow = find.text('旧库客户');
+      await tester.tap(legacyRow);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tap(legacyRow);
+      await tester.pumpAndSettle();
+      expect(find.text('旧库 Credit 快照（只读）'), findsOneWidget);
+
+      final edit = find.widgetWithText(UtenButton, '编辑').hitTestable();
+      expect(edit, findsOneWidget);
+      await tester.tap(edit);
+      await tester.pumpAndSettle();
+      expect(find.text('编辑客户'), findsOneWidget);
+
+      final credit = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.labelText == '旧库 Credit 快照（只读）',
+      );
+      expect(credit, findsOneWidget);
+      expect(tester.widget<TextField>(credit).enabled, isFalse);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.enabled != false &&
+              widget.controller?.text == '50000.0',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 Future<void> _pumpPage(
@@ -67,6 +113,7 @@ Future<void> _pumpPage(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
+        apiClientProvider.overrideWithValue(_ReferenceApi()),
         currentPermissionsProvider.overrideWithValue({
           Perm.clientCategoryEdit,
           Perm.clientView,
@@ -171,6 +218,9 @@ class _FakeClientCategoryRepository implements ClientCategoryRepository {
 
 /// 假客户仓储：记录 list 调用；保存后若列表重拉，调用次数会增加。
 class _FakeClientRepository implements ClientRepository {
+  _FakeClientRepository({this.includeLegacy = false});
+
+  final bool includeLegacy;
   var listCalls = 0;
 
   /// 初始选中加载过一次后，是否又因分类保存重拉过列表。
@@ -190,11 +240,26 @@ class _FakeClientRepository implements ClientRepository {
   }) async {
     listCalls++;
     return PagedResult(
-      items: const [],
+      items: includeLegacy
+          ? const [
+              ClientListItem(
+                id: 'legacy-client',
+                code: 'OLD-001',
+                name: '旧库客户',
+                categoryId: 'finished',
+                credit: 50000,
+                creditFloor: 50000,
+                salesPaymentType: ClientSalesPaymentType.monthly,
+                status: '使用',
+                legacyId: 101,
+                writable: true,
+              ),
+            ]
+          : const [],
       page: page,
       size: size,
-      total: 0,
-      totalPages: 0,
+      total: includeLegacy ? 1 : 0,
+      totalPages: 1,
     );
   }
 
@@ -218,5 +283,33 @@ class _FakeClientRepository implements ClientRepository {
       const ClientFacets(fields: {}, nullCounts: {});
 
   @override
+  Future<ClientDetail> detail(String id) async => const ClientDetail(
+    id: 'legacy-client',
+    code: 'OLD-001',
+    name: '旧库客户',
+    categoryId: 'finished',
+    credit: 50000,
+    creditFloor: 50000,
+    salesPaymentType: ClientSalesPaymentType.monthly,
+    defaultSettlementMethodId: 'settlement-1',
+    defaultSettlementMethodName: '月结',
+    status: '使用',
+    legacyId: 101,
+    writable: true,
+  );
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _ReferenceApi extends ApiClient {
+  _ReferenceApi() : super(Dio());
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => const [
+    {'id': 'settlement-1', 'code': 'MONTHLY', 'name': '月结'},
+  ];
 }

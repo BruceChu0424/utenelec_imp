@@ -31,7 +31,7 @@ public class WasteSaveRequest {
     private UUID workerId;
     private BigDecimal totalWeight;
 
-    /** 损耗扣款金额（本币，V304）：空/0=公司自行承担；>0 审核立负应付向委外商追偿。 */
+    /** V304 历史/建议索赔金额；现行审核只把它带入财务责任参考，不直接冲应付。 */
     private BigDecimal deductAmount;
     private String remark;
 

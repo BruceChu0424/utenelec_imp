@@ -1,7 +1,7 @@
 // 全局顶部通知服务：替代 ScaffoldMessenger.SnackBar，把反馈从底部挪到顶部。
 // - 不依赖具体页面 ScaffoldMessenger，跨页面 / 路由切换时仍能稳定显示。
 // - 同 message 600ms 内合并去重，避免"先 success 再 fail"的叠加抖动。
-// - 任意时刻只显示 1 条；其余保留在 FIFO 队列中，前一条关闭后再逐条显示。
+// - 最新通知叠在旧通知上；默认收拢，可展开最近 3 条，其余继续保留在可靠队列中。
 // - API 错误自动带 fieldErrors，高密度提示。
 import 'dart:async';
 
@@ -12,6 +12,7 @@ import '../../components/inputs/uten_field_message.dart';
 import '../network/api_error.dart';
 import '../network/api_exception.dart';
 import '../theme/uten_colors.dart';
+import 'app_notification_stack.dart';
 import 'uten_top_banner_card.dart';
 
 /// 通知类型。
@@ -116,9 +117,9 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       onTap: n.onTap,
       onDismissed: n.onDismissed,
     );
-    // state 同时承担「当前可见 + 等待显示」队列。宿主只渲染队首；
-    // 队首自动/主动关闭后，下一项才会挂载并开始自己的停留计时。
-    // 不能在这里 FIFO 丢弃：业务通知批量到达时，每一条都必须最终可见。
+    // state 同时承担「当前可见 + 等待显示」队列。宿主按新到旧叠放最近 3 条；
+    // 更早的项继续保留，不能在这里 FIFO 丢弃：业务通知批量到达时，每一条都必须
+    // 最终完整显示并拥有自己的停留计时。
     state = <AppNotification>[...state, fresh];
   }
 
@@ -295,7 +296,7 @@ extension AppNotificationContextX on BuildContext {
 }
 
 /// 通知宿主：放在 MaterialApp.builder 内最上层（Stack 顶层）。
-/// 监听全局 provider，把队列表渲染成顶部 banner 列表。
+/// 监听全局 provider，把队列渲染成可收拢/展开的顶部叠放通知。
 class AppNotificationHost extends ConsumerWidget {
   const AppNotificationHost({super.key, this.useSafeArea = true});
 
@@ -305,15 +306,27 @@ class AppNotificationHost extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(appNotificationProvider);
     if (list.isEmpty) return const SizedBox.shrink();
-    // SafeArea 置于宿主层：状态栏留白整列只算一次（避免每条都加）。Column 用默认
-    // crossAxisAlignment.center 居中各条卡片——卡片本身收缩到内容宽度（≤720），
-    // 故卡片两侧空白在命中测试里不命中任何手势层，点击直接穿透到下方页面。
+    // 最新通知位于最上层；最多完整展示 3 条，更多项仍留在 provider 队列中。
+    // 收拢状态只挂载最上层真实 banner，背后是 IgnorePointer 轮廓，避免未读到的通知
+    // 倒计时结束，也保证卡片之外的空白继续把点击穿透给页面。
+    final visible = list.reversed
+        .take(UtenNotificationStack.maxVisibleItems)
+        .toList(growable: false);
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _AppNotificationBanner(
-          key: ValueKey(list.first.id),
-          notification: list.first,
+        UtenNotificationStack(
+          totalCount: list.length,
+          visibleCount: visible.length,
+          itemBuilder: (context, index, active, announce) {
+            final notification = visible[index];
+            return _AppNotificationBanner(
+              key: ValueKey(notification.id),
+              notification: notification,
+              autoDismissEnabled: active,
+              announce: announce,
+            );
+          },
         ),
       ],
     );
@@ -326,9 +339,16 @@ class AppNotificationHost extends ConsumerWidget {
 
 /// 单条 banner：滑入 + 自动倒计时退出。
 class _AppNotificationBanner extends ConsumerStatefulWidget {
-  const _AppNotificationBanner({super.key, required this.notification});
+  const _AppNotificationBanner({
+    super.key,
+    required this.notification,
+    required this.autoDismissEnabled,
+    required this.announce,
+  });
 
   final AppNotification notification;
+  final bool autoDismissEnabled;
+  final bool announce;
 
   @override
   ConsumerState<_AppNotificationBanner> createState() =>
@@ -370,6 +390,14 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
   }
 
   @override
+  void didUpdateWidget(covariant _AppNotificationBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.autoDismissEnabled != widget.autoDismissEnabled) {
+      _scheduleAutoDismiss();
+    }
+  }
+
+  @override
   void dispose() {
     _autoDismissTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -391,7 +419,8 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
   void _scheduleAutoDismiss() {
     _autoDismissTimer?.cancel();
     final lifecycle = WidgetsBinding.instance.lifecycleState;
-    if (_hovering ||
+    if (!widget.autoDismissEnabled ||
+        _hovering ||
         _dismissing ||
         (lifecycle != null && lifecycle != AppLifecycleState.resumed)) {
       return;
@@ -524,6 +553,7 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                 background: bg,
                 foreground: fg,
                 icon: n.icon ?? icon,
+                liveRegion: widget.announce,
                 onTap: n.onTap == null
                     ? _dismiss
                     : () {

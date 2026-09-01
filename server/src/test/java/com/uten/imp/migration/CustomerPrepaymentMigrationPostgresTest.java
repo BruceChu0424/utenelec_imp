@@ -122,7 +122,8 @@ class CustomerPrepaymentMigrationPostgresTest {
                 INSERT INTO users(id,employee_id,login_account,password_hash,status)
                 VALUES(?,?,'cp-probe-user','test-only-not-a-real-password','active')
                 """,user,employee);
-        execute(c,"INSERT INTO clients(id,code,name,status,code_sequence) VALUES(?,?,?,'使用',1)",
+        execute(c,"INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type) "
+                        + "VALUES(?,?,?,'使用',1,'CASH')",
                 client,"CP-"+client,"Customer prepayment probe");
         execute(c,"""
                 INSERT INTO currencies(id,code,name,exchange_rate,status)

@@ -28,6 +28,8 @@ class UtenSkeleton extends ConsumerStatefulWidget {
 class _UtenSkeletonState extends ConsumerState<UtenSkeleton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  bool _tickerModeEnabled = false;
+  bool _disableAnimations = false;
 
   @override
   void initState() {
@@ -36,7 +38,14 @@ class _UtenSkeletonState extends ConsumerState<UtenSkeleton>
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
-    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tickerModeEnabled = TickerMode.valuesOf(context).enabled;
+    _disableAnimations = MediaQuery.disableAnimationsOf(context);
+    _syncAnimation(ref.read(performanceProvider));
   }
 
   @override
@@ -45,16 +54,35 @@ class _UtenSkeletonState extends ConsumerState<UtenSkeleton>
     super.dispose();
   }
 
+  bool _shouldAnimate(PerformanceTier tier) =>
+      _tickerModeEnabled && !_disableAnimations && tier.enableSkeletonShimmer;
+
+  void _syncAnimation(PerformanceTier tier) {
+    if (_shouldAnimate(tier)) {
+      if (!_controller.isAnimating) {
+        _controller.repeat(reverse: true);
+      }
+      return;
+    }
+    if (_controller.isAnimating) {
+      // 保留当前位置，重新可见/允许动画时从原处继续，不产生亮度跳变。
+      _controller.stop(canceled: false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tier = ref.watch(performanceProvider);
+    ref.listen<PerformanceTier>(performanceProvider, (_, next) {
+      _syncAnimation(next);
+    });
     // 柔和的底色对：surfaceContainerHigh 底 + surface 高光，闪烁更细腻
     final baseColor = theme.colorScheme.surfaceContainerHigh;
     final highlightColor = theme.colorScheme.surface;
 
-    // lite 档：静态
-    if (!tier.enableSkeletonShimmer) {
+    // lite 档、系统 reduced-motion 或祖先 TickerMode 关闭：静态且 controller 停止。
+    if (!_shouldAnimate(tier)) {
       return Container(
         width: widget.width,
         height: widget.height,

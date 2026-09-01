@@ -942,6 +942,8 @@ public class PagePermissionWorkspaceService {
                 normalizedActionType(permission.getActionType()),
                 permission.getDescription(),
                 permission.isAssignable(),
+                permission.isBulkAssignable(),
+                permission.getSensitivity(),
                 actor.isSuperAdmin() || actorEffective.contains(code),
                 baseEffective,
                 effective,

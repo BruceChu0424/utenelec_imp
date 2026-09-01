@@ -7,6 +7,7 @@ import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.BatchDecisionItem;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -21,6 +22,8 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -49,20 +52,39 @@ class ProcurementFinanceSubmitterOwnerGuardTest {
     }
 
     @Test
-    void pooledFinanceReviewerDoesNotUseSubmitterOwnerGuard() {
+    void pooledFinanceReviewerUsesBatchValidationNotSubmitterOwnerGuard() {
         Fixture fixture = fixture(Set.of("finance_order_approval:approve"), true);
-        UUID orderId = UUID.randomUUID();
-        doThrow(new ApiException(ErrorCode.CONFLICT, "stop after reviewer gate"))
-                .when(fixture.port()).lockAndValidateFinanceSubmission(orderId);
+        BatchDecisionItem duplicate =
+                new BatchDecisionItem(UUID.randomUUID(), 1L);
 
         ApiException stopped = assertThrows(
                 ApiException.class,
-                () -> fixture.service().approve("PURCHASE", orderId, 1L));
+                () -> fixture.service().approveBatch(List.of(
+                        duplicate, duplicate)));
 
-        assertEquals(ErrorCode.CONFLICT, stopped.getCode());
+        assertEquals(ErrorCode.VALIDATION_FAILED, stopped.getCode());
         verify(fixture.port(), never()).requireFinanceSubmitterWritable(any());
-        verify(fixture.port()).lockAndValidateFinanceSubmission(orderId);
+        verify(fixture.port(), never()).lockAndValidateFinanceSubmission(any());
         verifyNoInteractions(fixture.jdbc(), fixture.projection());
+    }
+
+    @Test
+    void submitFailsClosedWhenOnlyRejectorsExistAndNoApproverIsAvailable() {
+        Fixture fixture = fixture(Set.of("purchase_order:submit_finance"), false);
+        UUID orderId = UUID.randomUUID();
+        when(fixture.jdbc().queryForObject(
+                anyString(), eq(Boolean.class), any(Object[].class)))
+                .thenReturn(false);
+
+        ApiException denied = assertThrows(
+                ApiException.class,
+                () -> fixture.service().submit("PURCHASE", orderId));
+
+        assertEquals(ErrorCode.CONFLICT, denied.getCode());
+        verify(fixture.eligibility()).eligibleReviewersFor(
+                WorkflowReviewerEligibility.APPROVE_PERMISSION);
+        verify(fixture.jdbc(), never()).update(anyString(), any(Object[].class));
+        verifyNoInteractions(fixture.projection());
     }
 
     private static Fixture fixture(Set<String> permissions, boolean eligible) {
@@ -98,13 +120,14 @@ class ProcurementFinanceSubmitterOwnerGuardTest {
                         currentUser,
                         mock(TxSessionVars.class));
         clearInvocations(port, jdbc, projection, eligibility, currentUser);
-        return new Fixture(service, port, jdbc, projection);
+        return new Fixture(service, port, jdbc, eligibility, projection);
     }
 
     private record Fixture(
             ProcurementFinanceApprovalService service,
             ProcurementOrderApprovalPort port,
             JdbcTemplate jdbc,
+            WorkflowReviewerEligibility eligibility,
             ProcurementApprovalProjectionQuery projection) {
     }
 }

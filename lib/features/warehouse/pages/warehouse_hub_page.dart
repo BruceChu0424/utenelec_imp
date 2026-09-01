@@ -21,10 +21,12 @@ import '../models/stock_doc.dart';
 import '../providers/procurement_inbound_count_providers.dart';
 import '../providers/production_finished_inbound_task_count_provider.dart';
 import '../providers/production_draw_count_provider.dart';
+import '../providers/warehouse_iqc_stock_in_count_provider.dart';
 import '../widgets/procurement_inbound_badges.dart';
 import '../widgets/production_finished_inbound_pending_badge.dart';
 import '../widgets/production_draw_pending_badge.dart';
 import '../widgets/warehouse_subcontract_outbound_badge.dart';
+import '../widgets/warehouse_iqc_stock_in_badge.dart';
 
 class WarehouseHubPage extends ConsumerWidget {
   const WarehouseHubPage({super.key});
@@ -37,6 +39,7 @@ class WarehouseHubPage extends ConsumerWidget {
       ref.invalidate(warehouseArrivalExceptionCountProvider);
       ref.invalidate(warehouseProductionDrawPendingCountProvider);
       ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
+      ref.invalidate(warehouseIqcStockInPendingCountProvider);
     });
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
@@ -66,6 +69,14 @@ class WarehouseHubPage extends ConsumerWidget {
             >[
               (
                 icon: Icons.local_shipping_outlined,
+                label: '销售出库',
+                description: '仅处理财务已放行的销售出货，按待拣、拣货、已拣和异常推进',
+                location: RouteName.warehouseSalesOutbound,
+                perm: Perm.salesShipmentWarehouseWork,
+                badge: null,
+              ),
+              (
+                icon: Icons.local_shipping_outlined,
                 label: l10n.warehouseHubTaskExpected,
                 description: l10n.warehouseHubTaskExpectedSub,
                 location: RouteName.warehouseInboundExpectations,
@@ -73,10 +84,18 @@ class WarehouseHubPage extends ConsumerWidget {
                 badge: const WarehouseInboundExpectationBadge(showLabel: true),
               ),
               (
+                icon: Icons.move_to_inbox_outlined,
+                label: 'IQC 合格待入库',
+                description: '品质放行后核对实物数量和实际库位，仓库确认后才增加可用库存',
+                location: RouteName.warehouseIqcStockIns,
+                perm: Perm.warehouseIqcStockInView,
+                badge: const WarehouseIqcStockInBadge(showLabel: true),
+              ),
+              (
                 icon: Icons.outbound_outlined,
-                // TODO(l10n): 补 arb —— 委外出仓（材料发委外商加工）。
+                // TODO(l10n): 补 arb —— 委外目标件出仓。
                 label: '委外出仓',
-                description: '材料出仓给委外商加工(订货批准后自动生成任务)',
+                description: '备齐的订货目标件出仓给委外商加工',
                 location: RouteName.warehouseSubcontractOutbound,
                 perm: Perm.subcontractOutboundView,
                 badge: const WarehouseSubcontractOutboundBadge(showLabel: true),
@@ -101,13 +120,21 @@ class WarehouseHubPage extends ConsumerWidget {
               ),
               (
                 icon: Icons.inventory_outlined,
-                label: '产成品待点收',
-                description: '查看生产/FQC形成的待点收任务；有点收权限者按实物逐行确认',
+                label: '产成品入库任务',
+                description: '先登记成品仓与库位并送检，品质放行后再按实物完成最终点收',
                 location: RouteName.warehouseProductionFinishedInboundTasks,
                 perm: Perm.stockDocView,
                 badge: const WarehouseProductionFinishedInboundPendingBadge(
                   showLabel: true,
                 ),
+              ),
+              (
+                icon: Icons.assignment_return_outlined,
+                label: 'IQC 不合格实物退回',
+                description: '登记采购/委外拒收货品的真实退回凭证并跟踪实物状态',
+                location: RouteName.warehouseIqcReturns,
+                perm: Perm.warehouseIqcReturnView,
+                badge: null,
               ),
             ]
             .where((e) => can(e.perm))
@@ -355,44 +382,44 @@ const _warehouseLinkedDocEntries = <(IconData, String, String, String, String)>[
   (
     Icons.inbox_outlined,
     '采购收货单',
-    '采购到货登记历史与审核',
-    '/purchase/receipts',
-    'purchase_receipt:view',
+    '仓库实收、库位与品质状态历史',
+    RouteName.warehousePurchaseReceiptHistory,
+    Perm.warehousePurchaseReceiptHistoryView,
   ),
   (
     Icons.move_to_inbox_outlined,
     '委外进仓单',
-    '委外到货登记历史与审核',
-    '/subcontract/receipts',
-    'subcontract_receipt:view',
+    '仓库实收、库位与品质状态历史',
+    RouteName.warehouseSubcontractReceiptHistory,
+    Perm.warehouseSubcontractReceiptHistoryView,
   ),
   (
     Icons.outbound_outlined,
-    '委外材料出仓单',
-    '材料出仓给委外商的历史记录',
-    '/subcontract/material-issues',
-    'subcontract_material_issue:view',
+    '委外出仓执行记录',
+    '目标件与材料的实物出仓历史',
+    RouteName.warehouseSubcontractOutboundHistory,
+    Perm.warehouseSubcontractOutboundHistoryView,
   ),
   (
     Icons.undo_outlined,
     '委外成品退货单',
-    '回厂成品退回委外商的历史记录',
-    '/subcontract/returns',
-    'subcontract_return:view',
+    '回厂成品退回委外商的实物历史',
+    RouteName.warehouseSubcontractFinishedReturnHistory,
+    Perm.warehouseSubcontractFinishedReturnHistoryView,
   ),
   (
     Icons.assignment_return_outlined,
     '委外材料退货单',
-    '委外商退回余料的历史记录',
-    '/subcontract/material-returns',
-    'subcontract_material_return:view',
+    '委外商退回余料的实物历史',
+    RouteName.warehouseSubcontractMaterialReturnHistory,
+    Perm.warehouseSubcontractMaterialReturnHistoryView,
   ),
   (
     Icons.delete_sweep_outlined,
     '委外损耗单',
-    '加工损耗核销与扣款的历史记录',
-    '/subcontract/wastes',
-    'subcontract_waste:view',
+    '实物损耗数量、重量与原因历史',
+    RouteName.warehouseSubcontractWasteHistory,
+    Perm.warehouseSubcontractWasteHistoryView,
   ),
 ];
 

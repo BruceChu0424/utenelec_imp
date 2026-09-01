@@ -18,7 +18,7 @@ import static org.mockito.Mockito.mock;
 class ProcurementArrivalExpectationQueryContractTest {
 
     @Test
-    void pagedListClosesVisibilityPredicateBeforeGroupBy() {
+    void listAndCountShareTheRealSubcontractOutboundVisibilityPredicate() {
         CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
         ProcurementArrivalControlService service =
                 new ProcurementArrivalControlService(
@@ -33,9 +33,20 @@ class ProcurementArrivalExpectationQueryContractTest {
         service.expectations(1, 20, "", "");
 
         assertThat(jdbc.expectationListSql).isNotNull();
+        assertThat(jdbc.expectationCountSql).isNotNull();
         assertThat(parenthesisBalance(jdbc.expectationListSql)).isZero();
-        assertThat(jdbc.expectationListSql.replaceAll("\\s+", " "))
-                .contains("))) GROUP BY expectation.id");
+        assertThat(parenthesisBalance(jdbc.expectationCountSql)).isZero();
+        for (String sql : List.of(jdbc.expectationListSql, jdbc.expectationCountSql)) {
+            assertThat(sql.replaceAll("\\s+", " "))
+                    .contains("expectation.order_type <> 'SUBCONTRACT'")
+                    .contains("subcontract_material_issue_items issue_item")
+                    .contains("issue.status = 1")
+                    .contains("release_plan.flow_mode IN")
+                    .contains("'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND'")
+                    .contains("procurement_iqc_rejection_cases rejection")
+                    .contains("visible_item.expectation_id = expectation.id")
+                    .doesNotContain("procurement_iqc_replacement_allocations");
+        }
     }
 
     private static int parenthesisBalance(String sql) {
@@ -55,9 +66,13 @@ class ProcurementArrivalExpectationQueryContractTest {
 
     private static final class CapturingJdbcTemplate extends JdbcTemplate {
         private String expectationListSql;
+        private String expectationCountSql;
 
         @Override
         public <T> T queryForObject(String sql, Class<T> requiredType, Object... args) {
+            if (sql.contains("FROM inbound_expectations expectation")) {
+                expectationCountSql = sql;
+            }
             return requiredType.cast(0L);
         }
 

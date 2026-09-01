@@ -83,6 +83,26 @@ class MaterialStockReallocationPriorityServiceTest {
         assertThat(f.updateParameters()).isEmpty();
     }
 
+    @Test
+    void earlierOrderedHookMayConsumeTheCompleteOriginLot() {
+        UUID originEvent = UUID.randomUUID();
+        EntityManager em = mock(EntityManager.class);
+        PreplanStockEntitlementService entitlements =
+                mock(PreplanStockEntitlementService.class);
+        MaterialStockReallocationService service =
+                new MaterialStockReallocationService(
+                        em, mock(MaterialAnalysisService.class), entitlements,
+                        mock(ProductionDocumentAccessPolicy.class),
+                        mock(InventoryMutationLock.class),
+                        mock(SecurityContextCurrentUser.class),
+                        mock(TxSessionVars.class));
+
+        service.applyPriorityForOriginEvent(originEvent);
+
+        verify(entitlements).availableLotOrNull(originEvent, true);
+        verify(em, never()).createNativeQuery(anyString());
+    }
+
     private static Fixture fixture(boolean sourceOwnLot) {
         UUID sourceAnalysis = UUID.randomUUID();
         UUID sourceMaterial = UUID.randomUUID();
@@ -119,7 +139,7 @@ class MaterialStockReallocationPriorityServiceTest {
 
         PreplanStockEntitlementService entitlements =
                 mock(PreplanStockEntitlementService.class);
-        when(entitlements.requireAvailableLot(originEvent, true)).thenReturn(lot);
+        when(entitlements.availableLotOrNull(originEvent, true)).thenReturn(lot);
         SecurityContextCurrentUser currentUser =
                 mock(SecurityContextCurrentUser.class);
         when(currentUser.requireId()).thenReturn(actor);

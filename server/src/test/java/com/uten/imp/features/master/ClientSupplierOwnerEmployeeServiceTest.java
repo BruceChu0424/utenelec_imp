@@ -6,6 +6,7 @@ import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.features.master.client.ClientRepository;
 import com.uten.imp.features.master.client.ClientService;
+import com.uten.imp.features.master.client.ClientSalesPaymentType;
 import com.uten.imp.features.master.client.dto.ClientDetail;
 import com.uten.imp.features.master.client.dto.ClientSaveRequest;
 import com.uten.imp.features.master.clientcategory.ClientCategory;
@@ -77,6 +78,7 @@ class ClientSupplierOwnerEmployeeServiceTest {
         request.setCategoryId(categoryId);
         request.setName("官网客户已核实");
         request.setCode("KH000001");
+        request.setSalesPaymentType(ClientSalesPaymentType.CASH);
 
         ClientDetail detail = service.update(clientId, request);
 
@@ -113,6 +115,7 @@ class ClientSupplierOwnerEmployeeServiceTest {
         request.setCategoryId(categoryId);
         request.setName("客户甲");
         request.setOwnerEmployeeId(employeeId);
+        request.setSalesPaymentType(ClientSalesPaymentType.CASH);
 
         ClientDetail detail = service.create(request);
 

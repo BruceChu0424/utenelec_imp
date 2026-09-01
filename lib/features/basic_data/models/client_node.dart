@@ -10,6 +10,20 @@
 
 import 'master_facet.dart';
 
+abstract final class ClientSalesPaymentType {
+  static const monthly = 'MONTHLY';
+  static const cash = 'CASH';
+  static const deposit = 'DEPOSIT';
+}
+
+String salesPaymentTypeLabel(String? value) => switch (value?.trim()) {
+  ClientSalesPaymentType.monthly => '月结',
+  ClientSalesPaymentType.cash => '现金',
+  ClientSalesPaymentType.deposit => '定金',
+  null || '' => '待人工分类',
+  final unknown => '未知类型($unknown)',
+};
+
 /// 客户列表项（覆盖表格 23 列中 21 个有 DB 列的字段）。
 class ClientListItem {
   const ClientListItem({
@@ -34,6 +48,7 @@ class ClientListItem {
     this.bankAccount,
     this.taxId,
     this.credit,
+    this.creditFloor,
     this.website,
     this.status,
     this.legacyId,
@@ -42,6 +57,7 @@ class ClientListItem {
     this.ownerEmployeeName,
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
+    this.salesPaymentType,
     this.writable = false,
     this.accessManageable = false,
   });
@@ -67,6 +83,7 @@ class ClientListItem {
   final String? bankAccount; // 银行账号（Client_BankNo）
   final String? taxId; // 纳税号（Tax_ID）
   final double? credit; // 信誉额度（Credit）
+  final double? creditFloor; // 铺底额（未设置时服务端返回 0）
   final String? website; // 网址（Http）
   final String? status; // 状态（使用/禁用，详情用，不进表格列）
   final int? legacyId;
@@ -75,6 +92,7 @@ class ClientListItem {
   final String? ownerEmployeeName; // 当前负责人显示名
   final String? defaultSettlementMethodId;
   final String? defaultSettlementMethodName;
+  final String? salesPaymentType; // MONTHLY / CASH / DEPOSIT；旧数据可空
   final bool writable; // 对象范围允许维护；额外查看/单客户共享为 false
   final bool accessManageable; // 服务端已合并 client:assign 与对象范围判断
 
@@ -101,6 +119,7 @@ class ClientListItem {
     bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
     taxId: (json['taxId'] ?? json['taxid']) as String?,
     credit: (json['credit'] as num?)?.toDouble(),
+    creditFloor: (json['creditFloor'] as num?)?.toDouble() ?? 0,
     website: json['website'] as String?,
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
@@ -109,6 +128,7 @@ class ClientListItem {
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
     defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
     defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
+    salesPaymentType: json['salesPaymentType'] as String?,
     writable: json['writable'] as bool? ?? false,
     accessManageable: json['accessManageable'] as bool? ?? false,
   );
@@ -164,6 +184,7 @@ class ClientDetail {
     this.ownerEmployeeName,
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
+    this.salesPaymentType,
     this.writable = false,
     this.accessManageable = false,
     this.accessReason = ClientAccessReason.unknown,
@@ -206,6 +227,7 @@ class ClientDetail {
   final String? ownerEmployeeName;
   final String? defaultSettlementMethodId;
   final String? defaultSettlementMethodName;
+  final String? salesPaymentType; // MONTHLY / CASH / DEPOSIT；旧数据可空
   final bool writable;
   final bool accessManageable;
   final String accessReason;
@@ -266,7 +288,7 @@ class ClientDetail {
     taxId: (json['taxId'] ?? json['taxid']) as String?,
     credit: (json['credit'] as num?)?.toDouble(),
     initTotal: (json['initTotal'] as num?)?.toDouble(),
-    creditFloor: (json['creditFloor'] as num?)?.toDouble(),
+    creditFloor: (json['creditFloor'] as num?)?.toDouble() ?? 0,
     tday: (json['tday'] as num?)?.toInt(),
     remark: json['remark'] as String?,
     version: (json['version'] as num?)?.toInt(),
@@ -274,6 +296,7 @@ class ClientDetail {
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
     defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
     defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
+    salesPaymentType: json['salesPaymentType'] as String?,
     writable: json['writable'] as bool? ?? false,
     accessManageable: json['accessManageable'] as bool? ?? false,
     accessReason: json['accessReason'] as String? ?? ClientAccessReason.unknown,
@@ -312,6 +335,8 @@ class ClientFacets {
     'bankAccount',
     'taxId',
     'credit',
+    'creditFloor',
+    'salesPaymentType',
     'website',
   ];
 

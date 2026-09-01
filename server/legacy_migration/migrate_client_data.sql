@@ -2,7 +2,7 @@
 -- 客户主档迁移：CSV → clients（不依赖 server 启动）
 -- =====================================================================
 -- 用法：bash server/legacy_migration/migrate.sh --client-data
--- 前提：V285 已应用；clients/client_categories/settlement_methods 已迁。
+-- 前提：V443 已应用；clients/client_categories/settlement_methods 已迁。
 -- 来源：老库 B_Client（260 条），category_id 关联 client_categories.legacy_id
 --   （B_Client.ParentID → SystemItem.ItemID ItemclassID=2）。未分组或悬空记录
 --   统一挂 V275 注册表中的系统“未分类”根。字段语义见 V36。
@@ -80,7 +80,9 @@ WITH unique_employees AS (
     GROUP BY legacy_id
     HAVING count(*) = 1
 ), settlement_matches AS (
-    SELECT legacy_id, (array_agg(id ORDER BY id))[1] AS method_id
+    SELECT legacy_id,
+           (array_agg(id ORDER BY id))[1] AS method_id,
+           (array_agg(system_role ORDER BY id))[1] AS system_role
     FROM settlement_methods
     WHERE legacy_id IS NOT NULL
       AND status = '使用'
@@ -103,8 +105,8 @@ INSERT INTO clients (
     legacy_id, category_id, name, code, full_name, client_rank,
     place_id, emp_id, owner_employee_id, legal_person, linkman, mobile, phone, phone2, fax, postcode, address,
     email, website, ship_via, ship_address, bank, bank_account, tax_id,
-    credit, init_total, init_total2, exchange_rate, tday,
-    default_settlement_method_id, price_style, zj_id,
+    credit, credit_floor, init_total, init_total2, exchange_rate, tday,
+    default_settlement_method_id, sales_payment_type, price_style, zj_id,
     region, client_xz, status, remark, code_managed, code_sequence
 )
 SELECT
@@ -118,8 +120,15 @@ SELECT
     cs.place_id, cs.emp_id, employee_owner.employee_id,
     cs.legal_person, cs.linkman, cs.mobile, cs.phone, cs.phone2,
     cs.fax, cs.postcode, cs.address, cs.email, cs.website, cs.ship_via, cs.ship_address,
-    cs.bank, cs.bank_account, cs.tax_id, cs.credit, cs.init_total, cs.init_total2,
-    cs.exchange_rate, cs.tday, settlement_match.method_id, cs.price_style,
+    cs.bank, cs.bank_account, cs.tax_id,
+    cs.credit, COALESCE(cs.credit, 0), cs.init_total, cs.init_total2,
+    cs.exchange_rate, cs.tday, settlement_match.method_id,
+    CASE settlement_match.system_role
+        WHEN 'CASH' THEN 'CASH'
+        WHEN 'MONTHLY' THEN 'MONTHLY'
+        ELSE NULL
+    END,
+    cs.price_style,
     cs.zj_id, cs.region, cs.client_xz,
     cs.status, cs.remark, FALSE,
     reserved.last_seq - cs.allocation_count + cs.seq_ordinal
@@ -163,3 +172,6 @@ SELECT '✔ 客户 ' || count(*) ||
        '，使用 ' || count(*) FILTER (WHERE status = N'使用') ||
        '，禁用 ' || count(*) FILTER (WHERE status = N'禁用') AS 结果
 FROM clients;
+
+SELECT '待人工分类客户 ' || count(*) AS 货款类型迁移结果
+FROM v_client_sales_payment_type_migration_issues;

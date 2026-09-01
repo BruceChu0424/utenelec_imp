@@ -408,7 +408,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                            THEN receipt_item.qty
                                                * COALESCE(
                                                    receipt_item.unit_rate, 1)
-                                           ELSE inspection.passed_base_qty
+                                           ELSE inspection.warehouse_stocked_base_qty
                                        END AS qualified_base_qty
                                 FROM purchase_receipt_items receipt_item
                                 LEFT JOIN procurement_inspection_items inspection
@@ -422,7 +422,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                       OR (
                                           inspection.status IN (
                                               'PARTIAL', 'RESOLVED')
-                                          AND inspection.passed_base_qty > 0
+                                          AND inspection.warehouse_stocked_base_qty > 0
                                       )
                                   )
                                 ORDER BY receipt_item.order_item_id,

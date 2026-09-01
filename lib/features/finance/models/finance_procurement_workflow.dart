@@ -1,6 +1,6 @@
 // 财务订货审批任务模型。
 //
-// V229/ADR-027 起：审批人为「财务部门持 finance_order_approval:review 的审核组」，
+// V328/ADR-027 起：共享队列使用 view，批准/驳回按 approve/reject 独立授权，
 // 不再单点指定负责人。后端演进期间允许常见字段别名；但关键身份字段
 // （orderId）缺失时前端保持 fail-closed，不猜测可办理对象。
 

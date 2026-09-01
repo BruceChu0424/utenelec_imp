@@ -13,7 +13,6 @@ import com.uten.imp.features.production.quality.ProductionFqcInspectionControlle
 import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
 import com.uten.imp.features.production.quality.ProductionFqcTaskAccessPolicy;
 import com.uten.imp.features.purchase.order.PurchaseOrderController;
-import com.uten.imp.features.purchase.order.PurchaseOrderFinanceDecisionCommandService;
 import com.uten.imp.features.purchase.order.PurchaseOrderService;
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptController;
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
@@ -32,7 +31,6 @@ import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssue
 import com.uten.imp.features.subcontract.material_return.SubcontractMaterialReturnController;
 import com.uten.imp.features.subcontract.material_return.SubcontractMaterialReturnService;
 import com.uten.imp.features.subcontract.order.SubcontractOrderController;
-import com.uten.imp.features.subcontract.order.SubcontractOrderFinanceDecisionCommandService;
 import com.uten.imp.features.subcontract.order.SubcontractOrderProgressService;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptController;
@@ -87,10 +85,9 @@ class CoreBusinessDetailViewAuditControllerTest {
         when(orderService.detail(orderId)).thenReturn(order);
         assertSame(
                 order,
-                new PurchaseOrderController(
+                        new PurchaseOrderController(
                                 orderService,
                                 mock(ProcurementFinanceApprovalService.class),
-                                mock(PurchaseOrderFinanceDecisionCommandService.class),
                                 recorder)
                         .detail(orderId));
         verify(recorder).record(
@@ -191,10 +188,9 @@ class CoreBusinessDetailViewAuditControllerTest {
         when(orderService.detail(orderId)).thenReturn(order);
         assertSame(
                 order,
-                new SubcontractOrderController(
+                        new SubcontractOrderController(
                                 orderService,
                                 mock(ProcurementFinanceApprovalService.class),
-                                mock(SubcontractOrderFinanceDecisionCommandService.class),
                                 mock(SubcontractOrderProgressService.class),
                                 recorder)
                         .detail(orderId));

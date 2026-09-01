@@ -65,6 +65,19 @@ public class SupplierOffsetCommandService {
     public void reverse(UUID batchId,ReverseRequest request){
         tx.bind();
         if(batchId==null||request==null)throw validation("抵销反转请求不完整");
+        long iqcOwned=((Number)em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM procurement_iqc_rejection_cases rejection
+                JOIN supplier_open_item_offsets allocation
+                  ON allocation.id=rejection.offset_id
+                WHERE allocation.offset_batch_id=:batchId
+                  AND allocation.status='APPLIED'
+                  AND rejection.status='CREDIT_CONFIRMED'
+                  AND rejection.is_deleted=FALSE
+                """).setParameter("batchId",batchId).getSingleResult()).longValue();
+        if(iqcOwned!=0){
+            throw conflict("该抵销属于IQC不合格初始贷项，请从IQC闭环任务执行专用反向");
+        }
         glPosting.lockAutoProjectionPeriod(BusinessTime.today());
         offsets.reverseBatch(batchId,request.reason());
     }

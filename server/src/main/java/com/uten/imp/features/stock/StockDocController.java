@@ -2,6 +2,8 @@ package com.uten.imp.features.stock;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmRequest;
+import com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmResponse;
 import com.uten.imp.features.stock.dto.StockDocDetail;
 import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
@@ -101,6 +103,14 @@ public class StockDocController {
     @PreAuthorize("hasAuthority('stock_doc:approve')")
     public StockDocDetail approve(@PathVariable UUID id) {
         return service.approve(id);
+    }
+
+    /** 多张生产成品入库草稿原子全量点收；任一失败则整批回滚。 */
+    @PostMapping("/finished-in/confirm-batch")
+    @PreAuthorize("hasAuthority('stock_doc:approve')")
+    public FinishedInboundBatchConfirmResponse confirmFinishedInboundBatch(
+            @Valid @RequestBody FinishedInboundBatchConfirmRequest req) {
+        return service.confirmFinishedInboundBatch(req);
     }
 
     /** 生产报工成品入库：仓库逐行确认实收量后才审核入账。 */

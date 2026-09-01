@@ -799,10 +799,21 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       ]),
       _DetailSection('库存', [
         MasterDetailRow('库存量(合计)', s(d.stockQty)),
+        if (d.stockByWarehouse.any((row) => row.weight != null))
+          MasterDetailRow(
+            '库存重量(合计)',
+            s(
+              d.stockByWarehouse.fold<double>(
+                0,
+                (sum, row) => sum + (row.weight ?? 0),
+              ),
+            ),
+          ),
         for (final w in d.stockByWarehouse)
           MasterDetailRow(
             '　${w.warehouseName ?? w.warehouseCode ?? '仓库'}${w.colorName != null ? '·${w.colorName}' : ''}',
-            '${s(w.qty)}${d.unitName != null ? ' ${d.unitName}' : ''}',
+            '${s(w.qty)}${d.unitName != null ? ' ${d.unitName}' : ''}'
+                '${w.weight == null ? '' : ' · 重量 ${s(w.weight)}'}',
           ),
       ]),
     ];

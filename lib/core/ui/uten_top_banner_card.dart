@@ -39,6 +39,7 @@ class UtenTopBannerCard extends StatelessWidget {
     this.progress = false,
     this.crossAxisAlignment = CrossAxisAlignment.center,
     this.semanticLabel,
+    this.liveRegion = true,
     this.maxWidth = 720,
     this.onTap,
   });
@@ -70,6 +71,10 @@ class UtenTopBannerCard extends StatelessWidget {
   /// 整条无障碍标签：非 null→label 模式；null→explicitChildNodes 模式。
   final String? semanticLabel;
 
+  /// 是否作为动态内容主动播报。叠放通知只让最新一条进入 live region，展开旧通知时
+  /// 仍保留完整语义和操作能力，但不会重复打断读屏。
+  final bool liveRegion;
+
   /// 最大宽度，默认 720（宽屏不无限拉伸，与连接横幅一致）。
   final double maxWidth;
 
@@ -87,7 +92,7 @@ class UtenTopBannerCard extends StatelessWidget {
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: Semantics(
         container: true,
-        liveRegion: true,
+        liveRegion: liveRegion,
         label: semanticLabel,
         explicitChildNodes: semanticLabel == null,
         child: Material(

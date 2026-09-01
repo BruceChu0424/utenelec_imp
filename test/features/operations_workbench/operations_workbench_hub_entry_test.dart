@@ -104,6 +104,10 @@ void main() {
         overrides: [
           currentPermissionsProvider.overrideWithValue({
             Perm.subcontractApplicationView,
+            Perm.subcontractPreparationView,
+            Perm.subcontractOrderView,
+            Perm.subcontractOrderCreate,
+            Perm.subcontractOutboundView,
           }),
           isSuperAdminProvider.overrideWithValue(false),
         ],
@@ -120,6 +124,12 @@ void main() {
     expect(find.text('任务中心'), findsOneWidget);
     expect(find.text('委外任务中心'), findsOneWidget);
     expect(find.textContaining('按委外商拆订货'), findsOneWidget);
+    expect(find.text('两种下单入口'), findsNothing);
+    expect(find.text('直接委外下单'), findsNothing);
+    expect(find.text('计划委外申请(只读)'), findsNothing);
+    expect(find.text('委外前置自制'), findsNothing);
+    expect(find.text('仓库目标件出仓'), findsNothing);
+    expect(find.text('委外订货与全链路'), findsOneWidget);
     await tester.tap(find.text('委外任务中心'));
     await tester.pumpAndSettle();
 

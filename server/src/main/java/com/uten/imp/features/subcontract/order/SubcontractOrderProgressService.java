@@ -77,24 +77,99 @@ public class SubcontractOrderProgressService {
             planCloseReason = (String) plans.getFirst()[2];
         }
 
+        boolean canOpenPreparationAnalysis =
+                access.hasAuthority("production_material_analysis:view");
         List<MaterialPlanLine> materialLines = planId == null ? List.of() : queryRows("""
                 SELECT pi.id, pg.code, pg.name, g.code, g.name, c.name, u.name,
                        pi.bom_unit_qty, pi.planned_qty, pi.issued_qty,
                        COALESCE((SELECT SUM(ii.qty) FROM subcontract_material_issue_items ii
                                  JOIN subcontract_material_issues i ON i.id = ii.issue_id
-                                 WHERE ii.plan_item_id = pi.id AND i.status = 0 AND i.is_deleted = FALSE), 0)
+                                 WHERE ii.plan_item_id = pi.id AND i.status = 0 AND i.is_deleted = FALSE), 0),
+                       pi.flow_mode, effective.status, pi.prepared_qty,
+                       GREATEST(LEAST(pi.planned_qty, pi.prepared_qty)
+                           - pi.issued_qty - COALESCE((
+                               SELECT SUM(ii.qty)
+                               FROM subcontract_material_issue_items ii
+                               JOIN subcontract_material_issues i ON i.id = ii.issue_id
+                               WHERE ii.plan_item_id = pi.id
+                                 AND i.status = 0 AND i.is_deleted = FALSE), 0), 0),
+                       GREATEST(pi.planned_qty - pi.issued_qty, 0),
+                       pi.preparation_analysis_id, pi.preparation_analysis_item_id
                 FROM subcontract_material_plan_items pi
                 JOIN goods pg ON pg.id = pi.parent_goods_id
                 JOIN goods g ON g.id = pi.goods_id
                 LEFT JOIN colors c ON c.id = pi.color_id
                 LEFT JOIN units u ON u.id = pi.unit_id
+                CROSS JOIN LATERAL (
+                    SELECT CASE
+                        WHEN pi.preparation_status <> 'IN_PREPARATION'
+                            THEN pi.preparation_status
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM production_plans production_plan
+                            JOIN production_plan_items production_item
+                              ON production_item.plan_id = production_plan.id
+                             AND production_item.is_deleted = FALSE
+                            JOIN production_fqc_inspections inspection
+                              ON inspection.source_plan_item_id = production_item.id
+                             AND inspection.status <> 'CANCELLED'
+                             AND inspection.passed_qty > 0
+                            WHERE production_plan.material_analysis_id =
+                                      pi.preparation_analysis_id
+                              AND production_plan.material_analysis_item_id =
+                                      pi.preparation_analysis_item_id
+                              AND production_plan.is_deleted = FALSE
+                        ) OR EXISTS (
+                            SELECT 1
+                            FROM production_plans production_plan
+                            JOIN plan_draw_links finished_link
+                              ON finished_link.plan_id = production_plan.id
+                             AND finished_link.is_deleted = FALSE
+                            JOIN stock_documents finished_in
+                              ON finished_in.id = finished_link.draw_id
+                             AND finished_in.doc_type = 'FINISHED_IN'
+                             AND finished_in.status = 0
+                             AND finished_in.is_deleted = FALSE
+                            WHERE production_plan.material_analysis_id =
+                                      pi.preparation_analysis_id
+                              AND production_plan.material_analysis_item_id =
+                                      pi.preparation_analysis_item_id
+                              AND production_plan.is_deleted = FALSE
+                        ) THEN 'WAITING_INBOUND'
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM production_plans production_plan
+                            JOIN production_plan_items production_item
+                              ON production_item.plan_id = production_plan.id
+                             AND production_item.is_deleted = FALSE
+                            JOIN production_daily_report_items report_item
+                              ON report_item.plan_item_id = production_item.id
+                             AND report_item.is_deleted = FALSE
+                            JOIN production_daily_reports report
+                              ON report.id = report_item.report_id
+                             AND report.status = 1
+                             AND report.is_deleted = FALSE
+                            WHERE production_plan.material_analysis_id =
+                                      pi.preparation_analysis_id
+                              AND production_plan.material_analysis_item_id =
+                                      pi.preparation_analysis_item_id
+                              AND production_plan.is_deleted = FALSE
+                        ) THEN 'WAITING_FQC'
+                        ELSE 'IN_PREPARATION'
+                    END AS status
+                ) effective
                 WHERE pi.plan_id = :id AND pi.is_deleted = FALSE
                 ORDER BY pi.line_no ASC NULLS LAST, pi.id
                 """, orderIdParam(planId)).stream()
                 .map(row -> new MaterialPlanLine(
                         (UUID) row[0], (String) row[1], (String) row[2],
                         (String) row[3], (String) row[4], (String) row[5], (String) row[6],
-                        bd(row[7]), bd(row[8]), bd(row[9]), bd(row[10])))
+                        bd(row[7]), bd(row[8]), bd(row[9]), bd(row[10]),
+                        (String) row[11], (String) row[12], bd(row[13]), bd(row[14]),
+                        bd(row[15]), (UUID) row[16], (UUID) row[17],
+                        preparationBlocker((String) row[12]),
+                        preparationActions((String) row[12], (UUID) row[16],
+                                canOpenPreparationAnalysis)))
                 .toList();
 
         // 出仓单（本订货单全部发料单）
@@ -121,16 +196,66 @@ public class SubcontractOrderProgressService {
                 SELECT r.id, r.bill_no, r.status, r.bill_date, w.name, r.approver_name,
                        (SELECT SUM(ri.qty) FROM subcontract_receipt_items ri WHERE ri.receipt_id = r.id),
                        r.total_local,
-                       (SELECT CASE WHEN COUNT(*) = 0 THEN NULL
-                                    WHEN COUNT(*) FILTER (WHERE iq.status IN ('PENDING','PARTIAL')) > 0
-                                         THEN 'PENDING'
-                                    WHEN COUNT(*) FILTER (WHERE iq.status = 'RESOLVED') = COUNT(*) THEN 'RESOLVED'
-                                    ELSE 'PARTIAL' END
-                        FROM procurement_inspection_items iq
-                        WHERE iq.receipt_type = 'SUBCONTRACT' AND iq.receipt_id = r.id),
+                       iqc.iqc_status,
+                       iqc.warehouse_stock_in_status,
+                       iqc.passed_base_qty,
+                       iqc.warehouse_stocked_base_qty,
+                       iqc.pending_stock_in_base_qty,
                        r.updated_at
                 FROM subcontract_receipts r
                 LEFT JOIN warehouses w ON w.id = r.warehouse_id
+                LEFT JOIN LATERAL (
+                    SELECT CASE
+                               WHEN COUNT(*) = 0 THEN NULL
+                               WHEN COUNT(*) FILTER (
+                                   WHERE iq.status IN ('PENDING','PARTIAL')) > 0
+                                   THEN 'PENDING'
+                               WHEN COUNT(*) FILTER (
+                                   WHERE iq.status = 'RESOLVED') = COUNT(*)
+                                   THEN 'RESOLVED'
+                               WHEN COUNT(*) FILTER (
+                                   WHERE iq.status = 'REVERSED') = COUNT(*)
+                                   THEN 'REVERSED'
+                               ELSE 'PARTIAL'
+                           END AS iqc_status,
+                           CASE
+                               WHEN COUNT(*) = 0 THEN NULL
+                               WHEN COUNT(*) FILTER (
+                                   WHERE iq.status = 'REVERSED') = COUNT(*)
+                                   THEN 'REVERSED'
+                               WHEN COALESCE(SUM(iq.warehouse_stocked_base_qty),0) > 0
+                                    AND (
+                                        COALESCE(SUM(iq.passed_base_qty),0)
+                                            > COALESCE(SUM(iq.warehouse_stocked_base_qty),0)
+                                        OR COUNT(*) FILTER (
+                                            WHERE iq.status IN ('PENDING','PARTIAL')) > 0
+                                    )
+                                   THEN 'PARTIAL_STOCK_IN'
+                               WHEN COALESCE(SUM(iq.passed_base_qty),0)
+                                    > COALESCE(SUM(iq.warehouse_stocked_base_qty),0)
+                                   THEN 'PENDING_STOCK_IN'
+                               WHEN COALESCE(SUM(iq.passed_base_qty),0) = 0
+                                    AND COUNT(*) FILTER (
+                                        WHERE iq.status IN ('PENDING','PARTIAL')) > 0
+                                   THEN 'WAITING_QUALITY'
+                               WHEN COALESCE(SUM(iq.passed_base_qty),0) = 0
+                                   THEN 'NO_QUALIFIED_STOCK'
+                               WHEN COALESCE(SUM(iq.passed_base_qty),0)
+                                    = COALESCE(SUM(iq.warehouse_stocked_base_qty),0)
+                                   THEN 'STOCKED'
+                               ELSE 'PENDING_STOCK_IN'
+                           END AS warehouse_stock_in_status,
+                           COALESCE(SUM(iq.passed_base_qty),0) AS passed_base_qty,
+                           COALESCE(SUM(iq.warehouse_stocked_base_qty),0)
+                               AS warehouse_stocked_base_qty,
+                           GREATEST(
+                               COALESCE(SUM(iq.passed_base_qty),0)
+                               - COALESCE(SUM(iq.warehouse_stocked_base_qty),0),
+                               0) AS pending_stock_in_base_qty
+                    FROM procurement_inspection_items iq
+                    WHERE iq.receipt_type = 'SUBCONTRACT'
+                      AND iq.receipt_id = r.id
+                ) iqc ON TRUE
                 WHERE r.is_deleted = FALSE AND EXISTS (
                     SELECT 1 FROM subcontract_receipt_items ri
                     JOIN subcontract_order_items oi ON oi.id = ri.order_item_id
@@ -140,7 +265,8 @@ public class SubcontractOrderProgressService {
                 .map(row -> new ReceiptDoc(
                         (UUID) row[0], (String) row[1], (Short) row[2],
                         toDate(row[3]), (String) row[4], (String) row[5],
-                        bd(row[6]), bd(row[7]), (String) row[8], toOffset(row[9])))
+                        bd(row[6]), bd(row[7]), (String) row[8], (String) row[9],
+                        bd(row[10]), bd(row[11]), bd(row[12]), toOffset(row[13])))
                 .toList();
 
         // 成品退货单
@@ -226,7 +352,8 @@ public class SubcontractOrderProgressService {
     }
 
     private boolean subcontractPriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewSubcontractOrder();
     }
 
     /** Pure response redaction used after all quantity/progress calculations are complete. */
@@ -234,7 +361,9 @@ public class SubcontractOrderProgressService {
         List<ReceiptDoc> safeReceipts = progress.receipts().stream()
                 .map(r -> new ReceiptDoc(r.id(), r.billNo(), r.status(), r.billDate(),
                         r.warehouseName(), r.approverName(), r.totalQty(), null,
-                        r.iqcStatus(), r.updatedAt()))
+                        r.iqcStatus(), r.warehouseStockInStatus(),
+                        r.iqcPassedBaseQty(), r.warehouseStockedBaseQty(),
+                        r.pendingStockInBaseQty(), r.updatedAt()))
                 .toList();
         List<ReturnDoc> safeReturns = progress.returns().stream()
                 .map(r -> new ReturnDoc(r.id(), r.billNo(), r.status(), r.billDate(),
@@ -267,6 +396,27 @@ public class SubcontractOrderProgressService {
 
     private static BigDecimal bd(Object value) {
         return value == null ? BigDecimal.ZERO : (BigDecimal) value;
+    }
+
+    private static String preparationBlocker(String status) {
+        if (status == null) return "委外出仓准备状态缺失，请刷新或联系管理员";
+        return switch (status) {
+            case "LEGACY_READY", "READY_OUTBOUND", "OUTBOUND_COMPLETE" -> null;
+            case "ACTION_REQUIRED" -> "需由计划员启动委外前置自制物料分析";
+            case "IN_PREPARATION" -> "前置自制尚未完成领料、报工、FQC 与仓库实收";
+            case "WAITING_FQC" -> "前置自制已报工，等待品质检验";
+            case "WAITING_INBOUND" -> "前置自制已合格，等待仓库实收入库";
+            case "CANCELLED" -> "委外出仓准备已取消";
+            default -> "未知委外出仓准备状态，已失败关闭";
+        };
+    }
+
+    private static List<String> preparationActions(
+            String status, UUID analysisId, boolean canOpenAnalysis) {
+        if (!canOpenAnalysis || analysisId == null || "CANCELLED".equals(status)) {
+            return List.of();
+        }
+        return List.of("OPEN_ANALYSIS");
     }
 
     private static LocalDate toDate(Object value) {

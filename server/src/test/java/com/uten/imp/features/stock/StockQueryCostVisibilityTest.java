@@ -59,6 +59,9 @@ class StockQueryCostVisibilityTest {
         assertTrue(balanceRow.isCostMasked());
         assertEquals(balance.getWeight(), balanceRow.getWeight());
         assertNull(movementRow.getAmountLocal());
+        assertEquals(movement.getUnitId(), movementRow.getUnitId());
+        assertEquals(movement.getUnitRate(), movementRow.getUnitRate());
+        assertEquals(movement.getWeight(), movementRow.getWeight());
         assertTrue(movementRow.isCostMasked());
     }
 
@@ -85,6 +88,7 @@ class StockQueryCostVisibilityTest {
         assertEquals(balance.getAmountLocal(), balanceRow.getAmountLocal());
         assertFalse(balanceRow.isCostMasked());
         assertEquals(movement.getAmountLocal(), movementRow.getAmountLocal());
+        assertEquals(movement.getWeight(), movementRow.getWeight());
         assertFalse(movementRow.isCostMasked());
     }
 
@@ -110,7 +114,7 @@ class StockQueryCostVisibilityTest {
                 UUID.randomUUID(), UUID.randomUUID(), "五金", "M1", "C1", "螺丝", "S1",
                 "银色", "件", "外购", new BigDecimal("2.5"), new BigDecimal("10"),
                 new BigDecimal("999.99"), new BigDecimal("3"), "MAT-001", "五金件", "A-01",
-                new BigDecimal("4")
+                new BigDecimal("4"), new BigDecimal("2")
         }));
         when(countQuery.getSingleResult()).thenReturn(1L);
 
@@ -137,7 +141,7 @@ class StockQueryCostVisibilityTest {
                 UUID.randomUUID(), UUID.randomUUID(), "五金", "M1", "C1", "螺丝", "S1",
                 "银色", "件", "外购", new BigDecimal("2.5"), new BigDecimal("10"),
                 new BigDecimal("123.45"), new BigDecimal("3"), "MAT-001", "五金件", "A-01",
-                new BigDecimal("4")
+                new BigDecimal("4"), new BigDecimal("2")
         }));
         when(countQuery.getSingleResult()).thenReturn(1L);
 
@@ -188,6 +192,9 @@ class StockQueryCostVisibilityTest {
         movement.setWarehouseId(UUID.randomUUID());
         movement.setDirection((short) 1);
         movement.setQty(new BigDecimal("10"));
+        movement.setUnitId(UUID.randomUUID());
+        movement.setUnitRate(new BigDecimal("2.500000"));
+        movement.setWeight(new BigDecimal("7.2500"));
         movement.setAmountLocal(new BigDecimal("123.45"));
         return movement;
     }

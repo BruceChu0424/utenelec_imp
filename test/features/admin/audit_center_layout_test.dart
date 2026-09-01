@@ -12,7 +12,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    '375px audit center starts with human-first guidance and no overflow',
+    '375px audit center keeps the person selector in the first viewport',
     (tester) async {
       SharedPreferences.setMockInitialValues(const {});
       final preferences = await SharedPreferences.getInstance();
@@ -34,10 +34,12 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('看清一次登录期间发生了什么'), findsOneWidget);
       expect(find.text('建立审计调查范围'), findsOneWidget);
       expect(find.text('待选人员'), findsOneWidget);
-      expect(find.byKey(const ValueKey('audit-select-actor')), findsOneWidget);
+      final selectActor = find.byKey(const ValueKey('audit-select-actor'));
+      expect(selectActor, findsOneWidget);
+      expect(tester.getRect(selectActor).bottom, lessThanOrEqualTo(812));
+      expect(find.text('一次调查，只走三步'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -111,6 +113,38 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('dark mode large text and landscape keep the query flow usable', (
+    tester,
+  ) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpComposer(
+      tester,
+      controller: controller,
+      darkMode: true,
+      textScale: 1.5,
+    );
+
+    expect(
+      Theme.of(
+        tester.element(find.byKey(const ValueKey('audit-select-actor'))),
+      ).brightness,
+      Brightness.dark,
+    );
+    expect(find.text('选择调查对象'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    tester.view.physicalSize = const Size(812, 375);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('audit-select-actor')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> _pumpComposer(
@@ -119,6 +153,8 @@ Future<void> _pumpComposer(
   AuditActorOption? selectedActor,
   DateTimeRange? dateRange,
   bool scopeApplied = false,
+  bool darkMode = false,
+  double textScale = 1,
 }) async {
   SharedPreferences.setMockInitialValues(const {});
   final preferences = await SharedPreferences.getInstance();
@@ -130,6 +166,13 @@ Future<void> _pumpComposer(
         darkTheme: ThemeData(
           brightness: Brightness.dark,
           colorSchemeSeed: Colors.teal,
+        ),
+        themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
         ),
         home: Scaffold(
           body: SafeArea(

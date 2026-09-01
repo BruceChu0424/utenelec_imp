@@ -429,8 +429,9 @@ class _DetailPaneState extends State<_DetailPane> {
   // 客户主档可编辑字段（与后端 ClientSaveRequest 对齐；含义不明的遗留字段不进表单）。
   List<MasterFieldDef> _clientFields(
     Map<String, String> iv,
-    List<ReferenceMethodOption> settlementMethods,
-  ) => [
+    List<ReferenceMethodOption> settlementMethods, {
+    bool legacyCreditSnapshot = false,
+  }) => [
     ...const <MasterFieldDef>[
       MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
       MasterFieldDef(
@@ -469,6 +470,19 @@ class _DetailPaneState extends State<_DetailPane> {
       MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
       MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
     ],
+    const MasterFieldDef(
+      key: 'salesPaymentType',
+      label: '销售货款类型',
+      type: MasterFieldType.select,
+      required: true,
+      options: [
+        MasterSelectOption(value: ClientSalesPaymentType.monthly, label: '月结'),
+        MasterSelectOption(value: ClientSalesPaymentType.cash, label: '现金'),
+        MasterSelectOption(value: ClientSalesPaymentType.deposit, label: '定金'),
+      ],
+      group: '财务',
+      hint: '用于发货财务审核分类；不代表定金已到账',
+    ),
     MasterFieldDef(
       key: 'defaultSettlementMethodId',
       label: '默认结账方式',
@@ -485,13 +499,14 @@ class _DetailPaneState extends State<_DetailPane> {
       group: '财务',
       hint: '订单未指定时使用；关联以系统 UUID 保存',
     ),
+    MasterFieldDef(
+      key: 'credit',
+      label: legacyCreditSnapshot ? '旧库 Credit 快照（只读）' : '信用额度',
+      type: MasterFieldType.money,
+      group: '财务',
+      hint: legacyCreditSnapshot ? '仅用于旧库对照，不参与铺底或发货放行计算' : null,
+    ),
     ...const <MasterFieldDef>[
-      MasterFieldDef(
-        key: 'credit',
-        label: '信用额度',
-        type: MasterFieldType.money,
-        group: '财务',
-      ),
       MasterFieldDef(
         key: 'initTotal',
         label: '期初应收',
@@ -620,20 +635,29 @@ class _DetailPaneState extends State<_DetailPane> {
       'initTotal': d.initTotal?.toString() ?? '',
       'creditFloor': d.creditFloor?.toString() ?? '',
       'tday': d.tday?.toString() ?? '',
+      'salesPaymentType': d.salesPaymentType ?? '',
       'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
       'status': d.status ?? '',
       'remark': d.remark ?? '',
     };
+    final readOnlyKeys = <String>{
+      if (!_canStatusMaster) 'status',
+      if (d.legacyId != null) 'credit',
+    };
     showMasterEditDialog(
       context: context,
       title: '编辑客户', // TODO(l10n): 补 arb
-      fields: _clientFields(iv, settlementMethods),
+      fields: _clientFields(
+        iv,
+        settlementMethods,
+        legacyCreditSnapshot: d.legacyId != null,
+      ),
       initialValues: iv,
       fixedValues: {
         'categoryId': d.categoryId ?? widget.nodeId,
         if (d.version != null) 'version': d.version,
       },
-      readOnlyKeys: _canStatusMaster ? null : const {'status'},
+      readOnlyKeys: readOnlyKeys.isEmpty ? null : readOnlyKeys,
       onSubmit: (body) => _doUpdateClient(d.id, body),
     );
   }
@@ -803,13 +827,17 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterDetailRow('开户行', d.bank), // TODO(l10n): 补 arb
     MasterDetailRow('银行账号', d.bankAccount), // TODO(l10n): 补 arb
     MasterDetailRow('税号', d.taxId), // TODO(l10n): 补 arb
-    MasterDetailRow('信用额度', d.credit?.toStringAsFixed(2)), // TODO(l10n): 补 arb
+    MasterDetailRow(
+      d.legacyId == null ? '信用额度' : '旧库 Credit 快照（只读）',
+      d.credit?.toStringAsFixed(2),
+    ),
     MasterDetailRow(
       '期初应收',
       d.initTotal?.toStringAsFixed(2),
     ), // TODO(l10n): 补 arb
     MasterDetailRow('铺底额', d.creditFloor?.toStringAsFixed(2)),
     MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
+    MasterDetailRow('销售货款类型', salesPaymentTypeLabel(d.salesPaymentType)),
     MasterDetailRow('默认结账方式', d.defaultSettlementMethodName),
     MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
     MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
@@ -1248,6 +1276,12 @@ class _DetailPaneState extends State<_DetailPane> {
       value: (m) => m.fullName,
     ),
     MasterColumnDef(
+      key: 'salesPaymentType',
+      label: '销售货款类型',
+      width: 110,
+      value: (m) => salesPaymentTypeLabel(m.salesPaymentType),
+    ),
+    MasterColumnDef(
       key: 'defaultSettlementMethodName',
       label: '主结账方式',
       width: 110,
@@ -1348,11 +1382,18 @@ class _DetailPaneState extends State<_DetailPane> {
     ),
     MasterColumnDef(
       key: 'credit',
-      label: '信誉额度',
+      label: '信用额度 / 旧库 Credit 快照',
       width: 110,
       type: 'money',
       sortable: true,
       value: (m) => m.credit?.toStringAsFixed(2),
+    ),
+    MasterColumnDef(
+      key: 'creditFloor',
+      label: '铺底额',
+      width: 110,
+      type: 'money',
+      value: (m) => (m.creditFloor ?? 0).toStringAsFixed(2),
     ),
     MasterColumnDef(
       key: 'website',

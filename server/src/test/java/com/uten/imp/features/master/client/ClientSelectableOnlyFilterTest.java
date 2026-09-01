@@ -74,8 +74,8 @@ class ClientSelectableOnlyFilterTest {
 
     private static ClientQueryFilter selectableFilter() {
         return new ClientQueryFilter(
-                null, null, Set.of(), null, null, null, null, null, null,
+                null, null, Set.of(), null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, true, true);
+                null, null, null, null, null, null, true, true);
     }
 }

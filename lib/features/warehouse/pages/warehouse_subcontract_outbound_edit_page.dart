@@ -1,11 +1,12 @@
-// 委外拣货出仓页（/warehouse/subcontract-outbound/:planId）—— 仓库专属页面（V304）。
+// 委外目标件拣货出仓页（/warehouse/subcontract-outbound/:planId）。
 //
 // 与委外模块发料单编辑页分立设计（不复用、不跳转）：
-//   - 全页无价格/金额/币种字段（材料按成本发出，价格本就不在出仓单上）；
-//   - 计划行来自发料计划快照（批准时 BOM 展开），逐行显示 计划量/已出仓/本次出仓；
-//   - 本次出仓默认 = 该行剩余量，可改小（分批出仓；审核后余量自动生成下一批草稿）；
+//   - 全页无价格/金额/币种字段；
+//   - 新流只展示服务端已放行的委外目标件，不在 Flutter 判断 BOM/生产/FQC/入仓；
+//   - 本次出仓默认 = readyOutboundQty，可改小（分批出仓）；
 //   - 发出仓必选、经办人默认当前登录人（默认部门仓储 SUB_WH）；
-//   - 「审核出仓」确认弹明示效果：材料出库 → 转供应商处保管 → 回厂按冻结单耗守恒消费；
+//   - 「审核出仓」确认弹明示效果：目标件出库 → 委外加工 → 回厂 IQC；
+//   - LEGACY_BOM_COMPONENT 仅保留历史 BOM 子件发料兼容；
 //   - 「不再出仓」关闭计划余量（必填原因）；无草稿时可「生成出仓草稿」。
 // 数据走既有 /api/subcontract/material-issues 端点（数据通用），草稿 maker 为空时
 // 服务端凭 subcontract_material_issue:edit 权限放行（V304 授权 SUB_WH）。
@@ -50,16 +51,25 @@ class WarehouseSubcontractOutboundEditPage extends ConsumerStatefulWidget {
 }
 
 class _LineEdit {
-  _LineEdit(this.line, this.draftItemId, String initialQty)
-    : qty = TextEditingController(text: initialQty);
+  _LineEdit(
+    this.line,
+    this.draftItemId,
+    String initialQty,
+    String initialWeight,
+  ) : qty = TextEditingController(text: initialQty),
+      weight = TextEditingController(text: initialWeight);
 
   final OutboundPlanLine line;
 
   /// 草稿明细行 id（仅存引用，保存时以 planItemId/orderItemId 回传）。
   final String? draftItemId;
   final TextEditingController qty;
+  final TextEditingController weight;
 
-  void dispose() => qty.dispose();
+  void dispose() {
+    qty.dispose();
+    weight.dispose();
+  }
 }
 
 class _WarehouseSubcontractOutboundEditPageState
@@ -136,14 +146,21 @@ class _WarehouseSubcontractOutboundEditPageState
         };
         for (final line in detail.lines) {
           final draftLine = byPlanItem[line.planItemId];
-          final initial = draftLine?.qty ?? line.remainingQty;
-          if (initial <= 0 && draftLine == null) continue;
-          lines.add(_LineEdit(line, draftLine?.id, _fmtQty(initial)));
+          if (draftLine == null) continue;
+          final initial = draftLine.qty ?? 0;
+          lines.add(
+            _LineEdit(
+              line,
+              draftLine.id,
+              _fmtQty(initial),
+              draftLine.weight?.toString() ?? '',
+            ),
+          );
         }
       } else {
         for (final line in detail.lines) {
-          if (line.remainingQty <= 0) continue;
-          lines.add(_LineEdit(line, null, _fmtQty(line.remainingQty)));
+          if (line.readyOutboundQty <= 0) continue;
+          lines.add(_LineEdit(line, null, _fmtQty(line.readyOutboundQty), ''));
         }
       }
       // 经办人默认当前登录人。
@@ -215,8 +232,8 @@ class _WarehouseSubcontractOutboundEditPageState
     final items = <Map<String, dynamic>>[];
     for (final e in _lines) {
       final qty = double.tryParse(e.qty.text.trim()) ?? -1;
-      final maxQty = e.line.plannedQty - e.line.issuedQty;
-      final name = e.line.goodsName ?? e.line.goodsCode ?? '该材料';
+      final maxQty = e.line.maxEditableQty;
+      final name = e.line.goodsName ?? e.line.goodsCode ?? '该目标件';
       if (qty <= 0) {
         context.appError('$name 的本次出仓量必须大于 0');
         return null;
@@ -225,7 +242,13 @@ class _WarehouseSubcontractOutboundEditPageState
         context.appError('$name 的本次出仓量不能超过计划剩余量 ${_fmtQty(maxQty)}');
         return null;
       }
-      items.add(e.line.toMaterialIssueItemPayload(qty: qty));
+      final weightText = e.weight.text.trim();
+      final weight = weightText.isEmpty ? null : double.tryParse(weightText);
+      if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
+        context.appError('$name 的实际重量必须大于 0');
+        return null;
+      }
+      items.add(e.line.toMaterialIssueItemPayload(qty: qty, weight: weight));
     }
     if (items.isEmpty) {
       context.appError('出仓明细为空');
@@ -284,13 +307,13 @@ class _WarehouseSubcontractOutboundEditPageState
       context,
       title: '审核出仓确认',
       confirmLabel: '确认出仓',
-      actionLabel: '委外材料出仓审核',
-      responsibilityDescription: '确认后，系统将以此登录员工记录本次委外材料出仓审核责任。',
+      actionLabel: '委外目标件出仓审核',
+      responsibilityDescription: '确认后，系统将以此登录员工记录本次委外目标件出仓审核责任。',
       message:
           '审核后将：\n'
-          '① 材料从所选发出仓出库，转为委商处保管(公司库存减少)；\n'
-          '② 按批准时 BOM 冻结单耗，回厂进仓按冻结单耗守恒消费；\n'
-          '③ 本次未出完的计划余量自动生成下一批出仓草稿。',
+          '① 已放行的委外目标件从所选仓库出库，交委外商加工；\n'
+          '② 有子层级的目标件必须已经完成前置自制、FQC 和成品入仓，本页不能绕过；\n'
+          '③ 加工完成回厂后仍需登记回仓、品质检查，合格后才正式入仓。',
     );
     if (!confirmed || !mounted) return;
     setState(() => _saving = true);
@@ -304,7 +327,7 @@ class _WarehouseSubcontractOutboundEditPageState
           .read(subcontractRepositoryProvider(SubcontractDocType.materialIssue))
           .approve(id);
       if (!mounted) return;
-      context.appSuccess('材料出仓已审核，材料已转出至委外商处');
+      context.appSuccess('委外目标件出仓已审核，可交委外商加工');
       context.pop(true);
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
@@ -513,7 +536,7 @@ class _WarehouseSubcontractOutboundEditPageState
             ),
             const SizedBox(height: UtenSpacing.s12),
           ],
-          // —— 材料行（计划量/已出仓/本次出仓；无价格字段）——
+          // —— 目标件（服务端已放行数量/已出仓/本次出仓；无价格字段）——
           Card(
             margin: EdgeInsets.zero,
             child: Padding(
@@ -522,7 +545,7 @@ class _WarehouseSubcontractOutboundEditPageState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '发料明细(按批准时 BOM 展开)',
+                    '委外目标件出仓明细',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -530,7 +553,7 @@ class _WarehouseSubcontractOutboundEditPageState
                   const SizedBox(height: UtenSpacing.s8),
                   if (_lines.isEmpty)
                     Text(
-                      '全部计划量已出仓',
+                      '当前没有服务端放行的可出仓目标件',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -680,18 +703,34 @@ class _WarehouseSubcontractOutboundEditPageState
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  '父件 ${line.parentGoodsCode ?? ''} ${line.parentGoodsName ?? ''}'
-                      .trim(),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                if (line.flowMode ==
+                    SubcontractOutboundFlowMode.legacyBomComponent)
+                  Text(
+                    '历史父件 ${line.parentGoodsCode ?? ''} ${line.parentGoodsName ?? ''}'
+                        .trim(),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                else
+                  Text(
+                    '${line.flowMode.label} · ${line.preparationStatus.label}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
                 Text(
-                  '单耗 ${_fmtQty(line.bomUnitQty)}'
-                  '${line.unitName != null ? ' ${line.unitName}' : ''}'
-                  '${line.goodsStockPlace != null ? ' · 库位 ${line.goodsStockPlace}' : ''}'
-                  ' · 计划 ${_fmtQty(line.plannedQty)} / 已出仓 ${_fmtQty(line.issuedQty)}',
+                  line.flowMode ==
+                          SubcontractOutboundFlowMode.legacyBomComponent
+                      ? '历史单耗 ${_fmtQty(line.bomUnitQty)}'
+                            '${line.unitName != null ? ' ${line.unitName}' : ''}'
+                            '${line.goodsStockPlace != null ? ' · 库位 ${line.goodsStockPlace}' : ''}'
+                            ' · 计划 ${_fmtQty(line.plannedQty)} / 已出仓 ${_fmtQty(line.issuedQty)}'
+                      : '目标件总量 ${_fmtQty(line.plannedQty)}'
+                            ' · 已完成前置自制 ${_fmtQty(line.preparedQty)}'
+                            ' · 当前可出 ${_fmtQty(line.readyOutboundQty)}'
+                            ' · 已出仓 ${_fmtQty(line.issuedQty)}'
+                            '${line.goodsStockPlace != null ? ' · 库位 ${line.goodsStockPlace}' : ''}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -714,8 +753,27 @@ class _WarehouseSubcontractOutboundEditPageState
               decoration: InputDecoration(
                 labelText: '本次出仓',
                 helper: UtenFieldMessage.helper(
-                  '剩 ${_fmtQty(line.plannedQty - line.issuedQty)}',
+                  '本次最多 ${_fmtQty(line.maxEditableQty)}',
                 ),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          SizedBox(
+            width: 120,
+            child: TextField(
+              controller: e.weight,
+              enabled: canEdit,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}')),
+              ],
+              decoration: const InputDecoration(
+                labelText: '实际重量',
+                hintText: '可选',
               ),
               onChanged: (_) => setState(() {}),
             ),

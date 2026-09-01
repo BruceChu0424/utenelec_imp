@@ -256,7 +256,8 @@ FROM quote_item_stage s JOIN quote_stage q ON q.legacy_id = s.bill_legacy;
 INSERT INTO sales_orders (
     legacy_id, bill_no, bill_date, client_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, maker_id, approver_id, deliver_date, contract_no, link_phone,
-    sign_addr, ship_addr, deposit, remark, total_original, total_local, status, is_closed,
+    sign_addr, ship_addr, deposit, remark, total_original, total_local,
+    status, finance_confirmed, is_closed,
     is_stopped, source_doc_no, source_quote_id,
     seller_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
@@ -267,7 +268,8 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        s.deliver_date, s.contract_no, s.link_phone, s.sign_addr, s.ship_addr,
        s.deposit, s.remark, s.total_original,
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), NULL, NULL,
+       s.status, s.status <> 0,
+       COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), NULL, NULL,
        s.seller_legacy, s.maker_legacy, s.approver_legacy   -- *_legacy_id 保老库 B_Worker/Sys_Operator ID
 FROM order_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
@@ -338,7 +340,8 @@ UPDATE sales_order_cost_items c
 INSERT INTO sales_shipments (
     legacy_id, bill_no, bill_date, client_id, warehouse_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, sender_id, maker_id, approver_id, ship_addr, link_phone, parcel_count,
-    print_count, last_date, remark, total_original, total_local, status, is_closed, ar_posted, source_doc_no,
+    print_count, last_date, remark, total_original, total_local, status, is_closed, ar_posted,
+    warehouse_work_status, finance_gate_version, source_doc_no,
     source_order_id,
     seller_legacy_id, sender_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
@@ -350,7 +353,12 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        s.ship_addr, s.link_phone, s.p_count, s.print_count, s.last_date,
        s.remark, s.total_original,
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, FALSE, FALSE, NULL, NULL,           -- 历史自由文本不猜绑 source_order_id
+       s.status, FALSE, FALSE,
+       CASE WHEN s.status = 1 THEN 'SHIPPED'
+            WHEN s.status = -1 THEN 'REVERSED'
+            ELSE 'LEGACY_PENDING' END,
+       0,
+       NULL, NULL,                                   -- 历史自由文本不猜绑 source_order_id
        s.seller_legacy, s.sender_legacy, s.maker_legacy, s.approver_legacy
 FROM ship_stage s
 ON CONFLICT (legacy_id) DO NOTHING;

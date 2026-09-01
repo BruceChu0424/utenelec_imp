@@ -134,6 +134,12 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
         value: (m) => names.warehouse(m.warehouseId),
       ),
       MasterColumnDef(
+        key: 'unit',
+        label: '单位',
+        width: 90,
+        value: (m) => names.unit(m.unitId),
+      ),
+      MasterColumnDef(
         key: 'qty',
         label: '数量', // TODO(l10n): 补 arb
         width: 120,
@@ -143,6 +149,18 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
           if (m.qty == null) return null;
           final sign = m.direction == 1 ? '+' : '-';
           return '$sign${m.qty!.toStringAsFixed(2)}';
+        },
+      ),
+      MasterColumnDef(
+        key: 'weight',
+        label: '实际重量',
+        width: 120,
+        type: 'number',
+        sortable: true,
+        value: (m) {
+          if (m.weight == null) return null;
+          final sign = m.direction == 1 ? '+' : '-';
+          return '$sign${m.weight!.toStringAsFixed(4)}';
         },
       ),
     ];

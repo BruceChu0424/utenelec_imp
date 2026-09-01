@@ -84,17 +84,24 @@ class ProductionFqcRecoveryIntegrationContractTest {
         String recovery = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/production/quality/"
                         + "ProductionFqcRecoveryService.java"));
+        int decisionLockStart = quality.indexOf(
+                "private void prelockDecisionDimensions(UUID inspectionId)");
+        int decisionLockEnd = quality.indexOf(
+                "private void lockOne(String table, UUID id)", decisionLockStart);
+        assertThat(decisionLockStart).isGreaterThanOrEqualTo(0);
+        assertThat(decisionLockEnd).isGreaterThan(decisionLockStart);
+        String decisionLock = quality.substring(decisionLockStart, decisionLockEnd);
 
         assertThat(report.indexOf(
                 "qualityInspection.prelockForReportReversal(r.getId())"))
                 .isLessThan(report.indexOf("executionSegments.reverse(items)"));
-        assertThat(quality.indexOf(
+        assertThat(decisionLock.indexOf(
                 "lockOne(\"production_fqc_inspections\", inspectionId)"))
-                .isLessThan(quality.indexOf(
+                .isLessThan(decisionLock.indexOf(
                         "lockOne(\"production_execution_segments\""));
-        assertThat(quality.indexOf(
+        assertThat(decisionLock.indexOf(
                 "lockOne(\"production_execution_segments\""))
-                .isLessThan(quality.indexOf(
+                .isLessThan(decisionLock.indexOf(
                         "lockOne(\"production_plan_items\""));
         assertThat(recovery.indexOf("List<?> lockedSales"))
                 .isLessThan(recovery.indexOf("List<?> lockedLinks"));

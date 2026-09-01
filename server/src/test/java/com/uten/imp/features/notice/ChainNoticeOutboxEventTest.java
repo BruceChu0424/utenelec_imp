@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -379,16 +381,28 @@ class ChainNoticeOutboxEventTest {
                 shipmentId,
                 Map.of(),
                 ChainNoticeService.EVENT_SHIPMENT_PENDING_PICK + ':'
-                        + shipmentId);
+                        + shipmentId + ":legacy");
+
+        UUID financePendingId = UUID.randomUUID();
+        service.notifyShipmentPendingFinanceAudit(financePendingId);
+        verify(outbox).publishOnce(
+                ChainNoticeService.EVENT_SHIPMENT_PENDING_FINANCE,
+                "SALES_SHIPMENT",
+                financePendingId,
+                Map.of(),
+                ChainNoticeService.EVENT_SHIPMENT_PENDING_FINANCE + ':'
+                        + financePendingId);
     }
 
     @Test
     void pendingShipmentDeliveryTargetsWarehouseWithoutClaimingAllocation() {
         UUID shipmentId = UUID.randomUUID();
         UUID warehouseUserId = UUID.randomUUID();
+        UUID revokedWarehouseUserId = UUID.randomUUID();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
         when(jdbc.queryForList(
                 contains("FROM sales_shipments shipment"),
                 eq(shipmentId))).thenReturn(List.of(Map.of(
@@ -398,11 +412,21 @@ class ChainNoticeOutboxEventTest {
         when(jdbc.queryForList(
                 contains("WITH RECURSIVE subtree(id)"),
                 eq(UUID.class),
-                eq("SUB_WH"))).thenReturn(List.of(warehouseUserId));
+                eq("SUB_WH"))).thenReturn(List.of(
+                        warehouseUserId, revokedWarehouseUserId));
+        UserAccount warehouseUser = activeUser(warehouseUserId);
+        UserAccount revokedWarehouseUser = activeUser(revokedWarehouseUserId);
         when(users.findById(warehouseUserId))
-                .thenReturn(Optional.of(activeUser(warehouseUserId)));
+                .thenReturn(Optional.of(warehouseUser));
+        when(users.findById(revokedWarehouseUserId))
+                .thenReturn(Optional.of(revokedWarehouseUser));
+        when(permissions.permsOf(warehouseUser))
+                .thenReturn(Set.of("notice:read", "sales_shipment:warehouse-work"));
+        when(permissions.permsOf(revokedWarehouseUser))
+                .thenReturn(Set.of("notice:read"));
         ChainNoticeService service = service(
-                notice, users, jdbc, mock(BusinessEventPublisher.class));
+                notice, users, permissions, mock(UserRoleRepository.class),
+                jdbc, mock(BusinessEventPublisher.class));
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_SHIPMENT_PENDING_PICK,
@@ -417,6 +441,54 @@ class ChainNoticeOutboxEventTest {
                 anyString(),
                 eq("/sales/shipments/" + shipmentId),
                 eq(ChainNoticeService.EVENT_SHIPMENT_PENDING_PICK));
+        verify(notice, never()).publishForUser(
+                eq(revokedWarehouseUserId), anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void financeReleaseRevokedTargetsOnlyWarehouseUsersWithCurrentTaskAuthority() {
+        UUID shipmentId = UUID.randomUUID();
+        UUID allowed = UUID.randomUUID();
+        UUID revoked = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        when(jdbc.queryForList(
+                contains("finance_audit = 0"), eq(shipmentId)))
+                .thenReturn(List.of(Map.of("bill_no", "SH-REVOKED-001")));
+        when(jdbc.queryForList(
+                contains("WITH RECURSIVE subtree(id)"),
+                eq(UUID.class), eq("SUB_WH")))
+                .thenReturn(List.of(allowed, revoked));
+        UserAccount allowedUser = activeUser(allowed);
+        UserAccount revokedUser = activeUser(revoked);
+        when(users.findById(allowed)).thenReturn(Optional.of(allowedUser));
+        when(users.findById(revoked)).thenReturn(Optional.of(revokedUser));
+        when(permissions.permsOf(allowedUser)).thenReturn(
+                Set.of("notice:read", "sales_shipment:warehouse-work"));
+        when(permissions.permsOf(revokedUser)).thenReturn(Set.of("notice:read"));
+        ChainNoticeService service = service(
+                notice, users, permissions, mock(UserRoleRepository.class),
+                jdbc, mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_SHIPMENT_FINANCE_REVOKED,
+                shipmentId,
+                new ObjectMapper().createObjectNode());
+
+        verify(notice).publishForUser(
+                eq(allowed),
+                eq("出货财务放行已撤回：SH-REVOKED-001"),
+                contains("请暂停拣货"),
+                eq(ChainNoticeService.TYPE_URGENT),
+                anyString(),
+                eq("/sales/shipments/" + shipmentId),
+                eq(ChainNoticeService.EVENT_SHIPMENT_FINANCE_REVOKED));
+        verify(notice, never()).publishForUser(
+                eq(revoked), anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString());
     }
 
     @Test
@@ -466,6 +538,115 @@ class ChainNoticeOutboxEventTest {
                 anyString(),
                 eq("/warehouse/FINISHED_IN/" + stockDocId),
                 eq(ChainNoticeService.EVENT_FINISHED_INBOUND_PENDING));
+    }
+
+    @Test
+    void productionFinishedArrivalPendingPublishesOnceWithReportPayload() {
+        UUID reportId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
+        when(jdbc.queryForList(
+                contains("production_finished_arrival_registrations"),
+                eq(reportId))).thenReturn(List.of(Map.of(
+                        "id", reportId,
+                        "bill_no", "RB-ARRIVAL-001")));
+        ChainNoticeService service = service(jdbc, outbox);
+
+        service.notifyProductionFinishedArrivalPending(reportId);
+
+        verify(outbox).publishOnce(
+                ChainNoticeService.EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING,
+                "PRODUCTION_DAILY_REPORT",
+                reportId,
+                Map.of("reportId", reportId, "reportNo", "RB-ARRIVAL-001"),
+                ChainNoticeService.EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING
+                        + ':' + reportId);
+    }
+
+    @Test
+    void productionFinishedArrivalDeliveryRequiresWarehouseViewAndApprove() {
+        UUID reportId = UUID.randomUUID();
+        UUID allowed = UUID.randomUUID();
+        UUID approveOnly = UUID.randomUUID();
+        UUID viewOnly = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        when(jdbc.queryForList(
+                contains("production_finished_arrival_registrations"),
+                eq(reportId))).thenReturn(List.of(Map.of(
+                        "id", reportId,
+                        "bill_no", "RB-ARRIVAL-002")));
+        when(jdbc.queryForList(
+                contains("WITH RECURSIVE subtree(id)"),
+                eq(UUID.class),
+                eq("SUB_WH"))).thenReturn(List.of(
+                        allowed, approveOnly, viewOnly));
+        UserAccount allowedUser = activeUser(allowed);
+        UserAccount approveOnlyUser = activeUser(approveOnly);
+        UserAccount viewOnlyUser = activeUser(viewOnly);
+        when(users.findById(allowed)).thenReturn(Optional.of(allowedUser));
+        when(users.findById(approveOnly))
+                .thenReturn(Optional.of(approveOnlyUser));
+        when(users.findById(viewOnly)).thenReturn(Optional.of(viewOnlyUser));
+        when(permissions.permsOf(allowedUser))
+                .thenReturn(Set.of("stock_doc:view", "stock_doc:approve"));
+        when(permissions.permsOf(approveOnlyUser))
+                .thenReturn(Set.of("stock_doc:approve"));
+        when(permissions.permsOf(viewOnlyUser))
+                .thenReturn(Set.of("stock_doc:view"));
+        ChainNoticeService service = new ChainNoticeService(
+                notice, users, permissions, mock(UserRoleRepository.class),
+                jdbc, mock(BusinessEventPublisher.class),
+                mock(RdTaskService.class),
+                mock(FinanceReviewerEligibilityPort.class),
+                mock(com.uten.imp.features.admin.workflow
+                        .SalesOrderFinanceConfirmerEligibility.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING,
+                reportId,
+                new ObjectMapper().createObjectNode());
+
+        verify(notice).publishForUser(
+                eq(allowed),
+                eq("待登记生产成品送检：RB-ARRIVAL-002"),
+                contains("通知不代替仓库任务队列"),
+                eq(ChainNoticeService.TYPE_TASK),
+                anyString(),
+                eq("/warehouse/production-finished-in/tasks"),
+                eq(ChainNoticeService.EVENT_PRODUCTION_FINISHED_ARRIVAL_PENDING));
+        verifyNoMoreInteractions(notice);
+    }
+
+    @Test
+    void nonPendingOrLegacyReportDoesNotPublishWarehouseArrivalNotice() {
+        UUID reportId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
+        when(jdbc.queryForList(
+                contains("production_finished_arrival_registrations"),
+                eq(reportId))).thenReturn(List.of());
+        ChainNoticeService service = service(jdbc, outbox);
+
+        service.notifyProductionFinishedArrivalPending(reportId);
+
+        verifyNoInteractions(outbox);
+    }
+
+    @Test
+    void productionReportedCopyUsesDeclaredNotQualifiedQuantity()
+            throws Exception {
+        String source = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/notice/"
+                        + "ChainNoticeService.java"));
+
+        org.assertj.core.api.Assertions.assertThat(source)
+                .contains("累计完工申报")
+                .contains("等待仓库登记送检、品质放行和最终点收")
+                .doesNotContain("已审核，累计合格")
+                .doesNotContain("成品入库审核后会再次通知可发货状态");
     }
 
     @Test
@@ -658,6 +839,133 @@ class ChainNoticeOutboxEventTest {
                 anyString(),
                 eq("/purchase/orders/" + orderId),
                 eq(ChainNoticeService.EVENT_PROCUREMENT_FINANCE_REJECTED));
+    }
+
+    @Test
+    void subcontractFinanceApprovalReturnsSubmitterToOrderAndExplainsTargetPreparation() {
+        UUID approvalCaseId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID submitterUserId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        when(jdbc.queryForList(
+                contains("FROM procurement_order_approval_cases approval_case"),
+                eq(approvalCaseId))).thenReturn(List.of(Map.of(
+                        "bill_no_snapshot", "WW-001",
+                        "amount_snapshot", new BigDecimal("800.00"),
+                        "order_type", "SUBCONTRACT",
+                        "order_id", orderId,
+                        "submitted_by_user_id", submitterUserId)));
+        when(users.findById(submitterUserId))
+                .thenReturn(Optional.of(activeUser(submitterUserId)));
+        ChainNoticeService service = service(
+                notice, users, jdbc, mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_PROCUREMENT_FINANCE_APPROVED,
+                approvalCaseId,
+                new ObjectMapper().createObjectNode());
+
+        verify(notice).publishForUser(
+                eq(submitterUserId),
+                eq("财务通过：WW-001"),
+                contains("目标件真实审核出仓后才进入仓库预计到货"),
+                eq(ChainNoticeService.TYPE_WORKFLOW),
+                anyString(),
+                eq("/subcontract/orders/" + orderId),
+                eq(ChainNoticeService.EVENT_PROCUREMENT_FINANCE_APPROVED));
+        verifyNoMoreInteractions(notice);
+    }
+
+    @Test
+    void subcontractSupplierReturnBroadcastUsesEffectiveTaskPermissionNotPurchaseDepartment() {
+        UUID exceptionId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+        UUID followerUserId = UUID.randomUUID();
+        UUID deniedUserId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        UserAccount owner = activeUser(ownerUserId);
+        UserAccount follower = activeUser(followerUserId);
+        UserAccount denied = activeUser(deniedUserId);
+        when(users.findAll()).thenReturn(List.of(owner, follower, denied));
+        when(users.findById(ownerUserId)).thenReturn(Optional.of(owner));
+        when(users.findById(followerUserId)).thenReturn(Optional.of(follower));
+        when(permissions.permsOf(owner)).thenReturn(
+                Set.of("supplier_return_task:view", "notice:read"));
+        when(permissions.permsOf(follower)).thenReturn(
+                Set.of("supplier_return_task:view", "notice:read"));
+        when(permissions.permsOf(denied)).thenReturn(Set.of("notice:read"));
+        when(jdbc.queryForList(
+                contains("FROM procurement_arrival_exceptions exception"),
+                eq(exceptionId))).thenReturn(List.of(Map.of(
+                        "order_type", "SUBCONTRACT",
+                        "receipt_bill_no_snapshot", "WR-001",
+                        "order_bill_no_snapshot", "WW-001",
+                        "owner_user_id", ownerUserId,
+                        "return_qty", new BigDecimal("5"))));
+        ChainNoticeService service = service(
+                notice, users, permissions, mock(UserRoleRepository.class),
+                jdbc, mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_PROCUREMENT_RETURN_REQUIRED,
+                exceptionId,
+                new ObjectMapper().createObjectNode());
+
+        verify(notice).publishForUser(
+                eq(followerUserId),
+                eq("供应商退回任务：WW-001"),
+                contains("委外订货单 WW-001"),
+                eq(ChainNoticeService.TYPE_TASK),
+                anyString(),
+                eq("/procurement/arrival-exceptions"),
+                eq(ChainNoticeService.EVENT_PROCUREMENT_RETURN_REQUIRED),
+                eq("normal"));
+        verify(notice, never()).publishForUser(
+                eq(deniedUserId), anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void subcontractLossOpenedNotifiesEffectiveFinanceReviewPool() {
+        UUID caseId = UUID.randomUUID();
+        UUID reviewerId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        UserAccount reviewer = activeUser(reviewerId);
+        when(users.findAll()).thenReturn(List.of(reviewer));
+        when(users.findById(reviewerId)).thenReturn(Optional.of(reviewer));
+        when(permissions.permsOf(reviewer)).thenReturn(
+                Set.of("subcontract_loss_claim:review", "notice:read"));
+        when(jdbc.queryForList(
+                contains("FROM subcontract_loss_cases loss"),
+                eq(caseId))).thenReturn(List.of(Map.of(
+                        "waste_bill_no", "SH-001",
+                        "status", "OPEN",
+                        "supplier_name", "委外商甲")));
+        ChainNoticeService service = service(
+                notice, users, permissions, mock(UserRoleRepository.class),
+                jdbc, mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_SUBCONTRACT_LOSS_OPENED,
+                caseId,
+                new ObjectMapper().createObjectNode());
+
+        verify(notice).publishForUser(
+                eq(reviewerId),
+                eq("委外超耗待财务决定：SH-001"),
+                contains("损耗事实本身不会自动冲应付"),
+                eq(ChainNoticeService.TYPE_APPROVAL),
+                anyString(),
+                eq("/finance/payables"),
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_LOSS_OPENED));
     }
 
     @Test

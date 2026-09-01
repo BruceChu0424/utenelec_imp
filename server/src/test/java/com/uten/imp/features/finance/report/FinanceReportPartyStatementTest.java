@@ -190,6 +190,38 @@ class FinanceReportPartyStatementTest {
                 .doesNotContain("CAST(l.settlement_style_legacy AS text)");
     }
 
+    @Test
+    void receivableSummaryDefaultsCreditFloorToZeroAndPreservesNegativeDifference() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        List<String> sqlStatements = new ArrayList<>();
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.setFirstResult(org.mockito.ArgumentMatchers.anyInt())).thenReturn(query);
+        when(query.setMaxResults(org.mockito.ArgumentMatchers.anyInt())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        when(query.getSingleResult()).thenReturn(0L);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            sqlStatements.add(invocation.getArgument(0));
+            return query;
+        });
+
+        ReportTableResponse result = service(em).receivableSummary(
+                null, LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), 1, 50);
+
+        assertThat(labelFor(result, "salesPaymentType")).isEqualTo("货款类型");
+        assertThat(labelFor(result, "creditFloor")).isEqualTo("铺底额");
+        assertThat(labelFor(result, "overFloor")).isEqualTo("超出铺底额");
+        String sql = String.join("\n", sqlStatements).replaceAll("\\s+", " ");
+        assertThat(sql)
+                .contains("COALESCE(c.credit_floor,0) AS \"creditFloor\"")
+                .contains("- COALESCE(c.credit_floor,0) AS \"overFloor\"")
+                .contains("WHEN 'DEPOSIT' THEN '定金'")
+                .contains("AND open_item_kind='RECEIVABLE'")
+                .contains("FROM customer_open_item_offsets allocation")
+                .doesNotContain("open_item_kind='CUSTOMER_PREPAYMENT'")
+                .doesNotContain("GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) - COALESCE(c.credit_floor,0), 0)");
+    }
+
     private static FinanceReportService service(EntityManager em) {
         return new FinanceReportService(
                 em,

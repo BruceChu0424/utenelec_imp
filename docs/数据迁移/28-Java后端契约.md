@@ -1,5 +1,11 @@
 # 28 - 业务四模块 Java 后端契约（普通业务单据通用基线）
 
+> **2026-08-31 V446 IQC 两阶段后置覆盖**：下文旧 `ProcurementInspectionService.dispose(PASS)`
+> 直接/立即写 `DIR_IN`、分析归属和生产供给的契约只代表 **V445 及以前历史实现**。
+> 现行品质 PASS 只更新品质投影并生成 `/warehouse/iqc-stock-ins` 待入库任务；仓库确认命令独立校验
+> 权限、并发余量、实际量和实际库位，再同事务写 `DIR_IN`、归属和生产供给。
+> 详见[采购 / 委外 IQC 合格待入库任务页](../03-页面/采购委外IQC合格待入库任务页.md)。
+
 ## 2026-08-28 后置覆盖：V407–V417 收款、账户流水与付款命令契约
 
 - 新 `FinanceReceiptSaveRequest` 必须传制单人范围内稳定的 8–128 位 `createIdempotencyKey`；更新必须传详情返回的 `expectedVersion`。金额和汇率在 JSON 中以十进制字符串提交，服务端使用 `BigDecimal` 重算；二进制浮点不是入账权威。
@@ -337,8 +343,8 @@ common/docnumber/
 | 财务任务 | `GET /api/finance/procurement-approvals/tasks`、`GET /api/finance/procurement-approvals/count`、`GET /api/finance/procurement-approvals/type-counts` | `finance_order_approval:view`；支持 `orderType + keyword(单号/供应商/提交人)` 服务端分页，列出全部 `PENDING` 待审（V229 起不再按 assignee 过滤），`APPROVE/REJECT` 由合格审核人资格实时判定 |
 | 原子批量通过 | `POST /api/finance/procurement-approvals/tasks/batch-approve` | `view + finance_order_approval:approve` + 实时审核人资格；1–100 项，每项 `{caseId,expectedVersion}`，任一失败整批回滚 |
 | 原子批量驳回 | `POST /api/finance/procurement-approvals/tasks/batch-reject` | `view + finance_order_approval:reject` + 实时审核人资格；1–100 项，共用必填 `reason`，任一失败整批回滚 |
-| 通过 | `POST /api/purchase/orders/{id}/approve`、`POST /api/subcontract/orders/{id}/approve` | `finance_order_approval:approve` + 合格审核人资格（`WorkflowReviewerEligibility` 实时查库）+ `expectedVersion`；决定与返回订单详情同事务 |
-| 驳回 | `POST /api/purchase/orders/{id}/reject`、`POST /api/subcontract/orders/{id}/reject` | `finance_order_approval:reject` + 合格审核人资格（实时查库）+ `expectedVersion` + `reason`；决定与返回详情同事务 |
+| ~~旧单笔通过~~ | `POST /api/purchase/orders/{id}/approve`、`POST /api/subcontract/orders/{id}/approve` | **2026-08-30 已停用且 fail-closed**：过渡映射仅返回 `CONFLICT` 并指向财务任务中心，不再接受 `orderId+version` 决定 |
+| ~~旧单笔驳回~~ | `POST /api/purchase/orders/{id}/reject`、`POST /api/subcontract/orders/{id}/reject` | **2026-08-30 已停用且 fail-closed**：过渡映射不写业务；单笔也必须改用上方携带 `{caseId,expectedVersion}` 的 batch 协议 |
 | ~~负责人列表/保存~~ | `GET/PUT /api/admin/workflow-responsibilities*` | **V229 已删除**；V328 后批准/驳回按 `:approve` / `:reject` 分权并叠加财务部门资格 |
 | 仓库预计到货 | `GET /api/warehouse/inbound/expectations`、`GET /api/warehouse/inbound/expectations/count` | `warehouse_inbound:view`；只返回财务已批订单投影 |
 | 仓库到货异常 | `GET /api/warehouse/inbound/arrival-exceptions`、`GET /api/warehouse/inbound/arrival-exceptions/count` | `warehouse_inbound:view`；只读，不能决定入库量 |
@@ -363,7 +369,7 @@ V229 起「负责人设置」已删除（见 ADR-027）。V328 后动作资格 =
 4. 保存头行 canonical JSON 快照、hash 和提交人快照（V229 起 assignee 列留空，仅保留历史快照语义）；
 5. 追加 `SUBMITTED` 事件并写 Outbox。
 
-审批事务先做权威审核人资格预检，再锁订单和待审 case，验证 `expectedVersion` 及当前订单快照 hash 未变化。`PurchaseOrderFinanceDecisionCommandService` / `SubcontractOrderFinanceDecisionCommandService` 是外层事务门面：通过时调用 `applyFinanceApproval`，使订单 `status=1`、回写申请累计/生产供给，再写 case、事件、未来入库并用决定 receipt 组装详情；驳回结束 case、记录原因并同样组装决定详情。caseId、status、orderId 任一不匹配或投影失败，审批与响应整体回滚。
+审批事务先做权威审核人资格预检，再从请求 `caseId` 解析真实订单并稳定排序锁定订单与待审 case，验证 `expectedVersion` 及订单快照 hash。通过时调用 `applyFinanceApproval`，使订单 `status=1`、回写申请累计/生产供给，再写 case、事件、未来入库；驳回结束 case并记录原因。返回的是 case-bound 决定 receipt，不再组装业务订单详情；caseId、status、orderId、version 或快照任一不匹配，整批事务回滚。
 
 批量命令只信任 `caseId + expectedVersion`：服务端从 PENDING case 解析 `orderType/orderId`，拒绝重复 case/重复订货单，按「订货类型 + orderId」稳定排序后沿单笔相同的订单→case 锁顺序处理，并在锁内再次校验 caseId、版本和快照。旧 case 被驳回、修改并重提为相同版本的新 attempt 时，旧页面的 caseId 必然不匹配（阻断 ABA）；批次中任何一项失败，订单生效、申请累计、生产供给、审批事件、预计到货和 Outbox 全部回滚。
 

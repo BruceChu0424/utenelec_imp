@@ -7,10 +7,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
-import java.util.Locale;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 显式审计写入（登录/改密/重置密码等非数据变更事件）。
@@ -101,22 +101,84 @@ public class AuditService {
             String action,
             String targetType,
             UUID targetId,
+            String targetDisplayName,
+            String targetBusinessCode,
+            String targetLegacyCode) {
+        persistReadableView(
+                actorId,
+                actorAccount,
+                action,
+                targetType,
+                targetId == null ? null : targetId.toString(),
+                "business_detail_view",
+                null,
+                targetDisplayName,
+                targetBusinessCode,
+                targetLegacyCode);
+    }
+
+    /**
+     * Records a successful read of sensitive audit evidence with a concise,
+     * Chinese display reference for the session timeline. The exact machine
+     * scope remains in {@code targetId}; the display metadata never replaces
+     * the canonical session/user/audit identifiers.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void logSuccessfulAuditView(
+            UUID actorId,
+            String actorAccount,
+            String action,
+            String targetType,
+            String targetId,
             String viewDisplayName) {
+        persistReadableView(
+                actorId,
+                actorAccount,
+                action,
+                targetType,
+                targetId,
+                "audit_evidence_view",
+                viewDisplayName,
+                null,
+                null,
+                null);
+    }
+
+    private void persistReadableView(
+            UUID actorId,
+            String actorAccount,
+            String action,
+            String targetType,
+            String targetId,
+            String metadataKind,
+            String legacyViewDisplayName,
+            String targetDisplayName,
+            String targetBusinessCode,
+            String targetLegacyCode) {
         AuditLog value = base(
                 truncate(action, 120),
                 truncate(targetType, 200),
-                targetId == null ? null : targetId.toString(),
+                truncate(targetId, 1000),
                 "success");
         value.setActorId(actorId);
         value.setActorAccount(truncate(actorAccount, 200));
         value.setEventSource("business");
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("view_metadata_kind", "business_detail_view");
-        metadata.put("view_display_name", truncate(viewDisplayName, 200));
+        metadata.put("view_metadata_kind", metadataKind);
+        if ("audit_evidence_view".equals(metadataKind)) {
+            metadata.put("view_display_name", truncate(legacyViewDisplayName, 200));
+        } else {
+            metadata.put("target_display_name",
+                    truncate(blankToNull(targetDisplayName), 200));
+            metadata.put("target_business_code",
+                    truncate(blankToNull(targetBusinessCode), 200));
+            metadata.put("target_legacy_code",
+                    truncate(blankToNull(targetLegacyCode), 100));
+        }
         try {
             value.setAfter(AUDIT_JSON.writeValueAsString(metadata));
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Unable to encode detail-view audit metadata", exception);
+            throw new IllegalStateException("Unable to encode view audit metadata", exception);
         }
         HttpServletRequest request = currentRequest();
         fillRequest(value, request);
@@ -220,5 +282,9 @@ public class AuditService {
             return value;
         }
         return value.substring(0, maxLength);
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

@@ -163,7 +163,8 @@ public class PurchaseReportService {
     }
 
     private boolean purchasePriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewPurchase();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewPurchaseReport();
     }
 
     private static boolean isCommercialColumn(ReportColumn column) {

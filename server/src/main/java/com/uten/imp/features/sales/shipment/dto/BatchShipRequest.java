@@ -2,6 +2,8 @@ package com.uten.imp.features.sales.shipment.dto;
 
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -40,5 +42,9 @@ public class BatchShipRequest {
         private UUID orderItemId;
         @NotNull
         private BigDecimal qty;
+        /** 本次发货行的实际总重量；不从订单或货品单重猜测。 */
+        @DecimalMin(value = "0", inclusive = true)
+        @Digits(integer = 14, fraction = 4)
+        private BigDecimal weight;
     }
 }

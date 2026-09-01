@@ -50,6 +50,7 @@ import '../../features/finance/payables/pages/finance_payables_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
 import '../../features/finance/pages/finance_sales_order_confirmation_page.dart';
 import '../../features/finance/pages/finance_sales_order_review_page.dart';
+import '../../features/finance/pages/finance_sales_shipment_audit_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -76,15 +77,26 @@ import '../../features/stock/pages/instant_inventory_page.dart';
 import '../../features/stock/pages/stock_balance_page.dart';
 import '../../features/stock/pages/stock_movement_page.dart';
 import '../../features/warehouse/models/stock_doc.dart';
+import '../../features/warehouse/config/warehouse_document_history_config.dart';
 import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
 import '../../features/warehouse/pages/procurement_return_task_pages.dart';
 import '../../features/warehouse/pages/procurement_inspection_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
+import '../../features/warehouse/pages/warehouse_iqc_return_detail_page.dart';
+import '../../features/warehouse/pages/warehouse_iqc_return_page.dart';
+import '../../features/warehouse/pages/warehouse_iqc_stock_in_detail_page.dart';
+import '../../features/warehouse/pages/warehouse_iqc_stock_in_page.dart';
+import '../../features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
+import '../../features/warehouse/pages/warehouse_document_history_detail_page.dart';
+import '../../features/warehouse/pages/warehouse_document_history_list_page.dart';
+import '../../features/warehouse/pages/production_finished_arrival_registration_page.dart';
 import '../../features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import '../../features/quality/pages/quality_task_center_page.dart';
+import '../../features/quality/pages/quality_inspection_records_page.dart';
 import '../../features/quality/pages/production_fqc_inspections_page.dart';
+import '../../features/quality/models/quality_inspection_record.dart';
 import '../../shared/models/procurement_inbound.dart';
 import '../../features/warehouse/pages/stock_doc_detail_page.dart';
 import '../../features/warehouse/pages/stock_doc_edit_page.dart';
@@ -95,6 +107,7 @@ import '../../features/warehouse/pages/warehouse_report_table_page.dart';
 import '../../features/warehouse/pages/shelf_label_page.dart';
 import '../../features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart';
 import '../../features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
+import '../../features/warehouse/pages/warehouse_sales_outbound_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/notice/models/notice.dart';
@@ -103,6 +116,8 @@ import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/production_routes.dart';
+import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart';
+import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
 import '../../features/department/pages/my_department_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
@@ -126,10 +141,10 @@ import '../../features/sales/pages/sales_scarcity_page.dart';
 import '../../features/sales/pages/sales_order_progress_detail_page.dart';
 import '../../features/sales/pages/sales_order_progress_page.dart';
 import '../../features/subcontract/models/subcontract_doc.dart';
-import '../../features/subcontract/pages/subcontract_doc_detail_page.dart';
-import '../../features/subcontract/pages/subcontract_doc_edit_page.dart';
-import '../../features/subcontract/pages/subcontract_doc_list_page.dart';
+import '../../features/subcontract/pages/subcontract_decomposition_page.dart';
 import '../../features/subcontract/pages/subcontract_hub_page.dart';
+import '../../features/subcontract/pages/subcontract_page_factory.dart';
+import '../../features/subcontract/pages/subcontract_preparation_page.dart';
 import '../../features/subcontract/config/subcontract_report_config.dart';
 import '../../features/subcontract/pages/subcontract_report_table_page.dart';
 import '../../features/security/pages/security_scan_page.dart';
@@ -156,6 +171,13 @@ String? _rejectUnknownPurchaseDoc(BuildContext _, GoRouterState state) =>
 
 String? _rejectUnknownStockDoc(BuildContext _, GoRouterState state) =>
     StockDocType.tryByCode(state.pathParameters['code']!) == null
+    ? RouteName.notFound
+    : null;
+
+String? _rejectUnknownWarehouseHistoryType(
+  BuildContext _,
+  GoRouterState state,
+) => WarehouseDocumentHistoryType.tryParse(state.pathParameters['type']) == null
     ? RouteName.notFound
     : null;
 
@@ -635,9 +657,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.operationsSubcontractWorkbench,
             name: 'operations-workbench-subcontract',
-            builder: (_, _) => const OperationsWorkbenchPage(
-              department: OperationsWorkbenchDepartment.subcontract,
-            ),
+            builder: (_, _) => const SubcontractDecompositionPage(),
           ),
           // —— 工程研发部任务中心 ——
           GoRoute(
@@ -659,6 +679,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'procurement-return-task-detail',
             builder: (_, state) => ProcurementReturnTaskDetailPage(
               id: state.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.procurementIqcRejections,
+            name: 'procurement-iqc-rejections',
+            builder: (_, state) => ProcurementIqcRejectionListPage(
+              source: state.uri.queryParameters['from'],
+            ),
+          ),
+          GoRoute(
+            path: '${RouteName.procurementIqcRejections}/:id',
+            name: 'procurement-iqc-rejection-detail',
+            builder: (_, state) => ProcurementIqcRejectionDetailPage(
+              id: state.pathParameters['id']!,
+              source: state.uri.queryParameters['from'],
             ),
           ),
 
@@ -785,9 +820,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
+            path: '${RouteName.warehouseIqcStockIns}/:receiptType/:receiptId',
+            name: 'warehouse-iqc-stock-in-detail',
+            builder: (_, state) => WarehouseIqcStockInDetailPage(
+              receiptType: state.pathParameters['receiptType']!,
+              receiptId: state.pathParameters['receiptId']!,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.warehouseIqcStockIns,
+            name: 'warehouse-iqc-stock-ins',
+            builder: (_, _) => const WarehouseIqcStockInPage(),
+          ),
+          GoRoute(
             path: RouteName.qualityTaskCenter,
             name: 'quality-task-center',
             builder: (_, _) => const QualityTaskCenterPage(),
+          ),
+          GoRoute(
+            path: RouteName.qualityInspectionRecords,
+            name: 'quality-inspection-records',
+            builder: (_, state) => QualityInspectionRecordsPage(
+              initialDomain: switch (state.uri.queryParameters['domain']
+                  ?.toUpperCase()) {
+                'IQC' => QualityInspectionRecordDomain.iqc,
+                'FQC' => QualityInspectionRecordDomain.fqc,
+                _ => null,
+              },
+            ),
           ),
           GoRoute(
             path: RouteName.productionFqcInspections,
@@ -808,6 +868,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseProductionFinishedInboundTasks,
             name: 'warehouse-production-finished-inbound-tasks',
             builder: (_, _) => const ProductionFinishedInboundTasksPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseProductionFinishedArrivalRegistration,
+            name: 'warehouse-production-finished-arrival-registration',
+            builder: (_, state) => ProductionFinishedArrivalRegistrationPage(
+              reportId: state.pathParameters['reportId'] ?? '',
+            ),
           ),
           // 仓库登记实际到货独立页（须在 /warehouse/:code 系列之前；extra 带预填）。
           GoRoute(
@@ -857,10 +924,55 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const WarehouseSubcontractOutboundPage(),
           ),
           GoRoute(
+            path: '/warehouse/sales-outbound/:id',
+            name: 'warehouse-sales-outbound-detail',
+            builder: (_, state) => WarehouseSalesOutboundDetailPage(
+              id: state.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: '/warehouse/iqc-returns/:id',
+            name: 'warehouse-iqc-return-detail',
+            builder: (_, state) =>
+                WarehouseIqcReturnDetailPage(id: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: RouteName.warehouseIqcReturns,
+            name: 'warehouse-iqc-returns',
+            builder: (_, _) => const WarehouseIqcReturnPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseSalesOutbound,
+            name: 'warehouse-sales-outbound',
+            builder: (_, _) => const WarehouseSalesOutboundPage(),
+          ),
+          GoRoute(
             path: '/warehouse/subcontract-outbound/:planId',
             name: 'warehouse-subcontract-outbound-edit',
             builder: (_, s) => WarehouseSubcontractOutboundEditPage(
               planId: s.pathParameters['planId']!,
+            ),
+          ),
+          // 仓库实物历史专页：静态 history 段必须先于 /warehouse/:code。
+          GoRoute(
+            path: '/warehouse/history/:type/:id',
+            name: 'warehouse-document-history-detail',
+            redirect: _rejectUnknownWarehouseHistoryType,
+            builder: (_, state) => WarehouseDocumentHistoryDetailPage(
+              type: WarehouseDocumentHistoryType.tryParse(
+                state.pathParameters['type'],
+              )!,
+              id: state.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: '/warehouse/history/:type',
+            name: 'warehouse-document-history-list',
+            redirect: _rejectUnknownWarehouseHistoryType,
+            builder: (_, state) => WarehouseDocumentHistoryListPage(
+              type: WarehouseDocumentHistoryType.tryParse(
+                state.pathParameters['type'],
+              )!,
             ),
           ),
           GoRoute(
@@ -994,6 +1106,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'subcontract-report',
             builder: (_, _) => const SubcontractHubPage(),
           ),
+          GoRoute(
+            path: RouteName.subcontractPreparations,
+            name: 'subcontract-preparations',
+            builder: (_, state) => SubcontractPreparationPage(
+              planItemId: state.uri.queryParameters['planItemId'],
+              sourceAnalysisId: state.uri.queryParameters['sourceAnalysisId'],
+              sourceMaterialLineId:
+                  state.uri.queryParameters['sourceMaterialLineId'],
+            ),
+          ),
           // 委外报表（3 卡：明细/汇总/出入状况，静态段 report 优先于 :seg 参数路由）
           GoRoute(
             path: '/subcontract/report/:kind',
@@ -1008,25 +1130,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/subcontract/:seg/new',
             name: 'subcontract-doc-new',
             redirect: _rejectUnknownSubcontractDoc,
-            builder: (_, s) => SubcontractDocEditPage(
-              docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
+            builder: (_, s) => SubcontractPageFactory.editor(
+              type: SubcontractDocType.byPath(s.pathParameters['seg']!),
               applicationItemIds:
                   s.uri.queryParameters['applicationItemIds']
                       ?.split(',')
                       .where((id) => id.trim().isNotEmpty)
                       .toList() ??
                   const [],
-              receiptPrefill: s.extra is ProcurementReceiptPrefill
-                  ? s.extra! as ProcurementReceiptPrefill
-                  : null,
             ),
           ),
           GoRoute(
             path: '/subcontract/:seg/:id/edit',
             name: 'subcontract-doc-edit',
             redirect: _rejectUnknownSubcontractDoc,
-            builder: (_, s) => SubcontractDocEditPage(
-              docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
+            builder: (_, s) => SubcontractPageFactory.editor(
+              type: SubcontractDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id'],
             ),
           ),
@@ -1034,17 +1153,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/subcontract/:seg/:id',
             name: 'subcontract-doc-detail',
             redirect: _rejectUnknownSubcontractDoc,
-            builder: (_, s) => SubcontractDocDetailPage(
-              docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
-              id: s.pathParameters['id']!,
+            builder: (_, s) => SubcontractPageFactory.detail(
+              SubcontractDocType.byPath(s.pathParameters['seg']!),
+              s.pathParameters['id']!,
             ),
           ),
           GoRoute(
             path: '/subcontract/:seg',
             name: 'subcontract-doc-list',
             redirect: _rejectUnknownSubcontractDoc,
-            builder: (_, s) => SubcontractDocListPage(
-              docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
+            builder: (_, s) => SubcontractPageFactory.list(
+              SubcontractDocType.byPath(s.pathParameters['seg']!),
             ),
           ),
 
@@ -1078,6 +1197,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'finance-sales-order-review',
             builder: (_, state) =>
                 FinanceSalesOrderReviewPage(id: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: RouteName.financeSalesShipmentAudit,
+            name: 'finance-sales-shipment-audit',
+            builder: (_, _) => const FinanceSalesShipmentAuditPage(),
           ),
           GoRoute(
             path: RouteName.financeArrivalExceptions,
@@ -1296,7 +1420,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.adminAuditLogs,
             name: 'admin-audit-logs',
-            builder: (_, _) => const AdminAuditLogPage(),
+            builder: (_, state) => AdminAuditLogPage(
+              initialRequestId: state.uri.queryParameters['requestId'],
+            ),
           ),
           GoRoute(
             path: RouteName.adminAuditSession,

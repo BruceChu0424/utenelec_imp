@@ -5,6 +5,8 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionResult;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionView;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -64,6 +66,14 @@ public class ProductionFqcInspectionController {
                 null,
                 "生产终检任务");
         return result;
+    }
+
+    @PostMapping("/decisions/pass-all")
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')"
+            + " and hasAuthority('production_quality_inspection:approve')")
+    public PassAllBatchResult passAll(
+            @Valid @RequestBody PassAllBatchRequest request) {
+        return service.passAll(request);
     }
 
     @PostMapping("/{id}/decisions")

@@ -66,16 +66,18 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void attributeInspectionPass(
+    public void attributeInspectionStockIn(
             String receiptType,
             UUID receiptId,
             UUID inspectionItemId,
             UUID dispositionEventId,
-            BigDecimal passedBaseQty,
+            UUID warehouseStockInItemId,
+            BigDecimal stockedBaseQty,
             UUID warehouseId) {
         tx.bind();
-        if (passedBaseQty == null || passedBaseQty.signum() <= 0
-                || inspectionItemId == null || warehouseId == null) {
+        if (stockedBaseQty == null || stockedBaseQty.signum() <= 0
+                || inspectionItemId == null || dispositionEventId == null
+                || warehouseStockInItemId == null || warehouseId == null) {
             return;
         }
         boolean purchase = "PURCHASE".equals(receiptType);
@@ -149,7 +151,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 .setParameter("colorId", colorId);
         List<Object[]> claimants = NativeQueryResults.objectArrayRows(claimantQuery);
 
-        BigDecimal remaining = passedBaseQty;
+        BigDecimal remaining = stockedBaseQty;
         Map<UUID, BigDecimal> legacyRemainingByAnalysis = new LinkedHashMap<>();
         for (Object[] claimant : claimants) {
             if (remaining.signum() <= 0) {
@@ -179,7 +181,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     allocationId, analysisId, analysisMaterialId,
                     warehouseId, goodsId, colorId, take,
                     supplyType, externalItemId, receiptType, receiptId,
-                    dispositionEventId);
+                    dispositionEventId, warehouseStockInItemId);
             remaining = remaining.subtract(take);
         }
         // 超出分析分摊量的部分（含财务特批超收）不绑定，按公共现货处理。
@@ -229,6 +231,13 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         String sourceType = Objects.toString(context[2], "");
         String analysisStatus = Objects.toString(context[4], "");
         if (!List.of("ACTIVE", "PARTIALLY_PLANNED").contains(analysisStatus)) {
+            return;
+        }
+        if ("SUBCONTRACT_PREPARATION".equals(sourceType)) {
+            // ProductionCompletionReverseService invokes the neutral
+            // SubcontractPreparationInventoryPort later in this same
+            // FINISHED_IN transaction. That port creates the single dedicated
+            // reservation; PREPLAN_ANALYSIS must not reserve the same stock.
             return;
         }
         if (!"MAKE_COMPONENT".equals(sourceType)) {
@@ -989,8 +998,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             UUID supplyId,
             String receiptType,
             UUID receiptId,
-            UUID dispositionEventId) {
-        String key = "PREPLAN-EXACT-PEG:" + dispositionEventId + ":" + allocationId;
+            UUID dispositionEventId,
+            UUID warehouseStockInItemId) {
+        String key = "PREPLAN-EXACT-PEG:" + warehouseStockInItemId + ":" + allocationId;
         insertReservation(
                 analysisId, warehouseId, goodsId, colorId, qtyBase,
                 supplyType, supplyId, receiptType + "_RECEIPT", receiptId, key);
@@ -1046,10 +1056,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         "exact peg was not persisted"));
         PreplanStockEntitlementService.OriginAppendResult origin =
                 entitlement.appendOriginIqc(
-                dispositionEventId, reservationId,
+                warehouseStockInItemId, reservationId,
                 analysisId, analysisMaterialId, qtyBase,
                 exactPegId, receiptType, receiptId, dispositionEventId,
-                "PREPLAN-ENTITLEMENT-IQC:" + dispositionEventId
+                "PREPLAN-ENTITLEMENT-IQC:" + warehouseStockInItemId
                         + ":" + allocationId);
         applyOriginPriority(origin);
     }

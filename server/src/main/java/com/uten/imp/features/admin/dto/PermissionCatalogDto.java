@@ -16,6 +16,8 @@ public record PermissionCatalogDto(String module, String category, List<Item> pe
             String name,
             String actionType,
             String description,
-            boolean assignable) {
+            boolean assignable,
+            boolean bulkAssignable,
+            String sensitivity) {
     }
 }

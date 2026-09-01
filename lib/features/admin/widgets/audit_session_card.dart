@@ -273,6 +273,9 @@ class AuditSessionSummaryContent extends StatelessWidget {
 }
 
 /// 会话详情页的可分页时间线。首次显示即加载，不依赖列表卡展开。
+///
+/// 该组件返回 Sliver，必须直接放在 CustomScrollView.slivers 中；事件按需
+/// 构建，连续加载更早记录时不会把全部历史节点一次性重排。
 class AuditSessionTimeline extends StatefulWidget {
   const AuditSessionTimeline({
     required this.sessionId,
@@ -386,50 +389,61 @@ class _AuditSessionTimelineState extends State<AuditSessionTimeline> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading && _events.isEmpty) return const _TimelineLoading();
+    if (_loading && _events.isEmpty) {
+      return const SliverToBoxAdapter(child: _TimelineLoading());
+    }
     if (_error != null && _events.isEmpty) {
-      return AuditSessionLoadError(
-        message: _error!,
-        onRetry: () => _load(reset: true),
+      return SliverToBoxAdapter(
+        child: AuditSessionLoadError(
+          message: _error!,
+          onRetry: () => _load(reset: true),
+        ),
       );
     }
-    if (!_loading && _events.isEmpty) return const _TimelineEmpty();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var index = 0; index < _events.length; index++)
-          AuditSessionTimelineEvent(
+    if (!_loading && _events.isEmpty) {
+      return const SliverToBoxAdapter(child: _TimelineEmpty());
+    }
+    return SliverList.builder(
+      itemCount: _events.length + 1,
+      itemBuilder: (context, index) {
+        if (index < _events.length) {
+          return AuditSessionTimelineEvent(
             entry: _events[index],
             first: index == 0,
             last: index == _events.length - 1 && !_hasMore,
             onTap: () => widget.onOpenEvent(_events[index]),
-          ),
-        if (_error != null) ...[
-          AuditSessionLoadError(
+          );
+        }
+        if (_error != null) {
+          return AuditSessionLoadError(
             message: _error!,
             onRetry: () => _load(reset: false),
-          ),
-        ] else if (_hasMore) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          Align(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 220, minHeight: 48),
-              child: FilledButton.tonalIcon(
-                key: ValueKey('audit-session-load-more-${widget.sessionId}'),
-                onPressed: _loading ? null : () => _load(reset: false),
-                icon: _loading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.expand_more_rounded),
-                label: Text(_loading ? '正在加载...' : '加载更早的操作'),
+          );
+        }
+        if (_hasMore) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+            child: Align(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 220, minHeight: 48),
+                child: FilledButton.tonalIcon(
+                  key: ValueKey('audit-session-load-more-${widget.sessionId}'),
+                  onPressed: _loading ? null : () => _load(reset: false),
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.expand_more_rounded),
+                  label: Text(_loading ? '正在加载...' : '加载更早的操作'),
+                ),
               ),
             ),
-          ),
-        ],
-      ],
+          );
+        }
+        return const SizedBox.shrink();
+      },
     );
   }
 }
@@ -454,7 +468,7 @@ class AuditSessionTimelineEvent extends StatelessWidget {
     final time = auditBeijingTime(entry.createdAt, fallback: '时间未知');
     final action = entry.actionLabel?.trim().isNotEmpty == true
         ? entry.actionLabel!.trim()
-        : '人员操作';
+        : '该记录缺少操作名称映射';
     final summary = auditEventNarrative(entry);
     final failed = auditEventFailed(entry);
     final outcome = entry.resultLabel?.trim().isNotEmpty == true
@@ -488,6 +502,7 @@ class AuditSessionTimelineEvent extends StatelessWidget {
             CustomPaint(
               painter: _TimelineRailPainter(
                 color: nodeColor,
+                centerColor: theme.colorScheme.surface,
                 lineColor: theme.colorScheme.outlineVariant,
                 first: first,
                 last: last,
@@ -904,12 +919,14 @@ class _TimelineEmpty extends StatelessWidget {
 class _TimelineRailPainter extends CustomPainter {
   const _TimelineRailPainter({
     required this.color,
+    required this.centerColor,
     required this.lineColor,
     required this.first,
     required this.last,
   });
 
   final Color color;
+  final Color centerColor;
   final Color lineColor;
   final bool first;
   final bool last;
@@ -926,12 +943,13 @@ class _TimelineRailPainter extends CustomPainter {
       canvas.drawLine(Offset(x, nodeY), Offset(x, size.height), linePaint);
     }
     canvas.drawCircle(Offset(x, nodeY), 7, Paint()..color = color);
-    canvas.drawCircle(Offset(x, nodeY), 3, Paint()..color = Colors.white);
+    canvas.drawCircle(Offset(x, nodeY), 3, Paint()..color = centerColor);
   }
 
   @override
   bool shouldRepaint(covariant _TimelineRailPainter oldDelegate) =>
       color != oldDelegate.color ||
+      centerColor != oldDelegate.centerColor ||
       lineColor != oldDelegate.lineColor ||
       first != oldDelegate.first ||
       last != oldDelegate.last;
@@ -1007,24 +1025,43 @@ String auditEventNarrative(AuditLogEntry entry) =>
             if (entry.targetName?.trim().isNotEmpty == true)
               entry.targetName!.trim(),
           ].join(' · ')
-        : '已记录人员操作');
+        : '该记录缺少可读操作说明，需要补充映射');
 
 String? auditEventObjectEvidence(AuditLogEntry entry) {
   final rawObject = entry.objectLabel?.trim();
   final object = rawObject?.isNotEmpty == true && rawObject != '其他业务对象'
       ? rawObject
       : null;
-  final targetName = entry.targetName?.trim();
-  final targetId = entry.targetId?.trim();
-  if (object != null && targetName?.isNotEmpty == true) {
-    return '业务对象 $object · 名称或单据编号 $targetName';
+  final displayName = AuditEventPresentation.safeBusinessReference(
+    entry.targetDisplayName,
+  );
+  final businessCode = AuditEventPresentation.safeBusinessReference(
+    entry.targetBusinessCode,
+  );
+  final legacyCode = AuditEventPresentation.safeBusinessReference(
+    entry.targetLegacyCode,
+  );
+  final compatibleTarget = AuditEventPresentation.safeBusinessReference(
+    entry.targetName,
+  );
+  final parts = <String>[
+    if (object != null) '业务对象 $object',
+    if (displayName != null && displayName != object) '对象名称 $displayName',
+    if (businessCode != null) '业务编号 $businessCode',
+    if (legacyCode != null) '旧系统编号 $legacyCode',
+    if (displayName == null &&
+        businessCode == null &&
+        legacyCode == null &&
+        compatibleTarget != null)
+      '名称或单据编号 $compatibleTarget',
+  ];
+  if (parts.isNotEmpty) {
+    if (parts.length == 1 && object != null) {
+      parts.add('可读业务编号未记录');
+    }
+    return parts.join(' · ');
   }
-  if (object != null && targetId?.isNotEmpty == true) {
-    return '业务对象 $object · 业务编号未记录 · 系统标识 $targetId';
-  }
-  if (targetName?.isNotEmpty == true) return '名称或单据编号 $targetName';
-  if (targetId?.isNotEmpty == true) return '系统标识 $targetId';
-  return object == null ? null : '业务对象 $object · 未记录可读编号';
+  return '该记录缺少业务对象和业务编号映射，需要补录';
 }
 
 bool auditEventFailed(AuditLogEntry entry) =>

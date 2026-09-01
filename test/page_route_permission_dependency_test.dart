@@ -166,6 +166,17 @@ void main() {
           ];
           for (final (suffix, action) in routes) {
             final location = '/$root/${entry.key}/$suffix';
+            if (location == '/subcontract/material-issues/new') {
+              expect(requiredAnyPermFor(location), [permissions.view]);
+              expect(
+                employeePermissionRedirect(
+                  _userWith([permissions.view]),
+                  location,
+                ),
+                isNull,
+              );
+              continue;
+            }
             if (action == null) {
               expect(requiredAnyPermFor(location), isEmpty, reason: location);
               expect(
@@ -200,6 +211,103 @@ void main() {
         }
       }
     });
+
+    test(
+      'finance and warehouse shipment roles reach task pages and shared read-only detail only',
+      () {
+        final financeAuditor = _userWith([Perm.financeShipmentAudit]);
+        final warehouseOperator = _userWith([Perm.salesShipmentWarehouseWork]);
+
+        for (final location in [
+          '/sales/shipments',
+          '/sales/shipments/shipment-1',
+        ]) {
+          expect(requiredAnyPermFor(location), const [
+            Perm.salesShipmentView,
+            Perm.financeShipmentAudit,
+            Perm.salesShipmentWarehouseWork,
+          ]);
+          expect(employeePermissionRedirect(financeAuditor, location), isNull);
+          expect(
+            employeePermissionRedirect(warehouseOperator, location),
+            isNull,
+          );
+        }
+
+        expect(requiredAnyPermFor(RouteName.financeSalesShipmentAudit), const [
+          Perm.financeShipmentAudit,
+        ]);
+        expect(
+          employeePermissionRedirect(
+            financeAuditor,
+            RouteName.financeSalesShipmentAudit,
+          ),
+          isNull,
+        );
+        expect(requiredAnyPermFor(RouteName.warehouseSalesOutbound), const [
+          Perm.salesShipmentWarehouseWork,
+        ]);
+        expect(
+          employeePermissionRedirect(
+            warehouseOperator,
+            RouteName.warehouseSalesOutbound,
+          ),
+          isNull,
+        );
+        expect(
+          employeePermissionRedirect(
+            financeAuditor,
+            RouteName.warehouseSalesOutbound,
+          ),
+          RouteName.accessDenied,
+        );
+        expect(
+          employeePermissionRedirect(
+            warehouseOperator,
+            RouteName.financeSalesShipmentAudit,
+          ),
+          RouteName.accessDenied,
+        );
+        expect(
+          requiredAnyPermFor(RouteName.finance),
+          containsAll([Perm.salesOrderFinanceView, Perm.financeShipmentAudit]),
+        );
+        expect(
+          employeePermissionRedirect(financeAuditor, RouteName.finance),
+          isNull,
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.salesOrderFinanceView]),
+            RouteName.finance,
+          ),
+          isNull,
+        );
+        expect(
+          requiredAnyPermFor(RouteName.warehouse),
+          contains(Perm.salesShipmentWarehouseWork),
+        );
+        expect(
+          employeePermissionRedirect(warehouseOperator, RouteName.warehouse),
+          isNull,
+        );
+
+        for (final user in [financeAuditor, warehouseOperator]) {
+          expect(
+            employeePermissionRedirect(user, '/sales/shipments/new'),
+            RouteName.accessDenied,
+          );
+          expect(
+            employeePermissionRedirect(
+              user,
+              '/sales/shipments/shipment-1/edit',
+            ),
+            RouteName.accessDenied,
+          );
+        }
+      },
+    );
+
     test('material analysis requires view besides action permissions', () {
       final summaryPath = RoutePath.productionMaterialAnalysisSummary(
         'analysis-1',
@@ -246,24 +354,169 @@ void main() {
       }
     });
 
-    test('subcontract outbound handle cannot replace page view permission', () {
-      expect(requiredAnyPermFor(RouteName.warehouseSubcontractOutbound), const [
-        Perm.subcontractOutboundView,
+    test(
+      'subcontract outbound actions cannot replace page view permission',
+      () {
+        expect(
+          requiredAnyPermFor(RouteName.warehouse),
+          contains(Perm.subcontractOutboundView),
+        );
+        expect(
+          requiredAnyPermFor(RouteName.warehouseSubcontractOutbound),
+          const [Perm.subcontractOutboundView],
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith(const ['subcontract_outbound:handle']),
+            RouteName.warehouseSubcontractOutbound,
+          ),
+          RouteName.accessDenied,
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.subcontractOutboundExecute]),
+            RouteName.warehouseSubcontractOutbound,
+          ),
+          RouteName.accessDenied,
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.subcontractOutboundView]),
+            RouteName.warehouseSubcontractOutbound,
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test('subcontract preparation route is exact and fail-closed', () {
+      const location = '/subcontract/preparations';
+      expect(requiredAnyPermFor(location), const [
+        Perm.subcontractPreparationView,
       ]);
       expect(
         employeePermissionRedirect(
-          _userWith([Perm.subcontractOutboundHandle]),
-          RouteName.warehouseSubcontractOutbound,
+          _userWith([Perm.subcontractPreparationStart]),
+          location,
         ),
         RouteName.accessDenied,
       );
       expect(
         employeePermissionRedirect(
-          _userWith([Perm.subcontractOutboundView]),
-          RouteName.warehouseSubcontractOutbound,
+          _userWith([Perm.subcontractPreparationView]),
+          location,
         ),
         isNull,
       );
+    });
+
+    test('application decomposition new flow requires all source actions', () {
+      const location =
+          '/subcontract/orders/new?applicationItemIds=item-1,item-2';
+      expect(requiredAnyPermFor(location), const [Perm.subcontractOrderCreate]);
+      expect(requiredAllPermsFor(location), const [
+        Perm.subcontractOrderView,
+        Perm.subcontractApplicationView,
+        Perm.subcontractOrderDecompose,
+      ]);
+      expect(
+        employeePermissionRedirect(
+          _userWith([
+            Perm.subcontractOrderCreate,
+            Perm.subcontractOrderView,
+            Perm.subcontractApplicationView,
+          ]),
+          location,
+        ),
+        RouteName.accessDenied,
+      );
+      expect(
+        employeePermissionRedirect(
+          _userWith([
+            Perm.subcontractOrderCreate,
+            Perm.subcontractOrderView,
+            Perm.subcontractApplicationView,
+            Perm.subcontractOrderDecompose,
+          ]),
+          location,
+        ),
+        isNull,
+      );
+    });
+
+    test('subcontract decomposition workbench reads applications only', () {
+      expect(
+        requiredAnyPermFor(RouteName.operationsSubcontractWorkbench),
+        const [Perm.subcontractApplicationView],
+      );
+      expect(
+        employeePermissionRedirect(
+          _userWith([Perm.subcontractOrderView]),
+          RouteName.operationsSubcontractWorkbench,
+        ),
+        RouteName.accessDenied,
+      );
+    });
+
+    test(
+      'historical material issue create path is a view-only guidance page',
+      () {
+        const location = '/subcontract/material-issues/new';
+        expect(
+          Perm.buttonActionCodes,
+          isNot(contains(Perm.subcontractMaterialIssueCreate)),
+          reason:
+              'retired manual create must not return as a Flutter action candidate',
+        );
+        expect(requiredAnyPermFor(location), const [
+          Perm.subcontractMaterialIssueView,
+        ]);
+        for (final action in [
+          Perm.subcontractMaterialIssueCreate,
+          Perm.subcontractMaterialIssueEdit,
+          Perm.subcontractMaterialIssueApprove,
+        ]) {
+          expect(
+            employeePermissionRedirect(_userWith([action]), location),
+            RouteName.accessDenied,
+          );
+        }
+      },
+    );
+
+    test('IQC rejection actions never replace the exact page view grant', () {
+      const locations = <String>[
+        '/procurement/iqc-rejections',
+        '/procurement/iqc-rejections?source=warehouse',
+        '/procurement/iqc-rejections/case-1',
+        '/procurement/iqc-rejections/case-1?source=notice',
+      ];
+      const actions = <String>[
+        Perm.procurementIqcRejectionRecordReturn,
+        Perm.procurementIqcRejectionConfirmCredit,
+        Perm.procurementIqcRejectionCloseNoCredit,
+        Perm.procurementIqcRejectionReverse,
+      ];
+
+      for (final location in locations) {
+        expect(requiredAnyPermFor(location), const [
+          Perm.procurementIqcRejectionView,
+        ]);
+        for (final action in actions) {
+          expect(
+            employeePermissionRedirect(_userWith([action]), location),
+            RouteName.accessDenied,
+            reason: '$location must reject action-only $action',
+          );
+        }
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.procurementIqcRejectionView]),
+            location,
+          ),
+          isNull,
+        );
+      }
     });
   });
 }

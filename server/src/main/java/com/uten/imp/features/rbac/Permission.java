@@ -44,6 +44,14 @@ public class Permission extends BaseEntity {
     @Column(nullable = false)
     private boolean assignable = true;
 
+    /** FALSE 表示必须逐项明确授权，不得被组/模块/全部批量操作顺带选中。 */
+    @Column(name = "bulk_assignable", nullable = false)
+    private boolean bulkAssignable = true;
+
+    /** 管理端风险标签；商业敏感权限用于提示可见字段与二次确认。 */
+    @Column(nullable = false)
+    private String sensitivity = "NORMAL";
+
     /** 权限目录组内展示排序（新增列，默认 0）。 */
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder = 0;

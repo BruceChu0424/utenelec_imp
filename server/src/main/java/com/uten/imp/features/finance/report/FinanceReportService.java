@@ -534,7 +534,7 @@ public class FinanceReportService {
 
     /** B 应收款汇总（按客户；期初/发货/回款/退货/期末 用「立帐 − 收款」时序一致口径，保证 期初+发货+退货−回款=期末）。
      *  附件6 口径（2026-07-29 补全）：结算期限（PStyle+TDay 渲染）/铺底额（clients.credit_floor）/
-     *  超出铺底额（应收余额−铺底额，负取 0）。 */
+     *  超出铺底额（应收余额−铺底额，V443 起保留负数；未设置铺底按 0）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse receivableSummary(String keyword, LocalDate from, LocalDate to, int page, int size) {
         requireCompanyWideReportAccess();
@@ -551,6 +551,7 @@ public class FinanceReportService {
                 ReportColumn.text("director", "总监", 110),
                 ReportColumn.text("region", "区域", 100),
                 ReportColumn.text("district", "所属地区", 110),
+                ReportColumn.text("salesPaymentType", "货款类型", 100),
                 ReportColumn.text("settlement", "结算期限", 130),
                 ReportColumn.money("creditFloor", "铺底额"),
                 ReportColumn.money("prevBalance", "上月余额"),
@@ -575,7 +576,12 @@ public class FinanceReportService {
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='SALES_SHIPMENT' THEN amount_original_local ELSE 0 END) AS shipped,
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='SALES_RETURN' THEN amount_original_local ELSE 0 END) AS returned,
                         SUM(CASE WHEN bill_date <= :to THEN amount_original_local ELSE 0 END) AS total_posted
-                    FROM ar_ap_ledger WHERE is_deleted=false AND status=1 AND direction='AR' AND client_id IS NOT NULL
+                    FROM ar_ap_ledger
+                    WHERE is_deleted=false
+                      AND status=1
+                      AND direction='AR'
+                      AND open_item_kind='RECEIVABLE'
+                      AND client_id IS NOT NULL
                     GROUP BY client_id
                 ), receipt_line_totals AS (
                     SELECT receipt_id,
@@ -637,6 +643,12 @@ public class FinanceReportService {
                 SELECT c.code AS "partyCode", c.name AS "partyName", c.full_name AS "partyFull",
                     COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director",
                     COALESCE(c.region,'') AS "region", COALESCE(c.place_id,'') AS "district",
+                    CASE c.sales_payment_type
+                        WHEN 'MONTHLY' THEN '月结'
+                        WHEN 'CASH' THEN '现金'
+                        WHEN 'DEPOSIT' THEN '定金'
+                        ELSE '待人工分类'
+                    END AS "salesPaymentType",
                     CASE c.price_style
                         WHEN 6 THEN '月结' || COALESCE(NULLIF(c.tday, 0), 30) || '天'
                         WHEN 1 THEN '现金'
@@ -648,7 +660,7 @@ public class FinanceReportService {
                         WHEN 10 THEN '代收'
                         ELSE CASE WHEN c.tday IS NOT NULL AND c.tday > 0 THEN '月结' || c.tday || '天' ELSE '' END
                     END AS "settlement",
-                    c.credit_floor AS "creditFloor",
+                    COALESCE(c.credit_floor,0) AS "creditFloor",
                     (COALESCE(p.prior_posted,0) - COALESCE(co.prior_applied,0)) AS "prevBalance",
                     COALESCE(p.shipped,0) AS "shippedAmount",
                     COALESCE(co.period_cash,0) AS "receivedAmount",
@@ -657,7 +669,8 @@ public class FinanceReportService {
                     COALESCE(co.period_exchange_diff,0) AS "exchangeDiff",
                     COALESCE(co.period_applied,0) AS "arReductionAmount",
                     (COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) AS "balance",
-                    GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) - COALESCE(c.credit_floor,0), 0) AS "overFloor",
+                    (COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0))
+                        - COALESCE(c.credit_floor,0) AS "overFloor",
                     NULL AS "materialAmount"
                 FROM clients c
                 JOIN posting p ON p.client_id=c.id
@@ -695,10 +708,10 @@ public class FinanceReportService {
                 ReportColumn.money("prevBalance", "期初应付"),
                 ReportColumn.money("goodsAmount", "采购入库"),
                 ReportColumn.money("subcontractAmount", "委外加工入库"),
-                ReportColumn.money("purchaseReturnAmount", "采购退货抵减"),
-                ReportColumn.money("subcontractReturnAmount", "委外退货抵减"),
-                ReportColumn.money("wasteDeductionAmount", "委外损耗扣款"),
-                ReportColumn.money("claimOffsetAmount", "委外索赔抵减"),
+                ReportColumn.money("purchaseReturnAmount", "采购退货/质检贷项抵减"),
+                ReportColumn.money("subcontractReturnAmount", "委外退货/质检贷项抵减"),
+                ReportColumn.money("wasteDeductionAmount", "历史委外损耗扣款(兼容)"),
+                ReportColumn.money("claimOffsetAmount", "委外索赔贷项立账"),
                 ReportColumn.money("reversedAmount", "立账红冲净额"),
                 ReportColumn.money("paidAmount", "实际付款"),
                 ReportColumn.money("settledAmount", "账面核销"),
@@ -737,8 +750,12 @@ public class FinanceReportService {
                         SUM(CASE WHEN event_date < :from THEN amount_local ELSE 0 END) AS prior_posted,
                         SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST' AND source_doc_type='PURCHASE_RECEIPT' THEN amount_local ELSE 0 END) AS purchase_receipt,
                         SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST' AND source_doc_type='SUBCONTRACT_RECEIPT' THEN amount_local ELSE 0 END) AS subcontract_receipt,
-                        SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST' AND source_doc_type='PURCHASE_RETURN' THEN amount_local ELSE 0 END) AS purchase_return,
-                        SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST' AND source_doc_type='SUBCONTRACT_RETURN' THEN amount_local ELSE 0 END) AS subcontract_return,
+                        SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST'
+                            AND source_doc_type IN('PURCHASE_RETURN','PURCHASE_IQC_CREDIT')
+                            THEN amount_local ELSE 0 END) AS purchase_return,
+                        SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST'
+                            AND source_doc_type IN('SUBCONTRACT_RETURN','SUBCONTRACT_IQC_CREDIT')
+                            THEN amount_local ELSE 0 END) AS subcontract_return,
                         SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST' AND source_doc_type='SUBCONTRACT_WASTE' THEN amount_local ELSE 0 END) AS waste_deduction,
                         SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='POST' AND source_doc_type='SUBCONTRACT_LOSS_OFFSET' THEN amount_local ELSE 0 END) AS claim_offset,
                         SUM(CASE WHEN event_date BETWEEN :from AND :to AND event_type='REVERSE' THEN amount_local ELSE 0 END) AS reversed_amount,

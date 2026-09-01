@@ -272,7 +272,7 @@ void main() {
     expect(store.values['buyer']?.id, 'item-100');
   });
 
-  testWidgets('online feed reaches the real host strictly one at a time', (
+  testWidgets('online feed stacks a batch and delivers each closed item', (
     tester,
   ) async {
     final base = _notice('00000000-0000-0000-0000-000000000201', minute: 1);
@@ -328,16 +328,33 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
 
-    expect(find.text(first.title), findsOneWidget);
-    expect(find.text(second.title), findsNothing);
+    expect(find.text(first.title), findsNothing);
+    expect(find.text(second.title), findsOneWidget);
     expect(find.byType(UtenTopBannerCard), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.tap(
+      find.byKey(const ValueKey('app-notification-stack-toggle')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(first.title), findsOneWidget);
+    expect(find.text(second.title), findsOneWidget);
+    expect(find.byType(UtenTopBannerCard), findsNWidgets(2));
+
+    final firstCard = find.ancestor(
+      of: find.text(first.title),
+      matching: find.byType(UtenTopBannerCard),
+    );
+    await tester.tap(
+      find.descendant(
+        of: firstCard,
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text(first.title), findsNothing);
     expect(find.text(second.title), findsOneWidget);
-    expect(find.byType(UtenTopBannerCard), findsOneWidget);
     expect(store.deliveredValues['buyer'], contains(first.id));
     expect(store.deliveredValues['buyer'], isNot(contains(second.id)));
   });
@@ -401,14 +418,27 @@ void main() {
       await tester.pumpWidget(firstRun.widget);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 250));
-      expect(find.text(first.title), findsOneWidget);
+      expect(find.text(third.title), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.tap(
+        find.byKey(const ValueKey('app-notification-stack-toggle')),
+      );
       await tester.pumpAndSettle();
-      expect(find.text(second.title), findsOneWidget);
+      expect(find.byType(UtenTopBannerCard), findsNWidgets(3));
+      final firstCard = find.ancestor(
+        of: find.text(first.title),
+        matching: find.byType(UtenTopBannerCard),
+      );
+      await tester.tap(
+        find.descendant(
+          of: firstCard,
+          matching: find.byIcon(Icons.close_rounded),
+        ),
+      );
+      await tester.pumpAndSettle();
       expect(store.deliveredValues['buyer'], <String>{first.id});
 
-      // 第二条已经进入宿主但尚未关闭；销毁整棵 app 不得把它误记 delivered。
+      // 第二、三条已经进入宿主但尚未关闭；销毁整棵 app 不得把它们误记 delivered。
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
       firstRun.router.dispose();
@@ -418,10 +448,23 @@ void main() {
       await tester.pumpWidget(secondRun.widget);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 250));
-      expect(find.text(second.title), findsOneWidget);
-      expect(find.text(third.title), findsNothing);
+      expect(find.text(second.title), findsNothing);
+      expect(find.text(third.title), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.tap(
+        find.byKey(const ValueKey('app-notification-stack-toggle')),
+      );
+      await tester.pumpAndSettle();
+      final secondCard = find.ancestor(
+        of: find.text(second.title),
+        matching: find.byType(UtenTopBannerCard),
+      );
+      await tester.tap(
+        find.descendant(
+          of: secondCard,
+          matching: find.byIcon(Icons.close_rounded),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text(third.title), findsOneWidget);
       await tester.tap(find.byIcon(Icons.close_rounded));
@@ -480,7 +523,7 @@ void main() {
   });
 
   testWidgets(
-    'important arrival keeps a center alert until explicit close and close only popup-acks',
+    'important arrival is non-blocking and close only confirms local delivery',
     (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final preferences = await SharedPreferences.getInstance();
@@ -567,25 +610,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.byType(UtenTopBannerCard), findsOneWidget);
-      expect(find.byType(Dialog), findsOneWidget);
-      expect(find.text('原因'), findsOneWidget);
-      expect(find.text('金额有误'), findsOneWidget);
-      expect(find.text('查看订单并修改'), findsOneWidget);
-
-      await tester.pump(const Duration(seconds: 30));
-      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.text(rejected.title), findsOneWidget);
+      expect(find.textContaining('重要 ·'), findsOneWidget);
       expect(delivered, 0);
 
-      await tester.tapAt(const Offset(5, 595));
-      await tester.pump();
-      expect(find.byType(Dialog), findsOneWidget);
-      await tester.binding.handlePopRoute();
-      await tester.pump();
-      expect(find.byType(Dialog), findsOneWidget);
-
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pumpAndSettle();
-      expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(UtenTopBannerCard), findsNothing);
       expect(delivered, 1);
       expect(opens, 0);
       expect(
@@ -594,7 +626,7 @@ void main() {
               request.method == 'POST' &&
               request.path == '/notices/${rejected.id}/popup-ack',
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         requests.any(
@@ -608,7 +640,7 @@ void main() {
   );
 
   testWidgets(
-    'important primary action popup-acks, marks read, and opens once',
+    'urgent banner click marks read, opens once, and stays non-blocking',
     (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final preferences = await SharedPreferences.getInstance();
@@ -664,11 +696,19 @@ void main() {
         UncontrolledProviderScope(
           container: container,
           child: MaterialApp(
-            home: Builder(
-              builder: (context) {
-                dispatchContext = context;
-                return const Scaffold(body: Text('首页'));
-              },
+            home: Stack(
+              children: [
+                Builder(
+                  builder: (context) {
+                    dispatchContext = context;
+                    return const Scaffold(body: Text('首页'));
+                  },
+                ),
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: AppNotificationHost(),
+                ),
+              ],
             ),
           ),
         ),
@@ -679,8 +719,11 @@ void main() {
         onOpenDetail: () => opens++,
         onDelivered: () => delivered++,
       );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('查看订单并修改'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.textContaining('紧急 ·'), findsOneWidget);
+      await tester.tap(find.text(rejected.title));
       await tester.pumpAndSettle();
 
       expect(opens, 1);
@@ -691,7 +734,7 @@ void main() {
               request.method == 'POST' &&
               request.path == '/notices/${rejected.id}/popup-ack',
         ),
-        hasLength(1),
+        isEmpty,
       );
       expect(
         requests.where(
@@ -706,87 +749,91 @@ void main() {
     },
   );
 
-  testWidgets(
-    'session interruption removes the exact strong alert without popup ack',
-    (tester) async {
-      SharedPreferences.setMockInitialValues(<String, Object>{});
-      final preferences = await SharedPreferences.getInstance();
-      final requests = <RequestOptions>[];
-      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-      dio.interceptors.add(
-        InterceptorsWrapper(
-          onRequest: (request, handler) {
-            requests.add(request);
-            handler.resolve(
-              Response<dynamic>(
-                requestOptions: request,
-                statusCode: 200,
-                data: <String, dynamic>{},
-              ),
-            );
-          },
-        ),
-      );
-      final container = ProviderContainer(
-        overrides: [
-          noticeRepositoryProvider.overrideWithValue(
-            DioNoticeRepository(ApiClient(dio)),
-          ),
-          sharedPreferencesProvider.overrideWithValue(preferences),
-        ],
-      );
-      final interruptSignal = ValueNotifier<int>(0);
-      late BuildContext dispatchContext;
-      var delivered = 0;
-
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: MaterialApp(
-            home: Builder(
-              builder: (context) {
-                dispatchContext = context;
-                return const Scaffold(body: Text('首页'));
-              },
+  testWidgets('host disposal leaves an unclosed urgent banner undelivered', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final preferences = await SharedPreferences.getInstance();
+    final requests = <RequestOptions>[];
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          requests.add(request);
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: <String, dynamic>{},
             ),
+          );
+        },
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        noticeRepositoryProvider.overrideWithValue(
+          DioNoticeRepository(ApiClient(dio)),
+        ),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+      ],
+    );
+    late BuildContext dispatchContext;
+    var delivered = 0;
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Stack(
+            children: [
+              Builder(
+                builder: (context) {
+                  dispatchContext = context;
+                  return const Scaffold(body: Text('首页'));
+                },
+              ),
+              const Align(
+                alignment: Alignment.topCenter,
+                child: AppNotificationHost(),
+              ),
+            ],
           ),
         ),
-      );
-      final notice = _notice(
-        '00000000-0000-0000-0000-000000000503',
-        minute: 5,
-        priority: NoticePriority.urgent,
-      );
-      dispatchNoticeArrival(
-        dispatchContext,
-        notice,
-        interruptSignal: interruptSignal,
-        onOpenDetail: () {},
-        onDelivered: () => delivered++,
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.byType(Dialog), findsOneWidget);
+      ),
+    );
+    final notice = _notice(
+      '00000000-0000-0000-0000-000000000503',
+      minute: 5,
+      priority: NoticePriority.urgent,
+    );
+    dispatchNoticeArrival(
+      dispatchContext,
+      notice,
+      onOpenDetail: () {},
+      onDelivered: () => delivered++,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(UtenTopBannerCard), findsOneWidget);
 
-      interruptSignal.value++;
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
 
-      expect(find.byType(Dialog), findsNothing);
-      expect(delivered, 0);
-      expect(
-        requests.where(
-          (request) => request.path == '/notices/${notice.id}/popup-ack',
-        ),
-        isEmpty,
-      );
-      await tester.pumpWidget(const SizedBox.shrink());
-      interruptSignal.dispose();
-      container.dispose();
-    },
-  );
+    expect(find.byType(UtenTopBannerCard), findsNothing);
+    expect(delivered, 0);
+    expect(
+      requests.where(
+        (request) => request.path == '/notices/${notice.id}/popup-ack',
+      ),
+      isEmpty,
+    );
+    container.dispose();
+  });
 
   testWidgets(
-    'listener presents urgent before important and keeps one center window at a time',
+    'listener stacks priority banners with urgent on top and delivers each',
     (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final preferences = await SharedPreferences.getInstance();
@@ -867,32 +914,35 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.byType(Dialog), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byType(Dialog),
-          matching: find.text(second.title),
-        ),
-        findsOneWidget,
-      );
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.text(second.title), findsOneWidget);
       expect(find.text(first.title), findsNothing);
 
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
-      expect(find.byType(Dialog), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byType(Dialog),
-          matching: find.text(first.title),
-        ),
-        findsOneWidget,
+      await tester.tap(
+        find.byKey(const ValueKey('app-notification-stack-toggle')),
       );
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenTopBannerCard), findsNWidgets(2));
+      expect(find.text(first.title), findsOneWidget);
+      expect(find.text(second.title), findsOneWidget);
+
+      final urgentCard = find.ancestor(
+        of: find.text(second.title),
+        matching: find.byType(UtenTopBannerCard),
+      );
+      await tester.tap(
+        find.descendant(
+          of: urgentCard,
+          matching: find.byIcon(Icons.close_rounded),
+        ),
+      );
+      await tester.pumpAndSettle();
       expect(store.deliveredValues['buyer'], contains(second.id));
       expect(store.deliveredValues['buyer'], isNot(contains(first.id)));
 
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byIcon(Icons.close_rounded));
       await tester.pumpAndSettle();
-      expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(UtenTopBannerCard), findsNothing);
       expect(
         store.deliveredValues['buyer'],
         containsAll(<String>[first.id, second.id]),

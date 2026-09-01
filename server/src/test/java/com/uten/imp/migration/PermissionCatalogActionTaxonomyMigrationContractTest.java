@@ -110,6 +110,18 @@ class PermissionCatalogActionTaxonomyMigrationContractTest {
     }
 
     @Test
+    void v328RetiresLegacyFinanceReviewAndExpandsBothDecisionActions()
+            throws Exception {
+        assertThat(normalized())
+                .contains("('finance_order_approval:approve', '批准采购、委外订货及到货异常'")
+                .contains("('finance_order_approval:reject', '驳回采购、委外订货及到货异常'")
+                .contains("('finance_order_approval:review', '历史订货财务审批复合权限（已停用）'")
+                .contains("'由批准和驳回订货财务审批权限替代', false, false")
+                .contains("('finance_order_approval:review', 'finance_order_approval:approve')")
+                .contains("('finance_order_approval:review', 'finance_order_approval:reject')");
+    }
+
+    @Test
     void v328ContainsRepresentativeButtonLevelCodesWithoutRewritingV327()
             throws Exception {
         assertThat(normalized())

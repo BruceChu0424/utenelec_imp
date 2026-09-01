@@ -155,7 +155,7 @@ void main() {
       expect(repository.sessionCalls, hasLength(1));
       expect(repository.listCalls, isEmpty);
       expect(repository.sessionEventCalls, isEmpty);
-      expect(find.text('用户会话'), findsWidgets);
+      expect(find.text('登录会话'), findsWidgets);
 
       final sessionCard = find.byKey(
         const ValueKey('audit-session-${_AuditRepository.sessionId}'),
@@ -999,6 +999,33 @@ void main() {
     expect(repository.listCalls.last['activityOnly'], isFalse);
     expect(repository.listCalls.last['snapshotId'], isNull);
     expect(find.text('同一操作 操作趋势'), findsNothing);
+  });
+
+  testWidgets('Request ID deep link opens the exact evidence investigation', (
+    tester,
+  ) async {
+    final repository = _AuditRepository();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          auditLogRepositoryProvider.overrideWithValue(repository),
+          currentPermissionsProvider.overrideWithValue({Perm.auditLogExport}),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: const MaterialApp(
+          home: AdminAuditLogPage(initialRequestId: _DeviceStore.requestId),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(repository.listCalls, hasLength(1));
+    expect(repository.listCalls.single['requestId'], _DeviceStore.requestId);
+    expect(repository.listCalls.single['activityOnly'], isFalse);
+    expect(repository.listCalls.single['actorId'], isNull);
+    expect(find.text('关联操作排查'), findsOneWidget);
   });
 
   testWidgets('same operation action locates the exact Request ID', (

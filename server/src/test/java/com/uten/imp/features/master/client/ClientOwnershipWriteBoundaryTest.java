@@ -91,6 +91,7 @@ class ClientOwnershipWriteBoundaryTest {
         ClientSaveRequest request = new ClientSaveRequest();
         request.setCategoryId(categoryId);
         request.setName("客户甲");
+        request.setSalesPaymentType(ClientSalesPaymentType.CASH);
         return request;
     }
 

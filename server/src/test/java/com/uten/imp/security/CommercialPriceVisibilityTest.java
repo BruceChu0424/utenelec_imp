@@ -23,30 +23,69 @@ class CommercialPriceVisibilityTest {
     @InjectMocks private CommercialPriceVisibility visibility;
 
     @Test
-    void permissionsRemainIndependentAndMissingAuthenticationFailsClosed() {
+    void pagePermissionsRemainIndependentAndMissingAuthenticationFailsClosed() {
         when(currentUser.get()).thenReturn(Optional.of(authUser));
         when(authUser.getPermissions()).thenReturn(Set.of(
                 CommercialPriceVisibility.PURCHASE_PERMISSION,
-                CommercialPriceVisibility.FINANCE_PERMISSION));
+                CommercialPriceVisibility.SUBCONTRACT_RECEIPT_PERMISSION));
 
-        assertTrue(visibility.canViewPurchase());
-        assertFalse(visibility.canViewSubcontract());
-        assertTrue(visibility.canViewFinance());
+        assertTrue(visibility.canViewPurchaseReceipt());
+        assertFalse(visibility.canViewPurchaseOrder());
+        assertFalse(visibility.canViewPurchaseReturn());
+        assertFalse(visibility.canViewPurchaseReport());
+        assertTrue(visibility.canViewSubcontractReceipt());
+        assertFalse(visibility.canViewSubcontractOrder());
+        assertFalse(visibility.canViewSubcontractReturn());
+        assertFalse(visibility.canViewSubcontractReport());
+        assertFalse(visibility.canViewSubcontractMaterialCost());
+        assertFalse(visibility.canViewFinance());
+
+        when(authUser.getPermissions()).thenReturn(Set.of(
+                CommercialPriceVisibility.PURCHASE_ORDER_PERMISSION));
+        assertTrue(visibility.canViewPurchaseOrder());
+        assertFalse(visibility.canViewPurchaseReceipt());
+        assertFalse(visibility.canViewPurchaseReturn());
+        assertFalse(visibility.canViewPurchaseReport());
+
+        when(authUser.getPermissions()).thenReturn(Set.of(
+                CommercialPriceVisibility.SUBCONTRACT_ORDER_PERMISSION));
+        assertFalse(visibility.canViewPurchaseReceipt());
+        assertFalse(visibility.canViewPurchaseOrder());
+        assertTrue(visibility.canViewSubcontractOrder());
+        assertFalse(visibility.canViewSubcontractReceipt());
+        assertFalse(visibility.canViewSubcontractMaterialCost());
+
+        when(authUser.getPermissions()).thenReturn(Set.of(
+                CommercialPriceVisibility.FINANCE_PERMISSION));
+        assertTrue(visibility.canViewSubcontractInquiry());
+        assertTrue(visibility.canViewSubcontractOrder());
+        assertTrue(visibility.canViewSubcontractReceipt());
+        assertTrue(visibility.canViewSubcontractReturn());
+        assertTrue(visibility.canViewSubcontractWasteSuggestion());
+        assertTrue(visibility.canViewSubcontractReport());
+        assertTrue(visibility.canViewSubcontractMaterialCost());
+        assertTrue(visibility.canViewPurchaseOrder());
+        assertTrue(visibility.canViewPurchaseReceipt());
+        assertTrue(visibility.canViewPurchaseReturn());
+        assertTrue(visibility.canViewPurchaseReport());
 
         when(currentUser.get()).thenReturn(Optional.empty());
-        assertFalse(visibility.canViewPurchase());
+        assertFalse(visibility.canViewPurchaseReceipt());
+        assertFalse(visibility.canViewPurchaseOrder());
         assertFalse(visibility.canViewSubcontract());
+        assertFalse(visibility.canViewSubcontractOrder());
+        assertFalse(visibility.canViewSubcontractMaterialCost());
         assertFalse(visibility.canViewFinance());
     }
 
     @Test
     void legacyReceiptMaskerDelegatesToSharedSecurityPolicy() {
         CommercialPriceVisibility delegate = mock(CommercialPriceVisibility.class);
-        when(delegate.canViewPurchase()).thenReturn(true);
-        when(delegate.canViewSubcontract()).thenReturn(false);
+        when(delegate.canViewPurchaseReceipt()).thenReturn(true);
+        when(delegate.canViewSubcontractReceipt()).thenReturn(false);
         ReceiptPriceMasker legacy = new ReceiptPriceMasker(delegate);
 
-        assertTrue(legacy.canViewPurchase());
-        assertFalse(legacy.canViewSubcontract());
+        assertTrue(legacy.canViewPurchaseReceipt());
+        assertFalse(legacy.canViewSubcontractReceipt());
     }
 }

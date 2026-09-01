@@ -128,7 +128,7 @@ class PreplanAnalysisStockPegServiceTest {
     }
 
     @Test
-    void inspectionPassLocksInventoryThenClaimantAnalysesThenActions() {
+    void warehouseStockInLocksInventoryThenClaimantAnalysesThenActions() {
         EntityManager em = mock(EntityManager.class);
         Query anchor = mock(Query.class);
         Query analysisLock = mock(Query.class);

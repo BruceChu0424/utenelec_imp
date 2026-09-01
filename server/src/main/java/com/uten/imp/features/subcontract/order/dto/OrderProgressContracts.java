@@ -24,9 +24,18 @@ public final class OrderProgressContracts {
             BigDecimal bomUnitQty,
             BigDecimal plannedQty,
             BigDecimal issuedQty,
-            BigDecimal draftQty) {
-        public BigDecimal remainingQty() {
-            return plannedQty.subtract(issuedQty).subtract(draftQty).max(BigDecimal.ZERO);
+            BigDecimal draftReservedQty,
+            String flowMode,
+            String preparationStatus,
+            BigDecimal preparedQty,
+            BigDecimal readyOutboundQty,
+            BigDecimal remainingQty,
+            UUID preparationAnalysisId,
+            UUID preparationAnalysisItemId,
+            String blocker,
+            List<String> allowedActions) {
+        public MaterialPlanLine {
+            allowedActions = allowedActions == null ? List.of() : List.copyOf(allowedActions);
         }
     }
 
@@ -41,7 +50,12 @@ public final class OrderProgressContracts {
     public record ReceiptDoc(
             UUID id, String billNo, Short status, LocalDate billDate,
             String warehouseName, String approverName, BigDecimal totalQty,
-            BigDecimal totalLocal, String iqcStatus, OffsetDateTime updatedAt) {
+            BigDecimal totalLocal, String iqcStatus,
+            String warehouseStockInStatus,
+            BigDecimal iqcPassedBaseQty,
+            BigDecimal warehouseStockedBaseQty,
+            BigDecimal pendingStockInBaseQty,
+            OffsetDateTime updatedAt) {
     }
 
     /** 成品退货单进度。 */
@@ -70,7 +84,7 @@ public final class OrderProgressContracts {
             /** 财务审批 case 状态（PENDING/APPROVED/REJECTED；null=未提交）。 */
             String financeCaseStatus,
             OffsetDateTime financeDecidedAt,
-            /** false = 订货货品无 BOM 子件（委外商自备料，无需发料）。 */
+            /** false means only that a legacy order has no identifiable outbound plan. */
             boolean materialRequired,
             /** 发料计划状态（OPEN/CLOSED/CANCELED；null=无计划）。 */
             String planStatus,
@@ -83,7 +97,7 @@ public final class OrderProgressContracts {
             List<SupplierLedgerLine> supplierLedger,
             /** 已立应付加工费合计（本币，已审进仓 − 已审成品退货）。 */
             BigDecimal apPostedTotal,
-            /** 已立损耗扣款合计（本币，deduct_posted 的损耗单）。 */
+            /** V304 历史已立损耗负AP合计；新超耗责任/索赔不写此字段。 */
             BigDecimal wasteDeductTotal,
             /** 当前用户无委外商业金额权限时为 true，进度中的金额族字段全部置 null。 */
             boolean priceMasked) {

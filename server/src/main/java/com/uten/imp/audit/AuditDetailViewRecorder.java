@@ -41,15 +41,9 @@ public class AuditDetailViewRecorder {
             actorId = actor.getId();
             actorAccount = actor.getLoginAccount();
         }
+        String safeDocumentLabel = documentLabel.trim();
         String safeBillNo = billNo == null ? "" : billNo.trim();
         Integer safeLegacyId = legacyId != null && legacyId > 0 ? legacyId : null;
-        String displayName = safeLegacyId != null
-                ? safeBillNo.isBlank()
-                        ? documentLabel + "(旧系统编号 " + safeLegacyId + ")"
-                        : safeBillNo + "(旧系统编号 " + safeLegacyId + ")"
-                : safeBillNo.isBlank()
-                        ? documentLabel + "(业务编号未记录)"
-                        : safeBillNo;
         String effectiveAction = safeLegacyId == null ? action : action + "_history";
         audit.logSuccessfulDetailView(
                 actorId,
@@ -57,6 +51,8 @@ public class AuditDetailViewRecorder {
                 effectiveAction,
                 targetType,
                 targetId,
-                displayName);
+                safeDocumentLabel,
+                safeBillNo.isBlank() ? null : safeBillNo,
+                safeLegacyId == null ? null : safeLegacyId.toString());
     }
 }

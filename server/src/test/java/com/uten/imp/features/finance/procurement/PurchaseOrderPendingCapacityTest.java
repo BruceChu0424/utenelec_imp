@@ -40,6 +40,7 @@ class PurchaseOrderPendingCapacityTest {
         UUID orderId = UUID.randomUUID();
         UUID sourceItemId = UUID.randomUUID();
         UUID supplierId = UUID.randomUUID();
+        UUID currencyId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
 
@@ -48,7 +49,9 @@ class PurchaseOrderPendingCapacityTest {
         order.setBillNo("PO-SECOND");
         order.setBillDate(LocalDate.of(2026, 8, 2));
         order.setSupplierId(supplierId);
+        order.setCurrencyId(currencyId);
         order.setExchangeRate(BigDecimal.ONE);
+        order.setTaxRate(BigDecimal.ZERO);
         order.setTotalOriginal(new BigDecimal("6.0000"));
         order.setTotalLocal(new BigDecimal("6.0000"));
         order.setSettlementMethodId(UUID.randomUUID());
@@ -98,6 +101,16 @@ class PurchaseOrderPendingCapacityTest {
                 org.mockito.ArgumentMatchers.any()))
                 .thenReturn(settlementQuery);
         when(settlementQuery.getSingleResult()).thenReturn(1L);
+        Query currencyQuery = mock(Query.class);
+        when(em.createNativeQuery(
+                org.mockito.ArgumentMatchers.contains(
+                        "FROM currencies")))
+                .thenReturn(currencyQuery);
+        when(currencyQuery.setParameter(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(currencyQuery);
+        when(currencyQuery.getSingleResult()).thenReturn(1L);
         when(sourceLockQuery.setParameter(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any()))

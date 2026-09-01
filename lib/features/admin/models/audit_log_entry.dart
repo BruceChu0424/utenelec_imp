@@ -18,6 +18,9 @@ class AuditLogEntry {
     this.targetType,
     this.targetId,
     this.targetName,
+    this.targetDisplayName,
+    this.targetBusinessCode,
+    this.targetLegacyCode,
     this.pageLabel,
     this.ip,
     this.result,
@@ -65,6 +68,15 @@ class AuditLogEntry {
   /// 从快照提取的对象可读名（单据号/名称/编码），取不到为 null
   final String? targetName;
 
+  /// 结构化的业务对象名称或单据标签，不包含 UUID。
+  final String? targetDisplayName;
+
+  /// 结构化业务编号、单号或主档编码。
+  final String? targetBusinessCode;
+
+  /// 历史单据的旧系统编号；新单据为空。
+  final String? targetLegacyCode;
+
   /// 请求路径翻译成的页面名（"哪个页面操作的"）
   final String? pageLabel;
   final String? ip;
@@ -107,6 +119,9 @@ class AuditLogEntry {
     targetType: json['targetType'] as String?,
     targetId: json['targetId'] as String?,
     targetName: json['targetName'] as String?,
+    targetDisplayName: json['targetDisplayName'] as String?,
+    targetBusinessCode: json['targetBusinessCode'] as String?,
+    targetLegacyCode: json['targetLegacyCode'] as String?,
     pageLabel: json['pageLabel'] as String?,
     ip: json['ip'] as String?,
     result: json['result'] as String?,
@@ -255,6 +270,9 @@ class AuditLogDetail {
     this.targetType,
     this.targetId,
     this.targetName,
+    this.targetDisplayName,
+    this.targetBusinessCode,
+    this.targetLegacyCode,
     this.pageLabel,
     this.beforeJson,
     this.afterJson,
@@ -291,6 +309,9 @@ class AuditLogDetail {
   final String? targetType;
   final String? targetId;
   final String? targetName;
+  final String? targetDisplayName;
+  final String? targetBusinessCode;
+  final String? targetLegacyCode;
   final String? pageLabel;
   final String? beforeJson;
   final String? afterJson;
@@ -331,6 +352,9 @@ class AuditLogDetail {
     targetType: json['targetType'] as String?,
     targetId: json['targetId'] as String?,
     targetName: json['targetName'] as String?,
+    targetDisplayName: json['targetDisplayName'] as String?,
+    targetBusinessCode: json['targetBusinessCode'] as String?,
+    targetLegacyCode: json['targetLegacyCode'] as String?,
     pageLabel: json['pageLabel'] as String?,
     beforeJson: _jsonText(json['before']),
     afterJson: _jsonText(json['after']),

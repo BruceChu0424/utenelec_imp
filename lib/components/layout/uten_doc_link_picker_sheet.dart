@@ -55,6 +55,7 @@ class UtenDocLinkPickedItem {
     this.upstreamItemId,
     this.colorId,
     this.unitId,
+    this.unitRate,
   });
 
   final String goodsId;
@@ -64,6 +65,7 @@ class UtenDocLinkPickedItem {
   final String? upstreamItemId;
   final String? colorId;
   final String? unitId;
+  final double? unitRate;
 }
 
 /// 「从上游引入」的确认返回：所选明细 + 上游单据往来方 id
@@ -105,6 +107,7 @@ class UtenDocLinkItemFields<I> {
     required this.unitId,
     required this.price,
     required this.upstreamItemId,
+    this.unitRate,
   });
 
   final String? Function(I item) goodsId;
@@ -112,6 +115,7 @@ class UtenDocLinkItemFields<I> {
   final String? Function(I item) unitId;
   final double? Function(I item) price;
   final String? Function(I item) upstreamItemId;
+  final double? Function(I item)? unitRate;
 }
 
 /// 两步引入面板的领域配置（由采购/销售/委外的引入入口提供）。
@@ -455,6 +459,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
           upstreamItemId: _cfg.itemFields.upstreamItemId(it),
           colorId: _cfg.itemFields.colorId(it),
           unitId: _cfg.itemFields.unitId(it),
+          unitRate: _cfg.itemFields.unitRate?.call(it),
         ),
       );
     }

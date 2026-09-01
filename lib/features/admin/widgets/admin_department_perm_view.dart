@@ -145,7 +145,31 @@ class _AdminDepartmentPermViewState
     });
   }
 
-  void _toggle(String code, bool value) => _setPermissions([code], value);
+  Future<void> _toggle(AdminPermission permission, bool value) async {
+    if (value &&
+        !permission.bulkAssignable &&
+        !_checked.contains(permission.code)) {
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '确认单项授权',
+        content: Text(
+          [
+            '“',
+            permission.name,
+            '”会开放',
+            permission.sensitivity == 'SENSITIVE_COMMERCIAL'
+                ? '商业敏感数据'
+                : '敏感能力',
+            '。该权限不会被批量配置带入，请确认确需授予当前部门。',
+          ].join(),
+        ),
+        confirmLabel: '确认授权',
+        danger: true,
+      );
+      if (!mounted || confirmed != true) return;
+    }
+    _setPermissions([permission.code], value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -391,6 +415,8 @@ class _AdminDepartmentPermViewState
                   name: permission.name,
                   actionType: permission.actionType,
                   description: permission.description,
+                  bulkAssignable: permission.bulkAssignable,
+                  sensitivity: permission.sensitivity,
                   nameStyle: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
@@ -402,7 +428,7 @@ class _AdminDepartmentPermViewState
                     '${permission.name}${checked.contains(permission.code) ? '已配置' : '未配置'}',
                 child: Switch(
                   value: checked.contains(permission.code),
-                  onChanged: (value) => _toggle(permission.code, value),
+                  onChanged: (value) => _toggle(permission, value),
                 ),
               ),
             ],

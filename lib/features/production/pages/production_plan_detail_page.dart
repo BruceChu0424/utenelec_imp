@@ -23,6 +23,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
@@ -1345,9 +1346,14 @@ class _ProductionPlanDetailPageState
           : value.toStringAsFixed(2);
     }
 
-    final totalQty = items.fold<double>(
-      0,
-      (sum, item) => sum + (item.qty ?? 0),
+    final totalQty = measurementTotalsText(
+      items.map(
+        (item) => MeasuredAmount(
+          value: item.qty ?? 0,
+          unitId: item.unitId,
+          unitName: names.unit(item.unitId),
+        ),
+      ),
     );
     final namesPreview = [
       for (final item in items.take(3)) names.goods(item.goodsId),
@@ -1371,7 +1377,7 @@ class _ProductionPlanDetailPageState
     final multiSummary =
         '$namesPreview'
         '${items.length > 3 ? ' 等 ${items.length} 项' : ''}'
-        ' · 排产合计 ${quantity(totalQty)}';
+        ' · 排产量 $totalQty';
 
     return Card(
       key: const Key('production-plan-draft-product-summary'),

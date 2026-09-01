@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** Builds an A4-work-card projection without creating or mutating business facts. */
@@ -30,6 +31,8 @@ import java.util.UUID;
 public class ProductionWorkCardService {
 
     private static final short STATUS_APPROVED = 1;
+    private static final Set<String> PRINTABLE_SEGMENT_STATUSES =
+            Set.of("READY", "WAITING", "DISPATCHED", "IN_PROGRESS", "COMPLETED");
 
     private final ProductionPlanningPackageRepository packageRepository;
     private final ProductionPlanRepository planRepository;
@@ -220,7 +223,7 @@ public class ProductionWorkCardService {
                         text(row[45])));
             }
         }
-        return new ProductionWorkCardView(
+        ProductionWorkCardView view = new ProductionWorkCardView(
                 planningPackage.getPlanId(),
                 text(first[0]),
                 date(first[1]),
@@ -237,6 +240,13 @@ public class ProductionWorkCardService {
                 generatedAt,
                 ProductionWorkCardView.CURRENT_MASTER_DATA,
                 cards.values().stream().map(CardBuilder::build).toList());
+        if (view.cards().stream()
+                .anyMatch(card -> !PRINTABLE_SEGMENT_STATUSES.contains(card.status()))) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "计划包含已取消、已反向或未知状态的执行分段，不能打印");
+        }
+        return view;
     }
 
     private static final class CardBuilder {

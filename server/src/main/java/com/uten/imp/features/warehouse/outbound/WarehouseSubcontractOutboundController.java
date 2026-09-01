@@ -22,10 +22,11 @@ import java.util.UUID;
 /**
  * 仓库委外出仓工作台 API（/api/warehouse/subcontract-outbound）。
  *
- * <p>仓库视角的委外材料出仓任务中心：财务批准委外订货后系统按 BOM 展开发料计划并自动
- * 生出仓草稿，仓库在此查看任务、进拣货页（草稿的编辑/审核仍走既有
- * {@code /api/subcontract/material-issues} 端点，SUB_WH 经 V304 授权）。
- * 全链路不出现价格/金额（材料按成本发出，出仓单本无价格族字段）。
+ * <p>新流只出委外订货目标件：无活动子层级时直接待出仓；有子层级时先完成整批内部
+ * 自制、FQC 与仓库实收，再释放目标件出仓。V304 存量
+ * {@code LEGACY_BOM_COMPONENT} 行继续按冻结口径兼容。仓库任务与详情只投影
+ * {@code LEGACY_READY}/{@code READY_OUTBOUND} 可执行行；草稿编辑/审核仍走既有
+ * {@code /api/subcontract/material-issues} 端点。全链路不向仓库暴露价格/金额。
  */
 @RestController
 @RequestMapping("/api/warehouse/subcontract-outbound")

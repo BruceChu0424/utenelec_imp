@@ -17,6 +17,8 @@
 
 四个主 Tab 为工作台、通知、我的、设置。`UtenSlidingTabView` 让四页常驻并用 `Offstage` 隐藏非当前页，因此滚动位置和页面状态在切换及进入业务子页后仍保留。
 
+`Offstage` 只负责隐藏并保留子树，不会自动停止 ticker，也不能作为焦点边界。外壳在业务子页覆盖主 Tab 时用外层 `TickerMode(enabled: false)` 停止整组动画；`UtenSlidingTabView` 再把祖先有效值、当前主 Tab 路由和转场参与状态合并，静止时仅当前页推进，转场时仅来源页与目标页推进。未参与转场或被业务子页覆盖的保活页同时使用 `ExcludeFocus`，不得继续接收键盘焦点；恢复可见后沿用原 State 和滚动位置。
+
 - compact 点导航或横滑相邻 Tab 时，转场位置与胶囊高亮同步；
 - medium+ 只允许点击 Rail 切换，不做大屏整页横移动画；
 - 深链、路由守卫和导航点击都通过 go_router 同步 URL；

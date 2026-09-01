@@ -50,7 +50,21 @@ final List<RouteBase> productionRoutes = [
   GoRoute(
     path: RouteName.productionMaterialAnalysisHistory,
     name: 'production-material-analysis-history',
-    builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(),
+    redirect: (_, state) {
+      if (state.uri.queryParameters['section'] != 'subcontract-preparations') {
+        return null;
+      }
+      return RoutePath.productionSubcontractPreparations(
+        planItemId: state.uri.queryParameters['planItemId'],
+        sourceAnalysisId: state.uri.queryParameters['sourceAnalysisId'],
+        sourceMaterialLineId: state.uri.queryParameters['sourceMaterialLineId'],
+      );
+    },
+    builder: (_, state) => ProductionMaterialAnalysisHistoryPage(
+      initialSection:
+          state.uri.queryParameters['section'] ?? 'analysis-history',
+      planItemId: state.uri.queryParameters['planItemId'],
+    ),
   ),
   GoRoute(
     path: '/production/material-analyses/:id/summary',

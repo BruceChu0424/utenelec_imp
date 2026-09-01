@@ -67,5 +67,13 @@ public class StockMovement extends BaseEntity {
     @Column(name = "amount_local", precision = 18, scale = 4)
     private BigDecimal amountLocal;
 
+    /** 本次流水切片的实际总重量；方向由 direction 表示，不乘 unit_rate。 */
+    @Column(name = "weight", precision = 18, scale = 4)
+    private BigDecimal weight;
+
+    /** V442 explicit unit for the actual-weight snapshot; nullable for legacy/unitless sources. */
+    @Column(name = "actual_weight_unit_id")
+    private UUID actualWeightUnitId;
+
     private String remark;
 }

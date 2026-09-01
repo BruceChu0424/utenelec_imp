@@ -86,8 +86,10 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
         assertThat(submit.indexOf("port.requireFinanceSubmitterWritable(orderId)"))
                 .isGreaterThanOrEqualTo(0)
                 .isLessThan(submit.indexOf("port.lockAndValidateFinanceSubmission(orderId)"));
-        assertThat(method(source, " approve(")).doesNotContain("requireFinanceSubmitterWritable");
-        assertThat(method(source, " reject(")).doesNotContain("requireFinanceSubmitterWritable");
+        assertThat(method(source, " approveBatch("))
+                .doesNotContain("requireFinanceSubmitterWritable");
+        assertThat(method(source, " rejectBatch("))
+                .doesNotContain("requireFinanceSubmitterWritable");
     }
 
     private static void assertMethods(String relative, String... signatures) throws Exception {

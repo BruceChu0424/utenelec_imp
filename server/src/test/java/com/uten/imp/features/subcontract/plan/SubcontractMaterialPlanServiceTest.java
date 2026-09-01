@@ -4,8 +4,8 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssue;
-import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueItem;
+import com.uten.imp.features.notice.ChainNoticeService;
+import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueItemRepository;
 import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -13,12 +13,15 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,24 +36,40 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 委外发料计划服务（V304）定向单测：
- * BOM 展开建计划+自动全量草稿 / 无 BOM 不建 / 出仓审核 CAS 防超 / 关闭计划必填原因。
+ * V436 委外目标件出仓定向单测。
+ *
+ * <p>新批准行永远以订货目标件为计划/出仓货品：无活动子 BOM 直接通知仓库并建草稿；
+ * 有活动子 BOM 必须先走正常 MAKE 链，仓库实收入库前不得建目标件出仓草稿。
  */
 class SubcontractMaterialPlanServiceTest {
+
+    private static final UUID ORDER_ID = UUID.randomUUID();
+    private static final UUID SUPPLIER_ID = UUID.randomUUID();
+    private static final UUID ACTOR_ID = UUID.randomUUID();
+    private static final UUID DIRECT_ITEM_ID = UUID.randomUUID();
+    private static final UUID MAKE_ITEM_ID = UUID.randomUUID();
+    private static final UUID DIRECT_GOODS_ID = UUID.randomUUID();
+    private static final UUID MAKE_GOODS_ID = UUID.randomUUID();
+    private static final UUID COMPONENT_GOODS_ID = UUID.randomUUID();
+    private static final UUID DIRECT_BASE_UNIT_ID = UUID.randomUUID();
+    private static final UUID MAKE_BASE_UNIT_ID = UUID.randomUUID();
+    private static final UUID DOCUMENT_UNIT_ID = UUID.randomUUID();
+    private static final UUID WAREHOUSE_ID = UUID.randomUUID();
 
     private EntityManager em;
     private JdbcTemplate jdbc;
     private SubcontractMaterialIssueRepository issueRepo;
     private SubcontractMaterialIssueItemRepository issueItemRepo;
+    private ChainNoticeService chainNotice;
+    private InventoryMutationLock inventoryLock;
     private SubcontractMaterialPlanService service;
 
-    private static final UUID ORDER_ID = UUID.randomUUID();
-    private static final UUID SUPPLIER_ID = UUID.randomUUID();
-    private static final UUID ORDER_ITEM_ID = UUID.randomUUID();
-    private static final UUID PARENT_GOODS = UUID.randomUUID();
-    private static final UUID CHILD_GOODS = UUID.randomUUID();
-    private static final UUID CHILD_COLOR = UUID.randomUUID();
-    private static final UUID CHILD_UNIT = UUID.randomUUID();
+    private List<Object[]> orderRows;
+    private List<Object[]> orderItemRows;
+    private List<Object[]> goodsRows;
+    private List<Object[]> issueRows;
+    private List<Object[]> remainingRows;
+    private Map<UUID, List<Object[]>> bomRowsByGoods;
 
     @BeforeEach
     void setUp() {
@@ -58,126 +77,225 @@ class SubcontractMaterialPlanServiceTest {
         jdbc = mock(JdbcTemplate.class);
         issueRepo = mock(SubcontractMaterialIssueRepository.class);
         issueItemRepo = mock(SubcontractMaterialIssueItemRepository.class);
+        chainNotice = mock(ChainNoticeService.class);
+        inventoryLock = mock(InventoryMutationLock.class);
+        orderRows = List.of();
+        orderItemRows = List.of();
+        goodsRows = List.of();
+        issueRows = List.of();
+        remainingRows = List.of();
+        bomRowsByGoods = Map.of();
+        stubNativeQueriesBySql();
+        when(jdbc.query(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("FROM subcontract_material_plan_items pi")),
+                ArgumentMatchers.<RowMapper<Object[]>>any(), any(Object.class)))
+                .thenAnswer(invocation -> remainingRows);
+
         DocNumberService docNumber = mock(DocNumberService.class);
         when(docNumber.nextNumber(eq(DocNumberPrefix.SUB_MATERIAL_ISSUE)))
                 .thenReturn("EC-TEST-0001");
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
-        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        when(currentUser.requireId()).thenReturn(ACTOR_ID);
         service = new SubcontractMaterialPlanService(
-                em, jdbc, docNumber, issueRepo, issueItemRepo, currentUser);
+                em, jdbc, docNumber, issueRepo, issueItemRepo, currentUser,
+                chainNotice, inventoryLock);
     }
 
-    /** 财务批准时：BOM 一级子件展开 → 计划行(100×2=200) + 自动全量出仓草稿。 */
     @Test
-    void approvalExpandsBomAndCreatesFullDraft() {
-        Query orderQuery = mock(Query.class);
-        when(orderQuery.setParameter(anyString(), any())).thenReturn(orderQuery);
-        when(orderQuery.getResultList()).thenReturn(java.util.Arrays.<Object[]>asList(new Object[]{ORDER_ID, "EO-1", SUPPLIER_ID, null}));
-        // em.createNativeQuery 依次：订单头 / 订货明细 / BOM / 子件主档 /（草稿）子件主档
-        Query q1 = mock(Query.class);
-        when(q1.setParameter(anyString(), any())).thenReturn(q1);
-        when(q1.getResultList()).thenAnswer(inv -> java.util.Arrays.<Object[]>asList(
-                new Object[]{ORDER_ID, "EO-1", SUPPLIER_ID, null}));
-        Query q2 = mock(Query.class);
-        when(q2.setParameter(anyString(), any())).thenReturn(q2);
-        when(q2.getResultList()).thenAnswer(inv -> java.util.Arrays.<Object[]>asList(
-                new Object[]{ORDER_ITEM_ID, PARENT_GOODS, null, new BigDecimal("100"), 1}));
-        Query q3 = mock(Query.class);
-        when(q3.setParameter(anyString(), any())).thenReturn(q3);
-        when(q3.getResultList()).thenAnswer(inv -> java.util.Arrays.<Object[]>asList(
-                new Object[]{PARENT_GOODS, CHILD_GOODS, new BigDecimal("2"), CHILD_COLOR}));
-        Query q4 = mock(Query.class);
-        when(q4.setParameter(anyString(), any())).thenReturn(q4);
-        when(q4.getResultList()).thenAnswer(inv -> java.util.Arrays.<Object[]>asList(
-                new Object[]{CHILD_GOODS, "M-1", "材料", CHILD_UNIT, "B-02"}));
-        when(em.createNativeQuery(anyString())).thenReturn(q1, q2, q3, q4, q4);
-
-        // remainingLines（createDraftForPlan 内）：计划行剩余 = 200
+    void approvalWithoutBomPlansTargetInBaseUnitCreatesDraftAndNotifiesWarehouse() {
+        BigDecimal orderQty = new BigDecimal("5");
+        BigDecimal unitRate = new BigDecimal("12.5");
+        BigDecimal plannedBaseQty = new BigDecimal("62.5000");
         UUID planItemId = UUID.randomUUID();
-        when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<Object[]>>any(), any(Object.class)))
-                .thenAnswer(inv -> {
-                    // 取出刚写入的计划行 id：测试里直接给一个固定行（planned=200, remaining=200）
-                    return java.util.Arrays.<Object[]>asList(new Object[]{
-                            planItemId, ORDER_ITEM_ID, PARENT_GOODS, null,
-                            CHILD_GOODS, CHILD_UNIT, new BigDecimal("2"),
-                            new BigDecimal("200"), new BigDecimal("200"), CHILD_COLOR});
-                });
+        orderRows = rows(new Object[]{ORDER_ID, "EO-DIRECT", SUPPLIER_ID, null});
+        orderItemRows = rows(new Object[]{
+                DIRECT_ITEM_ID, DIRECT_GOODS_ID, null, orderQty, 1,
+                unitRate, DOCUMENT_UNIT_ID, WAREHOUSE_ID});
+        goodsRows = rows(new Object[]{
+                DIRECT_GOODS_ID, "FG-D", "直接委外目标件",
+                DIRECT_BASE_UNIT_ID, "A-01"});
+        remainingRows = rows(new Object[]{
+                planItemId, DIRECT_ITEM_ID, DIRECT_GOODS_ID, null,
+                DIRECT_GOODS_ID, DIRECT_BASE_UNIT_ID, unitRate,
+                plannedBaseQty, plannedBaseQty, null, null, "DIRECT_OUTBOUND"});
 
         service.createPlanOnApproval(ORDER_ID);
 
-        // 计划头落库（status='OPEN' 为 SQL 字面量，参数：planId/orderId/billNo/supplier/actor/actor）
+        ArgumentCaptor<UUID> insertedPlanItemId = ArgumentCaptor.forClass(UUID.class);
         verify(jdbc).update(
-                ArgumentMatchers.<String>argThat(
-                        sql -> sql != null && sql.contains("INSERT INTO subcontract_material_plans")),
-                any(UUID.class), eq(ORDER_ID), eq("EO-1"), eq(SUPPLIER_ID),
-                any(UUID.class), any(UUID.class));
-        verify(jdbc).update(
-                ArgumentMatchers.<String>argThat(
-                        sql -> sql != null && sql.contains("INSERT INTO subcontract_material_plan_items")),
-                any(UUID.class), any(UUID.class), eq(ORDER_ITEM_ID), eq(1),
-                eq(PARENT_GOODS), ArgumentMatchers.<UUID>isNull(),
-                eq(CHILD_GOODS), eq(CHILD_COLOR), eq(CHILD_UNIT),
-                eq(new BigDecimal("2")),
-                ArgumentMatchers.<BigDecimal>argThat(qty -> qty.compareTo(new BigDecimal("200")) == 0),
-                any(UUID.class), any(UUID.class));
-        // 草稿：委外商随订货单、数量=计划全量、planItemId 挂接
+                planItemInsertSql(),
+                insertedPlanItemId.capture(), any(UUID.class), eq(DIRECT_ITEM_ID), eq(1),
+                eq(DIRECT_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(DIRECT_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(DIRECT_BASE_UNIT_ID), eq(unitRate), eq(plannedBaseQty),
+                eq("DIRECT_OUTBOUND"), eq("READY_OUTBOUND"), eq(plannedBaseQty),
+                eq(WAREHOUSE_ID), eq(false), fingerprint(), eq(ACTOR_ID), eq(ACTOR_ID));
         verify(issueRepo).save(ArgumentMatchers.argThat(draft ->
                 draft.getStatus() == 0
                         && SUPPLIER_ID.equals(draft.getSupplierId())
                         && draft.getMakerId() == null
                         && "EC-TEST-0001".equals(draft.getBillNo())));
         verify(issueItemRepo).save(ArgumentMatchers.argThat(item ->
-                item.getQty().compareTo(new BigDecimal("200")) == 0
+                item.getQty().compareTo(plannedBaseQty) == 0
                         && planItemId.equals(item.getPlanItemId())
-                        && ORDER_ITEM_ID.equals(item.getOrderItemId())
-                        && CHILD_GOODS.equals(item.getGoodsId())
-                        && CHILD_COLOR.equals(item.getColorId())
-                        && CHILD_UNIT.equals(item.getUnitId())));
+                        && DIRECT_ITEM_ID.equals(item.getOrderItemId())
+                        && DIRECT_GOODS_ID.equals(item.getGoodsId())
+                        && DIRECT_GOODS_ID.equals(item.getParentGoodsId())
+                        && DIRECT_BASE_UNIT_ID.equals(item.getUnitId())
+                        && BigDecimal.ONE.compareTo(item.getUnitRate()) == 0));
+        verify(chainNotice).notifySubcontractOutboundReady(insertedPlanItemId.getValue());
+        verify(chainNotice, never()).notifySubcontractPreparationRequired(any());
     }
 
-    /** 订货货品无 BOM 子件 → 不建计划、不生草稿（委外商自备料）。 */
     @Test
-    void approvalWithoutBomCreatesNothing() {
-        Query q1 = mock(Query.class);
-        when(q1.setParameter(anyString(), any())).thenReturn(q1);
-        when(q1.getResultList()).thenAnswer(inv -> java.util.Arrays.<Object[]>asList(
-                new Object[]{ORDER_ID, "EO-2", SUPPLIER_ID, null}));
-        Query q2 = mock(Query.class);
-        when(q2.setParameter(anyString(), any())).thenReturn(q2);
-        when(q2.getResultList()).thenAnswer(inv -> java.util.Arrays.<Object[]>asList(
-                new Object[]{ORDER_ITEM_ID, PARENT_GOODS, null, new BigDecimal("100"), 1}));
-        Query q3 = mock(Query.class);
-        when(q3.setParameter(anyString(), any())).thenReturn(q3);
-        when(q3.getResultList()).thenAnswer(inv -> java.util.Arrays.<Object[]>asList());
-        when(em.createNativeQuery(anyString())).thenReturn(q1, q2, q3);
+    void approvalWithBomPlansTargetAsMakeThenActionRequiredWithoutDraft() {
+        BigDecimal plannedBaseQty = new BigDecimal("14.0000");
+        UUID bomEdgeId = UUID.randomUUID();
+        orderRows = rows(new Object[]{ORDER_ID, "EO-MAKE", SUPPLIER_ID, null});
+        orderItemRows = rows(new Object[]{
+                MAKE_ITEM_ID, MAKE_GOODS_ID, null, new BigDecimal("7"), 1,
+                new BigDecimal("2"), DOCUMENT_UNIT_ID, WAREHOUSE_ID});
+        goodsRows = rows(new Object[]{
+                MAKE_GOODS_ID, "FG-M", "需先自制目标件", MAKE_BASE_UNIT_ID, "B-01"});
+        bomRowsByGoods = Map.of(MAKE_GOODS_ID, rows(new Object[]{
+                bomEdgeId, COMPONENT_GOODS_ID, null, new BigDecimal("3")}));
 
         service.createPlanOnApproval(ORDER_ID);
 
-        verify(jdbc, never()).update(anyString(), any(Object[].class));
+        ArgumentCaptor<UUID> insertedPlanItemId = ArgumentCaptor.forClass(UUID.class);
+        verify(jdbc).update(
+                planItemInsertSql(),
+                insertedPlanItemId.capture(), any(UUID.class), eq(MAKE_ITEM_ID), eq(1),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_BASE_UNIT_ID), eq(new BigDecimal("2")), eq(plannedBaseQty),
+                eq("MAKE_THEN_OUTBOUND"), eq("ACTION_REQUIRED"), eq(BigDecimal.ZERO),
+                eq(WAREHOUSE_ID), eq(true), fingerprint(), eq(ACTOR_ID), eq(ACTOR_ID));
         verify(issueRepo, never()).save(any());
+        verify(issueItemRepo, never()).save(any());
+        verify(chainNotice).notifySubcontractPreparationRequired(insertedPlanItemId.getValue());
+        verify(chainNotice, never()).notifySubcontractOutboundReady(any());
     }
 
-    /** 出仓审核回写：CAS 未命中（超计划/并发）→ 409 且不生下一批草稿。 */
     @Test
-    void issueApprovalBeyondPlanIsRejected() {
-        Query lineQuery = mock(Query.class);
-        when(lineQuery.setParameter(anyString(), any())).thenReturn(lineQuery);
-        when(lineQuery.getResultList()).thenAnswer(inv -> java.util.Arrays.<Object[]>asList(
-                new Object[]{UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("50")}));
-        when(em.createNativeQuery(anyString())).thenReturn(lineQuery);
-        when(jdbc.update(anyString(), any(), any(), any())).thenReturn(0); // CAS 未命中
+    void mixedOrderCreatesOnePlanPerTargetButDraftContainsOnlyDirectLine() {
+        UUID directPlanItemId = UUID.randomUUID();
+        orderRows = rows(new Object[]{ORDER_ID, "EO-MIX", SUPPLIER_ID, null});
+        orderItemRows = List.of(
+                new Object[]{DIRECT_ITEM_ID, DIRECT_GOODS_ID, null,
+                        new BigDecimal("3"), 1, BigDecimal.ONE,
+                        DOCUMENT_UNIT_ID, WAREHOUSE_ID},
+                new Object[]{MAKE_ITEM_ID, MAKE_GOODS_ID, null,
+                        new BigDecimal("4"), 2, BigDecimal.ONE,
+                        DOCUMENT_UNIT_ID, WAREHOUSE_ID});
+        goodsRows = List.of(
+                new Object[]{DIRECT_GOODS_ID, "FG-D", "直接件",
+                        DIRECT_BASE_UNIT_ID, "A-01"},
+                new Object[]{MAKE_GOODS_ID, "FG-M", "自制后委外件",
+                        MAKE_BASE_UNIT_ID, "B-01"});
+        bomRowsByGoods = Map.of(MAKE_GOODS_ID, rows(new Object[]{
+                UUID.randomUUID(), COMPONENT_GOODS_ID, null, BigDecimal.ONE}));
+        remainingRows = rows(new Object[]{
+                directPlanItemId, DIRECT_ITEM_ID, DIRECT_GOODS_ID, null,
+                DIRECT_GOODS_ID, DIRECT_BASE_UNIT_ID, BigDecimal.ONE,
+                new BigDecimal("3.0000"), new BigDecimal("3.0000"), null, null,
+                "DIRECT_OUTBOUND"});
+
+        service.createPlanOnApproval(ORDER_ID);
+
+        verify(jdbc).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), eq(DIRECT_ITEM_ID), eq(1),
+                eq(DIRECT_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(DIRECT_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(DIRECT_BASE_UNIT_ID), eq(BigDecimal.ONE), eq(new BigDecimal("3.0000")),
+                eq("DIRECT_OUTBOUND"), eq("READY_OUTBOUND"), eq(new BigDecimal("3.0000")),
+                eq(WAREHOUSE_ID), eq(false), fingerprint(), eq(ACTOR_ID), eq(ACTOR_ID));
+        verify(jdbc).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), eq(MAKE_ITEM_ID), eq(2),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_BASE_UNIT_ID), eq(BigDecimal.ONE), eq(new BigDecimal("4.0000")),
+                eq("MAKE_THEN_OUTBOUND"), eq("ACTION_REQUIRED"), eq(BigDecimal.ZERO),
+                eq(WAREHOUSE_ID), eq(true), fingerprint(), eq(ACTOR_ID), eq(ACTOR_ID));
+        verify(issueItemRepo).save(ArgumentMatchers.argThat(item ->
+                directPlanItemId.equals(item.getPlanItemId())
+                        && DIRECT_GOODS_ID.equals(item.getGoodsId())
+                        && item.getQty().compareTo(new BigDecimal("3.0000")) == 0));
+        verify(chainNotice).notifySubcontractOutboundReady(any());
+        verify(chainNotice).notifySubcontractPreparationRequired(any());
+    }
+
+    @Test
+    void issueApprovalBeyondPlanIsRejectedByCas() {
+        issueRows = rows(new Object[]{
+                UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("50")});
+        when(jdbc.update(anyString(), any(), any(), any())).thenReturn(0);
 
         ApiException error = assertThrows(ApiException.class,
                 () -> service.syncAfterIssueApproved(UUID.randomUUID()));
+
         assertEquals(ErrorCode.CONFLICT, error.getCode());
         assertTrue(error.getMessage().contains("计划余量"));
+        verify(issueRepo, never()).save(any());
     }
 
-    /** 「不再出仓」必须填原因。 */
     @Test
     void closePlanRequiresReason() {
         ApiException error = assertThrows(ApiException.class,
                 () -> service.closePlan(UUID.randomUUID(), "  "));
+
         assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+    }
+
+    private void stubNativeQueriesBySql() {
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            Query query = mock(Query.class);
+            Map<String, Object> parameters = new HashMap<>();
+            when(query.setParameter(anyString(), any())).thenAnswer(parameterInvocation -> {
+                parameters.put(parameterInvocation.getArgument(0),
+                        parameterInvocation.getArgument(1));
+                return query;
+            });
+            when(query.getResultList()).thenAnswer(ignored -> nativeRows(sql, parameters));
+            return query;
+        });
+    }
+
+    private List<Object[]> nativeRows(String sql, Map<String, Object> parameters) {
+        if (sql.contains("FROM subcontract_orders WHERE id")) {
+            return orderRows;
+        }
+        if (sql.contains("FROM subcontract_order_items item")) {
+            return orderItemRows;
+        }
+        if (sql.contains("FROM goods WHERE id IN")) {
+            return goodsRows;
+        }
+        if (sql.contains("FROM goods_bom_items bom")) {
+            return bomRowsByGoods.getOrDefault(parameters.get("goodsId"), List.of());
+        }
+        if (sql.contains("FROM subcontract_material_issue_items")
+                && sql.contains("WHERE issue_id")) {
+            return issueRows;
+        }
+        throw new AssertionError("unexpected native SQL in focused test: " + sql);
+    }
+
+    private static String planItemInsertSql() {
+        return ArgumentMatchers.argThat(sql -> sql != null
+                && sql.contains("INSERT INTO subcontract_material_plan_items"));
+    }
+
+    private static String fingerprint() {
+        return ArgumentMatchers.argThat(value -> value != null
+                && value.matches("[0-9a-f]{64}"));
+    }
+
+    private static List<Object[]> rows(Object[] row) {
+        return List.<Object[]>of(row);
     }
 }

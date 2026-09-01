@@ -10,6 +10,8 @@ public record ShipmentQueryFilter(
         UUID warehouseId,
         Short status,
         Boolean arPosted,
+        Short financeAudit,
+        String warehouseWorkStatus,
         LocalDate dateFrom,
         LocalDate dateTo) {
 }

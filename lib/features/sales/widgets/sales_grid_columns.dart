@@ -1,6 +1,7 @@
 // 销售单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
-// SalesGridRow：货品(选择)/数量/单价→金额自动（AmountRowMixin）；颜色/单位 + 上游明细 id
+// SalesGridRow：货品(选择)/单位/数量/实际重量/单价→金额自动（AmountRowMixin）；
+// 颜色/单位换算率 + 上游明细 id
 // 为透传（从上游引入或详情回填时预填，保存时随行写回）；报表补列（机加价/围数/进仓/
 // 材料价/压铸价/折扣）按 docType 显隐对应列。
 // salesGridColumns：货品/颜色/单位/数量/单价/金额 + 补列（条件）。
@@ -40,6 +41,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
   final TextEditingController qty = TextEditingController();
+  final TextEditingController weight = TextEditingController();
   final TextEditingController price = TextEditingController();
 
   /// 当前单据自身明细 UUID。仅受控更新既有销售订货行时回传为 JSON `id`。
@@ -60,6 +62,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   final unitIdNotifier = ValueNotifier<String?>(null);
   String? get unitId => unitIdNotifier.value;
   set unitId(String? v) => unitIdNotifier.value = v;
+  double? unitRate;
 
   /// 库位号（只读，货品主档带出；出货/其它出货/退货实物单据的拣货/上架指引，
   /// 异步补全后自动刷新）。
@@ -106,7 +109,8 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
       ..orderItemId = li.orderItemId
       ..outItemId = li.outItemId
       ..colorId = li.colorId
-      ..unitId = li.unitId;
+      ..unitId = li.unitId
+      ..unitRate = li.unitRate;
     r.qty.text = li.qty.toString();
     if (li.price != null) r.price.text = li.price.toString();
     return r;
@@ -130,8 +134,10 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
       ..orderItemId = orderItemId
       ..outItemId = outItemId
       ..colorId = colorId
-      ..unitId = unitId;
+      ..unitId = unitId
+      ..unitRate = unitRate;
     c.qty.text = qty.text;
+    c.weight.text = weight.text;
     c.price.text = price.text;
     c.machiningPrice.text = machiningPrice.text;
     c.circumference.text = circumference.text;
@@ -152,6 +158,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     solutionNotifier.dispose();
     responsibleNotifier.dispose();
     qty.dispose();
+    weight.dispose();
     price.dispose();
     machiningPrice.dispose();
     circumference.dispose();
@@ -257,7 +264,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
     ),
     EditableGridColumn<SalesGridRow>(
       key: 'qty',
-      label: '数量',
+      label: docType == SalesDocType.order ? '数量' : '业务量',
       width: 96,
       numeric: true,
       required: true,
@@ -270,6 +277,18 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
+      ),
+    ),
+    EditableGridColumn<SalesGridRow>(
+      key: 'weight',
+      label: '实际重量',
+      width: 104,
+      numeric: true,
+      cellBuilder: (context, row) => TextField(
+        controller: row.weight,
+        textAlign: TextAlign.right,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(isDense: true, hintText: '可选'),
       ),
     ),
     EditableGridColumn<SalesGridRow>(

@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -25,8 +26,12 @@ public class StockDocItemDto {
     private BigDecimal qty;
     private BigDecimal reportedQty;
     private BigDecimal baseQty;
+    /** 内部库存过账事实；仓库实物行响应不序列化单价或金额。 */
+    @JsonIgnore
     private BigDecimal price;
+    @JsonIgnore
     private BigDecimal amountOriginal;
+    @JsonIgnore
     private BigDecimal amountLocal;
     private BigDecimal weight;
     private BigDecimal giftQty;

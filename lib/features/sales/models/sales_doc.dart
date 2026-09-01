@@ -162,7 +162,7 @@ abstract final class SalesWarehouseWorkStatus {
 }
 
 String salesWarehouseWorkStatusLabel(String? code) => switch (code) {
-  SalesWarehouseWorkStatus.legacyPending => '历史待审核',
+  SalesWarehouseWorkStatus.legacyPending => '历史迁移异常',
   SalesWarehouseWorkStatus.pendingPick => '待拣货',
   SalesWarehouseWorkStatus.picking => '拣货中',
   SalesWarehouseWorkStatus.picked => '已拣货，待交接',
@@ -175,7 +175,8 @@ String salesWarehouseWorkStatusLabel(String? code) => switch (code) {
 };
 
 String salesWarehouseWorkStatusHint(String? code) => switch (code) {
-  SalesWarehouseWorkStatus.legacyPending => '历史出货单沿用原“审核”流程。',
+  SalesWarehouseWorkStatus.legacyPending =>
+    '历史直接审核流程已停用；请登记迁移异常并人工重建为“两次审核”出货任务。',
   SalesWarehouseWorkStatus.pendingPick => '待仓库开始拣货；开始后销售将不能直接编辑或删除。',
   SalesWarehouseWorkStatus.picking => '仓库正在拣货，可登记异常或确认拣货完成。',
   SalesWarehouseWorkStatus.picked => '货物已拣齐；交接出库会正式扣减库存并驱动下游。',
@@ -186,12 +187,14 @@ String salesWarehouseWorkStatusHint(String? code) => switch (code) {
   _ => '当前没有可执行的仓库作业。',
 };
 
-bool salesShipmentUsesLegacyApproval(String? warehouseWorkStatus) =>
-    warehouseWorkStatus == SalesWarehouseWorkStatus.legacyPending;
-
 bool salesShipmentAllowsFinanceAudit(String? warehouseWorkStatus) =>
-    warehouseWorkStatus == SalesWarehouseWorkStatus.pendingPick ||
-    warehouseWorkStatus == SalesWarehouseWorkStatus.legacyPending;
+    warehouseWorkStatus == SalesWarehouseWorkStatus.pendingPick;
+
+String salesShipmentFinanceAuditLabel(int? value) => switch (value) {
+  1 => '已财务审核',
+  0 || null => '待财务审核',
+  final unknown => '异常状态($unknown)',
+};
 
 bool salesShipmentRequiresOrderLinks({
   required bool isNew,
@@ -223,6 +226,62 @@ bool salesShipmentLocksDraftEdit({
     documentStatus == kSalesStatusDraft &&
     financeAudit == 1 &&
     warehouseWorkStatus == SalesWarehouseWorkStatus.pendingPick;
+
+class ShipmentFinanceAuditInfo {
+  const ShipmentFinanceAuditInfo({
+    this.shipmentId,
+    this.financeAudit,
+    this.clientName,
+    this.salesPaymentType,
+    this.settlementMethodId,
+    this.settlementMethodCode,
+    this.settlementMethodName,
+    this.outstanding,
+    this.creditFloor,
+    this.overFloor,
+    this.availablePrepaymentOriginal,
+    this.availablePrepaymentLocal,
+  });
+
+  final String? shipmentId;
+  final int? financeAudit;
+  final String? clientName;
+  final String? salesPaymentType;
+  final String? settlementMethodId;
+  final String? settlementMethodCode;
+  final String? settlementMethodName;
+
+  /// 金额保留服务端十进制文本，避免财务预览在客户端二次计算或丢精度。
+  final String? outstanding;
+  final String? creditFloor;
+  final String? overFloor;
+  final String? availablePrepaymentOriginal;
+  final String? availablePrepaymentLocal;
+
+  factory ShipmentFinanceAuditInfo.fromJson(Map<String, dynamic> json) =>
+      ShipmentFinanceAuditInfo(
+        shipmentId: _text(json['shipmentId']),
+        financeAudit: (json['financeAudit'] as num?)?.toInt(),
+        clientName: _text(json['clientName']),
+        salesPaymentType: _text(json['salesPaymentType']),
+        settlementMethodId: _text(json['settlementMethodId']),
+        settlementMethodCode: _text(json['settlementMethodCode']),
+        settlementMethodName: _text(json['settlementMethodName']),
+        outstanding: _text(json['outstanding']),
+        creditFloor: _text(json['creditFloor']) ?? '0',
+        overFloor: _text(json['overFloor']),
+        availablePrepaymentOriginal:
+            _text(json['availablePrepaymentOriginal']) ?? '0',
+        availablePrepaymentLocal:
+            _text(json['availablePrepaymentLocal']) ?? '0',
+      );
+
+  static String? _text(Object? value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+}
 
 enum SalesWarehouseWorkAction {
   startPicking(SalesWarehouseWorkStatus.picking),
@@ -386,6 +445,8 @@ class SalesDocListItem {
     this.handedOverAt,
     this.warehouseExceptionReason,
     this.canManageWarehouseWork = false,
+    this.financeAudit,
+    this.financeAuditedAt,
     this.sellerName,
     this.sellerId,
     this.financeConfirmed = false,
@@ -423,6 +484,8 @@ class SalesDocListItem {
   final String? handedOverAt;
   final String? warehouseExceptionReason;
   final bool canManageWarehouseWork;
+  final int? financeAudit;
+  final String? financeAuditedAt;
 
   /// 销售员姓名（服务端按 seller_id 解析；仅销售订单列表下发，生产计划选单展示）。
   /// 其它单据类型列表不下发，保持 null。
@@ -472,6 +535,8 @@ class SalesDocListItem {
     handedOverAt: json['handedOverAt'] as String?,
     warehouseExceptionReason: json['warehouseExceptionReason'] as String?,
     canManageWarehouseWork: (json['canManageWarehouseWork'] as bool?) ?? false,
+    financeAudit: (json['financeAudit'] as num?)?.toInt(),
+    financeAuditedAt: json['financeAuditedAt'] as String?,
     sellerName: json['sellerName'] as String?,
     sellerId: json['sellerId'] as String?,
     financeConfirmed: (json['financeConfirmed'] as bool?) ?? false,

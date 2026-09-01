@@ -10,6 +10,9 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
+import com.uten.imp.common.finance.ProcurementReturnHeaderAuthority;
+import com.uten.imp.common.finance.ProcurementReturnQualityPolicy;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.finance.payables.SupplierPaymentTermService;
@@ -145,7 +148,7 @@ public class SubcontractReturnService {
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
         SubcontractReturn r = new SubcontractReturn();
-        applyHeader(req, r);
+        applyHeader(req, r, returnHeader(req));
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         canonicalizeMaker(r);
         r.setStatus(STATUS_DRAFT);
@@ -164,7 +167,7 @@ public class SubcontractReturnService {
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
-        applyHeader(req, r);
+        applyHeader(req, r, returnHeader(req));
         itemRepo.deleteByReturnId(id);
         itemRepo.flush();
         List<ReturnItemDto> items = saveItems(r, req.getItems());
@@ -212,6 +215,19 @@ public class SubcontractReturnService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        captureGoodsSnapshots(
+                items,
+                SubcontractGoodsSnapshot.RECEIPT_ITEM_AT_APPROVAL,
+                SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
+                SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
+                OffsetDateTime.now());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
+        ProcurementReturnQualityPolicy.lockInspectionRows(
+                em,
+                "SUBCONTRACT",
+                items.stream().map(SubcontractReturnItem::getReceiptItemId).toList());
         sourceIntegrity.validateSubcontractReturn(
                 r.getSupplierId(),
                 items.stream()
@@ -224,15 +240,6 @@ public class SubcontractReturnService {
                                 it.getUnitRate()))
                         .toList());
         returnAmountAuthority.apply(r, items);
-        captureGoodsSnapshots(
-                items,
-                SubcontractGoodsSnapshot.RECEIPT_ITEM_AT_APPROVAL,
-                SubcontractGoodsSnapshot.ORDER_ITEM_AT_APPROVAL,
-                SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
-                OffsetDateTime.now());
-        stockService.lockInventory(items.stream()
-                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
-                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractReturnItem it : items) {
             // ① 出库（DIR_OUT=-1）
@@ -359,7 +366,7 @@ public class SubcontractReturnService {
                 ts, StockService.TYPE_SUBCONTRACT_RETURN, StockService.SRC_SUBCONTRACT_RETURN,
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
-                direction < 0 ? null : "红冲"));
+                direction < 0 ? null : "红冲", it.getWeight()));
     }
 
     /** 立应付反向 AP。sign=-1 退货（应付减少，金额转负）。 */
@@ -410,37 +417,37 @@ public class SubcontractReturnService {
 
     /** 重算订货单结案：所有明细 qty - received_qty + returned_qty ≤ 0 → is_closed=true。 */
     private void recalcOrderClosed(UUID orderItemId) {
-        em.createNativeQuery("""
-                UPDATE subcontract_orders o SET is_closed = (
-                    SELECT COALESCE(bool_and(
-                        COALESCE(i.qty,0) - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0) <= 0
-                    ), true)
-                    FROM subcontract_order_items i
-                    WHERE i.order_id = o.id AND COALESCE(i.is_deleted, false) = false
-                ) WHERE o.id = (SELECT order_id FROM subcontract_order_items WHERE id = :iid)
-                """).setParameter("iid", orderItemId).executeUpdate();
+        ProcurementOrderClosurePolicy.recalculate(
+                em, ProcurementOrderClosurePolicy.SUBCONTRACT, orderItemId);
     }
 
-    private void applyHeader(ReturnSaveRequest req, SubcontractReturn r) {
+    private ProcurementReturnHeaderAuthority.Header returnHeader(ReturnSaveRequest req) {
+        return ProcurementReturnHeaderAuthority.derive(
+                em,
+                "SUBCONTRACT",
+                req == null || req.getItems() == null ? List.of()
+                        : req.getItems().stream()
+                            .map(ReturnItemLine::getReceiptItemId).toList());
+    }
+
+    private void applyHeader(
+            ReturnSaveRequest req,
+            SubcontractReturn r,
+            ProcurementReturnHeaderAuthority.Header header) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SUB_RETURN));
         }
         r.setBillDate(req.getBillDate());
-        r.setSupplierId(req.getSupplierId());
+        r.setSupplierId(header.supplierId());
         r.setWarehouseId(req.getWarehouseId());
-        r.setCurrencyId(req.getCurrencyId());
-        r.setExchangeRate(req.getExchangeRate());
-        r.setTaxRate(req.getTaxRate());
+        r.setCurrencyId(header.currencyId());
+        r.setExchangeRate(header.exchangeRate());
+        r.setTaxRate(header.taxRate());
         r.setLastDate(req.getLastDate());
         r.setRemark(req.getRemark());
-        if (!(req.getSettlementMethodId() == null && req.getSettlementStyleLegacy() == null
-                && r.getSettlementMethodId() == null && r.getSettlementStyleLegacy() != null)) {
-            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
-                    em, req.getSettlementMethodId(), req.getSettlementStyleLegacy(), "结帐方式");
-            r.setSettlementMethodId(settlement == null ? null : settlement.id());
-            r.setSettlementStyleLegacy(settlement == null ? null : settlement.legacyId());
-        }
+        r.setSettlementMethodId(header.settlementMethodId());
+        r.setSettlementStyleLegacy(header.settlementStyleLegacy());
         canonicalizeMaker(r);
         canonicalizeApprover(r);
     }
@@ -599,7 +606,8 @@ public class SubcontractReturnService {
     }
 
     private boolean subcontractPriceMasked() {
-        return commercialPriceVisibility == null || !commercialPriceVisibility.canViewSubcontract();
+        return commercialPriceVisibility == null
+                || !commercialPriceVisibility.canViewSubcontractReturn();
     }
 
     private static ReturnItemDto maskItemPrices(ReturnItemDto it) {

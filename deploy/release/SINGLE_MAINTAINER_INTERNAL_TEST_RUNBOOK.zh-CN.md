@@ -1,5 +1,7 @@
 # 单维护者 internal-test 离线发布例外运行手册
 
+> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../../simple/RUNBOOK.zh-CN.md)。
+
 ## 1. 适用范围与当前状态
 
 本例外只解决私有仓库当前没有可用的第二位人工审核者/Environment reviewer 的现实约束。

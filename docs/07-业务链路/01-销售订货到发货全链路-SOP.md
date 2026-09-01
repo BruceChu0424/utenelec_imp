@@ -24,7 +24,7 @@
 > **2026-08-16 深夜全链路核查复验**：`FullChainEndToEndTest` 夹具已按本闸门补「审核 → 财务确认」两步，并新增闸门回归测试（未确认订单在待排产列表与物料分析候选均不可见；非财务部门账号即使经部门矩阵拿到 `sales_order_finance:confirm` 权限，也在确认人资格层被拒 403）——整链 55 项在 Testcontainers 全量迁移库（V1→V295，276 个迁移）实测通过，覆盖销售下单→排产→MRP→采购→收货 IQC→完工入库→出货→库存/金额/守恒→权限/并发/安全。同步修复两处 V294 漂移：链路健康检查器 `salesGapWithoutAnalysis` 补 `finance_confirmed` 谓词（未确认订单不再被误报为「有销售缺口·无物料分析」断链、不再向计划侧视角泄露）；`MaterialAnalysisService` 刷新路径按同闸门加纵深防御复核。另按 ADR-038 §2.2 移除采购/委外任务中心残留的「不同仓库请分别生成订货单」409，后端与前端 `hasWarehouse:false`、收货时必填仓库的口径一致。目标库部署与真实岗位 UAT 未完成前，生产仍为 **NO-GO**。
 
 <!-- BUSINESS-CHAIN-V238-CURRENT -->
-> **2026-08-14 历史实施边界**：公司既有目标环境状态仍须发布前独立核验；该时点共享工作树源码目录最高 **V289/270**，270 个版本号无重复。V288/V289 已建立生产物料分析现货借用结构、终态守卫与全 `public` 审计覆盖，源码候选已接通 create/revoke、持久化、生效计算和 Flutter UI。V253/234 与空库 **V252/233** 是 2026-08-11 阶段快照；生产物料分析的一次性 PostgreSQL 16 隔离克隆仍是从 V1 执行 231 个迁移到 **V250** 的历史证据。V257–V289 都不改变生产未来默认车间唯一真源 V192 `production_goods_workshop_preferences`。源码专项与隔离迁移不等于公司目标库已部署或生产放行；历史数据零回填差异/余额对账、真实多岗位权限 UAT、仓库/生产/采购/委外实物演练、完整质量域、容量与恢复演练及发布签字尚未完成，因此生产仍为 **NO-GO**。统一待办和证据边界见 [2026-08-09 本地云端部署与生产就绪清单](../99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)。
+> **2026-08-14 历史实施边界**：公司既有目标环境状态仍须发布前独立核验；该时点共享工作树源码目录最高 **V289/270**，270 个版本号无重复。V288/V289 已建立生产物料分析现货借用结构、终态守卫与全 `public` 审计覆盖，源码候选已接通 create/revoke、持久化、生效计算和 Flutter UI。V253/234 与空库 **V252/233** 是 2026-08-11 阶段快照；生产物料分析的一次性 PostgreSQL 16 隔离克隆仍是从 V1 执行 231 个迁移到 **V250** 的历史证据。V257–V289 都不改变生产未来默认车间唯一真源 V192 `production_goods_workshop_preferences`。源码专项与隔离迁移不等于公司目标库已部署或生产放行；历史数据零回填差异/余额对账、真实多岗位权限 UAT、仓库/生产/采购/委外实物演练、完整质量域、容量与恢复演练及发布签字尚未完成，因此生产仍为 **NO-GO**。统一待办和证据边界以 [数据迁移 README](../数据迁移/README.md) 模块清单为准。
 >
 > **2026-08-09 销售汇率口径修订；2026-08-27 收款术语澄清；2026-08-31 V443 后置**：销售订单只形成币种和原币商业事实，保存和销售审核（当前无独立提交态）不得依赖汇率；所有客户出货逐张财务放行后才通知仓库，`SHIPPED` 才锁定财务开账汇率并形成正式 AR，且立账/到期日起算使用仓库最终确认的上海业务日。收款时再由财务填写本批实际到账汇率。收款行币种是应收/核销原币，不是收款账户币种；USD AR 结汇后可把服务端换算的本币记入 CNY 账户。目标环境全链、数据与约束核验、历史对账和多岗位 UAT 尚未完成，不能把源码改动写成生产已放行。详见 [ADR-030](../99-决策记录-ADR/ADR-030-销售待收计划与正式应收分层.md)。
 
@@ -440,6 +440,5 @@ USD AR 收入 HKD/EUR 等第三币种账户，或需要独立代理在途余额�
 - [仓库盘点修正与历史单据处理](../数据迁移/50-仓库盘点修正与历史单据处理.md)
 - [ADR-011 工作台部门分区与动态权限配置](../99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md)
 - [UtenExportButton 加密导出](../02-组件库/UtenExportButton.md)
-- [2026-08-01 销售—仓库—计划—生产/采购/委外全链路安全复核报告](../99-项目治理/2026-08-01-销售仓库生产采购委外全链路安全复核报告.md)
 
 外部专业依据（用于原则校准，不替代公司配置）：[Oracle Global Order Promising](https://docs.oracle.com/en/cloud/saas/supply-chain-and-manufacturing/26b/fascp/overview-of-global-order-promising.html)、[Oracle 库存预留](https://docs.oracle.com/en/cloud/saas/supply-chain-and-manufacturing/26b/faiom/guidelines-for-reserving-inventory.html)、[Dynamics 365 仓库预留层级](https://learn.microsoft.com/en-us/dynamics365/supply-chain/warehousing/reservations-in-warehouse-management)、[Dynamics 365 退货检验与处置](https://learn.microsoft.com/en-us/dynamics365/supply-chain/sales-marketing/take-returned-items-through-inspection)、[SAP 委外组件库存](https://help.sap.com/docs/SAP_S4HANA_ON-PREMISE/91b21005dded4984bcccf4a69ae1300c/e061bd534f22b44ce10000000a174cb4.html)。这些资料只支持“承诺/仓库详细分配分层、退货先检验处置”等原则；Uten 的具体状态和权限是结合公司现状的裁剪，不宣称与任一大型 ERP 等价。

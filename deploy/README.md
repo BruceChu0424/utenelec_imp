@@ -29,9 +29,10 @@
 
 > **适用边界（2026-08-11）**：本文是通用的单版本、不可变制品、Nginx/systemd 和 watchdog 发布基线。
 > 当前权威操作入口是 [operator-guide.zh-CN.md](operator-guide.zh-CN.md)，真实主机事实只以受控私有交接为准。
-> [cloud/README-cloud.md](cloud/README-cloud.md) 是尚未完成目标环境验收的可选异地灾备设计草案，
-> [2026-08-09 本地云端部署与生产就绪清单](../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)
-> 保留历史证据和未关闭门禁；两者都不能替代当前主机操作手册或变更审批。
+> [cloud/README-cloud.md](cloud/README-cloud.md) 是尚未完成目标环境验收的可选异地灾备设计草案。
+> 历史环境证据与未关闭门禁的旧清单（2026-08-09）已随 2026-09-01 文档清理归档至 git 历史；
+> 现役部署/发版链见 [deploy/simple/RUNBOOK.zh-CN.md](simple/RUNBOOK.zh-CN.md) 与
+> [新库上线与首装操作指引](../docs/99-项目治理/2026-09-01-新库上线与首装操作指引.md)。
 > 模板、脚本和隔离演练通过不等于目标服务器已安装或生产放行；填写环境变量也不能替代 VPN、迁移、
 > PITR、真实 OSS、故障注入和岗位 UAT。
 

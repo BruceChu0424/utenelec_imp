@@ -1,5 +1,7 @@
 # 现有内部测试服务器：NVMe `/data` 安全切换
 
+> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../../simple/RUNBOOK.zh-CN.md)。
+
 > 当前仓库候选已经实现并离线验证两阶段无人值守恢复、root gate-authorizer、`systemd-analyze verify`
 > 以及 SIGKILL/掉电/重启状态故障注入；这仍然只是**尚未部署的源码候选**，不是服务器执行证据。
 > 上机前必须重新取得目标主机的 `assess`/`plan`、核对 plan SHA 和受控批准编号；服务器执行后还必须保留完整 evidence，

@@ -1,5 +1,7 @@
 # Uten IMP 服务器交接模板（脱敏版）
 
+> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../simple/RUNBOOK.zh-CN.md)。
+
 <!-- CURRENT-ERP-TEST-SERVER-SCOPE-20260812 -->
 > 当前测试主机范围示例：`internal-erp-test`，只登记 PostgreSQL、Spring Boot 和 Flutter ERP Web/Nginx。
 > 企业官网登记为“延期到独立云服务器”，不得列入同一主机服务。未来 03:00 维护窗口、02:17 本地备份、

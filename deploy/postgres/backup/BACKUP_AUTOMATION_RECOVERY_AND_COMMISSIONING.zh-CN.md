@@ -1,5 +1,7 @@
 # 备份掉电恢复与自动化投产合同
 
+> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../../../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../../../simple/RUNBOOK.zh-CN.md)。
+
 <!-- CURRENT-ERP-TEST-SERVER-SCOPE-20260812 -->
 > 2026-08-12 的最后只读快照显示旧 repo1 02:17 timer 当时在运行；该状态尚未通过当前 OOB authority 和
 > 新只读会话刷新。本文件描述的新自动化尚未 commissioned，全部相关新增 timer

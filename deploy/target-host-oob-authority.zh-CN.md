@@ -1,5 +1,7 @@
 # 目标服务器带外身份与访问 authority 执行清单
 
+> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../simple/RUNBOOK.zh-CN.md)。
+
 > **日期**：2026-08-15（Asia/Shanghai）
 > **适用范围**：Uten IMP 现有内部 ERP 测试服务器
 > **配套合同**：[当前目标机状态](current-test-server-status.zh-CN.md)、

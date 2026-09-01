@@ -130,4 +130,3 @@ if (g != null) setState(() => _selectedGoods = g);
 - [MasterDataTableView.md](MasterDataTableView.md)（同样位于 basic_data 域的跨模块共享组件）
 - [UtenHierarchySearch.md](UtenHierarchySearch.md)（分类树与具体内容统一关联搜索契约）
 - [基础资料页.md](../03-页面/基础资料页.md)（货品资料页——本选择器复用其「左分类树 + 右货品表」范式）
-- [采购仓库单据页-UI优化路线图.md](../03-页面/采购仓库单据页-UI优化路线图.md)（明细 Excel 表 + 货品选择统一的落地记录）

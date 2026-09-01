@@ -11,9 +11,9 @@ Spring Boot 3.5.16 · Java 21 · Spring Security 6 (stateless JWT) · Spring Dat
 
 > 本目录是独立 Maven 工程，与 Flutter 前端（`lib/`）平级。
 >
-> **生产领料/点收候选增量（2026-08-22）**：当前共享迁移目录最高 V375，共 337 个迁移文件、337 个唯一版本、无重号；生产相关新增 V337/V338。V337 以 append-only MAKE entitlement delegation 把 current beneficiary 从父树旧后代 exact 节点交接到 `MAKE_COMPONENT` child 同 BOM 直接层，不改 origin 或物理预留。V338 强制生产来源 FINISHED_IN 逐行确认实收：混合零/正实收时，正数行按实收入账，零实收源行受控软删且其全申报量进入余量草稿；只有整单全部行为零才记 `REJECTED`，不增加库存或 `iqty`。已点收单禁止通用红冲，只能走 `/finished-in/reverse`，append-only reversal 头/行冻结反向来源，反库存/`iqty` 后把原 accepted slice 精确重建成待点收 replacement 草稿。生产仓库动作统一使用 inventory→plan/package/segment→document 锁序，并要求具体动作权限与 `SUB_WH` 仓储组织范围求交；当前没有员工到具体仓库的分配主档，不能宣称单仓级授权完成。关联源码还包含 DRAW 待办通知/仓库角标、全部正式需求发料后才可开工、仅 IN_PROGRESS 可报工，以及日报 `price/total/stotal` 停写。计件只是未来边界，没有工序/多人贡献/工价/工资桥实现。V337/V338 未部署、未完成目标非空库迁移、真实仓库/车间 UAT、恢复和发布，生产与计件均 **NO-GO**。详见 [ADR-046](../docs/99-决策记录-ADR/ADR-046-生产领料仓库点收报工归属与未来计件边界.md)和[治理收口报告](../docs/99-项目治理/2026-08-22-生产领料仓库点收报工归属与未来计件治理收口.md)。
+> **生产领料/点收候选增量（2026-08-22）**：当前共享迁移目录最高 V375，共 337 个迁移文件、337 个唯一版本、无重号；生产相关新增 V337/V338。V337 以 append-only MAKE entitlement delegation 把 current beneficiary 从父树旧后代 exact 节点交接到 `MAKE_COMPONENT` child 同 BOM 直接层，不改 origin 或物理预留。V338 强制生产来源 FINISHED_IN 逐行确认实收：混合零/正实收时，正数行按实收入账，零实收源行受控软删且其全申报量进入余量草稿；只有整单全部行为零才记 `REJECTED`，不增加库存或 `iqty`。已点收单禁止通用红冲，只能走 `/finished-in/reverse`，append-only reversal 头/行冻结反向来源，反库存/`iqty` 后把原 accepted slice 精确重建成待点收 replacement 草稿。生产仓库动作统一使用 inventory→plan/package/segment→document 锁序，并要求具体动作权限与 `SUB_WH` 仓储组织范围求交；当前没有员工到具体仓库的分配主档，不能宣称单仓级授权完成。关联源码还包含 DRAW 待办通知/仓库角标、全部正式需求发料后才可开工、仅 IN_PROGRESS 可报工，以及日报 `price/total/stotal` 停写。计件只是未来边界，没有工序/多人贡献/工价/工资桥实现。V337/V338 未部署、未完成目标非空库迁移、真实仓库/车间 UAT、恢复和发布，生产与计件均 **NO-GO**。详见 [ADR-046](../docs/99-决策记录-ADR/ADR-046-生产领料仓库点收报工归属与未来计件边界.md)。
 >
-> **当前物料分析候选增量（2026-08-21）**：迁移目录候选头为 V314/295；V309–V313 建立显式跨分析让料、append-only entitlement、MAKE exact、READY-only `FORMALIZE/RESTORE` 和数量守恒，V314 执行最终全 `public` 审计扫描。业务语义是“来源计划后续合格供给优先补齐”，不是欠款、代还或同批返还。相关静态/Mockito 与既有采购委外隔离证据不等于 V314/#23d 已获动态验收；公司目标库、非空升级、岗位 UAT、恢复及部署仍 **NO-GO**。详见 [ADR-049](../docs/99-决策记录-ADR/ADR-049-跨物料分析让料与后续供给优先补齐.md)和[全链路审计报告](../docs/99-项目治理/2026-08-20-采购委外到货与物料分析全链路审计整改.md)。
+> **当前物料分析候选增量（2026-08-21）**：迁移目录候选头为 V314/295；V309–V313 建立显式跨分析让料、append-only entitlement、MAKE exact、READY-only `FORMALIZE/RESTORE` 和数量守恒，V314 执行最终全 `public` 审计扫描。业务语义是“来源计划后续合格供给优先补齐”，不是欠款、代还或同批返还。相关静态/Mockito 与既有采购委外隔离证据不等于 V314/#23d 已获动态验收；公司目标库、非空升级、岗位 UAT、恢复及部署仍 **NO-GO**。详见 [ADR-049](../docs/99-决策记录-ADR/ADR-049-跨物料分析让料与后续供给优先补齐.md)。
 >
 > **页面权限设置候选增量（2026-08-22）**：迁移头推进到 V329。组织权威只认超级管理员和人事部门树的 `departments.manager_id`；普通负责人根覆盖未删除子树，稳定编码 `GM` 且直属公司根的总经办负责人覆盖全公司，显示名称、岗位、上级员工关系和普通成员身份均不授权。部门筛选可空；空值表示全部可管理范围，选值表示与所选节点子树取交集。`GET .../staff` 在 PostgreSQL 查询中重新验证负责人根/总经办公司范围，返回每名员工真实 `departmentId/departmentName`，单人详情和写入再按该真实直属部门复核。V326 提供部门分页与姓名/工号 trigram 索引；V327 保留单调覆盖 tombstone；V328 建立数据库页面目录、动作分类和旧授权保真；V329 增加当前员工 `full_name/code/id` 跨部门稳定分页部分覆盖索引。超管写 `SUPER_ADMIN_CONFIRMED` 中央 grant/revoke，普通负责人写独立委派，中央 revoke 优先且委派不可递归转授；最多 100 项原子 CAS。V322/V324 的账号、员工、部门代际与授权 epoch 继续使负责人 A→B→A、调出再调回的旧 enabled 历史行 fail closed，而不物理删除审计证据。通用、开发、生产和内部测试 profile 默认启用，可用 `UTEN_MANAGER_PERMISSION_DELEGATION_ENABLED=false` 紧急回退。最终本地候选验收：Maven 2058 项 0 failure/0 error（283 skip）；PostgreSQL 16-alpine 空库 309 个版本，页面范围/代际 4/4、surface 目录 4/4；Flutter 848/848；全量 analyze 0 error/0 warning，仅保留 6 条既有 info。 公司目标库迁移、历史 UNKNOWN 对账、真实多账号/对象范围 UAT、目标规模性能、恢复和部署仍须独立验收。详见 [ADR-045](../docs/99-决策记录-ADR/ADR-045-页面内权限委派与授权来源隔离.md)与[迁移说明 58](../docs/数据迁移/58-页面权限委派与历史覆盖对账.md)。
 >
@@ -21,8 +21,8 @@ Spring Boot 3.5.16 · Java 21 · Spring Security 6 (stateless JWT) · Spring Dat
 > 开发原库 `uten_imp` 本轮只读并保持 V244/225；生产物料阶段链的一次性克隆为 V250/231。2026-08-12 的
 > V255/236 Maven `clean verify`（314 个 suite、1339 项，0 failure/error、1 项因专用 V244 非空克隆变量缺失而跳过）是上一轮归档证据；本轮 V276 迁移组合 14/14 不冒充新一轮全量 Maven/Flutter 回归。这些都只证明本地候选，不是公司正式数据迁移或目标服务器部署。真实阿里云 ECS/VPN/OSS、
 > 正式数据迁移、PITR、故障切换/回切和岗位 UAT 未完成，生产仍为 **NO-GO**。当前物理主机的数据已由
-> 负责人定性为测试数据，近期执行以[当前测试服务器状态](../deploy/current-test-server-status.zh-CN.md)和
-> [operator guide](../deploy/operator-guide.zh-CN.md)为准；[本地云端清单](../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)、
+> 负责人定性为测试数据，近期执行部署与发版以 [deploy/simple/RUNBOOK](../deploy/simple/RUNBOOK.zh-CN.md) 和
+> [新库上线与首装操作指引](../docs/99-项目治理/2026-09-01-新库上线与首装操作指引.md)为准；
 > [ADR-031](../docs/99-决策记录-ADR/ADR-031-本地云端单主库部署架构.md)和禁止执行的
 > [Cloud Runbook](../deploy/cloud/README-cloud.md)只保留未来生产/云端设计与历史证据。
 > **客户预收后端当前口径（2026-08-23，V379–V389）**：finance_receipts 显式区分
@@ -191,7 +191,7 @@ SSL factory/hostname verifier。明确的本机回环继续允许开发、内部
   这些结果不是公司目标数据库的升级/历史对账证据，也不替代真实账号岗位 UAT、压测、备份恢复、
   制品签名和发布签字；Web Wasm 仍受 `flutter_secure_storage_web` 兼容性限制。
   销售—仓库—计划—生产/采购/委外的证据范围、风险和 NO-GO 见
-  [2026-08-01 全链路安全复核报告](../docs/99-项目治理/2026-08-01-销售仓库生产采购委外全链路安全复核报告.md)。
+  [数据迁移 README 模块清单](../docs/数据迁移/README.md)。
 - 销售履约当前安全边界：出货商业事实由服务端从来源订单重建，财务已审先反审才可修改；所有
   `SHIPPED` 禁止普通红冲，缺 `handed_over_at` 的历史行也不例外；新退货审核只进 V189 冻结，
   仅 `GOOD_RELEASE` 入可售库存。V90 `chain_status=0` 且无预留的旧未结订单不能新建 V187 出货，
@@ -327,8 +327,7 @@ Tomcat 回归，再按目标代理链测量调整。
 服务和 V173 数据库触发器都禁止这两个权限进入部门配置或随部门树继承。
 新增 Flyway 表必须通过 `AuditTriggerCoverageMigrationContractTest`：最新 audit sweep 之后的表只能是有
 书面理由的技术白名单项，否则必须新增后续 sweep。该静态护栏不执行 PostgreSQL DDL，发布仍须查询
-`pg_trigger` 验证所有非白名单公开业务表；详见
-[审计可见性修复与复核报告](../docs/99-项目治理/2026-08-01-审计可见性修复与复核报告.md)。
+`pg_trigger` 验证所有非白名单公开业务表；详见 V218 迁移文件头与 git 历史归档报告。
 
 JSON Controller 请求体由 `JsonRequestBodyLimitAdvice` 统一限制，默认
 `UTEN_MAX_JSON_BODY_BYTES=1048576`（1 MiB），同时覆盖无 `Content-Length` 的 chunked 请求；
@@ -393,9 +392,8 @@ mvn test
 
 CI 的后端门禁使用 `UTEN_RUN_DB_TESTS=true mvn verify`，并与 Flutter 格式/analyze/test/Web 构建、
 Git 历史 Gitleaks 和 OSV 依赖扫描并行。工作流文件存在或本地测试通过都不能替代远端 CI、
-完整权限矩阵、关键业务 E2E 与生产同构迁移演练。发布门禁见
-[生产就绪审计报告](../docs/99-项目治理/2026-07-30-生产就绪审计报告.md)和
-[2026-08-02 连接、会话与工作台稳定性修复报告](../docs/99-项目治理/2026-08-02-连接会话与工作台稳定性修复报告.md)。
+完整权限矩阵、关键业务 E2E 与生产同构迁移演练。发布门禁见 [ADR-060](../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 与
+[新库上线与首装操作指引](../docs/99-项目治理/2026-09-01-新库上线与首装操作指引.md)。
 不可变制品、原子切换、严格 health、Nginx/systemd/watchdog 见 [deploy/README.md](../deploy/README.md)。
 中国大陆环境还须执行
 [中国大陆部署与兼容性](../docs/99-项目治理/中国大陆部署与兼容性.md)。

@@ -1,5 +1,7 @@
 # 现有 PostgreSQL 主机备份运行时安装器
 
+> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../../../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../../../simple/RUNBOOK.zh-CN.md)。
+
 > 状态：这是“已有主机、禁止重跑 Phase 2”场景的证据驱动安装工具。
 > 它只安装固定备份运行时与完整 systemd unit，完成后所有 job/timer 仍为
 > **disabled + inactive（未投产）**。真实主机执行 `record-plan`、`apply` 或 `rollback`

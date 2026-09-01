@@ -1,5 +1,7 @@
 # 既有 internal-test 新集群首份本机恢复层 commissioning
 
+> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../../../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../../../simple/RUNBOOK.zh-CN.md)。
+
 本流程只建立 **本机、同故障域、短期有效** 的首份 full + WAL 证据。终态回执固定声明
 `localRecoveryOnly=true`、`restoreVerified=false`、`productionAuthority=false`；它不能替代异地仓、
 恢复演练、生产备份验收或生产激活授权。

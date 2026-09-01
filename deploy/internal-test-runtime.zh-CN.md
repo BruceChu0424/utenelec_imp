@@ -1,5 +1,7 @@
 # 内部 ERP 测试服务器运行基线
 
+> ⚠️ **已随 ADR-060 退役（2026-09-01）**：本文属旧发布链/旧部署链文档，按 [ADR-060](../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 保留作未来引入第二维护者时的参考，不再具有操作效力。现役链见 [deploy/simple/RUNBOOK.zh-CN.md](../simple/RUNBOOK.zh-CN.md)。
+
 > 范围：公司内网中的 PostgreSQL、Spring Boot ERP 后端、Flutter ERP Web 和 Nginx。
 > 企业官网、云端 ERP、正式业务数据和公网入口均不属于本配置。
 > **证据边界（2026-08-15）：** 本文定义的是当前源码候选的目标合同。它尚未形成受审提交、CI 签名

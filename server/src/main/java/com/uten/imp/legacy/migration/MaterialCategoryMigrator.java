@@ -20,7 +20,7 @@ import java.util.*;
  *
  * <p>该组件只在 {@code dev} profile 注册。它按 {@code legacy_id} 可重复写入，
  * 但不是正式迁移、增量追平或切流入口。
- * <p><b>数据坑处理</b>（见 docs/06-老系统融合/06-货品资料分类树-老库溯源.md）：
+ * <p><b>数据坑处理</b>（见 docs/数据迁移/02-货品分类-老库溯源.md）：
  * <ul>
  *   <li>Number 重复 → code 不查重，定位用 legacy_id</li>
  *   <li>Level 不可靠 → 按 parent 链重算真实深度</li>

@@ -75,10 +75,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: const [],
-        child: const MaterialApp(home: SettlementMethodPage()),
-      ),
+      const ProviderScope(child: MaterialApp(home: SettlementMethodPage())),
     );
     // 无权限环境（空权限）：页面仍可渲染列表（路由守卫在真实导航层），
     // 本例验证列表项与锁定徽标的呈现由模型层覆盖；此处页面空态/错误态不崩。

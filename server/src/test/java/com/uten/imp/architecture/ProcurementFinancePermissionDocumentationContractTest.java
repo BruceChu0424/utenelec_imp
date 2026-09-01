@@ -14,7 +14,6 @@ class ProcurementFinancePermissionDocumentationContractTest {
             "docs/00-项目准则/00-准则索引与开发清单.md",
             "docs/03-页面/工作台首页.md",
             "docs/03-页面/页面总览.md",
-            "docs/03-页面/采购委外-订货拆单-到货异常一键入库-整改.md",
             "docs/04-数据模型/ER草图.md",
             "docs/04-数据模型/生产履约V1实体关系.md",
             "docs/05-架构/路由设计.md",

@@ -1,5 +1,5 @@
 // 统一 API 异常（对应后端 ApiError：{code,message,fieldErrors}）。
-// 文档：docs/05-架构/网络层与Mock.md §8
+// 文档：docs/05-架构/网络层与拦截器.md §8
 import 'api_error.dart';
 
 class ApiException implements Exception {

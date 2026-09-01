@@ -491,7 +491,7 @@ String operationsWorkbenchStatusLabel(String code) =>
 
 /// 供给方式（supplyRoute）码 → 中文标签：BUY=采购、MAKE=自制、SUBCONTRACT=委外。
 /// 与生产侧口径一致（production_material_analysis.dart 的 SupplyRoute 枚举、
-/// execution_segment_planning_sheet.dart / production_execution_card_print_preview.dart）。
+/// production_execution_card_print_preview.dart）。
 String operationsWorkbenchSupplyRouteLabel(String code) =>
     switch (code.toUpperCase()) {
       'BUY' => '采购',

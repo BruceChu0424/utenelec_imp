@@ -1,5 +1,6 @@
 package com.uten.imp.common.web;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -148,6 +150,19 @@ public class GlobalExceptionHandler {
         log.warn("Database integrity conflict: {}",
                 root == null ? "unknown" : root.getClass().getSimpleName());
         return "数据已被其他操作更新，或数量超出可处理范围，请刷新后重试";
+    }
+
+    // 客户端在响应写回前主动断开（前端热重启/刷新/取消请求/关闭页面）：
+    // ServletOutputStream 已不可用，任何写回（包括本 advice 生成的错误体）都会再抛。
+    // 业务侧无影响——GET 读请求无状态，写请求事务早已提交，只是响应送不出去。
+    // 不当错误处理：只记 DEBUG 一行，避免 ERROR + 全栈噪音淹没真实故障。
+    // （实测 Spring 6.2 以 AsyncRequestNotUsableException 包裹 ClientAbortException
+    // 进入本 advice；此前落入 handleOther 被记成「未处理异常」。）
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleClientAbortedResponse(
+            AsyncRequestNotUsableException ex, HttpServletRequest request) {
+        log.debug("客户端中断响应（刷新/热重启/取消请求）: {} {}",
+                request.getMethod(), request.getRequestURI());
     }
 
     @ExceptionHandler(Exception.class)

@@ -3,7 +3,10 @@ package com.uten.imp.common.web;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -56,5 +59,19 @@ class GlobalExceptionHandlerTest {
         assertEquals("CONFLICT", response.getBody().getCode());
         assertEquals("并发操作占用，请刷新后重试", response.getBody().getMessage());
         assertFalse(response.getBody().getMessage().contains("secret SQL"));
+    }
+
+    @Test
+    void clientAbortedResponseIsNotTreatedAsServerError() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/procurement/inspection/pending-receipts");
+
+        // 客户端断开分支只记 DEBUG、不生成错误响应（连接已死，写回无意义）；
+        // 不抛异常即满足契约——不得落入 handleOther 的 ERROR 未处理异常。
+        assertDoesNotThrow(() -> handler.handleClientAbortedResponse(
+                new AsyncRequestNotUsableException(
+                        "ServletOutputStream failed to flush"),
+                request));
     }
 }

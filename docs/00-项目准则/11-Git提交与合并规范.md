@@ -1,5 +1,10 @@
 # 11 - 单维护者 Git 上传与合并规范
 
+> **2026-09-01 起（ADR-060）**：主仓库为 `BruceChu0424/utenelec_imp`（本地 `origin`），旧组织库仅为
+> 归档备份（本地 `old-origin`，push 已禁用）。发版 = 在 `main` 上打 `vYYYY.MM.DD-N` tag 并推送，
+> `simple-release.yml` 自动构建签名上传 OSS，服务器自动/受控激活。详见
+> [ADR-60](../99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)。
+
 > 本文规定 Uten IMP 的日常代码提交、远端推送、Pull Request（PR）和合并流程。
 > 核心原则是：**Git 负责版本与推送，PR 负责合并前门禁；`gh` 只是可选工具，不是提交代码的前提。**
 > 公司当前只有 1 名维护者：不虚构第二位 reviewer、不要求自己批准自己，也不为普通内部开发购买
@@ -13,9 +18,8 @@
 
 | 要做的事 | 最少步骤 | 不需要做的事 |
 |---|---|---|
-| 日常上传 GitHub | 定向测试 → 精确暂存 → Commit → push 功能分支 → SHA 回读 | 不需要 `gh`、PR 已合并、签名、OSS、服务器操作 |
-| 合并 `main` | 一个成型 PR → 自审最终 diff → 当前 CI 全绿 → merge | 不需要虚构第二审批人 |
-| internal-test/生产发版 | 只从明确的 `main` SHA 进入现有签名、迁移和激活流程 | 不由普通功能分支 push 自动触发 |
+| 日常上传 GitHub | 定向测试 → 精确暂存 → Commit → push `main`（大改动可走功能分支+PR 自审） → SHA 回读 | 不需要 `gh`、第二审批人、OSS、服务器操作 |
+| 发版（internal-test） | Quality Gate 全绿 → `git tag vYYYY.MM.DD-N && git push origin v…` → 服务器 5 分钟内自动拉取；纯代码自动激活，含迁移 SSH `activate` | 不需要手动构建、手动传文件、手动改服务器目录 |
 
 上传功能分支只证明代码已在 GitHub；不等于已合并 `main`，更不等于已部署服务器。
 

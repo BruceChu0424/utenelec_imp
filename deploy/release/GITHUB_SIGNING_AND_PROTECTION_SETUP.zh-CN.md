@@ -1,5 +1,9 @@
 # GitHub 保护/签名/发布 authority 配置执行清单
 
+> **⚠️ 已归档（2026-09-01，ADR-060）**：现役发布链的 GitHub 配置只需 3 个 secret + 2 个 variable，
+> 见 [`deploy/simple/RUNBOOK.zh-CN.md`](../simple/RUNBOOK.zh-CN.md)。本清单（组织 ruleset/Environment/OIDC）
+> 是旧链要求，仅作未来多人团队的加固参考。
+
 > **日期**：2026-08-15（Asia/Shanghai）
 > **当前 checkout 对应仓库**：`BruceChu0424/uten_imp`；若转移到最终 Organization，必须先更新本清单、
 > OIDC policy config、Environment 和全部读回证据，再允许发布

@@ -1,5 +1,9 @@
 # 内部 ERP 测试服务器：完整续作交接
 
+> **⚠️ 已归档（2026-09-01，ADR-060）**：旧链交接文档。当前权威入口为
+> [ADR-60](../../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 与
+> [`deploy/simple/RUNBOOK.zh-CN.md`](../simple/RUNBOOK.zh-CN.md)。
+
 <!-- ERP-INTERNAL-TEST-CONTINUATION-HANDOFF-20260814 -->
 > **交接快照：2026-08-15（Asia/Shanghai）。** 本文件用于在新任务/新对话中继续完成当前工作。
 > 它记录的是仓库候选、已知服务器事实、强制安全边界和剩余验收；不是服务器完成证明。服务器事实主要

@@ -1,5 +1,8 @@
 # Uten IMP 生产部署与日常运维手册
 
+> **⚠️ 已归档（2026-09-01，ADR-060）**：现役操作手册是
+> [`deploy/simple/RUNBOOK.zh-CN.md`](simple/RUNBOOK.zh-CN.md)。本手册描述的旧链仅作历史参考。
+
 <!-- CURRENT-ERP-TEST-SERVER-SCOPE-20260814 -->
 > **本轮执行范围（2026-08-14）**：当前目标主机只用于内部 ERP 测试环境，目标是 PostgreSQL、Spring Boot
 > 后端和 Flutter ERP Web/Nginx。企业官网延期到独立云服务器。服务器中的当前数据为测试数据，但重建前

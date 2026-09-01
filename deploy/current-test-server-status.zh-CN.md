@@ -1,5 +1,9 @@
 # 内部 ERP 测试服务器：当前状态与执行基线
 
+> **⚠️ 已归档（2026-09-01，ADR-060）**：现役部署状态与操作以
+> [ADR-60](../docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md) 与
+> [`deploy/simple/RUNBOOK.zh-CN.md`](simple/RUNBOOK.zh-CN.md) 为准；本文的历史快照与 NO-GO 门禁不再适用。
+
 <!-- CURRENT-ERP-TEST-SERVER-SCOPE-20260812 -->
 > **状态日期：2026-08-15（Asia/Shanghai）。** 本文件是当前物理服务器范围、存储决策、执行顺序和
 > 暂停条件的权威摘要。历史 Phase 1、RAID/SMART 报告和旧交接只保留为证据；与本文冲突时不得继续

@@ -1,0 +1,12 @@
+[Unit]
+Description=Uten IMP daily database+attachments backup
+After=postgresql@16-main.service
+Wants=postgresql@16-main.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/uten-backup-daily
+# 备份脚本内部用 sudo -u postgres pg_dump；以 root 运行最简
+User=root
+Nice=10
+IOSchedulingClass=idle

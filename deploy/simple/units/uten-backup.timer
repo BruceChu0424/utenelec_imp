@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Uten IMP backup daily at 01:30
+
+[Timer]
+OnCalendar=*-*-* 01:30:00
+Persistent=true
+AccuracySec=5min
+
+[Install]
+WantedBy=timers.target

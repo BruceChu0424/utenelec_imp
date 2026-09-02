@@ -132,8 +132,9 @@ void main() {
     );
 
     expect(
-      Theme.of(tester.element(find.byKey(const ValueKey('audit-select-actor'))))
-          .brightness,
+      Theme.of(
+        tester.element(find.byKey(const ValueKey('audit-select-actor'))),
+      ).brightness,
       Brightness.dark,
     );
     expect(find.text('选择调查对象'), findsOneWidget);
@@ -168,8 +169,9 @@ Future<void> _pumpComposer(
         ),
         themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
         home: Scaffold(

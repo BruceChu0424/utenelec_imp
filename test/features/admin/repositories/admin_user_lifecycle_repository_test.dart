@@ -33,8 +33,9 @@ void main() {
         ),
       );
 
-      final user = await DioAdminRepository(ApiClient(dio))
-          .userByEmployeeId('employee-1');
+      final user = await DioAdminRepository(
+        ApiClient(dio),
+      ).userByEmployeeId('employee-1');
 
       expect(captured.method, 'GET');
       expect(captured.path, '/admin/users/by-employee/employee-1');

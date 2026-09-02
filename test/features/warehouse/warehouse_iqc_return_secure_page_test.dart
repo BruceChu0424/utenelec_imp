@@ -21,8 +21,9 @@ void main() {
       <String>[Perm.warehouseIqcReturnView],
     );
     expect(
-      pagePermissionScopeFor('${RouteName.warehouseIqcReturns}/case-1')
-          ?.surfaceKey,
+      pagePermissionScopeFor(
+        '${RouteName.warehouseIqcReturns}/case-1',
+      )?.surfaceKey,
       'warehouse.iqc-return',
     );
 

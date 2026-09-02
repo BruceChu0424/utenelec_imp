@@ -56,9 +56,9 @@ Future<void> showEmployeeCredentialDialog(
               Container(
                 padding: const EdgeInsets.all(UtenSpacing.s16),
                 decoration: BoxDecoration(
-                  color: Theme.of(dialogContext)
-                      .colorScheme
-                      .surfaceContainerHighest,
+                  color: Theme.of(
+                    dialogContext,
+                  ).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: SelectableText(

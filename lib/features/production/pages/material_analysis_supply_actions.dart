@@ -220,9 +220,9 @@ abstract class _MaterialAnalysisSupplyActionsState
         _savingRoutes = false;
         _clearBulkOperation();
         _applyAnalysis(current);
-        final currentKeys = _materialGroups(current)
-            .map((group) => group.key)
-            .toSet();
+        final currentKeys = _materialGroups(
+          current,
+        ).map((group) => group.key).toSet();
         for (final groupKey in remainingGroupKeys) {
           final draft = pendingDrafts[groupKey];
           if (draft == null || !currentKeys.contains(groupKey)) continue;
@@ -384,9 +384,9 @@ abstract class _MaterialAnalysisSupplyActionsState
 
   int _selectedExecutableCount(MaterialSupplyRoute route) {
     final selected = _selectedSupplyGroups[route]!;
-    return _executableSupplyGroups(route)
-        .where((group) => selected.contains(group.key))
-        .length;
+    return _executableSupplyGroups(
+      route,
+    ).where((group) => selected.contains(group.key)).length;
   }
 
   String _notifyLabel(MaterialSupplyRoute route) {

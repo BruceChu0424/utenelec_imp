@@ -140,9 +140,9 @@ class WarehouseSalesOutboundDetail {
       pickedAt: _text(json['pickedAt']),
       handedOverAt: _text(json['handedOverAt']),
       warehouseExceptionReason: _text(json['warehouseExceptionReason']),
-      lines: _objectList(json['lines'])
-          .map(WarehouseSalesOutboundLine.fromJson)
-          .toList(growable: false),
+      lines: _objectList(
+        json['lines'],
+      ).map(WarehouseSalesOutboundLine.fromJson).toList(growable: false),
     );
   }
 }

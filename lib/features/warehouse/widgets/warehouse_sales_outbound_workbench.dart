@@ -212,8 +212,9 @@ class _WarehouseSalesOutboundWorkbenchState
         label: '共 ${result.total} 项销售出库任务',
         child: Text(
           '共 ${result.total} 项 · 双击进入仓库详情',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

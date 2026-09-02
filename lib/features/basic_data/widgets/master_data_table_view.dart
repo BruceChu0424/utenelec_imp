@@ -2199,7 +2199,8 @@ class _FilterCellState extends State<_FilterCell> {
                                 if (widget.nullCount > 0)
                                   _menuItem(
                                     ctx,
-                                    label: '空值 (${widget.nullCount})', // TODO(l10n): 补 arb
+                                    label:
+                                        '空值 (${widget.nullCount})', // TODO(l10n): 补 arb
                                     isSelected:
                                         sanitized == kMasterFilterNullValue,
                                     onTap: () =>

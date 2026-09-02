@@ -191,8 +191,9 @@ class _WarehouseSubcontractOutboundWorkbenchState
     final summary = Text(
       '共 ${result.total} 项 · 单击选中，双击详情',
       key: const Key('subcontract-outbound-table-summary'),
-      style: Theme.of(context).textTheme.bodySmall
-          ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
     );
     return LayoutBuilder(
       builder: (context, constraints) {

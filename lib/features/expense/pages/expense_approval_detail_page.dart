@@ -544,8 +544,9 @@ class _Hero extends StatelessWidget {
           const SizedBox(height: UtenSpacing.s12),
           Text(
             '报销总额',
-            style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(color: Colors.white70),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.white70),
           ),
           const SizedBox(height: UtenSpacing.s4),
           Text(

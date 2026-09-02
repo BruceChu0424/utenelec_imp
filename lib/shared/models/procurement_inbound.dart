@@ -291,9 +291,9 @@ class InboundExpectation {
       acceptedQty: _number(json['acceptedQty']),
       remainingQty: _number(json['remainingQty']),
       registeredQty: _number(json['registeredQty']),
-      items: _maps(json['items'])
-          .map(InboundExpectationItem.fromJson)
-          .toList(growable: false),
+      items: _maps(
+        json['items'],
+      ).map(InboundExpectationItem.fromJson).toList(growable: false),
       allowedActions: _actions(json['allowedActions']),
       draftReceiptIds: _texts(json['draftReceiptIds']),
       pendingInspectionReceipts: _int(json['pendingInspectionReceipts']),

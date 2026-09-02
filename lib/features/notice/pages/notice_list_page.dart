@@ -275,8 +275,9 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                   children: [
                     Text(
                       '已选 ${_selected.length} 条',
-                      style: Theme.of(context).textTheme.bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const Spacer(),
                     // 未选中时视觉禁用（UtenActionButton 无 disabled 参数，
@@ -595,8 +596,10 @@ class _TodoTag extends StatelessWidget {
           const SizedBox(width: UtenSpacing.s4),
           Text(
             completed ? '已完成' : '待办',
-            style: Theme.of(context).textTheme.labelSmall
-                ?.copyWith(fontWeight: FontWeight.w600, color: color),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
           ),
         ],
       ),
@@ -670,8 +673,10 @@ class _PriorityChip extends StatelessWidget {
           const SizedBox(width: 2),
           Text(
             priority.label,
-            style: Theme.of(context).textTheme.labelSmall
-                ?.copyWith(fontWeight: FontWeight.w700, color: priority.color),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: priority.color,
+            ),
           ),
         ],
       ),

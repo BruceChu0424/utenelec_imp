@@ -554,7 +554,8 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       'bmp' => 'image/bmp',
       'pdf' => 'application/pdf',
       'doc' => 'application/msword',
-      'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'docx' =>
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'xls' => 'application/vnd.ms-excel',
       'xlsx' =>
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

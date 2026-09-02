@@ -662,8 +662,9 @@ class _WarehouseQualityResultDetailPageState
           builder: (context, constraints) {
             final summary = Text(
               selected == 0 ? '请勾选本次要点收的放行切片' : '已选择 $selected 条放行切片',
-              style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
             );
             final action = UtenButton(
               key: const Key('warehouse-quality-detail-confirm'),

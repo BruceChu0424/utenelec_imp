@@ -10,10 +10,12 @@ void main() {
     final disposal = File(
       'lib/features/quality/pages/quality_pending_disposal_page.dart',
     ).readAsStringSync();
-    final permissionRoutes = File('lib/core/router/permission_by_path.dart')
-        .readAsStringSync();
-    final badge = File('lib/features/dashboard/widgets/module_badge_sum.dart')
-        .readAsStringSync();
+    final permissionRoutes = File(
+      'lib/core/router/permission_by_path.dart',
+    ).readAsStringSync();
+    final badge = File(
+      'lib/features/dashboard/widgets/module_badge_sum.dart',
+    ).readAsStringSync();
 
     // 任务中心只剩一张合并卡：角标 = IQC + FQC 合计，去向待检处置页。
     expect(taskCenter, contains('_QualityDisposalPendingBadge'));

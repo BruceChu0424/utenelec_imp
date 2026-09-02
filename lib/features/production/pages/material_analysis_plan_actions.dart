@@ -396,9 +396,9 @@ abstract class _MaterialAnalysisPlanActionsState
                                 '仓库按单发料；可在「生产计划详情」查看进度。',
                       style: Theme.of(dialogContext).textTheme.bodyMedium
                           ?.copyWith(
-                            color: Theme.of(dialogContext)
-                                .colorScheme
-                                .onSurfaceVariant,
+                            color: Theme.of(
+                              dialogContext,
+                            ).colorScheme.onSurfaceVariant,
                             height: 1.45,
                           ),
                     ),
@@ -556,9 +556,9 @@ abstract class _MaterialAnalysisPlanActionsState
                         ].join('；'),
                         style: Theme.of(dialogContext).textTheme.bodySmall
                             ?.copyWith(
-                              color: Theme.of(dialogContext)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color: Theme.of(
+                                dialogContext,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                       ),
                     ],

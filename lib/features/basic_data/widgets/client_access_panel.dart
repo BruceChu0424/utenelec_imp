@@ -18,13 +18,13 @@ import '../../../core/ui/app_notification.dart';
 import '../models/client_access_models.dart';
 import '../repositories/client_repository.dart';
 
-typedef ClientAccessLoader = Future<ClientAccessSettings> Function(
-  String clientId,
-);
-typedef ClientAccessSaver = Future<ClientAccessSettings> Function(
-  String clientId,
-  ClientAccessUpdate update,
-);
+typedef ClientAccessLoader =
+    Future<ClientAccessSettings> Function(String clientId);
+typedef ClientAccessSaver =
+    Future<ClientAccessSettings> Function(
+      String clientId,
+      ClientAccessUpdate update,
+    );
 
 /// 打开单客户“负责人和可见人”设置。
 ///

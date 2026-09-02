@@ -39,8 +39,9 @@ void main() {
   });
 
   test('status control is read-only and build payload has no status write', () {
-    final source = File('lib/features/employee/pages/employee_edit_page.dart')
-        .readAsStringSync();
+    final source = File(
+      'lib/features/employee/pages/employee_edit_page.dart',
+    ).readAsStringSync();
 
     expect(source, contains("ValueKey('employee-edit-status-readonly')"));
     expect(source, contains('onChanged: null'));

@@ -22,12 +22,13 @@ typedef LocationPickResult<T> = ({T? node, bool isRoot});
 ///
 /// [pendingSelection] 是抽屉内的暂存选择；调用方用它刷新树的选中标记。
 /// 只有用户点击“确定”后，暂存值才会作为 [showUtenPickerSheet] 的结果返回。
-typedef UtenLocationPickerChildBuilder<T> = Widget Function(
-  BuildContext sheetContext,
-  LocationPickResult<T>? pendingSelection,
-  ValueChanged<T> onSelect,
-  VoidCallback onSelectRoot,
-);
+typedef UtenLocationPickerChildBuilder<T> =
+    Widget Function(
+      BuildContext sheetContext,
+      LocationPickResult<T>? pendingSelection,
+      ValueChanged<T> onSelect,
+      VoidCallback onSelectRoot,
+    );
 
 /// 「添加位置」卡片：父级路径 + 结果层级徽标 + 「更改」入口。
 ///

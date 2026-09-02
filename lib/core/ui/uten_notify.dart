@@ -74,9 +74,9 @@ abstract final class UtenNotify {
     String message, {
     String? title,
     List<ApiFieldError>? fieldErrors,
-  }) =>
-      _notifierOf(context)
-          .showError(message, title: title, fieldErrors: fieldErrors);
+  }) => _notifierOf(
+    context,
+  ).showError(message, title: title, fieldErrors: fieldErrors);
 
   /// 顶部弹条：警告（橙）。
   static void warning(BuildContext context, String message, {String? title}) =>

@@ -463,8 +463,9 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
       await printPdfBytes(await doc.save(), '${widget.title}-货架目视化清单.pdf');
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('生成打印件失败，请稍后重试')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('生成打印件失败，请稍后重试')));
     }
   }
 

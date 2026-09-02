@@ -992,9 +992,9 @@ class _SubcontractDocEditPageState
                                   ),
                                   label: Text('统一设委外商 (${ctl.selectedCount})'),
                                   style: TextButton.styleFrom(
-                                    foregroundColor: Theme.of(ctx)
-                                        .colorScheme
-                                        .primary,
+                                    foregroundColor: Theme.of(
+                                      ctx,
+                                    ).colorScheme.primary,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 10,
                                       vertical: 2,
@@ -1002,9 +1002,9 @@ class _SubcontractDocEditPageState
                                     minimumSize: const Size(0, 36),
                                     tapTargetSize:
                                         MaterialTapTargetSize.shrinkWrap,
-                                    textStyle: Theme.of(ctx)
-                                        .textTheme
-                                        .titleSmall,
+                                    textStyle: Theme.of(
+                                      ctx,
+                                    ).textTheme.titleSmall,
                                   ),
                                 ),
                               ]

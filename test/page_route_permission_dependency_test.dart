@@ -212,92 +212,101 @@ void main() {
       }
     });
 
-    test('finance and warehouse shipment roles reach task pages and shared read-only detail only', () {
-      final financeAuditor = _userWith([Perm.financeShipmentAudit]);
-      final warehouseOperator = _userWith([Perm.salesShipmentWarehouseWork]);
+    test(
+      'finance and warehouse shipment roles reach task pages and shared read-only detail only',
+      () {
+        final financeAuditor = _userWith([Perm.financeShipmentAudit]);
+        final warehouseOperator = _userWith([Perm.salesShipmentWarehouseWork]);
 
-      for (final location in [
-        '/sales/shipments',
-        '/sales/shipments/shipment-1',
-      ]) {
-        expect(requiredAnyPermFor(location), const [
-          Perm.salesShipmentView,
+        for (final location in [
+          '/sales/shipments',
+          '/sales/shipments/shipment-1',
+        ]) {
+          expect(requiredAnyPermFor(location), const [
+            Perm.salesShipmentView,
+            Perm.financeShipmentAudit,
+            Perm.salesShipmentWarehouseWork,
+          ]);
+          expect(employeePermissionRedirect(financeAuditor, location), isNull);
+          expect(
+            employeePermissionRedirect(warehouseOperator, location),
+            isNull,
+          );
+        }
+
+        expect(requiredAnyPermFor(RouteName.financeSalesShipmentAudit), const [
           Perm.financeShipmentAudit,
+        ]);
+        expect(
+          employeePermissionRedirect(
+            financeAuditor,
+            RouteName.financeSalesShipmentAudit,
+          ),
+          isNull,
+        );
+        expect(requiredAnyPermFor(RouteName.warehouseSalesOutbound), const [
           Perm.salesShipmentWarehouseWork,
         ]);
-        expect(employeePermissionRedirect(financeAuditor, location), isNull);
-        expect(employeePermissionRedirect(warehouseOperator, location), isNull);
-      }
-
-      expect(requiredAnyPermFor(RouteName.financeSalesShipmentAudit), const [
-        Perm.financeShipmentAudit,
-      ]);
-      expect(
-        employeePermissionRedirect(
-          financeAuditor,
-          RouteName.financeSalesShipmentAudit,
-        ),
-        isNull,
-      );
-      expect(requiredAnyPermFor(RouteName.warehouseSalesOutbound), const [
-        Perm.salesShipmentWarehouseWork,
-      ]);
-      expect(
-        employeePermissionRedirect(
-          warehouseOperator,
-          RouteName.warehouseSalesOutbound,
-        ),
-        isNull,
-      );
-      expect(
-        employeePermissionRedirect(
-          financeAuditor,
-          RouteName.warehouseSalesOutbound,
-        ),
-        RouteName.accessDenied,
-      );
-      expect(
-        employeePermissionRedirect(
-          warehouseOperator,
-          RouteName.financeSalesShipmentAudit,
-        ),
-        RouteName.accessDenied,
-      );
-      expect(
-        requiredAnyPermFor(RouteName.finance),
-        containsAll([Perm.salesOrderFinanceView, Perm.financeShipmentAudit]),
-      );
-      expect(
-        employeePermissionRedirect(financeAuditor, RouteName.finance),
-        isNull,
-      );
-      expect(
-        employeePermissionRedirect(
-          _userWith([Perm.salesOrderFinanceView]),
-          RouteName.finance,
-        ),
-        isNull,
-      );
-      expect(
-        requiredAnyPermFor(RouteName.warehouse),
-        contains(Perm.salesShipmentWarehouseWork),
-      );
-      expect(
-        employeePermissionRedirect(warehouseOperator, RouteName.warehouse),
-        isNull,
-      );
-
-      for (final user in [financeAuditor, warehouseOperator]) {
         expect(
-          employeePermissionRedirect(user, '/sales/shipments/new'),
+          employeePermissionRedirect(
+            warehouseOperator,
+            RouteName.warehouseSalesOutbound,
+          ),
+          isNull,
+        );
+        expect(
+          employeePermissionRedirect(
+            financeAuditor,
+            RouteName.warehouseSalesOutbound,
+          ),
           RouteName.accessDenied,
         );
         expect(
-          employeePermissionRedirect(user, '/sales/shipments/shipment-1/edit'),
+          employeePermissionRedirect(
+            warehouseOperator,
+            RouteName.financeSalesShipmentAudit,
+          ),
           RouteName.accessDenied,
         );
-      }
-    });
+        expect(
+          requiredAnyPermFor(RouteName.finance),
+          containsAll([Perm.salesOrderFinanceView, Perm.financeShipmentAudit]),
+        );
+        expect(
+          employeePermissionRedirect(financeAuditor, RouteName.finance),
+          isNull,
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.salesOrderFinanceView]),
+            RouteName.finance,
+          ),
+          isNull,
+        );
+        expect(
+          requiredAnyPermFor(RouteName.warehouse),
+          contains(Perm.salesShipmentWarehouseWork),
+        );
+        expect(
+          employeePermissionRedirect(warehouseOperator, RouteName.warehouse),
+          isNull,
+        );
+
+        for (final user in [financeAuditor, warehouseOperator]) {
+          expect(
+            employeePermissionRedirect(user, '/sales/shipments/new'),
+            RouteName.accessDenied,
+          );
+          expect(
+            employeePermissionRedirect(
+              user,
+              '/sales/shipments/shipment-1/edit',
+            ),
+            RouteName.accessDenied,
+          );
+        }
+      },
+    );
 
     test('material analysis requires view besides action permissions', () {
       final summaryPath = RoutePath.productionMaterialAnalysisSummary(
@@ -456,7 +465,8 @@ void main() {
         expect(
           Perm.buttonActionCodes,
           isNot(contains(Perm.subcontractMaterialIssueCreate)),
-          reason: 'retired manual create must not return as a Flutter action candidate',
+          reason:
+              'retired manual create must not return as a Flutter action candidate',
         );
         expect(requiredAnyPermFor(location), const [
           Perm.subcontractMaterialIssueView,

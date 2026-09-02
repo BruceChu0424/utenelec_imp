@@ -327,7 +327,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                             loadingMore: _list.isLoadingMore,
                             error: _list.error,
                             onRetry: () => _reload(),
-                            emptyMessage: '暂无${widget.docType.label}', // TODO(l10n): 补 arb
+                            emptyMessage:
+                                '暂无${widget.docType.label}', // TODO(l10n): 补 arb
                             currentPage: _list.currentPage,
                             totalPages: _list.totalPages,
                             onPageChange: (p) => _reload(p),

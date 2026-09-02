@@ -772,9 +772,9 @@ abstract class _MaterialAnalysisPageBase
     Map<MaterialSupplyRoute, Set<String>> snapshot,
   ) {
     for (final entry in snapshot.entries) {
-      final valid = _executableSupplyGroups(entry.key)
-          .map((group) => group.key)
-          .toSet();
+      final valid = _executableSupplyGroups(
+        entry.key,
+      ).map((group) => group.key).toSet();
       _selectedSupplyGroups[entry.key]!.addAll(
         entry.value.where(valid.contains),
       );

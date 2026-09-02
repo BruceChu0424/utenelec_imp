@@ -6,24 +6,27 @@ import 'package:uten_imp/features/purchase/pages/purchase_doc_edit_page.dart';
 void main() {
   // 订货单支持从管理卡片直达新建（与销售/财务一致，见 purchase_doc_config.dart 注释），
   // 但明细仍必须经「从上游引入」来自计划申请（linkToRequestItem）；申请单本身只读。
-  test('planning request is read-only; orders may be created directly but source lines from planning', () {
-    expect(PurchaseDocConfig.request.allowDirectCreate, isFalse);
-    expect(PurchaseDocConfig.request.skipListOnCreate, isFalse);
-    expect(PurchaseDocConfig.request.hasSupplier, isFalse);
-    expect(PurchaseDocConfig.request.hasCurrency, isFalse);
+  test(
+    'planning request is read-only; orders may be created directly but source lines from planning',
+    () {
+      expect(PurchaseDocConfig.request.allowDirectCreate, isFalse);
+      expect(PurchaseDocConfig.request.skipListOnCreate, isFalse);
+      expect(PurchaseDocConfig.request.hasSupplier, isFalse);
+      expect(PurchaseDocConfig.request.hasCurrency, isFalse);
 
-    expect(PurchaseDocConfig.order.allowDirectCreate, isTrue);
-    expect(PurchaseDocConfig.order.skipListOnCreate, isTrue);
-    expect(PurchaseDocConfig.order.supplierRequired, isTrue);
-    expect(PurchaseDocConfig.order.hasSettlement, isTrue);
-    expect(PurchaseDocConfig.order.settlementRequired, isTrue);
-    expect(PurchaseDocConfig.order.linkToRequestItem, isTrue);
+      expect(PurchaseDocConfig.order.allowDirectCreate, isTrue);
+      expect(PurchaseDocConfig.order.skipListOnCreate, isTrue);
+      expect(PurchaseDocConfig.order.supplierRequired, isTrue);
+      expect(PurchaseDocConfig.order.hasSettlement, isTrue);
+      expect(PurchaseDocConfig.order.settlementRequired, isTrue);
+      expect(PurchaseDocConfig.order.linkToRequestItem, isTrue);
 
-    expect(PurchaseDocConfig.receipt.hasSettlement, isTrue);
-    expect(PurchaseDocConfig.receipt.settlementRequired, isFalse);
-    expect(PurchaseDocConfig.returnDoc.hasSettlement, isTrue);
-    expect(PurchaseDocConfig.returnDoc.settlementRequired, isFalse);
-  });
+      expect(PurchaseDocConfig.receipt.hasSettlement, isTrue);
+      expect(PurchaseDocConfig.receipt.settlementRequired, isFalse);
+      expect(PurchaseDocConfig.returnDoc.hasSettlement, isTrue);
+      expect(PurchaseDocConfig.returnDoc.settlementRequired, isFalse);
+    },
+  );
 
   test(
     'decomposition preview keeps every source line and pending allocation',

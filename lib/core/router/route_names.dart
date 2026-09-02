@@ -473,9 +473,9 @@ abstract final class RoutePath {
     );
     return safeReturnTo == null
         ? path
-        : Uri.parse(path)
-              .replace(queryParameters: {'returnTo': safeReturnTo})
-              .toString();
+        : Uri.parse(
+            path,
+          ).replace(queryParameters: {'returnTo': safeReturnTo}).toString();
   }
 
   static String procurementArrivalException(String id) =>

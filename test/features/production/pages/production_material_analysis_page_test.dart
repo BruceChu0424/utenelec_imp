@@ -6177,8 +6177,9 @@ Future<_Harness> _pumpPage(
   final TransitionBuilder? mediaBuilder = textScale == 1
       ? null
       : (context, child) => MediaQuery(
-          data: MediaQuery.of(context)
-              .copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         );
   final GoRouter? router = withPlanRoute || withSubcontractPreparationRoute

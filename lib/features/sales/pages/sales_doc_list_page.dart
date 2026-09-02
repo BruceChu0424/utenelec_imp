@@ -555,9 +555,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                                       Icons.vertical_align_top_rounded,
                                       size: 16,
                                       color: _shippableFirst
-                                          ? Theme.of(context)
-                                                .colorScheme
-                                                .primary
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
                                           : null,
                                     ),
                                     selected: _shippableFirst,

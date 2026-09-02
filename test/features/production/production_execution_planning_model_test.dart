@@ -122,8 +122,9 @@ void main() {
         ['legacy-plan-item'],
       );
       expect(
-        ProductionPlanningPreview.fromJson(payload('noBomPlanItemIds'))
-            .hasUnresolvedZeroMaterialLineage,
+        ProductionPlanningPreview.fromJson(
+          payload('noBomPlanItemIds'),
+        ).hasUnresolvedZeroMaterialLineage,
         isTrue,
       );
     },
@@ -150,7 +151,8 @@ void main() {
           responsibleEmployeeId: 'employee-1',
           planBeginDate: '2026-08-03',
           planEndDate: '2026-08-04',
-          bomFingerprint: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          bomFingerprint:
+              'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
         ),
       ],
     );
@@ -555,8 +557,9 @@ void main() {
     expect(preview.hasUnresolvedZeroMaterialLineage, isFalse);
     expect(unknownMake.hasUnresolvedZeroMaterialLineage, isFalse);
     expect(
-      _preview(unresolvedZeroMaterialLineageIds: const ['legacy-plan-item'])
-          .hasUnresolvedZeroMaterialLineage,
+      _preview(
+        unresolvedZeroMaterialLineageIds: const ['legacy-plan-item'],
+      ).hasUnresolvedZeroMaterialLineage,
       isTrue,
     );
   });

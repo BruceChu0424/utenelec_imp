@@ -403,12 +403,14 @@ class _WarehouseArrivalExceptionsViewState
             ],
             rowColor: (task) {
               if (task.status == 'PENDING_FINANCE') {
-                return Theme.of(context).colorScheme.errorContainer
-                    .withValues(alpha: 0.30);
+                return Theme.of(
+                  context,
+                ).colorScheme.errorContainer.withValues(alpha: 0.30);
               }
               if (task.canStockIn) {
-                return Theme.of(context).colorScheme.secondaryContainer
-                    .withValues(alpha: 0.28);
+                return Theme.of(
+                  context,
+                ).colorScheme.secondaryContainer.withValues(alpha: 0.28);
               }
               return null;
             },

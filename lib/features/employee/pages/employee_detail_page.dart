@@ -1310,8 +1310,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleSmall
-                ?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: UtenSpacing.s8),
           UtenCard(

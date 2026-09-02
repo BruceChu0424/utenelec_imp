@@ -89,8 +89,9 @@ abstract class _MaterialAnalysisProductTasksState
     if (authoritative != null) return authoritative;
     final analysis = _analysis;
     if (analysis == null) return true;
-    return (_analysisIndexes(analysis)
-                .materialsByProduct[product.analysisLineId] ??
+    return (_analysisIndexes(
+              analysis,
+            ).materialsByProduct[product.analysisLineId] ??
             const [])
         .isNotEmpty;
   }
@@ -1924,8 +1925,10 @@ abstract class _MaterialAnalysisProductTasksState
       Flexible(
         child: Text(
           label,
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: color, fontWeight: FontWeight.w700),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     ],

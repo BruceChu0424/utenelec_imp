@@ -677,8 +677,9 @@ class _ArrivalFactsCard extends StatelessWidget {
           children: [
             Text(
               '${task.goodsCode} ${task.goodsName}'.trim(),
-              style: Theme.of(context).textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const Divider(height: UtenSpacing.s24),
             _Fact(

@@ -9,9 +9,8 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/production/widgets/where_used_material_picker.dart';
 
-typedef _RequestHandler = Future<Map<String, dynamic>> Function(
-  Map<String, dynamic> query,
-);
+typedef _RequestHandler =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> query);
 
 class _FakeApiClient extends ApiClient {
   _FakeApiClient(this.handler) : super(Dio());

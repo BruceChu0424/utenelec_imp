@@ -44,8 +44,9 @@ void main() {
   });
 
   test('detail route, merged badge and warehouse-wide refresh stay wired', () {
-    final hub = File('lib/features/warehouse/pages/warehouse_hub_page.dart')
-        .readAsStringSync();
+    final hub = File(
+      'lib/features/warehouse/pages/warehouse_hub_page.dart',
+    ).readAsStringSync();
     final moduleBadge = File(
       'lib/features/dashboard/widgets/module_badge_sum.dart',
     ).readAsStringSync();
@@ -94,8 +95,9 @@ void main() {
       isFalse,
     );
     expect(
-      File('lib/features/warehouse/pages/warehouse_iqc_return_detail_page.dart')
-          .existsSync(),
+      File(
+        'lib/features/warehouse/pages/warehouse_iqc_return_detail_page.dart',
+      ).existsSync(),
       isFalse,
     );
   });

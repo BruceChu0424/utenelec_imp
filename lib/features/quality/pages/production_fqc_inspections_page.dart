@@ -452,8 +452,9 @@ class _ProductionFqcInspectionsPageState
           canBatchPass
               ? '共 ${result.total} 条 · 单击多选，双击详情'
               : '共 ${result.total} 条 · 双击详情',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

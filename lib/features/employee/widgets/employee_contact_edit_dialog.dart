@@ -35,8 +35,9 @@ Future<String?> showEmployeeChangePhoneDialog(
               Container(
                 padding: const EdgeInsets.all(UtenSpacing.s8),
                 decoration: BoxDecoration(
-                  color: Theme.of(ctx).colorScheme.errorContainer
-                      .withValues(alpha: 0.4),
+                  color: Theme.of(
+                    ctx,
+                  ).colorScheme.errorContainer.withValues(alpha: 0.4),
                   borderRadius: UtenRadius.smAll,
                 ),
                 child: Text(

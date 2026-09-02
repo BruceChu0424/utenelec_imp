@@ -10,10 +10,8 @@ import 'perm_catalog_group_section.dart';
 enum PermissionCatalogFilter { all, enabled, disabled, changed }
 
 typedef PermissionPredicate = bool Function(AdminPermission permission);
-typedef PermissionItemBuilder = Widget Function(
-  BuildContext context,
-  AdminPermission permission,
-);
+typedef PermissionItemBuilder =
+    Widget Function(BuildContext context, AdminPermission permission);
 
 /// 高密度权限目录的统一浏览器（两级：功能模块 → 子类 → 权限项）。
 ///

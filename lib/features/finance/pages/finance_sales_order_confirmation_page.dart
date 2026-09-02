@@ -262,9 +262,9 @@ class _FinanceSalesOrderConfirmationPageState
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: Theme.of(dialogContext)
-                            .colorScheme
-                            .outlineVariant,
+                        color: Theme.of(
+                          dialogContext,
+                        ).colorScheme.outlineVariant,
                       ),
                       borderRadius: UtenRadius.mdAll,
                     ),
@@ -273,9 +273,9 @@ class _FinanceSalesOrderConfirmationPageState
                       itemCount: tasks.length,
                       separatorBuilder: (_, _) => Divider(
                         height: 1,
-                        color: Theme.of(dialogContext)
-                            .colorScheme
-                            .outlineVariant,
+                        color: Theme.of(
+                          dialogContext,
+                        ).colorScheme.outlineVariant,
                       ),
                       itemBuilder: (context, index) {
                         final item = tasks[index];
@@ -466,8 +466,9 @@ class _FinanceSalesOrderConfirmationPageState
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final expanded = breakpointForWidth(constraints.maxWidth)
-                .isExpanded;
+            final expanded = breakpointForWidth(
+              constraints.maxWidth,
+            ).isExpanded;
             return expanded
                 ? _desktopWorkbench(context, result, canConfirm: canConfirm)
                 : _compactWorkbench(context, result, canConfirm: canConfirm);

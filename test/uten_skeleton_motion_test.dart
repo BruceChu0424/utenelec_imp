@@ -61,8 +61,9 @@ void main() {
       final context = tester.element(
         find.byKey(const Key('motion-aware-skeleton')),
       );
-      final notifier = ProviderScope.containerOf(context)
-          .read(performanceProvider.notifier);
+      final notifier = ProviderScope.containerOf(
+        context,
+      ).read(performanceProvider.notifier);
       (notifier as _TestPerformanceNotifier).setTier(PerformanceTier.lite);
       await tester.pump();
       final lite = color();

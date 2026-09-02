@@ -123,10 +123,11 @@ Future<void> _pumpPendingOrder(
       overrides: [
         subcontractWriteAllDocumentScope(),
         currentPermissionsProvider.overrideWithValue(permissions),
-        subcontractRepositoryProvider(SubcontractDocType.order)
-            .overrideWithValue(
-              SubcontractRepository(api, SubcontractDocType.order),
-            ),
+        subcontractRepositoryProvider(
+          SubcontractDocType.order,
+        ).overrideWithValue(
+          SubcontractRepository(api, SubcontractDocType.order),
+        ),
         mn.masterNameServiceProvider.overrideWithValue(
           mn.MasterNameService(api),
         ),
@@ -331,10 +332,11 @@ void main() {
             Perm.subcontractReceiptApprove,
           }),
           sessionProvider.overrideWith(_WarehouseReviewerSessionNotifier.new),
-          subcontractRepositoryProvider(SubcontractDocType.receipt)
-              .overrideWithValue(
-                SubcontractRepository(api, SubcontractDocType.receipt),
-              ),
+          subcontractRepositoryProvider(
+            SubcontractDocType.receipt,
+          ).overrideWithValue(
+            SubcontractRepository(api, SubcontractDocType.receipt),
+          ),
           mn.masterNameServiceProvider.overrideWithValue(
             mn.MasterNameService(api),
           ),

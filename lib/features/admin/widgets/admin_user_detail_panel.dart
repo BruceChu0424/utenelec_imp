@@ -221,8 +221,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                     dirtyCount > 0
                         ? '已修改 $dirtyCount 项'
                         : '有 $legacyUnknownCount 项历史覆盖待超级管理员确认',
-                    style: Theme.of(context).textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 TextButton(
@@ -1424,16 +1425,18 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             Container(
               padding: const EdgeInsets.all(UtenSpacing.s16),
               decoration: BoxDecoration(
-                color: Theme.of(dialogContext)
-                    .colorScheme
-                    .surfaceContainerHighest,
+                color: Theme.of(
+                  dialogContext,
+                ).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: SelectableText(
                 temporaryPassword,
                 textAlign: TextAlign.center,
-                style: Theme.of(dialogContext).textTheme.titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.2),
+                style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
               ),
             ),
           ],

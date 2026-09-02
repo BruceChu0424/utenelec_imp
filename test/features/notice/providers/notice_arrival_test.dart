@@ -1307,8 +1307,9 @@ void main() {
     'authenticated app root owns the only arrival listener and router context',
     () {
       final source = File('lib/app.dart').readAsStringSync();
-      final shellSource = File('lib/features/shell/pages/main_shell_page.dart')
-          .readAsStringSync();
+      final shellSource = File(
+        'lib/features/shell/pages/main_shell_page.dart',
+      ).readAsStringSync();
       expect(
         source,
         contains('sessionProvider.select(_notificationSessionKey)'),

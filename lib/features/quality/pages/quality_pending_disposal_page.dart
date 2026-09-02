@@ -666,8 +666,9 @@ class _QualityPendingDisposalPageState
                   child: Text(
                     '自制产成品待检任务共 $_fqcTotal 条，超过单次拉取上限，'
                     '仅显示前 $_fqcFetchSize 条；请先处理当前任务后刷新。',
-                    style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: Theme.of(context).colorScheme.error),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
                   ),
                 ),
               ),

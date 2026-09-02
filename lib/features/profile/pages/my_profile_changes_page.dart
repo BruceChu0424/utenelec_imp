@@ -121,8 +121,10 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
                 onRefresh: () async {
                   ref.invalidate(myProfileChangesProvider);
                   await ref.read(
-                    myProfileChangesProvider((status: _status, page: _page))
-                        .future,
+                    myProfileChangesProvider((
+                      status: _status,
+                      page: _page,
+                    )).future,
                   );
                 },
                 // 服务端按页拉取：当页 items 铺进网格，外层 SingleChildScrollView
@@ -303,8 +305,9 @@ class _MyBatchDetailDialog extends ConsumerWidget {
             children: [
               Text(
                 l10n.profileChangeDiffTitle,
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: UtenSpacing.s12),
               Flexible(

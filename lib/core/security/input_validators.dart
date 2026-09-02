@@ -32,8 +32,9 @@ abstract final class InputValidators {
   static String? telephone(String? v) {
     if (v == null || v.trim().isEmpty) return null;
     final normalized = v.trim().replaceAll(' ', '');
-    if (!RegExp(r'^(?:1[3-9]\d{9}|0\d{2,3}-?\d{7,8}(?:-\d{1,6})?)$')
-        .hasMatch(normalized)) {
+    if (!RegExp(
+      r'^(?:1[3-9]\d{9}|0\d{2,3}-?\d{7,8}(?:-\d{1,6})?)$',
+    ).hasMatch(normalized)) {
       return '请输入正确的手机号或座机号';
     }
     return null;

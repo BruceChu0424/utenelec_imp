@@ -487,8 +487,9 @@ class _ProductionFqcReplenishmentBannerState
     return Padding(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
       child: Card(
-        color: Theme.of(context).colorScheme.tertiaryContainer
-            .withValues(alpha: 0.35),
+        color: Theme.of(
+          context,
+        ).colorScheme.tertiaryContainer.withValues(alpha: 0.35),
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: LayoutBuilder(
@@ -500,8 +501,9 @@ class _ProductionFqcReplenishmentBannerState
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.tertiary
-                          .withValues(alpha: 0.12),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.tertiary.withValues(alpha: 0.12),
                       borderRadius: UtenRadius.mdAll,
                     ),
                     child: Icon(

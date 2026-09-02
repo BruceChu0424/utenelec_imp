@@ -95,8 +95,9 @@ Widget _app({
     currentPermissionsProvider.overrideWithValue(const <String>{
       Perm.subcontractOrderPriceView,
     }),
-    subcontractRepositoryProvider(SubcontractDocType.order)
-        .overrideWithValue(repository),
+    subcontractRepositoryProvider(
+      SubcontractDocType.order,
+    ).overrideWithValue(repository),
     mn.masterNameServiceProvider.overrideWithValue(mn.MasterNameService(api)),
     settlementOverride,
   ],

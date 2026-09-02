@@ -14,8 +14,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          documentScopeCapabilityProvider(DocumentDataScope.finance)
-              .overrideWith((ref) => pending.future),
+          documentScopeCapabilityProvider(
+            DocumentDataScope.finance,
+          ).overrideWith((ref) => pending.future),
         ],
         child: const _CapabilitySurface(ownerId: 'owner-1'),
       ),
@@ -42,14 +43,15 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          documentScopeCapabilityProvider(DocumentDataScope.finance)
-              .overrideWith(
-                (ref) async => const DocumentScopeCapability(
-                  scope: 'finance',
-                  writeAll: false,
-                  writableOwnerIds: {'different-owner'},
-                ),
-              ),
+          documentScopeCapabilityProvider(
+            DocumentDataScope.finance,
+          ).overrideWith(
+            (ref) async => const DocumentScopeCapability(
+              scope: 'finance',
+              writeAll: false,
+              writableOwnerIds: {'different-owner'},
+            ),
+          ),
         ],
         child: const _CapabilitySurface(ownerId: 'manual-visible-owner'),
       ),

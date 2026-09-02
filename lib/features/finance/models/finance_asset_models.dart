@@ -606,28 +606,30 @@ class FinanceAssetDetail {
       ...?json['voucherNumbers'] is List
           ? json['voucherNumbers'] as List
           : null,
-      ..._maps(json['vouchers'])
-          .map((item) => item['voucherNo'] ?? item['number']),
+      ..._maps(
+        json['vouchers'],
+      ).map((item) => item['voucherNo'] ?? item['number']),
     ];
     final documentValues = <Object?>[
       ...?json['documentReferences'] is List
           ? json['documentReferences'] as List
           : null,
-      ..._maps(json['documents'])
-          .map((item) => item['reference'] ?? item['name']),
+      ..._maps(
+        json['documents'],
+      ).map((item) => item['reference'] ?? item['name']),
     ];
     return FinanceAssetDetail(
       summary: FinanceAssetSummary.fromJson(summarySource, ledger),
       books: bookMaps.map(FinanceAssetBook.fromJson).toList(growable: false),
-      schedule: _maps(json['schedule'])
-          .map(FinanceAssetScheduleLine.fromJson)
-          .toList(growable: false),
-      approvalSteps: _maps(json['approvalSteps'])
-          .map(FinanceAssetTrailStep.fromJson)
-          .toList(growable: false),
-      events: _maps(json['events'])
-          .map(FinanceAssetEvent.fromJson)
-          .toList(growable: false),
+      schedule: _maps(
+        json['schedule'],
+      ).map(FinanceAssetScheduleLine.fromJson).toList(growable: false),
+      approvalSteps: _maps(
+        json['approvalSteps'],
+      ).map(FinanceAssetTrailStep.fromJson).toList(growable: false),
+      events: _maps(
+        json['events'],
+      ).map(FinanceAssetEvent.fromJson).toList(growable: false),
       voucherNumbers: voucherValues
           .map((item) => item?.toString().trim() ?? '')
           .where((item) => item.isNotEmpty)
@@ -904,12 +906,12 @@ class AssetPostingPreview {
 
   factory AssetPostingPreview.fromJson(Map<String, dynamic> source) {
     final json = financeAssetPayload(source);
-    final warningItems = _maps(json['warnings'])
-        .map(AssetPostingMessage.fromJson)
-        .toList();
-    final errorItems = _maps(json['errors'])
-        .map(AssetPostingMessage.fromJson)
-        .toList();
+    final warningItems = _maps(
+      json['warnings'],
+    ).map(AssetPostingMessage.fromJson).toList();
+    final errorItems = _maps(
+      json['errors'],
+    ).map(AssetPostingMessage.fromJson).toList();
     for (final item in _maps(
       json['exceptions'],
     ).map(AssetPostingMessage.fromJson)) {
@@ -923,9 +925,9 @@ class AssetPostingPreview {
       totalAmount: _decimal(json, const ['totalAmount']),
       warnings: List.unmodifiable(warningItems),
       errors: List.unmodifiable(errorItems),
-      lines: _maps(json['lines'])
-          .map(AssetPostingLine.fromJson)
-          .toList(growable: false),
+      lines: _maps(
+        json['lines'],
+      ).map(AssetPostingLine.fromJson).toList(growable: false),
       allowedActions: _actions(json['allowedActions']),
       version: _integer(json, const ['version']),
     );

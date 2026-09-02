@@ -210,8 +210,9 @@ class _WarehouseDocumentHistoryViewState
         label: '共 ${result.total} 张${widget.type.documentLabel}',
         child: Text(
           '共 ${result.total} 张 · 双击打开仓库详情',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );

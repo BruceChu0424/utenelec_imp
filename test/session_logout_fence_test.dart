@@ -22,126 +22,141 @@ void main() {
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
   });
 
-  test('durable fence survives recreation and recovery never restores uncleared tokens', () async {
-    const rawStorage = FlutterSecureStorage();
-    final normal = SecureStorage(rawStorage);
-    await normal.saveTokens(
-      accessToken: 'old-access',
-      refreshToken: 'old-refresh',
-    );
-    final failing = _FailingLogoutStorage(rawStorage);
-    final repository = _RecordingAuthRepository();
-    final durableFence = FakeAuthLogoutFence();
-    final firstRecovery = _recovery();
-    final first = _container(
-      storage: failing,
-      repository: repository,
-      fence: durableFence,
-      recovery: firstRecovery,
-    );
+  test(
+    'durable fence survives recreation and recovery never restores uncleared tokens',
+    () async {
+      const rawStorage = FlutterSecureStorage();
+      final normal = SecureStorage(rawStorage);
+      await normal.saveTokens(
+        accessToken: 'old-access',
+        refreshToken: 'old-refresh',
+      );
+      final failing = _FailingLogoutStorage(rawStorage);
+      final repository = _RecordingAuthRepository();
+      final durableFence = FakeAuthLogoutFence();
+      final firstRecovery = _recovery();
+      final first = _container(
+        storage: failing,
+        repository: repository,
+        fence: durableFence,
+        recovery: firstRecovery,
+      );
 
-    final notifier = first.read(sessionProvider.notifier);
-    await pumpEventQueue();
-    expect(repository.meCalls, 1);
-    await expectLater(notifier.logout(), throwsA(isA<StateError>()));
-    expect(failing.clearAttempts, 3);
-    expect(durableFence.active, isTrue);
-    expect(await normal.getAccessToken(), 'old-access');
-    first.dispose();
-    await pumpEventQueue();
+      final notifier = first.read(sessionProvider.notifier);
+      await pumpEventQueue();
+      expect(repository.meCalls, 1);
+      await expectLater(notifier.logout(), throwsA(isA<StateError>()));
+      expect(failing.clearAttempts, 3);
+      expect(durableFence.active, isTrue);
+      expect(await normal.getAccessToken(), 'old-access');
+      first.dispose();
+      await pumpEventQueue();
 
-    final recreatedFence = FakeAuthLogoutFence(active: durableFence.active);
-    final secondRecovery = _recovery();
-    final second = _container(
-      storage: normal,
-      repository: repository,
-      fence: recreatedFence,
-      recovery: secondRecovery,
-    );
-    addTearDown(second.dispose);
+      final recreatedFence = FakeAuthLogoutFence(active: durableFence.active);
+      final secondRecovery = _recovery();
+      final second = _container(
+        storage: normal,
+        repository: repository,
+        fence: recreatedFence,
+        recovery: secondRecovery,
+      );
+      addTearDown(second.dispose);
 
-    expect(second.read(sessionProvider).status, AuthStatus.unauthenticated);
-    await pumpEventQueue();
-    expect(repository.meCalls, 1);
-    secondRecovery.markDisconnected();
-    await secondRecovery.retryNow();
-    await pumpEventQueue();
+      expect(second.read(sessionProvider).status, AuthStatus.unauthenticated);
+      await pumpEventQueue();
+      expect(repository.meCalls, 1);
+      secondRecovery.markDisconnected();
+      await secondRecovery.retryNow();
+      await pumpEventQueue();
 
-    expect(repository.meCalls, 1);
-    expect(second.read(sessionProvider).status, AuthStatus.unauthenticated);
-    expect(await normal.getRefreshToken(), 'old-refresh');
-  });
+      expect(repository.meCalls, 1);
+      expect(second.read(sessionProvider).status, AuthStatus.unauthenticated);
+      expect(await normal.getRefreshToken(), 'old-refresh');
+    },
+  );
 
-  test('failed revocation handoff preserves tokens behind the active fence for retry', () async {
-    final storage = SecureStorage(const FlutterSecureStorage());
-    await storage.saveTokens(
-      accessToken: 'old-access',
-      refreshToken: 'old-refresh',
-    );
-    final repository = _FailingLogoutAuthRepository();
-    final fence = FakeAuthLogoutFence();
-    final container = _container(
-      storage: storage,
-      repository: repository,
-      fence: fence,
-      recovery: _recovery(),
-    );
-    addTearDown(container.dispose);
-    final notifier = container.read(sessionProvider.notifier);
-    await pumpEventQueue();
+  test(
+    'failed revocation handoff preserves tokens behind the active fence for retry',
+    () async {
+      final storage = SecureStorage(const FlutterSecureStorage());
+      await storage.saveTokens(
+        accessToken: 'old-access',
+        refreshToken: 'old-refresh',
+      );
+      final repository = _FailingLogoutAuthRepository();
+      final fence = FakeAuthLogoutFence();
+      final container = _container(
+        storage: storage,
+        repository: repository,
+        fence: fence,
+        recovery: _recovery(),
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(sessionProvider.notifier);
+      await pumpEventQueue();
 
-    await expectLater(notifier.logout(), throwsA(isA<StateError>()));
+      await expectLater(notifier.logout(), throwsA(isA<StateError>()));
 
-    expect(repository.logoutCalls, 3);
-    expect(fence.active, isTrue);
-    expect(await storage.getAccessToken(), 'old-access');
-    expect(await storage.getRefreshToken(), 'old-refresh');
-    expect(container.read(sessionProvider).status, AuthStatus.unauthenticated);
-  });
+      expect(repository.logoutCalls, 3);
+      expect(fence.active, isTrue);
+      expect(await storage.getAccessToken(), 'old-access');
+      expect(await storage.getRefreshToken(), 'old-refresh');
+      expect(
+        container.read(sessionProvider).status,
+        AuthStatus.unauthenticated,
+      );
+    },
+  );
 
-  test('session logout returns only after durable queueing but never waits for the network', () async {
-    final storage = SecureStorage(const FlutterSecureStorage());
-    await storage.saveTokens(
-      accessToken: 'old-access',
-      refreshToken: 'old-refresh',
-    );
-    final queue = PendingRefreshRevocationStore(storage);
-    final networkStarted = Completer<void>();
-    final releaseNetwork = Completer<void>();
-    final drainer = PendingRefreshRevocationDrainer(
-      store: queue,
-      revoke: (token) async {
-        if (!networkStarted.isCompleted) networkStarted.complete();
-        await releaseNetwork.future;
-      },
-      retryDelays: const <Duration>[Duration(hours: 1)],
-    );
-    addTearDown(drainer.dispose);
-    final repository = DurableLogoutAuthRepository(
-      _RecordingAuthRepository(),
-      drainer,
-    );
-    final container = _container(
-      storage: storage,
-      repository: repository,
-      fence: FakeAuthLogoutFence(),
-      recovery: _recovery(),
-    );
-    addTearDown(container.dispose);
-    final notifier = container.read(sessionProvider.notifier);
-    await pumpEventQueue();
+  test(
+    'session logout returns only after durable queueing but never waits for the network',
+    () async {
+      final storage = SecureStorage(const FlutterSecureStorage());
+      await storage.saveTokens(
+        accessToken: 'old-access',
+        refreshToken: 'old-refresh',
+      );
+      final queue = PendingRefreshRevocationStore(storage);
+      final networkStarted = Completer<void>();
+      final releaseNetwork = Completer<void>();
+      final drainer = PendingRefreshRevocationDrainer(
+        store: queue,
+        revoke: (token) async {
+          if (!networkStarted.isCompleted) networkStarted.complete();
+          await releaseNetwork.future;
+        },
+        retryDelays: const <Duration>[Duration(hours: 1)],
+      );
+      addTearDown(drainer.dispose);
+      final repository = DurableLogoutAuthRepository(
+        _RecordingAuthRepository(),
+        drainer,
+      );
+      final container = _container(
+        storage: storage,
+        repository: repository,
+        fence: FakeAuthLogoutFence(),
+        recovery: _recovery(),
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(sessionProvider.notifier);
+      await pumpEventQueue();
 
-    await notifier.logout().timeout(const Duration(seconds: 1));
-    await networkStarted.future;
+      await notifier.logout().timeout(const Duration(seconds: 1));
+      await networkStarted.future;
 
-    expect(await queue.pendingTokens(), <String>['old-refresh']);
-    expect(await storage.getRefreshToken(), isNull);
-    expect(container.read(sessionProvider).status, AuthStatus.unauthenticated);
+      expect(await queue.pendingTokens(), <String>['old-refresh']);
+      expect(await storage.getRefreshToken(), isNull);
+      expect(
+        container.read(sessionProvider).status,
+        AuthStatus.unauthenticated,
+      );
 
-    releaseNetwork.complete();
-    await pumpEventQueue();
-    expect(await queue.pendingTokens(), isEmpty);
-  });
+      releaseNetwork.complete();
+      await pumpEventQueue();
+      expect(await queue.pendingTokens(), isEmpty);
+    },
+  );
 
   test(
     'fence activation failure is tolerated when secure token clearing succeeds',
@@ -240,20 +255,23 @@ void main() {
     expect(container.read(sessionProvider).status, AuthStatus.authenticated);
   });
 
-  test('shared-preferences fence treats malformed data as active and clears idempotently', () async {
-    SharedPreferences.setMockInitialValues(<String, Object>{
-      SharedPreferencesAuthLogoutFence.storageKey: 'malformed',
-    });
-    final preferences = await SharedPreferences.getInstance();
-    final fence = SharedPreferencesAuthLogoutFence(preferences);
+  test(
+    'shared-preferences fence treats malformed data as active and clears idempotently',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        SharedPreferencesAuthLogoutFence.storageKey: 'malformed',
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final fence = SharedPreferencesAuthLogoutFence(preferences);
 
-    expect(await fence.isActive(), isTrue);
-    await fence.clear();
-    expect(await fence.isActive(), isFalse);
-    await fence.clear();
-    await fence.activate();
-    expect(await fence.isActive(), isTrue);
-  });
+      expect(await fence.isActive(), isTrue);
+      await fence.clear();
+      expect(await fence.isActive(), isFalse);
+      await fence.clear();
+      await fence.activate();
+      expect(await fence.isActive(), isTrue);
+    },
+  );
 }
 
 ConnectionRecoveryController _recovery() => ConnectionRecoveryController(

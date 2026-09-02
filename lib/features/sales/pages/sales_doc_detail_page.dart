@@ -520,8 +520,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                   padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                   child: Text(
                     '已排产/已生产行仅生产确认人员可改，当前为只读。',
-                    style: Theme.of(context).textTheme.labelMedium
-                        ?.copyWith(fontWeight: FontWeight.w400),
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w400,
+                    ),
                   ),
                 ),
               for (final it in _detail!.items)

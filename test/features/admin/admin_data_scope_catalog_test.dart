@@ -43,8 +43,9 @@ void main() {
         ),
       );
 
-      final catalog = await DioAdminRepository(ApiClient(dio))
-          .dataScopeCatalog();
+      final catalog = await DioAdminRepository(
+        ApiClient(dio),
+      ).dataScopeCatalog();
 
       expect(captured.method, 'GET');
       expect(captured.path, '/admin/data-scope-catalog');

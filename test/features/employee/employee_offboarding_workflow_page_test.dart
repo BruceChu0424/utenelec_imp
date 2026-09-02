@@ -121,8 +121,9 @@ void main() {
           themeMode: ThemeMode.dark,
           darkTheme: ThemeData.dark(),
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context)
-                .copyWith(textScaler: const TextScaler.linear(1.6)),
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.6)),
             child: child!,
           ),
           routerConfig: _router(),

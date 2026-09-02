@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -380,6 +381,36 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
 
     private void advancePurchaseReceipt(
             UUID receiptId, UUID dispositionEventId) {
+        advancePurchaseReceiptState(receiptId, dispositionEventId);
+        materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId);
+    }
+
+    /**
+     * IQC 仓库确认入库（一张收货单一批，整批同事务）后的生产推进：
+     * 正式履约按收货单累计入库量推进一次（领取/预留/领料单的最终数据
+     * 与逐条推进一致，不再每条明细重复整单扫描），随后对受影响物料
+     * 分析做整批一轮唤醒刷新（事件按批聚合）。
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterPurchaseInspectionStockInConfirmed(
+            UUID receiptId, UUID warehouseStockInBatchId,
+            Collection<UUID> inspectionItemIds) {
+        advancePurchaseReceiptState(receiptId, warehouseStockInBatchId);
+        materialAnalysisWakeup.afterInspectionStockInConfirmed(
+                "PURCHASE", receiptId, warehouseStockInBatchId,
+                inspectionItemIds);
+    }
+
+    /**
+     * State transition only: converts only the part received into the exact
+     * demand target warehouse. An order line may serve several warehouses, so
+     * a receipt for warehouse A deliberately leaves warehouse B's future peg
+     * untouched. Callers own the trailing material-analysis wakeup so the IQC
+     * stock-in path can refresh once per confirmed batch instead of per slice.
+     */
+    private void advancePurchaseReceiptState(
+            UUID receiptId, UUID dispositionEventId) {
         UUID actorId = currentUser.requireId();
         UUID employeeId = currentUser.requireEmployeeId();
         List<UUID> warehouses = NativeQueryResults.typedRows(
@@ -604,16 +635,6 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                 chainNotice.notifyProductionDrawPending(draw.id()));
         executionReadiness.onPurchaseReceiptApproved(receiptId, warehouseId);
         ledger.refreshDemandStatuses(touched);
-        materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId);
-    }
-
-    @Override
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void afterPurchaseInspectionPassed(
-            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
-        materialAnalysisWakeup.afterPurchaseInspectionPassed(
-                receiptId, inspectionItemId, dispositionEventId);
-        advancePurchaseReceipt(receiptId, dispositionEventId);
     }
 
     @Override

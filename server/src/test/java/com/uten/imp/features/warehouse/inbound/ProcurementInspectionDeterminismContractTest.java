@@ -46,8 +46,8 @@ class ProcurementInspectionDeterminismContractTest {
                 .contains("stockService.recordMovement(")
                 .contains("preplanAnalysisPeg.attributeInspectionStockIn(")
                 .contains("advanceProductionAfterStockIn(")
-                .contains("purchaseSupply.afterPurchaseInspectionPassed(")
-                .contains("subcontractSupply.afterSubcontractInspectionPassed(");
+                .contains("purchaseSupply.afterPurchaseInspectionStockInConfirmed(")
+                .contains("subcontractSupply.afterSubcontractInspectionStockInConfirmed(");
     }
 
     @Test

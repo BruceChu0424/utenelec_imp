@@ -199,12 +199,20 @@ class _WarehouseQualityResultsPageState
       return;
     }
     final repo = ref.read(warehouseQualityResultRepositoryProvider);
-    final details = <WarehouseQualityResultDetail>[];
+    final List<WarehouseQualityResultDetail> details;
     try {
-      for (final task in targets) {
-        final detail = await repo.detail(task.receiptTypeValue, task.receiptId);
-        if (detail.canConfirm) details.add(detail);
-      }
+      // 并行拉取所选任务的放行切片（串行 await 时 N 张单要排 N 个往返，
+      // 弹窗要等全部完成才出现）。
+      final fetched = await Future.wait(
+        targets.map(
+          (task) => repo.detail(task.receiptTypeValue, task.receiptId),
+        ),
+        eagerError: true,
+      );
+      details = [
+        for (final detail in fetched)
+          if (detail.canConfirm) detail,
+      ];
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
       return;

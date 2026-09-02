@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -431,13 +432,20 @@ public class ProductionSubcontractSupplyTransitionService
         materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId);
     }
 
+    /**
+     * IQC 仓库确认入库（一张收货单一批，整批同事务）后的生产推进：
+     * 就绪度重算一次，再对受影响物料分析做整批一轮唤醒刷新（事件按批聚合）。
+     */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void afterSubcontractInspectionPassed(
-            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
-        materialAnalysisWakeup.afterSubcontractInspectionPassed(
-                receiptId, inspectionItemId, dispositionEventId);
-        onSubcontractReceiptApproved(receiptId);
+    public void afterSubcontractInspectionStockInConfirmed(
+            UUID receiptId, UUID warehouseStockInBatchId,
+            Collection<UUID> inspectionItemIds) {
+        readiness.onSubcontractReceiptApproved(
+                receiptId, receiptWarehouse(receiptId));
+        materialAnalysisWakeup.afterInspectionStockInConfirmed(
+                "SUBCONTRACT", receiptId, warehouseStockInBatchId,
+                inspectionItemIds);
     }
 
     @Override

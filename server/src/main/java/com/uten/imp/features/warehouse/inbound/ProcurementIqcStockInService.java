@@ -217,6 +217,7 @@ public class ProcurementIqcStockInService {
                 .executeUpdate();
 
         int position = 0;
+        Set<UUID> inspectionItemIds = new LinkedHashSet<>();
         for (NormalizedItem item : command.items()) {
             position++;
             PassSlice slice = locked.get(item.passEventId());
@@ -248,9 +249,12 @@ public class ProcurementIqcStockInService {
                     type, receiptId, slice.inspectionItemId(),
                     slice.passEventId(), stockInItemId,
                     item.baseQty(), slice.warehouseId());
-            advanceProductionAfterStockIn(
-                    type, receiptId, slice.inspectionItemId(), stockInItemId);
+            inspectionItemIds.add(slice.inspectionItemId());
         }
+        // 生产联动整批一次：明细全部落账后再唤醒/推进（每条一次时同一分析
+        // 被整棵重建 O(明细数) 遍、领料单按条裂开，最终数据与一次推进完全
+        // 一致——分析刷新是当前库态的全量重算，事件按批聚合）。
+        advanceProductionAfterStockIn(type, receiptId, batchId, inspectionItemIds);
         recalculateOrderClosure(type, receiptId);
         rememberConfirmedPlaces(locked, command, batchId, now, actorUserId, actorEmployeeId);
         return new ConfirmResult(batchId, false, command.items().size(), now);
@@ -725,13 +729,14 @@ public class ProcurementIqcStockInService {
     }
 
     private void advanceProductionAfterStockIn(
-            String type, UUID receiptId, UUID inspectionItemId, UUID stockInItemId) {
+            String type, UUID receiptId, UUID batchId,
+            Set<UUID> inspectionItemIds) {
         if (PURCHASE.equals(type)) {
-            purchaseSupply.afterPurchaseInspectionPassed(
-                    receiptId, inspectionItemId, stockInItemId);
+            purchaseSupply.afterPurchaseInspectionStockInConfirmed(
+                    receiptId, batchId, inspectionItemIds);
         } else {
-            subcontractSupply.afterSubcontractInspectionPassed(
-                    receiptId, inspectionItemId, stockInItemId);
+            subcontractSupply.afterSubcontractInspectionStockInConfirmed(
+                    receiptId, batchId, inspectionItemIds);
         }
     }
 

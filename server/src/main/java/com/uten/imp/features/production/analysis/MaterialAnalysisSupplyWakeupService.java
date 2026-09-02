@@ -10,9 +10,12 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 
 /**
@@ -41,27 +44,53 @@ public class MaterialAnalysisSupplyWakeupService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void afterPurchaseInspectionPassed(
-            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
-        refreshInspectionPass(
-                "PURCHASE", receiptId, inspectionItemId, dispositionEventId);
-    }
-
-    @Transactional(propagation = Propagation.MANDATORY)
     public void afterPurchaseReceiptReversed(UUID receiptId) {
         refreshReceipt("PURCHASE", receiptId, true, false);
+    }
+
+    /**
+     * IQC 仓库确认入库（单张或批量，整批同事务）后的整批一轮唤醒：
+     * 目标 = 本次确认的待检行维度 ∪ 该收货单 RESOLVED 维度上的活跃分析，
+     * 按分析去重后每个分析只整棵刷新一次。聚合的 readyFinish 前后差值
+     * 与旧「逐条明细刷新」的逐次差值之和完全一致（刷新是从当前库态的
+     * 全量重算，最终态相同），通知从每条一条聚合为每批一条，
+     * dedupe key 携带入库批次号避免跨批次碰撞。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterInspectionStockInConfirmed(
+            String sourceType,
+            UUID receiptId,
+            UUID warehouseStockInBatchId,
+            Collection<UUID> inspectionItemIds) {
+        if (warehouseStockInBatchId == null
+                || inspectionItemIds == null || inspectionItemIds.isEmpty()) {
+            return;
+        }
+        Map<UUID, UUID> makers = new TreeMap<>();
+        for (AnalysisTarget target : inspectionStockInTargets(
+                sourceType, receiptId, inspectionItemIds)) {
+            makers.put(target.analysisId(), target.makerEmployeeId());
+        }
+        for (AnalysisTarget target : "PURCHASE".equals(sourceType)
+                ? purchaseTargets(receiptId, false)
+                : subcontractTargets(receiptId, false)) {
+            makers.put(target.analysisId(), target.makerEmployeeId());
+        }
+        List<AnalysisTarget> targets = new ArrayList<>(makers.size());
+        makers.forEach((analysisId, makerEmployeeId) ->
+                targets.add(new AnalysisTarget(analysisId, makerEmployeeId)));
+        refreshTargets(
+                sourceType,
+                receiptId,
+                targets,
+                true,
+                warehouseStockInBatchId,
+                ":IQC_STOCK_IN:" + warehouseStockInBatchId);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterSubcontractReceiptApproved(UUID receiptId) {
         refreshReceipt("SUBCONTRACT", receiptId, false, true);
-    }
-
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void afterSubcontractInspectionPassed(
-            UUID receiptId, UUID inspectionItemId, UUID dispositionEventId) {
-        refreshInspectionPass(
-                "SUBCONTRACT", receiptId, inspectionItemId, dispositionEventId);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -72,13 +101,13 @@ public class MaterialAnalysisSupplyWakeupService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundApproved(UUID stockDocumentId) {
         refreshTargets(
-                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, 1), true, null);
+                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, 1), true, null, "");
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterFinishedInboundReversed(UUID stockDocumentId) {
         refreshTargets(
-                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, -1), false, null);
+                "MAKE", stockDocumentId, finishedInboundTargets(stockDocumentId, -1), false, null, "");
     }
 
     private void refreshReceipt(
@@ -89,20 +118,7 @@ public class MaterialAnalysisSupplyWakeupService {
         List<AnalysisTarget> targets = "PURCHASE".equals(sourceType)
                 ? purchaseTargets(receiptId, includeLegacyFallback)
                 : subcontractTargets(receiptId, includeLegacyFallback);
-        refreshTargets(sourceType, receiptId, targets, publishIncrease, null);
-    }
-
-    private void refreshInspectionPass(
-            String sourceType,
-            UUID receiptId,
-            UUID inspectionItemId,
-            UUID dispositionEventId) {
-        refreshTargets(
-                sourceType,
-                receiptId,
-                inspectionPassTargets(sourceType, receiptId, inspectionItemId),
-                true,
-                dispositionEventId);
+        refreshTargets(sourceType, receiptId, targets, publishIncrease, null, "");
     }
 
     private void refreshTargets(
@@ -110,7 +126,8 @@ public class MaterialAnalysisSupplyWakeupService {
             UUID sourceDocumentId,
             List<AnalysisTarget> targets,
             boolean publishIncrease,
-            UUID sourceEventId) {
+            UUID sourceEventId,
+            String eventKeySuffix) {
         for (AnalysisTarget target : targets) {
             Map<UUID, BigDecimal> before = readyFinishByOpenItem(target.analysisId());
             materialAnalysisService.refreshLocked(target.analysisId());
@@ -153,21 +170,19 @@ public class MaterialAnalysisSupplyWakeupService {
                         Map.copyOf(payload),
                         EVENT_READY + ':' + target.analysisId() + ':'
                                 + analysisItemId + ':' + sourceType + ':' + sourceId
-                                + (sourceEventId == null
-                                ? ""
-                                : ":IQC_PASS:" + sourceEventId));
+                                + eventKeySuffix);
             }
         }
     }
 
-    private List<AnalysisTarget> inspectionPassTargets(
-            String sourceType, UUID receiptId, UUID inspectionItemId) {
+    private List<AnalysisTarget> inspectionStockInTargets(
+            String sourceType, UUID receiptId, Collection<UUID> inspectionItemIds) {
         return analysisTargets(em.createNativeQuery("""
                 WITH passed_dimension AS (
                     SELECT inspection.warehouse_id,
                            inspection.goods_id, inspection.color_id
                     FROM procurement_inspection_items inspection
-                    WHERE inspection.id = :inspectionItemId
+                    WHERE inspection.id IN (:inspectionItemIds)
                       AND inspection.receipt_type = :sourceType
                       AND inspection.receipt_id = :sourceDocumentId
                       AND inspection.status IN ('PARTIAL', 'RESOLVED')
@@ -206,7 +221,7 @@ public class MaterialAnalysisSupplyWakeupService {
                 """)
                 .setParameter("sourceType", sourceType)
                 .setParameter("sourceDocumentId", receiptId)
-                .setParameter("inspectionItemId", inspectionItemId));
+                .setParameter("inspectionItemIds", inspectionItemIds));
     }
 
     private List<AnalysisTarget> purchaseTargets(

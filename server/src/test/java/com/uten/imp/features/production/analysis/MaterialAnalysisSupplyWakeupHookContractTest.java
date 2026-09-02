@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,11 +27,11 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
         assertThat(ProductionSubcontractSupplyTransitionPort.class.getMethod(
                 "afterSubcontractReceiptReversed", UUID.class).isDefault()).isTrue();
         assertThat(ProductionSupplyTransitionPort.class.getMethod(
-                "afterPurchaseInspectionPassed",
-                UUID.class, UUID.class, UUID.class).isDefault()).isTrue();
+                "afterPurchaseInspectionStockInConfirmed",
+                UUID.class, UUID.class, Collection.class).isDefault()).isTrue();
         assertThat(ProductionSubcontractSupplyTransitionPort.class.getMethod(
-                "afterSubcontractInspectionPassed",
-                UUID.class, UUID.class, UUID.class).isDefault()).isTrue();
+                "afterSubcontractInspectionStockInConfirmed",
+                UUID.class, UUID.class, Collection.class).isDefault()).isTrue();
         assertThat(ProductionCompletionReversePort.class.getMethod(
                 "afterFinishedInboundReversed", UUID.class, UUID.class).isDefault()).isTrue();
     }
@@ -46,12 +47,12 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                 "afterSubcontractReceiptReversed", UUID.class);
         assertMandatory(
                 ProductionPurchaseSupplyTransitionService.class,
-                "afterPurchaseInspectionPassed",
-                UUID.class, UUID.class, UUID.class);
+                "afterPurchaseInspectionStockInConfirmed",
+                UUID.class, UUID.class, Collection.class);
         assertMandatory(
                 ProductionSubcontractSupplyTransitionService.class,
-                "afterSubcontractInspectionPassed",
-                UUID.class, UUID.class, UUID.class);
+                "afterSubcontractInspectionStockInConfirmed",
+                UUID.class, UUID.class, Collection.class);
         assertMandatory(
                 ProductionCompletionReverseService.class,
                 "afterFinishedInboundReversed", UUID.class, UUID.class);
@@ -79,14 +80,14 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                 .contains("purchaseSupply.onPurchaseReceiptApproved(receiptId)")
                 .contains("subcontractSupply.onSubcontractReceiptApproved(receiptId)")
                 .doesNotContain("advanceProductionAfterInspectionPass(")
-                .doesNotContain("purchaseSupply.afterPurchaseInspectionPassed(")
-                .doesNotContain("subcontractSupply.afterSubcontractInspectionPassed(");
+                .doesNotContain("purchaseSupply.afterPurchaseInspectionStockInConfirmed(")
+                .doesNotContain("subcontractSupply.afterSubcontractInspectionStockInConfirmed(");
         assertThat(stockIn)
                 .contains("stockService.recordMovement(")
                 .contains("incrementStockedProjection(")
                 .contains("advanceProductionAfterStockIn(")
-                .contains("purchaseSupply.afterPurchaseInspectionPassed(")
-                .contains("subcontractSupply.afterSubcontractInspectionPassed(");
+                .contains("purchaseSupply.afterPurchaseInspectionStockInConfirmed(")
+                .contains("subcontractSupply.afterSubcontractInspectionStockInConfirmed(");
         assertOrdered(stockIn,
                 "stockService.recordMovement(",
                 "incrementStockedProjection(");
@@ -95,12 +96,17 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                 "advanceProductionAfterStockIn(");
         assertThat(purchase).contains(
                 "materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId)")
-                .contains("materialAnalysisWakeup.afterPurchaseInspectionPassed(")
-                .contains("advancePurchaseReceipt(receiptId, dispositionEventId);");
+                .contains("materialAnalysisWakeup.afterInspectionStockInConfirmed(")
+                .contains("advancePurchaseReceiptState(receiptId, warehouseStockInBatchId);");
+        // 生产履约先落账、分析唤醒后整批一轮：顺序不可颠倒（唤醒必须看到
+        // 本批全部预留/领料的最终库态，否则可用量口径错）。
+        assertOrdered(purchase,
+                "advancePurchaseReceiptState(receiptId, warehouseStockInBatchId);",
+                "materialAnalysisWakeup.afterInspectionStockInConfirmed(");
         assertThat(subcontract).contains(
                 "materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId)")
-                .contains("materialAnalysisWakeup.afterSubcontractInspectionPassed(")
-                .contains("onSubcontractReceiptApproved(receiptId);");
+                .contains("materialAnalysisWakeup.afterInspectionStockInConfirmed(")
+                .contains("readiness.onSubcontractReceiptApproved(");
     }
 
     @Test

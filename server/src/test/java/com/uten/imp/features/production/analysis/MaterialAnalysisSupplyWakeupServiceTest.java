@@ -92,7 +92,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
     }
 
     @Test
-    void partialWarehouseStockInRefreshesImmediatelyWithReplayStableEventLineage() {
+    void partialWarehouseStockInRefreshesOncePerConfirmedBatchWithStableEventLineage() {
         EntityManager em = mock(EntityManager.class);
         MaterialAnalysisService analysis = mock(MaterialAnalysisService.class);
         BusinessEventPublisher events = mock(BusinessEventPublisher.class);
@@ -100,7 +100,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         UUID makerId = UUID.randomUUID();
         UUID receiptId = UUID.randomUUID();
         UUID inspectionItemId = UUID.randomUUID();
-        UUID dispositionEventId = UUID.randomUUID();
+        UUID firstBatchId = UUID.randomUUID();
         UUID analysisItemId = UUID.randomUUID();
         Query candidates = query(List.<Object[]>of(
                 new Object[]{analysisId, makerId}));
@@ -113,10 +113,10 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis, events);
 
-        service.afterPurchaseInspectionPassed(
-                receiptId, inspectionItemId, dispositionEventId);
-        service.afterPurchaseInspectionPassed(
-                receiptId, inspectionItemId, dispositionEventId);
+        service.afterInspectionStockInConfirmed(
+                "PURCHASE", receiptId, firstBatchId, List.of(inspectionItemId));
+        service.afterInspectionStockInConfirmed(
+                "PURCHASE", receiptId, UUID.randomUUID(), List.of(inspectionItemId));
 
         verify(analysis, times(2)).refreshLocked(analysisId);
         verify(events).publishOnce(
@@ -128,15 +128,15 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                         "sourceType", "PURCHASE",
                         "sourceDocumentId", receiptId.toString(),
                         "sourceDocumentNo", "CJ26080001",
-                        "sourceEventId", dispositionEventId.toString(),
+                        "sourceEventId", firstBatchId.toString(),
                         "analysisItemId", analysisItemId.toString(),
                         "readyFinishDelta", "5",
                         "readyFinishQty", "5"),
                 MaterialAnalysisSupplyWakeupService.EVENT_READY + ':' + analysisId
                         + ':' + analysisItemId + ":PURCHASE:" + receiptId
-                        + ":IQC_PASS:" + dispositionEventId);
+                        + ":IQC_STOCK_IN:" + firstBatchId);
         assertThat(statements.getFirst())
-                .contains("inspection.id = :inspectionItemId")
+                .contains("inspection.id IN (:inspectionItemIds)")
                 .contains("inspection.receipt_type = :sourceType")
                 .contains("inspection.status IN ('PARTIAL', 'RESOLVED')")
                 .contains("inspection.warehouse_stocked_base_qty > 0")
@@ -144,7 +144,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                 .contains("ORDER BY analysis.id")
                 .contains("FOR UPDATE OF analysis");
         verify(candidates, times(2)).setParameter(
-                "inspectionItemId", inspectionItemId);
+                "inspectionItemIds", List.of(inspectionItemId));
         verify(candidates, times(2)).setParameter("sourceType", "PURCHASE");
     }
 
@@ -161,8 +161,9 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis, events);
 
-        service.afterSubcontractInspectionPassed(
-                receiptId, inspectionItemId, UUID.randomUUID());
+        service.afterInspectionStockInConfirmed(
+                "SUBCONTRACT", receiptId, UUID.randomUUID(),
+                List.of(inspectionItemId));
 
         assertThat(statements.getFirst())
                 .contains(":sourceType = 'SUBCONTRACT'")

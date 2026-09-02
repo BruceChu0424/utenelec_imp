@@ -1,5 +1,6 @@
 package com.uten.imp.application.port;
 
+import java.util.Collection;
 import java.util.UUID;
 
 /**
@@ -24,12 +25,16 @@ public interface ProductionSupplyTransitionPort {
     void onPurchaseReceiptApproved(UUID receiptId);
 
     /**
-     * Advances one warehouse-confirmed IQC stock-in slice into material analysis
-     * and formal production fulfillment. Implementations derive cumulative
-     * warehouse-stocked quantity and subtract existing effective allocations.
+     * Advances one warehouse-confirmed IQC stock-in batch (a single receipt's
+     * confirmed slices, possibly many in one transaction) into material
+     * analysis and formal production fulfillment. Implementations derive
+     * cumulative warehouse-stocked quantity and subtract existing effective
+     * allocations; must be invoked exactly once per confirmed batch, after all
+     * of its slices have been recorded.
      */
-    default void afterPurchaseInspectionPassed(
-            UUID receiptId, UUID inspectionItemId, UUID warehouseStockInItemId) {
+    default void afterPurchaseInspectionStockInConfirmed(
+            UUID receiptId, UUID warehouseStockInBatchId,
+            Collection<UUID> inspectionItemIds) {
         // Optional for test doubles and non-production adapters.
     }
 

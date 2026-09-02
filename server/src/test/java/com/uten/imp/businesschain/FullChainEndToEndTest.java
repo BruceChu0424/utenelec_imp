@@ -3547,17 +3547,8 @@ class FullChainEndToEndTest {
         UUID purchaseReceiptId = receiveAndPassPurchase(
                 w, purchaseOrderItemId, childMaterial,
                 new BigDecimal("20"), "v447-" + planItemId);
-        UUID childInspectionId = jdbc.queryForObject("""
-                SELECT id FROM procurement_inspection_items
-                WHERE receipt_type='PURCHASE' AND receipt_id=? AND goods_id=?
-                """, UUID.class, purchaseReceiptId, childMaterial);
-        loginAs(createIqcWarehouseConfirmer(w, "v447-child-stock"));
-        iqcStockInService.confirm(
-                "PURCHASE", purchaseReceiptId,
-                latestIqcStockInRequest(
-                        "PURCHASE", purchaseReceiptId, childInspectionId,
-                        new BigDecimal("20"),
-                        "v447-child-stock-" + childInspectionId, "V447-A01"));
+        // V446 后 receiveAndPassPurchase 内部已完成 PASS + 仓库确认入库（peg 在确认事务写入），
+        // 不得再对同一收货单二次 confirm——余量已清零会拿不到放行事件。
 
         loginAs(planner);
         AnalysisView targetAfterStock = analysisService.detail(started.analysisId());
@@ -4539,6 +4530,10 @@ class FullChainEndToEndTest {
     void historicalV0ApprovedReceiptWithoutGlIsVisibleAndBlocksRegeneration() {
         World w=seedWorld("receipt-v0-gl-gap");
         loginAs(w.superAdminUserId());
+        // 夹具使用专属期间 2026-03（全类只有本用例与 amounts_gl 生成凭证，后者固定走
+        // 当月/单据期间，永不触达 2026-03）：已审 V0 收款被触发器宣告不可变
+        // （fn_guard_finance_receipt_money_fact / V407 DELETE 守卫），无法清理，
+        // 期间隔离让残留只封锁本专属月，不污染共享库其他用例。
         UUID receiptId=UUID.randomUUID();
         String billNo=docNumberService.nextNumber(
                 com.uten.imp.common.docnumber.DocNumberPrefix.FIN_RECEIPT);
@@ -4548,7 +4543,7 @@ class FullChainEndToEndTest {
                   exchange_rate,amount_original,amount_local,bank_fee,other_fee,
                   status,settlement_authority_version,is_deleted)
                 values (?,?,?,'CUSTOMER_PREPAYMENT',?,?,1,100,100,0,0,1,0,false)
-                """,receiptId,billNo,BusinessTime.today(),w.clientId(),w.currencyId());
+                """,receiptId,billNo,LocalDate.of(2026,3,15),w.clientId(),w.currencyId());
 
         assertEquals("MISSING",strFor("""
                 select reconciliation_state
@@ -4557,11 +4552,10 @@ class FullChainEndToEndTest {
         // 同月已有其它链路测试立账（共享库），先配齐过账角色科目才能到达 V0 闸
         seedChartOfAccounts();
         ApiException blocked=assertThrows(ApiException.class,()->
-                glPostingService.generate(BusinessTime.today().toString().substring(0,7)));
+                glPostingService.generate("2026-03"));
         assertTrue(blocked.getMessage().contains("历史 V0 已审收款"),blocked.getMessage());
         assertTrue(blocked.getMessage().contains("禁止按当前科目自动补账"),blocked.getMessage());
-        // 清理夹具：V0 收款留在共享库会阻断后续测试对本期间 generate（如 amounts_gl）
-        jdbc.update("delete from finance_receipts where id = ?", receiptId);
+        // 不清理：残留只封锁 2026-03 这一专属期间（见方法头注释）。
     }
 
     // ---------------------------------------------------------------------------------------------

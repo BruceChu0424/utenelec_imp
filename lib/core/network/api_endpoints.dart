@@ -407,6 +407,8 @@ abstract final class ApiEndpoints {
   static const employees = '/org/employees';
   static String employee(String id) => '/org/employees/$id';
   static String employeeHistory(String id) => '/org/employees/$id/history';
+  static String employeeSecondaryDepartments(String id) =>
+      '/org/employees/$id/secondary-departments';
   static String employeeTransfer(String id) => '/org/employees/$id/transfer';
   static String employeeOffboard(String id) => '/org/employees/$id/offboard';
   static String employeeHandoverPreview(String id) =>

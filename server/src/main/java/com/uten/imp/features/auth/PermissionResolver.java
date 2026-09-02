@@ -66,6 +66,7 @@ public class PermissionResolver {
     private final DepartmentPermissionRepository departmentPermissionRepo;
     private final UserPermissionOverrideRepository overrideRepo;
     private final EmployeeRepository employeeRepo;
+    private final com.uten.imp.features.org.employee.EmployeeSecondaryDepartmentRepository secondaryDepartmentRepo;
     private final UserAccountRepository userAccountRepo;
     private final DepartmentRepository departmentRepo;
     private final ManagerPermissionDelegationRepository managerDelegationRepo;
@@ -78,6 +79,7 @@ public class PermissionResolver {
                               DepartmentPermissionRepository departmentPermissionRepo,
                               UserPermissionOverrideRepository overrideRepo,
                               EmployeeRepository employeeRepo,
+                              com.uten.imp.features.org.employee.EmployeeSecondaryDepartmentRepository secondaryDepartmentRepo,
                               UserAccountRepository userAccountRepo,
                               DepartmentRepository departmentRepo,
                               ManagerPermissionDelegationRepository managerDelegationRepo,
@@ -91,6 +93,7 @@ public class PermissionResolver {
         this.departmentPermissionRepo = departmentPermissionRepo;
         this.overrideRepo = overrideRepo;
         this.employeeRepo = employeeRepo;
+        this.secondaryDepartmentRepo = secondaryDepartmentRepo;
         this.userAccountRepo = userAccountRepo;
         this.departmentRepo = departmentRepo;
         this.managerDelegationRepo = managerDelegationRepo;
@@ -251,9 +254,19 @@ public class PermissionResolver {
         Department dept = (e != null) ? e.getDepartment() : null;
         UUID deptId = dept != null ? dept.getId() : null;
         String deptName = dept != null ? dept.getName() : null;
-        Set<String> deptPerms = deptId == null
+        // V459 兼职部门：每个兼职部门（含其全部上级递归）的配置并入并集；
+        // 兼职表默认空 = 与既有合成零差异。
+        List<UUID> deptIds = new ArrayList<>();
+        if (deptId != null) {
+            deptIds.add(deptId);
+        }
+        if (employeeId != null) {
+            deptIds.addAll(secondaryDepartmentRepo.findDepartmentIdsByEmployeeId(employeeId));
+        }
+        Set<String> deptPerms = deptIds.isEmpty()
                 ? new HashSet<>()
-                : new HashSet<>(departmentPermissionRepo.findPermissionCodesByDepartmentIdWithAncestors(deptId));
+                : new HashSet<>(departmentPermissionRepo
+                        .findPermissionCodesByDepartmentIdsWithAncestors(deptIds));
 
         // 个人权限点覆盖：grant → add，revoke → remove
         List<String> grants = new ArrayList<>();

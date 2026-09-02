@@ -23,6 +23,11 @@ abstract interface class EmployeeRepository {
   Future<void> lockAccount(String id);
   Future<void> unlockAccount(String id);
   Future<EmployeeProfile> update(String id, Map<String, dynamic> body);
+  Future<List<EmployeeSecondaryDepartment>> listSecondaryDepartments(String id);
+  Future<void> replaceSecondaryDepartments(
+    String id,
+    List<String> departmentIds,
+  );
   Future<void> transfer(String id, Map<String, dynamic> body);
   Future<void> offboard(String id, Map<String, dynamic> body);
   Future<void> confirm(String id, {String? confirmedDate});
@@ -116,6 +121,35 @@ class DioEmployeeRepository
   @override
   Future<void> lockAccount(String id) async {
     await api.post(ApiEndpoints.employeeAccountLock(id));
+  }
+
+  @override
+  Future<List<EmployeeSecondaryDepartment>> listSecondaryDepartments(
+    String id,
+  ) async {
+    final json = await api.get(ApiEndpoints.employeeSecondaryDepartments(id));
+    final rows = json['items'];
+    if (rows is! List) {
+      throw const FormatException('兼职部门响应缺少 items 列表');
+    }
+    return rows
+        .whereType<Map<String, dynamic>>()
+        .map(EmployeeSecondaryDepartment.fromJson)
+        .toList();
+  }
+
+  @override
+  Future<void> replaceSecondaryDepartments(
+    String id,
+    List<String> departmentIds,
+  ) async {
+    await api.put(
+      ApiEndpoints.employeeSecondaryDepartments(id),
+      body: [
+        for (final departmentId in departmentIds)
+          {'departmentId': departmentId},
+      ],
+    );
   }
 
   @override

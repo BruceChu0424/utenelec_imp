@@ -21,6 +21,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../department/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 
@@ -105,6 +106,10 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
 
   EmployeeProfile? _profile;
 
+  // 兼职部门（V459）：主部门之外兼任的部门；保存走独立端点，不进档案 update body。
+  List<DeptSelection> _secondaryDepartments = const [];
+  List<String> _loadedSecondaryDepartmentIds = const [];
+
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -151,9 +156,28 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
       final p = await ref
           .read(employeeRepositoryProvider)
           .getById(widget.employeeId);
+      // 兼职部门回显失败不阻塞档案编辑（容忍并按空处理）。
+      List<EmployeeSecondaryDepartment> secondary = const [];
+      try {
+        secondary = await ref
+            .read(employeeRepositoryProvider)
+            .listSecondaryDepartments(widget.employeeId);
+      } catch (_) {}
       if (!mounted) return;
       _profile = p;
       _prefill(p);
+      _secondaryDepartments = [
+        for (final s in secondary)
+          DeptSelection(
+            id: s.departmentId,
+            name: s.departmentName,
+            fullPath: s.departmentName,
+            level: '',
+          ),
+      ];
+      _loadedSecondaryDepartmentIds = [
+        for (final s in secondary) s.departmentId,
+      ];
       if (mounted) setState(() => _loading = false);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -255,11 +279,27 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     if (!_formKey.currentState!.validate()) return;
     final l10n = AppLocalizations.of(context);
     final body = _buildPayload();
+    final currentSecondaryIds = [for (final s in _secondaryDepartments) s.id];
+    final secondaryChanged = !_listEquals(
+      currentSecondaryIds,
+      _loadedSecondaryDepartmentIds,
+    );
+    if (body.isEmpty && !secondaryChanged) {
+      context.pop();
+      return;
+    }
     setState(() => _saving = true);
     try {
-      await ref
-          .read(employeeRepositoryProvider)
-          .update(widget.employeeId, body);
+      final repository = ref.read(employeeRepositoryProvider);
+      if (body.isNotEmpty) {
+        await repository.update(widget.employeeId, body);
+      }
+      if (secondaryChanged) {
+        await repository.replaceSecondaryDepartments(
+          widget.employeeId,
+          currentSecondaryIds,
+        );
+      }
       if (!mounted) return;
       context.appSuccess(l10n.employeeEditSaved);
       context.pop();
@@ -272,6 +312,14 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  static bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   String _genderLabel(AppLocalizations l10n, String code) => switch (code) {
@@ -403,6 +451,46 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                               : _profile!.departmentName!,
                         ),
                       ),
+                      // 兼职部门（V459）：主部门之外兼任的部门，权限合成并入其
+                      // 部门链；待审弹卡按「主/兼职 ∈ 部门子树 且 持职责权限码」定向。
+                      if (ref
+                          .watch(currentPermissionsProvider)
+                          .contains(Perm.employeeEdit))
+                        UtenDepartmentPicker(
+                          mode: UtenDepartmentPickerMode.multi,
+                          initialSelection: _secondaryDepartments,
+                          label: '兼职部门',
+                          hint: '主部门之外兼任的部门（并入其权限配置）',
+                          onChanged: (selection) {
+                            final primaryId = _profile?.departmentId;
+                            var filtered = selection;
+                            if (primaryId != null &&
+                                selection.any((s) => s.id == primaryId)) {
+                              filtered = [
+                                for (final s in selection)
+                                  if (s.id != primaryId) s,
+                              ];
+                              context.appWarning('兼职部门不能与主部门相同，已自动剔除');
+                            }
+                            setState(() => _secondaryDepartments = filtered);
+                          },
+                        )
+                      else
+                        InputDecorator(
+                          decoration: _deco('兼职部门').copyWith(
+                            helper: const UtenFieldMessage.helper(
+                              '兼职部门维护需要员工编辑权限',
+                            ),
+                            prefixIcon: const Icon(Icons.group_add_outlined),
+                          ),
+                          child: Text(
+                            _secondaryDepartments.isEmpty
+                                ? '—'
+                                : _secondaryDepartments
+                                      .map((s) => s.name)
+                                      .join('、'),
+                          ),
+                        ),
                       DropdownButtonFormField<String>(
                         initialValue: _employmentType,
                         decoration: _deco(l10n.employeeFieldEmploymentType),

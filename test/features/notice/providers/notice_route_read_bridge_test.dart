@@ -99,10 +99,7 @@ void main() {
   ) async {
     final repo = _FakeNoticeRepository()
       ..listResult = [
-        _noticeWith(
-          'a',
-          actionRoute: '/finance/procurement-approvals',
-        ),
+        _noticeWith('a', actionRoute: '/finance/procurement-approvals'),
       ];
     final container = ProviderContainer(
       overrides: [noticeRepositoryProvider.overrideWithValue(repo)],

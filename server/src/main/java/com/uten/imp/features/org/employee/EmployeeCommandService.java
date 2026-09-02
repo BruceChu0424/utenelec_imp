@@ -77,6 +77,7 @@ public class EmployeeCommandService {
     private final EmployeeVehiclePhoneService vehiclePhoneService;
     private final EmployeeLoginAccountSync loginAccountSync;
     private final DataHandoverService dataHandoverService;
+    private final EmployeeSecondaryDepartmentRepository secondaryDeptRepo;
 
     // ===== 更新 =====
     /** 编辑员工档案：状态机收口——离职/复职禁止在此直改，必须走 /offboard、/rehire 以保证账号冻结与任职轨迹闭环；每次保存递增 version，使在途申请审批时 409 防丢更新。 */
@@ -307,6 +308,9 @@ public class EmployeeCommandService {
         historyRepo.save(h);
 
         if (departmentChanged) clearManagedDepartments(e);
+        // V459 调岗联动：新主部门若在兼职列表中，先移除该兼职行——
+        // 兼职不得等于主部门（数据库触发器兜底），且主部门归属已单值表达。
+        secondaryDeptRepo.deleteByEmployeeIdAndDepartmentId(e.getId(), to.getId());
         e.setDepartment(to);
         e.setPosition(toPos);
         if (req.supervisorId() != null) {

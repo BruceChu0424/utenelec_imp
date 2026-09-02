@@ -8,6 +8,7 @@ import com.uten.imp.features.org.department.staffpermission.PermissionSurfaceReg
 import com.uten.imp.features.org.department.staffpermission.PagePermissionDelegationFeatureGate;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.org.employee.EmployeeSecondaryDepartmentRepository;
 import com.uten.imp.features.rbac.DepartmentPermissionRepository;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
 import com.uten.imp.features.rbac.Permission;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,6 +55,7 @@ class PermissionResolverManagerDelegationTest {
     @Mock private DepartmentPermissionRepository departmentPermissionRepo;
     @Mock private UserPermissionOverrideRepository overrideRepo;
     @Mock private EmployeeRepository employeeRepo;
+    @Mock private EmployeeSecondaryDepartmentRepository secondaryDeptRepo;
     @Mock private UserAccountRepository userAccountRepo;
     @Mock private DepartmentRepository departmentRepo;
     @Mock private ManagerPermissionDelegationRepository managerDelegationRepo;
@@ -63,6 +66,7 @@ class PermissionResolverManagerDelegationTest {
     void setUp() {
         resolver = resolverWithGate(true);
         when(roleRepo.findByCode("employee")).thenReturn(Optional.empty());
+        lenient().when(secondaryDeptRepo.findDepartmentIdsByEmployeeId(any())).thenReturn(List.of());
     }
 
     private PermissionResolver resolverWithGate(boolean enabled) {
@@ -74,6 +78,7 @@ class PermissionResolverManagerDelegationTest {
                 departmentPermissionRepo,
                 overrideRepo,
                 employeeRepo,
+                secondaryDeptRepo,
                 userAccountRepo,
                 departmentRepo,
                 managerDelegationRepo,
@@ -93,8 +98,8 @@ class PermissionResolverManagerDelegationTest {
         UserAccount targetAccount = account(UUID.randomUUID(), targetEmployee.getId());
         when(employeeRepo.findById(targetEmployee.getId()))
                 .thenReturn(Optional.of(targetEmployee));
-        when(departmentPermissionRepo.findPermissionCodesByDepartmentIdWithAncestors(
-                department.getId())).thenReturn(List.of());
+        when(departmentPermissionRepo.findPermissionCodesByDepartmentIdsWithAncestors(
+                List.of(department.getId()))).thenReturn(List.of());
         when(overrideRepo.findCodeAndEffectByUserId(targetAccount.getId()))
                 .thenReturn(List.of());
         ManagerPermissionDelegationRepository.EnabledDelegationCandidate candidate =
@@ -165,8 +170,8 @@ class PermissionResolverManagerDelegationTest {
                 targetEmployee.getId());
         when(employeeRepo.findById(targetEmployee.getId()))
                 .thenReturn(Optional.of(targetEmployee));
-        when(departmentPermissionRepo.findPermissionCodesByDepartmentIdWithAncestors(
-                department.getId())).thenReturn(List.of());
+        when(departmentPermissionRepo.findPermissionCodesByDepartmentIdsWithAncestors(
+                List.of(department.getId()))).thenReturn(List.of());
         when(overrideRepo.findCodeAndEffectByUserId(targetAccount.getId()))
                 .thenReturn(List.of());
         when(userAccountRepo.findById(targetAccount.getId()))
@@ -184,8 +189,8 @@ class PermissionResolverManagerDelegationTest {
                 .equals(breakdowns.full().effective()));
         verify(roleRepo, times(1)).findByCode("employee");
         verify(departmentPermissionRepo, times(1))
-                .findPermissionCodesByDepartmentIdWithAncestors(
-                        department.getId());
+                .findPermissionCodesByDepartmentIdsWithAncestors(
+                        List.of(department.getId()));
         verify(overrideRepo, times(1))
                 .findCodeAndEffectByUserId(targetAccount.getId());
         verify(managerDelegationRepo, times(1))
@@ -294,8 +299,8 @@ class PermissionResolverManagerDelegationTest {
                 .thenReturn(Optional.of(targetAccount));
         when(userAccountRepo.findById(grantorAccount.getId()))
                 .thenReturn(Optional.of(grantorAccount));
-        when(departmentPermissionRepo.findPermissionCodesByDepartmentIdWithAncestors(
-                department.getId())).thenReturn(List.of());
+        when(departmentPermissionRepo.findPermissionCodesByDepartmentIdsWithAncestors(
+                List.of(department.getId()))).thenReturn(List.of());
         when(overrideRepo.findCodeAndEffectByUserId(targetAccount.getId()))
                 .thenReturn(List.of());
         when(overrideRepo.findCodeAndEffectByUserId(grantorAccount.getId()))
@@ -357,8 +362,8 @@ class PermissionResolverManagerDelegationTest {
                 .thenReturn(Optional.of(targetAccount));
         lenient().when(userAccountRepo.findById(grantorAccount.getId()))
                 .thenReturn(Optional.of(grantorAccount));
-        lenient().when(departmentPermissionRepo.findPermissionCodesByDepartmentIdWithAncestors(
-                department.getId())).thenReturn(List.of());
+        lenient().when(departmentPermissionRepo.findPermissionCodesByDepartmentIdsWithAncestors(
+                List.of(department.getId()))).thenReturn(List.of());
         lenient().when(overrideRepo.findCodeAndEffectByUserId(targetAccount.getId()))
                 .thenReturn(List.of());
         lenient().when(overrideRepo.findCodeAndEffectByUserId(grantorAccount.getId()))

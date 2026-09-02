@@ -439,3 +439,27 @@ class AccountInput {
     if (loginAccount != null) 'loginAccount': loginAccount,
   };
 }
+
+/// 兼职部门归属（V459）：员工在主部门之外兼任的部门，权限合成并入兼职部门链。
+class EmployeeSecondaryDepartment {
+  const EmployeeSecondaryDepartment({
+    required this.departmentId,
+    required this.departmentName,
+    this.startedOn,
+    this.note,
+  });
+
+  factory EmployeeSecondaryDepartment.fromJson(Map<String, dynamic> json) {
+    return EmployeeSecondaryDepartment(
+      departmentId: json['departmentId'] as String,
+      departmentName: json['departmentName'] as String? ?? '',
+      startedOn: json['startedOn'] as String?,
+      note: json['note'] as String?,
+    );
+  }
+
+  final String departmentId;
+  final String departmentName;
+  final String? startedOn;
+  final String? note;
+}

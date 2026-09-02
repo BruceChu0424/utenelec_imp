@@ -50,12 +50,16 @@ class ResetBusinessDataScriptContractTest {
     void currentPolicyClassifiesEveryKnownParentTableAndPreservesEvidence() {
         Map<String, String> policy = policy();
 
-        // V458 委外先做后审账本加 2 张业务事实表（315→317，CLEAR 220→222）。
-        assertThat(policy).hasSize(317);
+        // V458 委外先做后审账本加 2 张业务事实表（315→317，CLEAR 220→222）；
+        // V459 兼职部门表属组织与权限治理数据（PRESERVE，317→318、95→96）。
+        assertThat(policy).hasSize(318);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
                 .isEqualTo(222);
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(95);
+                .isEqualTo(96);
+
+        // V459：兼职部门归属是治理配置，重置保留
+        assertThat(policy).containsEntry("employee_secondary_departments", "PRESERVE");
 
         // V454：通知庆典主角表随聚合祝福卡引入，属可清业务数据
         assertThat(policy).containsEntry("notice_celebration_subjects", "CLEAR");
@@ -178,7 +182,8 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(456, 418)")
                 .contains("(457, 419)")
                 .contains("(458, 420)")
-                .contains("仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419 或 V458/420 目录")
+                .contains("(459, 421)")
+                .contains("仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420 或 V459/421 目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")
@@ -200,7 +205,7 @@ class ResetBusinessDataScriptContractTest {
                 .contains("extension.extconfig")
                 .contains("c.relname <> 'spatial_ref_sys'")
                 .contains("to_regclass")
-                .contains("PRESERVE 95 张");
+                .contains("PRESERVE 96 张");
         assertThat(sql.indexOf("('warehouse_goods_place_preferences', 'CLEAR')"))
                 .isBetween(
                         sql.indexOf("('warehouse_arrival_registration_commands', 'CLEAR')") + 1,

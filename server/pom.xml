@@ -28,6 +28,8 @@
         <jackson-bom.version>2.21.5</jackson-bom.version>
         <!-- GHSA-qv9r-c865-cp47：log4j-api 2.24.3 → 2.25.5（Medium，osv-scanner 门禁） -->
         <log4j2.version>2.25.5</log4j2.version>
+        <!-- GHSA-9xv2-5v5q-p794 / GHSA-gcx9-497g-6cp6 / GHSA-h3x4-894j-xpx5：tomcat-embed-core 10.1.55 → 10.1.58（Critical ×3，osv-scanner 门禁） -->
+        <tomcat.version>10.1.58</tomcat.version>
         <opentelemetry.version>1.62.0</opentelemetry.version>
         <postgresql.version>42.7.12</postgresql.version>
     </properties>

@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -70,6 +71,7 @@ class SubcontractMaterialPlanServiceTest {
     private List<Object[]> issueRows;
     private List<Object[]> remainingRows;
     private Map<UUID, List<Object[]>> bomRowsByGoods;
+    private Map<UUID, BigDecimal> availableBaseByGoods;
 
     @BeforeEach
     void setUp() {
@@ -85,7 +87,18 @@ class SubcontractMaterialPlanServiceTest {
         issueRows = List.of();
         remainingRows = List.of();
         bomRowsByGoods = Map.of();
+        availableBaseByGoods = Map.of();
         stubNativeQueriesBySql();
+        // 直下单销售式供货：按货品 stub 全局可用量（未设置的货品视为 0=全缺）。
+        when(jdbc.queryForObject(
+                ArgumentMatchers.<String>argThat(sql -> sql != null
+                        && sql.contains("FROM stock_balances b")),
+                eq(BigDecimal.class), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    UUID goodsId = invocation.getArgument(2);
+                    BigDecimal value = availableBaseByGoods.get(goodsId);
+                    return value == null ? BigDecimal.ZERO : value;
+                });
         when(jdbc.query(
                 ArgumentMatchers.<String>argThat(sql -> sql != null
                         && sql.contains("FROM subcontract_material_plan_items pi")),
@@ -178,8 +191,141 @@ class SubcontractMaterialPlanServiceTest {
                 eq(ACTOR_ID), eq(ACTOR_ID));
         verify(issueRepo, never()).save(any());
         verify(issueItemRepo, never()).save(any());
-        verify(chainNotice).notifySubcontractPreparationRequired(insertedPlanItemId.getValue());
+        verify(chainNotice).notifySubcontractPrepareShortage(insertedPlanItemId.getValue());
         verify(chainNotice, never()).notifySubcontractOutboundReady(any());
+    }
+
+    @Test
+    void approvalWithBomAndFullStockShipsDirectlyWithoutMakeLine() {
+        orderRows = rows(new Object[]{ORDER_ID, "EO-STOCK-FULL", SUPPLIER_ID, null});
+        orderItemRows = rows(new Object[]{
+                MAKE_ITEM_ID, MAKE_GOODS_ID, null, new BigDecimal("7"), 1,
+                new BigDecimal("2"), DOCUMENT_UNIT_ID, WAREHOUSE_ID});
+        goodsRows = rows(new Object[]{
+                MAKE_GOODS_ID, "FG-M", "需先自制目标件", MAKE_BASE_UNIT_ID, "B-01"});
+        bomRowsByGoods = Map.of(MAKE_GOODS_ID, rows(new Object[]{
+                UUID.randomUUID(), COMPONENT_GOODS_ID, null, new BigDecimal("3")}));
+        availableBaseByGoods = Map.of(MAKE_GOODS_ID, new BigDecimal("99"));
+
+        service.createPlanOnApproval(ORDER_ID);
+
+        // 现货充足：整行拆为 DIRECT 直发，不再生成前置自制行，也不再通知计划部补产。
+        verify(jdbc).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), eq(MAKE_ITEM_ID), eq(1),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_BASE_UNIT_ID), eq(new BigDecimal("2")),
+                eq(new BigDecimal("14.0000")),
+                eq("DIRECT_OUTBOUND"), eq("READY_OUTBOUND"),
+                eq(new BigDecimal("14.0000")),
+                eq(WAREHOUSE_ID), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
+        verify(jdbc, never()).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), any(UUID.class), any(int.class),
+                eq(MAKE_GOODS_ID), any(), any(),
+                any(UUID.class), any(), any(),
+                eq("MAKE_THEN_OUTBOUND"), any(), any(),
+                any(), anyBoolean(), any(), any(), any(),
+                any(), any());
+        verify(chainNotice).notifySubcontractOutboundReady(any());
+        verify(chainNotice, never()).notifySubcontractPrepareShortage(any());
+    }
+
+    @Test
+    void approvalWithBomAndPartialStockSplitsDirectAndShortageLines() {
+        orderRows = rows(new Object[]{ORDER_ID, "EO-STOCK-PART", SUPPLIER_ID, null});
+        orderItemRows = rows(new Object[]{
+                MAKE_ITEM_ID, MAKE_GOODS_ID, null, new BigDecimal("7"), 1,
+                new BigDecimal("2"), DOCUMENT_UNIT_ID, WAREHOUSE_ID});
+        goodsRows = rows(new Object[]{
+                MAKE_GOODS_ID, "FG-M", "需先自制目标件", MAKE_BASE_UNIT_ID, "B-01"});
+        bomRowsByGoods = Map.of(MAKE_GOODS_ID, rows(new Object[]{
+                UUID.randomUUID(), COMPONENT_GOODS_ID, null, new BigDecimal("3")}));
+        // 需求 14、现货 5 → DIRECT 行 5 + MAKE 缺口行 9。
+        availableBaseByGoods = Map.of(MAKE_GOODS_ID, new BigDecimal("5"));
+
+        service.createPlanOnApproval(ORDER_ID);
+
+        verify(jdbc).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), eq(MAKE_ITEM_ID), eq(1),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_BASE_UNIT_ID), eq(new BigDecimal("2")),
+                eq(new BigDecimal("5.0000")),
+                eq("DIRECT_OUTBOUND"), eq("READY_OUTBOUND"),
+                eq(new BigDecimal("5.0000")),
+                eq(WAREHOUSE_ID), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
+        verify(jdbc).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), eq(MAKE_ITEM_ID), eq(2),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_BASE_UNIT_ID), eq(new BigDecimal("2")),
+                eq(new BigDecimal("9.0000")),
+                eq("MAKE_THEN_OUTBOUND"), eq("ACTION_REQUIRED"), eq(BigDecimal.ZERO),
+                eq(WAREHOUSE_ID), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
+        verify(chainNotice).notifySubcontractOutboundReady(any());
+        verify(chainNotice).notifySubcontractPrepareShortage(any());
+    }
+
+    @Test
+    void approvalWithSharedStockPoolDoesNotDoubleCountAcrossLines() {
+        UUID secondItem = UUID.randomUUID();
+        orderRows = rows(new Object[]{ORDER_ID, "EO-STOCK-POOL", SUPPLIER_ID, null});
+        orderItemRows = List.of(
+                new Object[]{MAKE_ITEM_ID, MAKE_GOODS_ID, null,
+                        new BigDecimal("5"), 1, BigDecimal.ONE,
+                        DOCUMENT_UNIT_ID, WAREHOUSE_ID},
+                new Object[]{secondItem, MAKE_GOODS_ID, null,
+                        new BigDecimal("5"), 2, BigDecimal.ONE,
+                        DOCUMENT_UNIT_ID, WAREHOUSE_ID});
+        goodsRows = rows(new Object[]{
+                MAKE_GOODS_ID, "FG-M", "需先自制目标件", MAKE_BASE_UNIT_ID, "B-01"});
+        bomRowsByGoods = Map.of(MAKE_GOODS_ID, rows(new Object[]{
+                UUID.randomUUID(), COMPONENT_GOODS_ID, null, BigDecimal.ONE}));
+        // 同货两行各需 5、可用量共 6：首行直发 5，次行直发 1 + 缺口 4，不重复占用。
+        availableBaseByGoods = Map.of(MAKE_GOODS_ID, new BigDecimal("6"));
+
+        service.createPlanOnApproval(ORDER_ID);
+
+        verify(jdbc).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), eq(MAKE_ITEM_ID), eq(1),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_BASE_UNIT_ID), eq(BigDecimal.ONE), eq(new BigDecimal("5.0000")),
+                eq("DIRECT_OUTBOUND"), eq("READY_OUTBOUND"), eq(new BigDecimal("5.0000")),
+                eq(WAREHOUSE_ID), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
+        verify(jdbc).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), eq(secondItem), eq(2),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_BASE_UNIT_ID), eq(BigDecimal.ONE), eq(new BigDecimal("1.0000")),
+                eq("DIRECT_OUTBOUND"), eq("READY_OUTBOUND"), eq(new BigDecimal("1.0000")),
+                eq(WAREHOUSE_ID), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
+        verify(jdbc).update(
+                planItemInsertSql(),
+                any(UUID.class), any(UUID.class), eq(secondItem), eq(3),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
+                eq(MAKE_BASE_UNIT_ID), eq(BigDecimal.ONE), eq(new BigDecimal("4.0000")),
+                eq("MAKE_THEN_OUTBOUND"), eq("ACTION_REQUIRED"), eq(BigDecimal.ZERO),
+                eq(WAREHOUSE_ID), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
     }
 
     @Test
@@ -233,7 +379,7 @@ class SubcontractMaterialPlanServiceTest {
                         && DIRECT_GOODS_ID.equals(item.getGoodsId())
                         && item.getQty().compareTo(new BigDecimal("3.0000")) == 0));
         verify(chainNotice).notifySubcontractOutboundReady(any());
-        verify(chainNotice).notifySubcontractPreparationRequired(any());
+        verify(chainNotice).notifySubcontractPrepareShortage(any());
     }
 
     @Test

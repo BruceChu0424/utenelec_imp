@@ -21,6 +21,7 @@ class SubcontractMaterialPlanLine {
     this.remainingQtySnapshot,
     this.preparationAnalysisId,
     this.preparationAnalysisItemId,
+    this.bomHasChildrenSnapshot = false,
     this.blocker,
     this.allowedActions = const {},
   });
@@ -43,10 +44,16 @@ class SubcontractMaterialPlanLine {
   final double? remainingQtySnapshot;
   final String? preparationAnalysisId;
   final String? preparationAnalysisItemId;
+  final bool bomHasChildrenSnapshot;
   final String? blocker;
   final Set<String> allowedActions;
 
   bool get isLegacyBomComponent => flowMode == 'LEGACY_BOM_COMPONENT';
+
+  /// 直下单销售式供货：有子层但仓库现货充足时，批准拆出的现货直发行
+  /// flowMode=DIRECT_OUTBOUND 且本快照为 true（缺口另行走前置自制行）。
+  bool get isStockDirectLine =>
+      flowMode == 'DIRECT_OUTBOUND' && bomHasChildrenSnapshot;
 
   double get remainingQty {
     if (remainingQtySnapshot case final value?) return value < 0 ? 0 : value;
@@ -84,6 +91,7 @@ class SubcontractMaterialPlanLine {
         remainingQtySnapshot: (json['remainingQty'] as num?)?.toDouble(),
         preparationAnalysisId: json['preparationAnalysisId'] as String?,
         preparationAnalysisItemId: json['preparationAnalysisItemId'] as String?,
+        bomHasChildrenSnapshot: json['bomHasChildrenSnapshot'] == true,
         blocker: json['blocker'] as String?,
         allowedActions: {
           for (final action in (json['allowedActions'] as List? ?? const []))

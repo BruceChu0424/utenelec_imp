@@ -73,13 +73,14 @@ class SubcontractOutboundReadModelContractTest {
                 new BigDecimal("20"), new BigDecimal("4"), new BigDecimal("3"),
                 "MAKE_THEN_OUTBOUND", "WAITING_FQC", new BigDecimal("12"),
                 BigDecimal.ZERO, new BigDecimal("16"),
-                UUID.randomUUID(), UUID.randomUUID(), "等待品质检验",
+                UUID.randomUUID(), UUID.randomUUID(), true, "等待品质检验",
                 List.of("OPEN_ANALYSIS"));
 
         JsonNode json = mapper.valueToTree(line);
 
         assertThat(json.has("draftReservedQty")).isTrue();
         assertThat(json.has("draftQty")).isFalse();
+        assertThat(json.get("bomHasChildrenSnapshot").booleanValue()).isTrue();
         assertThat(json.get("readyOutboundQty").decimalValue())
                 .isEqualByComparingTo("0");
         assertThat(json.get("remainingQty").decimalValue())
@@ -91,6 +92,7 @@ class SubcontractOutboundReadModelContractTest {
                 .containsSubsequence(
                         "preparedQty", "readyOutboundQty", "remainingQty",
                         "preparationAnalysisId", "preparationAnalysisItemId",
+                        "bomHasChildrenSnapshot",
                         "blocker", "allowedActions");
     }
 }

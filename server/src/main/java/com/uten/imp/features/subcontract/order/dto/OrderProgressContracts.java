@@ -32,6 +32,7 @@ public final class OrderProgressContracts {
             BigDecimal remainingQty,
             UUID preparationAnalysisId,
             UUID preparationAnalysisItemId,
+            boolean bomHasChildrenSnapshot,
             String blocker,
             List<String> allowedActions) {
         public MaterialPlanLine {

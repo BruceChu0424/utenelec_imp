@@ -182,6 +182,97 @@ class SubcontractChainNoticeTest {
     }
 
     @Test
+    void prepareShortageTargetsEligiblePlanAndProductionUsersAndMaker() {
+        UUID planItemId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID makerEmployeeId = UUID.randomUUID();
+        UUID makerUserId = UUID.randomUUID();
+        UUID plannerId = UUID.randomUUID();
+        UUID productionId = UUID.randomUUID();
+        UUID preparationViewOnlyId = UUID.randomUUID();
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        NoticeService notice = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        when(jdbc.queryForList(
+                contains("item.preparation_status = 'ACTION_REQUIRED'"),
+                eq(planItemId))).thenReturn(List.of(Map.of(
+                        "plan_id", UUID.randomUUID(),
+                        "order_id", orderId,
+                        "order_bill_no", "WO-SHORT-001",
+                        "maker_id", makerEmployeeId,
+                        "planned_qty", new BigDecimal("4.0000"),
+                        "goods_code", "FG-002",
+                        "goods_name", "缺口目标件")));
+        when(jdbc.queryForList(
+                contains("WITH RECURSIVE subtree(id)"),
+                eq(UUID.class),
+                eq("SUB_PLAN"))).thenReturn(List.of(plannerId, preparationViewOnlyId));
+        when(jdbc.queryForList(
+                contains("WITH RECURSIVE subtree(id)"),
+                eq(UUID.class),
+                eq("DEPT_PROD"))).thenReturn(List.of(productionId));
+        UserAccount planner = activeUser(plannerId);
+        UserAccount production = activeUser(productionId);
+        UserAccount preparationViewOnly = activeUser(preparationViewOnlyId);
+        UserAccount maker = activeUser(makerUserId);
+        when(users.findById(plannerId)).thenReturn(Optional.of(planner));
+        when(users.findById(productionId)).thenReturn(Optional.of(production));
+        when(users.findById(preparationViewOnlyId))
+                .thenReturn(Optional.of(preparationViewOnly));
+        when(users.findByEmployeeId(makerEmployeeId))
+                .thenReturn(Optional.of(maker));
+        when(users.findById(makerUserId)).thenReturn(Optional.of(maker));
+        when(permissions.permsOf(planner)).thenReturn(Set.of(
+                "notice:read",
+                "subcontract_preparation:view",
+                "subcontract_preparation:start"));
+        when(permissions.permsOf(production)).thenReturn(Set.of(
+                "notice:read",
+                "subcontract_preparation:view",
+                "subcontract_preparation:start"));
+        when(permissions.permsOf(preparationViewOnly)).thenReturn(Set.of(
+                "notice:read", "subcontract_preparation:view"));
+        ChainNoticeService service = service(
+                notice, users, permissions, jdbc,
+                mock(BusinessEventPublisher.class));
+
+        service.deliverOutboxEvent(
+                ChainNoticeService.EVENT_SUBCONTRACT_PREPARE_SHORTAGE,
+                planItemId,
+                new ObjectMapper().createObjectNode());
+
+        String taskRoute = "/subcontract/preparations?planItemId=" + planItemId;
+        verify(notice).publishForUser(
+                eq(plannerId),
+                eq("待补产委外缺口：WO-SHORT-001"),
+                contains("缺口 4(基本单位)"),
+                eq(ChainNoticeService.TYPE_TASK),
+                anyString(),
+                eq(taskRoute),
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_PREPARE_SHORTAGE));
+        verify(notice).publishForUser(
+                eq(productionId),
+                eq("待补产委外缺口：WO-SHORT-001"),
+                contains("现货部分已另行通知仓库直接出仓"),
+                eq(ChainNoticeService.TYPE_TASK),
+                anyString(),
+                eq(taskRoute),
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_PREPARE_SHORTAGE));
+        verify(notice).publishForUser(
+                eq(makerUserId),
+                eq("委外目标件存在生产缺口：WO-SHORT-001"),
+                contains("仅作进度提醒"),
+                eq(ChainNoticeService.TYPE_WORKFLOW),
+                anyString(),
+                eq("/subcontract/orders/" + orderId),
+                eq(ChainNoticeService.EVENT_SUBCONTRACT_PREPARE_SHORTAGE));
+        verify(notice, never()).publishForUser(
+                eq(preparationViewOnlyId), anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString());
+    }
+
+    @Test
     void readyTargetsWarehouseViewAndExecuteAndNotLegacyHandle() {
         UUID planItemId = UUID.randomUUID();
         UUID planId = UUID.randomUUID();

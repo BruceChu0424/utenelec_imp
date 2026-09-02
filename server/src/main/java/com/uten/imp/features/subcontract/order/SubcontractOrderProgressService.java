@@ -94,7 +94,8 @@ public class SubcontractOrderProgressService {
                                WHERE ii.plan_item_id = pi.id
                                  AND i.status = 0 AND i.is_deleted = FALSE), 0), 0),
                        GREATEST(pi.planned_qty - pi.issued_qty, 0),
-                       pi.preparation_analysis_id, pi.preparation_analysis_item_id
+                       pi.preparation_analysis_id, pi.preparation_analysis_item_id,
+                       pi.bom_has_children_snapshot
                 FROM subcontract_material_plan_items pi
                 JOIN goods pg ON pg.id = pi.parent_goods_id
                 JOIN goods g ON g.id = pi.goods_id
@@ -167,6 +168,7 @@ public class SubcontractOrderProgressService {
                         bd(row[7]), bd(row[8]), bd(row[9]), bd(row[10]),
                         (String) row[11], (String) row[12], bd(row[13]), bd(row[14]),
                         bd(row[15]), (UUID) row[16], (UUID) row[17],
+                        Boolean.TRUE.equals(row[18]),
                         preparationBlocker((String) row[12]),
                         preparationActions((String) row[12], (UUID) row[16],
                                 canOpenPreparationAnalysis)))

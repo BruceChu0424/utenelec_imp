@@ -155,7 +155,8 @@ public class SubcontractMaterialPlanService
                 String poolKey = goodsId + "|" + Objects.toString(colorId, "");
                 BigDecimal avail = stockPool.computeIfAbsent(poolKey,
                         k -> globalAvailableBase(goodsId, colorId));
-                BigDecimal stockTake = planned.min(avail.max(BigDecimal.ZERO));
+                BigDecimal stockTake = planned.min(avail.max(BigDecimal.ZERO))
+                        .setScale(4, RoundingMode.HALF_UP);
                 if (stockTake.signum() > 0) {
                     stockPool.put(poolKey, avail.subtract(stockTake));
                 }
@@ -165,7 +166,7 @@ public class SubcontractMaterialPlanService
                             UUID.randomUUID(), orderItemId, goodsId, colorId,
                             baseUnitId, orderUnitRate, stockTake,
                             "DIRECT_OUTBOUND", "READY_OUTBOUND", stockTake,
-                            (UUID) item[7], false, bom.fingerprint(),
+                            (UUID) item[7], true, bom.fingerprint(),
                             null, null, null));
                 }
                 if (makeQty.signum() > 0) {

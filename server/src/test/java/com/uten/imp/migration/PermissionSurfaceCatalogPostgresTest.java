@@ -102,7 +102,9 @@ class PermissionSurfaceCatalogPostgresTest {
                     statement, "purchase.hub", "supplier_return_task:complete"));
             assertEquals(1, linkCount(
                     statement, "hr.visitor-security", "visitor:verify"));
-            assertEquals(16, scalarLong(statement, """
+            // V455 retired the zero-reference mrp codes (generate_draw /
+            // generate_finished_in); 14 = execution 6 + mrp 1 + package 4 + material 3.
+            assertEquals(14, scalarLong(statement, """
                     select count(*)
                     from permission_surface_permissions link
                     join permission_surfaces surface
@@ -252,7 +254,20 @@ class PermissionSurfaceCatalogPostgresTest {
                 "production_where_used:view"),
                 registry.permissionsFor("production.hub"));
 
-        assertEquals(Set.of(), registry.permissionsFor("quality.lab-test"));
+        // V455: quality.lab-test 面随 lab:test 码整体退役；守卫页守卫同源面开始可装载。
+        assertFalse(registry.isKnown("quality.lab-test"));
+        assertEquals(Set.of("account:support", "authorization:manage"),
+                registry.permissionsFor("admin.permission-console"));
+        assertEquals(Set.of("audit_log:view"),
+                registry.permissionsFor("admin.audit-center"));
+        assertEquals(Set.of(
+                        "procurement_inspection:view",
+                        "production_quality_inspection:view"),
+                registry.permissionsFor("quality.task-center"));
+        assertEquals(Set.of("production_plan:view"),
+                registry.permissionsFor("production.schedule"));
+        assertEquals(Set.of("production_material_analysis:view"),
+                registry.permissionsFor("production.chain-health"));
     }
 
     @Test

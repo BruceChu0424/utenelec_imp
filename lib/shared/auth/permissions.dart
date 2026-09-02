@@ -217,9 +217,7 @@ abstract final class Perm {
       'procurement_iqc_rejection:view_all';
   static const procurementIqcRejectionAmountView =
       'procurement_iqc_rejection:amount:view';
-  // ===== 实验室 =====
-  static const labTestView = 'lab:test:view';
-  static const labTestUpload = 'lab:test:upload';
+  // V455：lab:test:view/upload 已随孤儿码下线（后端无端点、前端无页面）。
 
   // ===== 销售管理（综合营销部）=====
   static const salesQuoteView = 'sales_quote:view';
@@ -363,6 +361,9 @@ abstract final class Perm {
   static const subcontractLossClaimFulfill = 'subcontract_loss_claim:fulfill';
   static const subcontractLossClaimReverse = 'subcontract_loss_claim:reverse';
   static const supplierOpenItemOffsetApply = 'supplier_open_item_offset:apply';
+  // V455 对齐：SupplierOffsetController 红冲端点强制码，前端此前缺常量。
+  static const supplierOpenItemOffsetReverse =
+      'supplier_open_item_offset:reverse';
   static const supplierSettlementView = 'supplier_settlement:view';
   static const supplierSettlementCreate = 'supplier_settlement:create';
   static const supplierSettlementConfirm = 'supplier_settlement:confirm';
@@ -393,6 +394,9 @@ abstract final class Perm {
   // ===== 工程研发部任务中心 =====
   static const rdTaskView = 'rd_task:view';
   static const rdTaskResolve = 'rd_task:resolve';
+  // V455 对齐：后端 RdTaskController 一直强制这两个码，前端此前缺常量。
+  static const rdTaskCreate = 'rd_task:create';
+  static const rdTaskAssign = 'rd_task:assign';
 
   // ===== V328：按钮级动作权限（与后端迁移 code 一一对应） =====
   static const materialCategoryCreate = 'material_category:create';
@@ -501,12 +505,19 @@ abstract final class Perm {
   static const productionPlanReverse = 'production_plan:reverse';
   static const productionPlanFlags = 'production_plan:flags';
   static const productionExecutionAssign = 'production_execution:assign';
+  // V455 对齐：执行段取消/红冲端点强制码，前端此前缺常量。
+  static const productionExecutionCancel = 'production_execution:cancel';
+  static const productionExecutionReverse = 'production_execution:reverse';
   static const productionExecutionReleaseDefer =
       'production_execution:release_defer';
   static const productionExecutionDispatch = 'production_execution:dispatch';
   static const productionExecutionStart = 'production_execution:start';
   static const productionPlanningPackageGenerate =
       'production_planning_package:generate';
+  // V455 对齐：MrpController POST /{id}/mrp/generate 强制码（前端暂无调用方，
+  // 供 API 级操作与后续 UI 使用；契约测试兜底防再漂移）。
+  static const productionMrpGeneratePurchase =
+      'production_mrp:generate_purchase';
   static const productionPlanningPackageDraftEdit =
       'production_planning_package:draft_edit';
   static const productionPlanningPackageCancel =
@@ -735,10 +746,13 @@ abstract final class Perm {
     productionPlanReverse,
     productionPlanFlags,
     productionExecutionAssign,
+    productionExecutionCancel,
+    productionExecutionReverse,
     productionExecutionReleaseDefer,
     productionExecutionDispatch,
     productionExecutionStart,
     productionPlanningPackageGenerate,
+    productionMrpGeneratePurchase,
     productionPlanningPackageDraftEdit,
     productionPlanningPackageCancel,
     productionPlanningPackageReverse,
@@ -779,6 +793,7 @@ abstract final class Perm {
     subcontractLossClaimFulfill,
     subcontractLossClaimReverse,
     supplierOpenItemOffsetApply,
+    supplierOpenItemOffsetReverse,
     supplierSettlementCreate,
     supplierSettlementConfirm,
     supplierSettlementDispute,
@@ -942,8 +957,6 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.procurementIqcRejectionReverse,
       Perm.supplierReturnTaskView,
       Perm.supplierReturnTaskComplete,
-      Perm.labTestView,
-      Perm.labTestUpload,
       Perm.supplierView,
       Perm.supplierEdit,
       Perm.supplierExport,
@@ -1038,6 +1051,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.productionPlanViewAll,
       // 工程研发部任务中心
       Perm.rdTaskView, Perm.rdTaskResolve,
+      Perm.rdTaskCreate, Perm.rdTaskAssign,
       // 钱流管理
       Perm.financeReceiptView, Perm.financeReceiptEdit,
       Perm.financePaymentView, Perm.financePaymentEdit,

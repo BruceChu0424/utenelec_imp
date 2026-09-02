@@ -96,6 +96,21 @@ void main() {
     // 2026-08-19：品质任务中心「待检处置」角标读取仓储侧 IQC 待检计数 provider
     //（procurementInspectionPendingCountProvider），与 dashboard->warehouse 同源。
     'quality->warehouse',
+    // 2026-09-01：财务枢纽角标聚合 IQC 驳回待办（同 dashboard->* 聚合同款）。
+    'finance->procurement_iqc_rejection',
+    // 2026-09-01：销售发货财务审核页（V443 surface）复用销售发货任务工作台——
+    // 财务审核即销售发货的财务视图，工作台暂留 sales，待组件化后升 shared。
+    'finance->sales',
+    // 2026-09-01：采购 IQC 驳回列表复用主档表格壳。master_data_table_view 目前
+    // 落在 basic_data/widgets（76 文件引用），专业化阶段将升至 lib/components，
+    // 届时本边与 quality->basic_data 一并收紧删除。
+    'procurement_iqc_rejection->basic_data',
+    // 2026-09-01：品质记录/待处置/FQC 队列复用主档表格壳与 facet 模型（同上，
+    // 组件升位后删除）。
+    'quality->basic_data',
+    // 2026-09-01：委外前置准备页（V447）读取生产物料分析模型与仓储——前置准备
+    // 本质是生产分析的一个视图，与后端 SubcontractPreparation 依赖同构。
+    'subcontract->production',
   };
 
   test('feature dependency graph does not grow', () {

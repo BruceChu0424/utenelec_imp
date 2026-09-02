@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -198,6 +199,8 @@ void main() {
             {
               'id': 'order-item-1',
               'goodsId': 'goods-1',
+              'unitId': 'unit-box',
+              'unitRate': 10,
               'qty': 2,
               'price': 10,
               'discount': 1,
@@ -214,7 +217,8 @@ void main() {
       expect(find.textContaining('重新审核'), findsOneWidget);
 
       await tester.tap(find.text('保存'));
-      await tester.pump();
+      // 保存是异步链 + 通知栈有 220ms 入栈动画，单帧 pump 看不到通知文案。
+      await tester.pumpAndSettle();
       expect(find.text('已转草稿，请重新审核提交财务'), findsOneWidget);
     },
   );
@@ -248,7 +252,22 @@ Future<_EditorApi> _pumpEditor(
         ),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
       ],
-      child: MaterialApp(
+      child: MaterialApp.router(
+        // 保存成功后会 context.replace 跳详情；无 GoRouter 会抛断言，
+        // 使「保存失败」通知顶掉 V187 转草稿提示（旧卡降级为无文本轮廓）。
+        routerConfig: GoRouter(
+          initialLocation: '/edit',
+          routes: [
+            GoRoute(
+              path: '/edit',
+              builder: (_, _) => SalesDocEditPage(docType: type, id: id),
+            ),
+            GoRoute(
+              path: '/:rest(.*)',
+              builder: (_, _) => const SizedBox.shrink(),
+            ),
+          ],
+        ),
         builder: (context, child) => Stack(
           children: [
             Positioned.fill(child: child!),
@@ -260,7 +279,6 @@ Future<_EditorApi> _pumpEditor(
             ),
           ],
         ),
-        home: SalesDocEditPage(docType: type, id: id),
       ),
     ),
   );

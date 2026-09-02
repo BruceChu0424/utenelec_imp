@@ -38,15 +38,23 @@ void main() {
       final editPage = File(
         'lib/features/production/pages/production_plan_edit_page.dart',
       ).readAsStringSync();
-      final analysisPage = File(
+      // 物料分析页已拆 part 模块（5ad31944）：契约匹配主页与全部 part 的拼接源。
+      final analysisLibrary = [
         'lib/features/production/pages/production_material_analysis_page.dart',
-      ).readAsStringSync();
+        ...Directory('lib/features/production/pages/')
+            .listSync()
+            .whereType<File>()
+            .map((f) => f.path)
+            .where(
+              (p) => p.endsWith('.dart') && p.contains('material_analysis_'),
+            ),
+      ].map((p) => File(p).readAsStringSync()).join('\n');
       final wizardPage = File(
         'lib/features/production/pages/production_plan_wizard_page.dart',
       ).readAsStringSync();
 
       expect(editPage, contains('initialProductNo: row.productNo.text.trim()'));
-      expect(analysisPage, contains('widget.seed.initialProductNoFor('));
+      expect(analysisLibrary, contains('widget.seed.initialProductNoFor('));
       expect(wizardPage, contains("labelText: '产品编号(可选)'"));
       expect(wizardPage, contains('UtenFieldMessage.helper('));
       expect(wizardPage, contains('留空由系统按计划单号生成'));

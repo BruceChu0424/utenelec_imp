@@ -1227,6 +1227,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     TextFormField(
                                       controller: _parcelCount,
                                       keyboardType: TextInputType.number,
+                                      errorBuilder: utenTextFieldErrorBuilder,
                                       decoration: const InputDecoration(
                                         labelText: '物流件数',
                                         hintText: '按实际包装填写，不从明细数量推导',

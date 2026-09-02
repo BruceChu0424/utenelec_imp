@@ -8,6 +8,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -921,6 +922,7 @@ class _RecordReturnDialogState extends State<_RecordReturnDialog> {
                 TextFormField(
                   controller: _reference,
                   maxLength: 200,
+                  errorBuilder: utenTextFieldErrorBuilder,
                   decoration: const InputDecoration(labelText: '退回凭证号'),
                   validator: (value) => _required(value, 200, '退回凭证号'),
                 ),
@@ -943,6 +945,7 @@ class _RecordReturnDialogState extends State<_RecordReturnDialog> {
                   minLines: 3,
                   maxLines: 6,
                   maxLength: 2000,
+                  errorBuilder: utenTextFieldErrorBuilder,
                   decoration: const InputDecoration(labelText: '退回说明'),
                   validator: (value) => _required(value, 2000, '退回说明'),
                 ),

@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../models/procurement_iqc_rejection.dart';
 
 enum ProcurementIqcRejectionActionKind {
@@ -263,9 +264,12 @@ class _ProcurementIqcRejectionActionDialogState
                             autofocus: true,
                             maxLength: 200,
                             validator: _requiredReference,
+                            errorBuilder: utenTextFieldErrorBuilder,
                             decoration: InputDecoration(
                               labelText: '$_referenceLabel *',
-                              helperText: '填写可向供应商或物流凭证回查的结构化编号',
+                              helper: const UtenFieldMessage.helper(
+                                '填写可向供应商或物流凭证回查的结构化编号',
+                              ),
                             ),
                           ),
                         ],
@@ -304,9 +308,12 @@ class _ProcurementIqcRejectionActionDialogState
                           maxLines: 5,
                           maxLength: 2000,
                           validator: _requiredNote,
+                          errorBuilder: utenTextFieldErrorBuilder,
                           decoration: InputDecoration(
                             labelText: '$_noteLabel *',
-                            helperText: '说明将进入追加式审计事件，提交后不能覆盖原记录',
+                            helper: const UtenFieldMessage.helper(
+                              '说明将进入追加式审计事件，提交后不能覆盖原记录',
+                            ),
                           ),
                         ),
                         if (_error != null) ...[

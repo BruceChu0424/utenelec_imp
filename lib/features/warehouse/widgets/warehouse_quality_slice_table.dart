@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/warehouse_iqc_stock_in.dart'
     show WarehouseIqcStockInConfirmItem;
@@ -193,6 +194,7 @@ class WarehouseQualitySliceTable extends StatelessWidget {
                           decimal: true,
                         ),
                         inputFormatters: [LengthLimitingTextInputFormatter(24)],
+                        errorBuilder: utenTextFieldErrorBuilder,
                         decoration: const InputDecoration(
                           isDense: true,
                           counterText: '',
@@ -211,6 +213,7 @@ class WarehouseQualitySliceTable extends StatelessWidget {
                         controller: draft.place,
                         enabled: draft.selected && !saving,
                         maxLength: 100,
+                        errorBuilder: utenTextFieldErrorBuilder,
                         decoration: InputDecoration(
                           isDense: true,
                           counterText: '',

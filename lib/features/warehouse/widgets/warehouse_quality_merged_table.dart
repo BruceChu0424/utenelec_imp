@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -254,6 +255,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           controller: draft.place,
           enabled: draft.selected && !saving,
           maxLength: 100,
+          errorBuilder: utenTextFieldErrorBuilder,
           decoration: InputDecoration(
             isDense: true,
             counterText: '',
@@ -293,6 +295,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           enabled: draft.selected && !saving,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [LengthLimitingTextInputFormatter(24)],
+          errorBuilder: utenTextFieldErrorBuilder,
           decoration: InputDecoration(
             isDense: true,
             counterText: '',

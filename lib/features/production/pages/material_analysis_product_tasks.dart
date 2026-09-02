@@ -424,7 +424,7 @@ abstract class _MaterialAnalysisProductTasksState
             key: const Key('material-analysis-ready-section'),
             title: '可安排',
             semanticDescription: '产品与自制候选都可勾选；自制候选勾选后先创建子件任务，再填写计划数量。',
-            helperText: '产品勾选后直接填数量；自制件先创建子件任务。',
+            hint: '产品勾选后直接填数量；自制件先创建子件任务。',
             totalCount: readyTaskCount,
             icon: Icons.play_circle_outline_rounded,
             accent: theme.colorScheme.primary,
@@ -499,7 +499,8 @@ abstract class _MaterialAnalysisProductTasksState
     required Key key,
     required String title,
     required String semanticDescription,
-    String? helperText,
+    // 非 InputDecoration：区块级提示文案，不属于表单字段消息契约范围。
+    String? hint,
     required int totalCount,
     required IconData icon,
     required Color accent,
@@ -534,11 +535,11 @@ abstract class _MaterialAnalysisProductTasksState
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              if (helperText != null) ...[
+              if (hint != null) ...[
                 const SizedBox(width: UtenSpacing.s12),
                 Expanded(
                   child: Text(
-                    helperText,
+                    hint,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: foreground,
                       height: 1.3,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../components/inputs/uten_field_message.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'measurement_capture_profile.dart';
 
@@ -337,6 +338,7 @@ class _MeasurementFields extends StatelessWidget {
         controller: controller,
         enabled: enabled,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        errorBuilder: utenTextFieldErrorBuilder,
         decoration: InputDecoration(
           labelText: '$label（$displayUnit）${required ? ' *' : ''}',
         ),

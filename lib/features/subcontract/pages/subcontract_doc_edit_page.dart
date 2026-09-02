@@ -1345,10 +1345,14 @@ class _SubcontractDocEditPageState
                       labelText: widget.docType == SubcontractDocType.order
                           ? '税率(%)*'
                           : '税率(%)',
-                      helperText: widget.docType == SubcontractDocType.order
-                          ? '必填，允许 0；财务批准后冻结，范围 0–100'
-                          : '范围 0–100',
-                      errorText: _taxRateError,
+                      helper: widget.docType == SubcontractDocType.order
+                          ? const UtenFieldMessage.helper(
+                              '必填，允许 0；财务批准后冻结，范围 0–100',
+                            )
+                          : const UtenFieldMessage.helper('范围 0–100'),
+                      error: _taxRateError == null
+                          ? null
+                          : UtenFieldMessage.error(_taxRateError!),
                     ),
                   ),
                 if (_commercialTermsInheritedFromSource)

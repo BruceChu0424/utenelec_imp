@@ -5,6 +5,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -127,7 +128,9 @@ class _WarehouseSalesOutboundDetailPageState
                           action == WarehouseSalesOutboundAction.reportException
                           ? '异常说明'
                           : '恢复说明',
-                      errorText: validation,
+                      error: validation == null
+                          ? null
+                          : UtenFieldMessage.error(validation!),
                     ),
                   ),
                 ],

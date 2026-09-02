@@ -41,9 +41,12 @@ void main() {
     });
 
     test('detail rows expose the display name', () {
+      // 契约匹配对 dart format 换行不敏感：折行不应使契约失效。
+      final normalized = pageSource.replaceAll(RegExp(r'\s+'), '');
       expect(
-        pageSource,
-        contains("MasterDetailRow('默认结算方式', d.defaultSettlementMethodName)"),
+        normalized,
+        // 不断言收尾括号：formatter 可能加尾逗号
+        contains("MasterDetailRow('默认结算方式',d.defaultSettlementMethodName"),
       );
     });
   });

@@ -383,34 +383,48 @@ def _walk_setting_media(value: Any, location: str, result: list[tuple[str, str]]
         result.append((location, canonical_upload_path(value, location)))
 
 
+def _append_gallery_row(
+    references: list[dict[str, str]],
+    table: str,
+    source_id: object,
+    raw: object,
+) -> None:
+    if raw in (None, ""):
+        return
+    try:
+        values = json.loads(str(raw))
+    except json.JSONDecodeError as exc:
+        raise StateError(f"{table}.gallery is invalid JSON") from exc
+    if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
+        raise StateError(f"{table}.gallery must be a JSON string array")
+    for index, item in enumerate(values):
+        _append_media_reference(references, table, source_id, f"gallery[{index}]", item)
+
+
 def extract_media_references(connection: sqlite3.Connection) -> list[dict[str, str]]:
     references: list[dict[str, str]] = []
-    scalar_fields = [
-        ("Series", "coverImage"),
-        ("SeriesMedia", "image"),
-        ("Product", "image"),
-        ("ProductVariant", "image"),
-        ("ScenePreset", "backgroundImage"),
-        ("LegacyMediaAsset", "publicPath"),
-        ("News", "coverImage"),
-        ("CaseItem", "coverImage"),
-    ]
-    for table, field in scalar_fields:
-        for source_id, value in connection.execute(f'SELECT "id", "{field}" FROM "{table}"'):
-            _append_media_reference(references, table, source_id, field, value)
+    # 表名/列名是固定清单；查询逐条写成字面量，避免任何运行期拼 SQL。
+    for source_id, value in connection.execute('SELECT "id", "coverImage" FROM "Series"'):
+        _append_media_reference(references, "Series", source_id, "coverImage", value)
+    for source_id, value in connection.execute('SELECT "id", "image" FROM "SeriesMedia"'):
+        _append_media_reference(references, "SeriesMedia", source_id, "image", value)
+    for source_id, value in connection.execute('SELECT "id", "image" FROM "Product"'):
+        _append_media_reference(references, "Product", source_id, "image", value)
+    for source_id, value in connection.execute('SELECT "id", "image" FROM "ProductVariant"'):
+        _append_media_reference(references, "ProductVariant", source_id, "image", value)
+    for source_id, value in connection.execute('SELECT "id", "backgroundImage" FROM "ScenePreset"'):
+        _append_media_reference(references, "ScenePreset", source_id, "backgroundImage", value)
+    for source_id, value in connection.execute('SELECT "id", "publicPath" FROM "LegacyMediaAsset"'):
+        _append_media_reference(references, "LegacyMediaAsset", source_id, "publicPath", value)
+    for source_id, value in connection.execute('SELECT "id", "coverImage" FROM "News"'):
+        _append_media_reference(references, "News", source_id, "coverImage", value)
+    for source_id, value in connection.execute('SELECT "id", "coverImage" FROM "CaseItem"'):
+        _append_media_reference(references, "CaseItem", source_id, "coverImage", value)
 
-    for table in ("Product", "ProductVariant"):
-        for source_id, raw in connection.execute(f'SELECT "id", "gallery" FROM "{table}"'):
-            if raw in (None, ""):
-                continue
-            try:
-                values = json.loads(str(raw))
-            except json.JSONDecodeError as exc:
-                raise StateError(f"{table}.gallery is invalid JSON") from exc
-            if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
-                raise StateError(f"{table}.gallery must be a JSON string array")
-            for index, item in enumerate(values):
-                _append_media_reference(references, table, source_id, f"gallery[{index}]", item)
+    for source_id, raw in connection.execute('SELECT "id", "gallery" FROM "Product"'):
+        _append_gallery_row(references, "Product", source_id, raw)
+    for source_id, raw in connection.execute('SELECT "id", "gallery" FROM "ProductVariant"'):
+        _append_gallery_row(references, "ProductVariant", source_id, raw)
 
     for source_id, key, raw in connection.execute('SELECT "id", "key", "i18n" FROM "Setting"'):
         try:

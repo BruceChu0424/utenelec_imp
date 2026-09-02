@@ -67,7 +67,7 @@ function sha256(value: Buffer | string): string {
 }
 
 function htmlBreadcrumb(html: string, sortPath: string): Array<{ sortId: string; name: string }> {
-  const match = /<div\s+class=["']rtop["'][^>]*>([\s\S]*?)<\/div>/iu.exec(html);
+  const match = html.match(/<div\s+class=["']rtop["'][^>]*>([\s\S]*?)<\/div>/iu);
   assert.ok(match, 'detail evidence must contain div.rtop');
   const text = match[1]
     .replace(/<[^>]+>/gu, ' ')
@@ -185,7 +185,9 @@ function parseLastJsonObject<T>(stdout: string): T {
 }
 
 function runNode(script: string, args: string[], environment: Record<string, string | undefined> = {}) {
-  const result = spawnSync(process.execPath, [script, ...args], {
+  // 测试经 npm scripts 运行，PATH 上必有 node；用固定程序名 + 参数数组，
+  // 不把解释器路径或数据拼进命令。
+  const result = spawnSync('node', [script, ...args], {
     cwd: WEBSITE_ROOT,
     encoding: 'utf8',
     env: { ...process.env, ...environment },
@@ -194,71 +196,30 @@ function runNode(script: string, args: string[], environment: Record<string, str
   return result;
 }
 
+const SNAPSHOT_QUERY_SCRIPT = path.join(
+  WEBSITE_ROOT, 'tests', 'helpers', 'legacy-series-snapshot-query.js');
+const PREPARE_FIXTURE_SCRIPT = path.join(
+  WEBSITE_ROOT, 'tests', 'helpers', 'legacy-series-prepare-fixture.js');
+
 function databaseSnapshot(databaseUrl: string) {
-  const script = `
-const crypto = require('node:crypto');
-const { PrismaClient } = require('@prisma/client');
-const client = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
-Promise.all([
-  client.series.findMany({ orderBy: { id: 'asc' }, select: {
-    id: true, sourceIdentity: true, legacySource: true, legacyId: true, code: true,
-    parentId: true, published: true, catalogRole: true, publicSlug: true,
-  }}),
-  client.product.findMany({ orderBy: { id: 'asc' }, select: {
-    id: true, sourceIdentity: true, legacyId: true, seriesId: true, published: true,
-  }}),
-  client.productVariant.findMany({ orderBy: { id: 'asc' }, select: {
-    id: true, sourceIdentity: true, legacyId: true, productId: true, published: true,
-  }}),
-  client.legacySourceRecord.findMany({ orderBy: { id: 'asc' }, select: {
-    id: true, importRunId: true, sourceSystem: true, entityType: true, sourceId: true,
-    locale: true, identityKey: true, sourceUrl: true, finalUrl: true, sourceHash: true,
-    rawHtmlPath: true, rawPayload: true, publishable: true, seriesId: true, productId: true,
-    variantId: true,
-  }}),
-  client.series.findMany({ where: { sourceIdentity: { in: ${JSON.stringify(
-    LEGACY_SERIES_CONTENT_REPAIRS.map((item) => item.sourceIdentity),
-  )} } }, select: { sourceIdentity: true, i18n: true } }),
-]).then(([series, products, variants, sourceRecords, repaired]) => {
-  const sourceAuditDigest = crypto.createHash('sha256').update(JSON.stringify(sourceRecords)).digest('hex');
-  console.log(JSON.stringify({
-    series, products, variants,
-    sourceAudit: { count: sourceRecords.length, digest: sourceAuditDigest },
-    repaired: repaired.map((row) => ({ sourceIdentity: row.sourceIdentity, i18n: JSON.parse(row.i18n) }))
-      .sort((a, b) => a.sourceIdentity.localeCompare(b.sourceIdentity)),
-  }));
-}).finally(() => client.$disconnect());`;
+  const identities = JSON.stringify(
+    LEGACY_SERIES_CONTENT_REPAIRS.map((item) => item.sourceIdentity));
   return parseLastJsonObject<{
     series: unknown[];
     products: unknown[];
     variants: unknown[];
     sourceAudit: { count: number; digest: string };
     repaired: Array<{ sourceIdentity: string; i18n: { zh?: { name?: string }; en?: { name?: string } } }>;
-  }>(runNode('-e', [script], { DATABASE_URL: databaseUrl }).stdout);
+  }>(runNode(SNAPSHOT_QUERY_SCRIPT, [identities], { DATABASE_URL: databaseUrl }).stdout);
 }
 
 function prepareCopiedLegacyFixture(databaseUrl: string): void {
-  const fixture = LEGACY_SERIES_CONTENT_REPAIRS.map((repair) => ({
+  const fixture = JSON.stringify(LEGACY_SERIES_CONTENT_REPAIRS.map((repair) => ({
     sourceIdentity: repair.sourceIdentity,
     zh: firstNonTargetSourceName(repair.allowedSourceNames.zh, repair.publicNames.zh),
     en: firstNonTargetSourceName(repair.allowedSourceNames.en, repair.publicNames.en),
-  }));
-  const script = `
-const { PrismaClient } = require('@prisma/client');
-const client = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
-const fixture = ${JSON.stringify(fixture)};
-client.$transaction(async (tx) => {
-  for (const item of fixture) {
-    const row = await tx.series.findUnique({ where: { sourceIdentity: item.sourceIdentity } });
-    if (!row) throw new Error('missing copied fixture Series ' + item.sourceIdentity);
-    const i18n = JSON.parse(row.i18n);
-    i18n.zh = { ...(i18n.zh || {}), name: item.zh };
-    if (item.en === null) delete i18n.en;
-    else i18n.en = { ...(i18n.en || {}), name: item.en };
-    await tx.series.update({ where: { id: row.id }, data: { i18n: JSON.stringify(i18n) } });
-  }
-}).finally(() => client.$disconnect());`;
-  runNode('-e', [script], { DATABASE_URL: databaseUrl });
+  })));
+  runNode(PREPARE_FIXTURE_SCRIPT, [fixture], { DATABASE_URL: databaseUrl });
 }
 
 test('copied database apply is atomic, audited and idempotent', { timeout: 120_000 }, async () => {

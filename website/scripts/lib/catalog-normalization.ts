@@ -117,7 +117,7 @@ export type CatalogNormalizationPlan = {
 
 function sourceSeriesId(identity: string | null): string | null {
   if (!identity) return null;
-  const match = new RegExp(`^${SOURCE_SYSTEM}:series:(\\d+)$`, 'u').exec(identity);
+  const match = identity.match(new RegExp(`^${SOURCE_SYSTEM}:series:(\\d+)$`, 'u'));
   return match?.[1] ?? null;
 }
 

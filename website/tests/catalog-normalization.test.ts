@@ -159,7 +159,9 @@ test('apply on a copied SQLite database preserves catalog identities and ownersh
   const generatedClientDir = path.join(temporaryRoot, 'generated-client');
   const databaseUrl = `file:${copiedDatabase.replaceAll('\\', '/')}`;
   const runNode = (script: string, args: string[], extraEnv: Record<string, string | undefined> = {}) => {
-    const result = spawnSync(process.execPath, [script, ...args], {
+    // 测试经 npm scripts 运行，PATH 上必有 node；用固定程序名 + 参数数组，
+    // 不把解释器路径或数据拼进命令。
+    const result = spawnSync('node', [script, ...args], {
       cwd: websiteRoot,
       encoding: 'utf8',
       env: { ...process.env, ...extraEnv },
@@ -172,18 +174,9 @@ test('apply on a copied SQLite database preserves catalog identities and ownersh
     assert.notEqual(rootStart, -1, `No JSON object found in child output:\n${stdout}`);
     return JSON.parse(stdout.slice(rootStart === 0 ? 0 : rootStart + 1)) as T;
   };
+  const snapshotScript = path.join(websiteRoot, 'tests', 'helpers', 'catalog-snapshot-query.js');
   const snapshot = (generatedClientPath: string) => {
-    const script = `
-const { PrismaClient } = require(${JSON.stringify(generatedClientPath)});
-const client = new PrismaClient();
-Promise.all([
-  client.series.findMany({ orderBy: { id: 'asc' }, select: { id: true, sourceIdentity: true, parentId: true } }),
-  client.product.findMany({ orderBy: { id: 'asc' }, select: { id: true, sourceIdentity: true, seriesId: true, published: true } }),
-  client.productVariant.findMany({ orderBy: { id: 'asc' }, select: { id: true, sourceIdentity: true, productId: true } }),
-]).then(([seriesRows, productRows, variantRows]) => {
-  console.log(JSON.stringify({ seriesRows, productRows, variantRows }));
-}).finally(() => client.$disconnect());`;
-    const result = runNode('-e', [script], { DATABASE_URL: databaseUrl });
+    const result = runNode(snapshotScript, [generatedClientPath], { DATABASE_URL: databaseUrl });
     return parseLastJsonObject<{
       seriesRows: Array<{ id: string; sourceIdentity: string | null; parentId: string | null }>;
       productRows: Array<{ id: string; sourceIdentity: string | null; seriesId: string | null; published: boolean }>;

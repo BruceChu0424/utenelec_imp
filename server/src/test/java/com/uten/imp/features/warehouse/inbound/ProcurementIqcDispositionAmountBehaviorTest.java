@@ -89,7 +89,8 @@ class ProcurementIqcDispositionAmountBehaviorTest {
                 mock(ProductionSupplyTransitionPort.class),
                 mock(ProductionSubcontractSupplyTransitionPort.class),
                 mock(BusinessEventPublisher.class),
-                mock(ProcurementIqcRejectionPort.class));
+                mock(ProcurementIqcRejectionPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class));
 
         assertThat(service.reverseResolvedStock(
                 "PURCHASE", receiptId, OffsetDateTime.parse("2026-08-31T12:00:00Z")))

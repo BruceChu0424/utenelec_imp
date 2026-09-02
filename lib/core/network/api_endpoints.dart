@@ -557,6 +557,9 @@ abstract final class ApiEndpoints {
 
   /// V459 弹卡真态校验（query: ids 逗号分隔）。
   static const noticesPendingReviewStatus = '/notices/pending-review-status';
+
+  /// V459 我的待审收件台聚合。
+  static const reviewsInboxSummary = '/reviews/inbox/summary';
   static const noticesBatchDelete = '/notices/batch-delete';
   static const noticesAudiencePreview = '/notices/audience/preview';
   static const noticesAudienceEmployees = '/notices/audience/employees';

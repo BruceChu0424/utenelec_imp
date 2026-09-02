@@ -404,8 +404,8 @@ class NoticeServiceTest {
         // 注册事件：绑定 (kind,id)
         Notice review = service.publishForUser(
                 audienceUserId, "待财务确认", "正文", "approval", "系统",
-                "/finance/sales-order-confirmations",
-                "ORDER_PENDING_FINANCE_CONFIRMATION", null, aggregateId);
+                "/finance/sales-order-confirmations/" + UUID.randomUUID(),
+                "SALES_ORDER_PENDING_FINANCE_CONFIRM", null, aggregateId);
         org.junit.jupiter.api.Assertions.assertEquals("SALES_ORDER", review.getAggregateKind());
         org.junit.jupiter.api.Assertions.assertEquals(aggregateId, review.getAggregateId());
 

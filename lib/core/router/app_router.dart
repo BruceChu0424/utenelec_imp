@@ -111,6 +111,7 @@ import '../../features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import '../../features/warehouse/pages/warehouse_draw_task_center_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
+import '../../features/reviews/pages/review_inbox_page.dart';
 import '../../features/notice/models/notice.dart';
 import '../../features/payroll/pages/payroll_generate_page.dart';
 import '../../features/payroll/pages/payroll_review_page.dart';
@@ -460,6 +461,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/notice',
             name: 'notice-list',
             builder: (_, _) => const NoticeListPage(),
+          ),
+          // V459 我的待审收件台：跨业务域待审聚合（弹卡的稳定入口）。
+          GoRoute(
+            path: RouteName.reviewsInbox,
+            name: 'reviews-inbox',
+            builder: (_, _) => const ReviewInboxPage(),
           ),
           GoRoute(
             path: RouteName.noticePublish,

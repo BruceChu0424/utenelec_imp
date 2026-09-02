@@ -382,6 +382,7 @@ abstract final class Perm {
   // ===== 通知、建议与报表导出 =====
   static const noticeRead = 'notice:read';
   static const noticePublish = 'notice:publish';
+  static const reviewInboxView = 'review_inbox:view';
   static const suggestionSubmit = 'suggestion:submit';
   static const suggestionReply = 'suggestion:reply';
   // 官网询盘（综合营销统一收件箱；部门授权非全员基础包）

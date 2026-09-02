@@ -137,6 +137,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     static final String EVENT_BOM_UPDATED = "GOODS_BOM_UPDATED";
     static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
     static final String EVENT_IQC_PENDING = "PROCUREMENT_IQC_PENDING";
+    /** V459 订单全部完工（累计成品入库 ≥ 订货量）→ 通知负责销售可发货。 */
+    static final String EVENT_ORDER_FULLY_PRODUCED_READY_TO_SHIP =
+            "SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP";
     static final String EVENT_IQC_RESOLVED = "PROCUREMENT_IQC_RESOLVED";
     static final String EVENT_IQC_STOCK_IN_PENDING =
             "PROCUREMENT_IQC_STOCK_IN_PENDING";
@@ -555,8 +558,41 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         "生产批次已入库：" + orderNo,
                         content,
                         "/production/plans");
+                // V459 累计入库满足订货量 → 「全部完成生产，可以发货」审核卡
+                // （归属人定向：仅负责销售本人；开立出货单后撤回）。
+                if (allocation.orderQty().signum() > 0
+                        && allocation.producedQty()
+                                .compareTo(allocation.orderQty()) >= 0) {
+                    notifyFullyProducedReadyToShip(order, orderNo);
+                }
             }
         });
+    }
+
+    /**
+     * V459 全部完工可发货（R12）：同一订单同事件存在未办结通知则不重发
+     * （分批入库多次触发只有第一次生效；出货单开立或订单终态后撤回）。
+     */
+    private void notifyFullyProducedReadyToShip(OrderRef order, String orderNo) {
+        Integer existing = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM notices
+                WHERE source_event = ?
+                  AND aggregate_kind = 'SALES_ORDER'
+                  AND aggregate_id = ?
+                  AND resolved_at IS NULL
+                """, Integer.class,
+                EVENT_ORDER_FULLY_PRODUCED_READY_TO_SHIP, order.orderId());
+        if (existing != null && existing > 0) return;
+        sendToUser(
+                order.ownerUserId(),
+                TYPE_TASK,
+                "全部完成生产，可以发货：" + orderNo,
+                "订单 " + orderNo + " 的累计成品入库已满足订货量，全部完成生产，"
+                        + "可以发货。请及时开出货单；财务放行后仓库即可出库。",
+                order.route(),
+                EVENT_ORDER_FULLY_PRODUCED_READY_TO_SHIP,
+                "important",
+                order.orderId());
     }
 
     private List<FinishedInboundSnapshot> finishedInboundSnapshot(
@@ -1174,13 +1210,17 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     + (warehouse.isBlank() ? "。" : "，目标仓库「" + warehouse + "」。")
                     + "请到品质任务中心核验；角标和待检数量以任务中心实时数据为准。";
             for (UUID qualityUser : qualityInspectionViewerUserIds()) {
+                // V459 审核待办弹卡：aggregate 绑定 (IQC_INSPECTION, receiptId)，
+                // 检验完成（全部行 PASS/处置完毕）时批量撤回。
                 sendToUser(
                         qualityUser,
                         TYPE_TASK,
                         "待检处置：" + billNo,
                         content,
                         "/quality/task-center",
-                        EVENT_IQC_PENDING);
+                        EVENT_IQC_PENDING,
+                        null,
+                        receiptId);
             }
         });
     }
@@ -2716,12 +2756,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         deliverAtomically(() -> {
             OrderRef o = orderRef(orderId);
             if (o == null) return;
+            // V459 审核待办弹卡：直达单据级财务审核页；aggregate 绑定订单，
+            // 办结（确认/驳回）时按 (SALES_ORDER, orderId) 批量撤回全部接收人的弹卡。
             List<UUID> confirmers = salesOrderFinanceConfirmers.eligibleUserIds();
             for (UUID userId : confirmers) {
                 sendToUser(userId, TYPE_APPROVAL,
                         "待财务确认：" + o.billNo(),
                         "销售订货单 " + o.billNo() + " 已审核，待财务确认；确认后计划部才可见并排产。",
-                        "/finance/sales-order-confirmations");
+                        "/finance/sales-order-confirmations/" + orderId,
+                        EVENT_ORDER_PENDING_FINANCE, null, orderId);
             }
         });
     }
@@ -2980,8 +3023,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         + str(approval.get("amount_snapshot"))
                         + "。请到钱流管理任务中心处理。";
                 for (UUID reviewer : financeReviewerUserIds()) {
+                    // V459 审核待办弹卡：aggregate 绑定审批 case，批准/驳回时批量撤回。
                     sendToUser(reviewer, TYPE_APPROVAL, title, content,
-                            "/finance/procurement-approvals");
+                            "/finance/procurement-approvals",
+                            EVENT_PROCUREMENT_FINANCE_SUBMITTED, null, approvalCaseId);
                 }
                 return;
             }
@@ -3683,6 +3728,18 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     private void sendToUser(UUID userId, String type, String title, String content,
                             String actionRoute, String sourceEvent,
                             String explicitPriority) {
+        sendToUser(userId, type, title, content, actionRoute, sourceEvent,
+                explicitPriority, null);
+    }
+
+    /**
+     * V459 审核待办入口：显式 aggregateId。sourceEvent 在
+     * {@link ReviewNoticeCatalog} 注册时绑定聚合（办结撤回 + 弹卡认领状态查询）；
+     * 未注册事件等价于普通 sendToUser。
+     */
+    private void sendToUser(UUID userId, String type, String title, String content,
+                            String actionRoute, String sourceEvent,
+                            String explicitPriority, UUID aggregateId) {
         UserAccount u = userRepo.findById(userId).orElse(null);
         if (u == null || !"active".equals(u.getStatus()) || u.isDeleted()) return;
         String effectiveSourceEvent = sourceEvent;
@@ -3691,24 +3748,23 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         }
         if (explicitPriority == null) {
             noticeService.publishForUser(
-                    userId,
-                    title,
-                    content,
-                    type,
-                    PUBLISHER,
-                    actionRoute,
-                    effectiveSourceEvent);
+                    userId, title, content, type, PUBLISHER, actionRoute,
+                    effectiveSourceEvent, null, aggregateId);
         } else {
             noticeService.publishForUser(
-                    userId,
-                    title,
-                    content,
-                    type,
-                    PUBLISHER,
-                    actionRoute,
-                    effectiveSourceEvent,
-                    explicitPriority);
+                    userId, title, content, type, PUBLISHER, actionRoute,
+                    effectiveSourceEvent, explicitPriority, aggregateId);
         }
+    }
+
+    /**
+     * V459 办结撤回（业务落点统一入口）：审核通过/驳回/取消/开单等完成动作后，
+     * 按 (aggregateKind, aggregateId) 批量 resolve 全部接收人的待审通知——
+     * 弹卡停止展示、收件台计数归零、通知中心灰显「已办结」。幂等。
+     */
+    public int resolveReviewNotices(
+            String aggregateKind, UUID aggregateId, String reason) {
+        return noticeService.resolveReviewNotices(aggregateKind, aggregateId, reason);
     }
 
     // ---------- 研发任务 / BOM 维护 通知 ----------

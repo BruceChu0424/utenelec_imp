@@ -101,6 +101,11 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/payroll/review') {
     return const [Perm.payrollReview, Perm.payrollPublish];
   }
+  // V459 我的待审收件台：本码只控页面可达；section 内容按各域
+  // 「部门（主/兼职）× 职责权限码」资格在后端过滤。
+  if (location == RouteName.reviewsInbox) {
+    return const [Perm.reviewInboxView];
+  }
   if (location == '/payroll/generate') return const [Perm.payrollGenerate];
   if (location == '/payroll/slip' || location.startsWith('/payroll/slip/')) {
     return const [Perm.payrollViewSelf, Perm.payrollViewAll];

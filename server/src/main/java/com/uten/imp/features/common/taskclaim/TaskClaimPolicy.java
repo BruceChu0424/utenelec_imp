@@ -24,7 +24,12 @@ public record TaskClaimPolicy(int leaseMinutes, String claimPermission, String m
             "SALES_ORDER_APPROVE", new TaskClaimPolicy(30, "sales_order:approve", "sales_order:approve"),
             // 仓库单据认领按实际动作拆分；编辑权不再覆盖审核认领。
             "FULFILLMENT_TASK_EDIT", new TaskClaimPolicy(120, "stock_doc:edit", "stock_doc:edit"),
-            "FULFILLMENT_TASK_APPROVE", new TaskClaimPolicy(30, "stock_doc:approve", "stock_doc:approve"));
+            "FULFILLMENT_TASK_APPROVE", new TaskClaimPolicy(30, "stock_doc:approve", "stock_doc:approve"),
+            // V459 审核待办弹卡三线（ADR-063）：认领即「我来审」，弹卡/收件台显示
+            // 「XX 正在审核」；与 ReviewNoticeCatalog 的 claimTargetType 一一对应。
+            "SALES_ORDER_FINANCE_CONFIRM", new TaskClaimPolicy(30, "sales_order_finance:confirm", "sales_order_finance:confirm"),
+            "PROCUREMENT_FINANCE_APPROVE", new TaskClaimPolicy(30, "finance_order_approval:review", "finance_order_approval:review"),
+            "IQC_INSPECT", new TaskClaimPolicy(30, "procurement_inspection:handle", "procurement_inspection:handle"));
 
     /** 取某类型策略；未登记抛 400（fail-closed）。 */
     public static TaskClaimPolicy of(String targetType) {

@@ -107,6 +107,9 @@ abstract final class RouteName {
   static const String noticePublish = '/notice/publish';
   static const String noticeDetail = '/notice/:id';
 
+  // V459 我的待审收件台（跨业务域待审聚合）
+  static const String reviewsInbox = '/reviews/inbox';
+
   // 建议
   static const String suggestion = '/suggestion';
   static const String suggestionNew = '/suggestion/new';

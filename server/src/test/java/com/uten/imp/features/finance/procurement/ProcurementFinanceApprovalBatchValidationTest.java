@@ -135,7 +135,8 @@ class ProcurementFinanceApprovalBatchValidationTest {
                         reviewer,
                         mock(ProcurementApprovalProjectionQuery.class),
                         currentUser,
-                        mock(TxSessionVars.class));
+                        mock(TxSessionVars.class),
+                        mock(com.uten.imp.features.notice.ChainNoticeService.class));
         return new Fixture(service, jdbc);
     }
 

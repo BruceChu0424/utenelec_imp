@@ -236,6 +236,12 @@ public class SalesShipmentService {
                 "创建出货任务，等待财务放行", currentUser.requireEmployeeId(),
                 OffsetDateTime.now());
         chainNotice.notifyShipmentPendingFinanceAudit(s.getId());
+        // V459 办结撤回：销售已开出货单——撤回该订单「全部完工可发货」待审卡
+        // （后续进度由出货放行/拣货事件链继续跟进）。
+        if (source.sourceOrderId() != null) {
+            chainNotice.resolveReviewNotices(
+                    "SALES_ORDER", source.sourceOrderId(), "OUTBOUND_CREATED");
+        }
         clientShipAddressService.learn(s.getClientId(), s.getShipAddr(), s.getLinkPhone());
         return toDetail(s, items, true);
     }

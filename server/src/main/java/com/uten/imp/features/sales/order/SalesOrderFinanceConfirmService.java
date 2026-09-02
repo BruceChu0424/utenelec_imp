@@ -313,6 +313,8 @@ public class SalesOrderFinanceConfirmService {
         applyConfirmation(order, actor, OffsetDateTime.now(), remark);
         orderRepo.save(order);
         chainNotice.notifyOrderFinanceConfirmed(orderId);
+        // V459 办结撤回：确认完成，全部接收人的待审弹卡与收件台计数清零。
+        chainNotice.resolveReviewNotices("SALES_ORDER", orderId, "FINANCE_CONFIRMED");
     }
 
     /**
@@ -347,6 +349,8 @@ public class SalesOrderFinanceConfirmService {
             applyConfirmation(order, actor, confirmedAt, normalized.remark());
             orderRepo.save(order);
             chainNotice.notifyOrderFinanceConfirmed(order.getId());
+            chainNotice.resolveReviewNotices(
+                    "SALES_ORDER", order.getId(), "FINANCE_CONFIRMED");
             newlyConfirmed++;
         }
         return new FinanceBatchConfirmResult(
@@ -396,6 +400,8 @@ public class SalesOrderFinanceConfirmService {
         order.setFinanceRejectedAt(OffsetDateTime.now());
         orderRepo.save(order);
         chainNotice.notifyOrderFinanceRejected(orderId, reason);
+        // V459 办结撤回：驳回同样是办结（销售收到的下一条通知是驳回修正指引）。
+        chainNotice.resolveReviewNotices("SALES_ORDER", orderId, "FINANCE_REJECTED");
     }
 
     private SalesOrder requireDecisionOrderForUpdate(UUID orderId) {

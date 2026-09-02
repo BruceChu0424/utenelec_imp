@@ -78,6 +78,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     private final ProductionSubcontractSupplyTransitionPort subcontractSupply;
     private final BusinessEventPublisher outbox;
     private final ProcurementIqcRejectionPort rejectionPort;
+    private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
 
     /** 收货审核同事务调用：建冻结行 + RECEIVED 事件；不写 stock_balances。 */
     @Override
@@ -387,6 +388,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         // 正式生产供给仅按仓库已确认入库量推进。
         wakeIfWholeReceiptResolved(
                 receiptType, receiptId, now, wholeReceiptResolved);
+        // V459 办结撤回：整单检验结案后撤回全部品质人员的待检弹卡（幂等）。
+        if (wholeReceiptResolved) {
+            chainNotice.resolveReviewNotices(
+                    "IQC_INSPECTION", receiptId, "INSPECTED");
+        }
     }
 
     private void publishIqcStockInPending(

@@ -60,6 +60,7 @@ public class ProcurementFinanceApprovalService {
     private final ProcurementApprovalProjectionQuery projection;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
 
     public ProcurementFinanceApprovalService(
             List<ProcurementOrderApprovalPort> availablePorts,
@@ -69,7 +70,8 @@ public class ProcurementFinanceApprovalService {
             WorkflowReviewerEligibility reviewerEligibility,
             ProcurementApprovalProjectionQuery projection,
             SecurityContextCurrentUser currentUser,
-            TxSessionVars tx) {
+            TxSessionVars tx,
+            com.uten.imp.features.notice.ChainNoticeService chainNotice) {
         this.ports = availablePorts.stream().collect(Collectors.toUnmodifiableMap(
                 port -> ProcurementApprovalProjectionQuery.requireOrderType(port.orderType()),
                 Function.identity()));
@@ -80,6 +82,7 @@ public class ProcurementFinanceApprovalService {
         this.projection = projection;
         this.currentUser = currentUser;
         this.tx = tx;
+        this.chainNotice = chainNotice;
     }
 
     /** 提交财务审批：锁定订货单 + 规范 JSON 快照（sha256）+ 写 PENDING case（attempt 逐次递增，驳回后重提交自增），并预校验存在有资格的财务审核人，避免无人可批的死单。 */
@@ -210,6 +213,9 @@ public class ProcurementFinanceApprovalService {
                 orderType,
                 "APPROVED",
                 expectedVersion + 1);
+        // V459 办结撤回：批准后撤回全部财务审核人待审弹卡（幂等）。
+        chainNotice.resolveReviewNotices(
+                "PROCUREMENT_APPROVAL_CASE", approvalCase.caseId(), "APPROVED");
         return projection.latestForOrder(orderType, orderId, (short) 1);
     }
 
@@ -286,6 +292,9 @@ public class ProcurementFinanceApprovalService {
                 orderType,
                 "REJECTED",
                 expectedVersion + 1);
+        // V459 办结撤回：驳回同样是办结（提交人收到的下一条通知是驳回修正指引）。
+        chainNotice.resolveReviewNotices(
+                "PROCUREMENT_APPROVAL_CASE", approvalCase.caseId(), "REJECTED");
         return projection.latestForOrder(orderType, orderId, (short) 0);
     }
 

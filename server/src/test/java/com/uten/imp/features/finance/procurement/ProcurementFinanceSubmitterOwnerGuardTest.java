@@ -118,7 +118,8 @@ class ProcurementFinanceSubmitterOwnerGuardTest {
                         eligibility,
                         projection,
                         currentUser,
-                        mock(TxSessionVars.class));
+                        mock(TxSessionVars.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class));
         clearInvocations(port, jdbc, projection, eligibility, currentUser);
         return new Fixture(service, port, jdbc, eligibility, projection);
     }

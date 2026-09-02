@@ -24,6 +24,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/repositories/task_claim_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_order_finance_confirmation.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
@@ -47,6 +49,11 @@ class _FinanceSalesOrderReviewPageState
   bool _busy = false;
   String? _error;
 
+  // V459 认领会话：进入审核详情即认领 SALES_ORDER_FINANCE_CONFIRM——
+  // 其他财务的弹卡/收件台显示「XX 正在审核」。纯 UX/防碰撞层，fail-open。
+  TaskClaimSession? _reviewClaim;
+  String? _claimedByOtherName;
+
   bool get _canConfirm =>
       ref.read(isSuperAdminProvider) ||
       ref
@@ -57,6 +64,12 @@ class _FinanceSalesOrderReviewPageState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _reviewClaim?.releaseAll().ignore();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -73,6 +86,20 @@ class _FinanceSalesOrderReviewPageState
         _review = review;
         _loading = false;
       });
+      // 待确认单据才认领（已确认/已驳回无认领意义）。
+      if (!review.financeConfirmed && !review.financeRejected) {
+        _reviewClaim = TaskClaimSession(ref.read(taskClaimRepositoryProvider));
+        await _reviewClaim!.claimAll('SALES_ORDER_FINANCE_CONFIRM', [
+          widget.id,
+        ]);
+        if (mounted) {
+          setState(() {
+            _claimedByOtherName = _reviewClaim!.blocked
+                ? _reviewClaim!.blockedByName
+                : null;
+          });
+        }
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -294,6 +321,37 @@ class _FinanceSalesOrderReviewPageState
                 child: ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    // V459 他人认领软提示（单人维护原则：提示不硬拒）。
+                    if (_claimedByOtherName != null) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(UtenSpacing.s12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.tertiaryContainer.withValues(
+                            alpha: 0.5,
+                          ),
+                          borderRadius: UtenRadius.lgAll,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.person_pin_circle_outlined,
+                              color: theme.colorScheme.onTertiaryContainer,
+                            ),
+                            const SizedBox(width: UtenSpacing.s12),
+                            Expanded(
+                              child: Text(
+                                '$_claimedByOtherName 正在审核此订单；请先与其沟通，避免重复处理。',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onTertiaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
                     _statusStrip(theme, _review!),
                     const SizedBox(height: UtenSpacing.s12),
                     _clientFinanceCard(theme, _review!),

@@ -18,18 +18,19 @@ public final class ReviewNoticeCatalog {
 
     /** sourceEvent → 注册项。 */
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
-            // P0 三线（V459 批次接线）：
+            // P0 三线（V459 批次接线；事件名与 ChainNoticeService 现有常量一致，
+            // 保证 unread-count-by-source 等既有统计口径不变）：
             // 销售订单审核后 → 财务确认（V294/V300，SalesOrderFinanceConfirmer 资格池）
             Map.entry(
-                    "ORDER_PENDING_FINANCE_CONFIRMATION",
+                    "SALES_ORDER_PENDING_FINANCE_CONFIRM",
                     new Entry("SALES_ORDER", "SALES_ORDER_FINANCE_CONFIRM")),
             // 采购/委外订货 → 财务审批（V196 审批 case）
             Map.entry(
-                    "PROCUREMENT_ORDER_APPROVAL_PENDING",
+                    "PROCUREMENT_FINANCE_SUBMITTED",
                     new Entry("PROCUREMENT_APPROVAL_CASE", "PROCUREMENT_FINANCE_APPROVE")),
-            // 到货 IQC 待检处置
+            // 到货 IQC 待检处置（仓库审核收货后）
             Map.entry(
-                    "PROCUREMENT_IQC_PENDING_INSPECTION",
+                    "PROCUREMENT_IQC_PENDING",
                     new Entry("IQC_INSPECTION", "IQC_INSPECT")),
             // 订单生产全部完工 → 通知负责销售可发货（归属人定向，无 claim）
             Map.entry(

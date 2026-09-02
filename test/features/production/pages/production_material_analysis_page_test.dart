@@ -1720,6 +1720,12 @@ void main() {
       );
       expect(
         find.byKey(
+          const ValueKey('material-analysis-pending-make-select-pending-make-1'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
           const ValueKey('material-analysis-product-select-pending-make-1'),
         ),
         findsNothing,
@@ -1738,7 +1744,7 @@ void main() {
   );
 
   testWidgets(
-    'pending MAKE card enables arrange only after lower level ready',
+    'ready pending MAKE card offers batch create checkbox and bottom action',
     (tester) async {
       final theme = ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
@@ -1775,27 +1781,7 @@ void main() {
         theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
       );
       expect(
-        find.descendant(of: candidate, matching: find.text('下层已齐套 · 可安排生产')),
-        findsNothing,
-      );
-      final readyCard = tester.widget<Card>(candidate);
-      final readyShape = readyCard.shape! as RoundedRectangleBorder;
-      expect(readyShape.side.color, theme.colorScheme.outlineVariant);
-      final readyState = find.byKey(
-        const ValueKey(
-          'material-analysis-task-state-pending-make-pending-make-1',
-        ),
-      );
-      expect(readyState, findsOneWidget);
-      expect(
-        find.descendant(
-          of: readyState,
-          matching: find.byIcon(Icons.precision_manufacturing_outlined),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: candidate, matching: find.text('需先创建自制子件任务')),
+        find.descendant(of: candidate, matching: find.text('勾选后创建自制子件任务')),
         findsOneWidget,
       );
       expect(
@@ -1809,15 +1795,20 @@ void main() {
         ),
         findsOneWidget,
       );
-      final arrange = find.byKey(
-        const ValueKey('material-analysis-pending-make-arrange-pending-make-1'),
-      );
-      expect(arrange, findsOneWidget);
-      expect(tester.widget<UtenButton>(arrange).onPressed, isNotNull);
+      // 卡内不再有单卡按钮：勾选后由底部动作区统一创建。
       expect(
-        find.descendant(of: arrange, matching: find.text('创建自制子件任务')),
-        findsOneWidget,
+        find.byKey(
+          const ValueKey('material-analysis-pending-make-arrange-pending-make-1'),
+        ),
+        findsNothing,
       );
+      final checkbox = find.byKey(
+        const ValueKey('material-analysis-pending-make-select-pending-make-1'),
+      );
+      expect(checkbox, findsOneWidget);
+      await tester.tap(checkbox);
+      await tester.pumpAndSettle();
+      expect(find.text('创建自制子件任务(1)'), findsOneWidget);
     },
   );
 
@@ -1845,18 +1836,34 @@ void main() {
       final candidate = find.byKey(
         const ValueKey('material-analysis-pending-make-pending-make-1'),
       );
+      final waitingSection = find.byKey(
+        const Key('material-analysis-waiting-section'),
+      );
       expect(
         find.descendant(of: candidate, matching: find.text('当前不可安排，请刷新后重试')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: waitingSection, matching: candidate),
         findsOneWidget,
       );
       final blockedCard = tester.widget<Card>(candidate);
       final blockedShape = blockedCard.shape! as RoundedRectangleBorder;
       expect(blockedShape.side.color, theme.colorScheme.outlineVariant);
-      final arrange = find.byKey(
-        const ValueKey('material-analysis-pending-make-arrange-pending-make-1'),
+      // 执行门禁关闭：固定 48px 门禁图标，不出勾选框。
+      expect(
+        find.byKey(
+          const ValueKey('material-analysis-pending-make-select-pending-make-1'),
+        ),
+        findsNothing,
       );
-      expect(arrange, findsOneWidget);
-      expect(tester.widget<UtenButton>(arrange).onPressed, isNull);
+      expect(
+        find.descendant(
+          of: candidate,
+          matching: find.byIcon(Icons.do_not_disturb_on_outlined),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -1909,7 +1916,10 @@ void main() {
       expect(find.bySemanticsLabel(RegExp(r'^暂不可安排，共 2 项')), findsOneWidget);
       expect(find.bySemanticsLabel(RegExp('已转生产，共 1 项')), findsOneWidget);
       expect(find.bySemanticsLabel(RegExp('下层备料中，不可排产')), findsOneWidget);
-      expect(find.bySemanticsLabel(RegExp('下层已齐套，可安排生产')), findsOneWidget);
+      expect(
+        find.bySemanticsLabel(RegExp('选择已齐套自制件 创建自制子件任务')),
+        findsOneWidget,
+      );
       final readySection = find.byKey(
         const Key('material-analysis-ready-section'),
       );
@@ -1985,7 +1995,6 @@ void main() {
         blockedCandidateShape.side.color,
         theme.colorScheme.outlineVariant,
       );
-
       final blockedCandidateState = find.byKey(
         const ValueKey(
           'material-analysis-task-state-pending-make-pending-make-1',
@@ -2007,6 +2016,10 @@ void main() {
       expect(
         find.descendant(of: blockedCandidate, matching: find.byType(Checkbox)),
         findsNothing,
+      );
+      expect(
+        find.descendant(of: readyCandidate, matching: find.byType(Checkbox)),
+        findsOneWidget,
       );
       expect(
         find.descendant(of: blockedProduct, matching: find.byType(Checkbox)),
@@ -3661,7 +3674,7 @@ void main() {
   );
 
   testWidgets(
-    'ready pending MAKE creates full child then opens production quantity wizard',
+    'pending MAKE create stays on page for quantities, then wizard on arrange',
     (tester) async {
       final initial = _makeTreeAnalysisJson()
         ..['allowedActions'] = const ['NOTIFY_SUPPLY', 'GENERATE_PLAN'];
@@ -3683,25 +3696,21 @@ void main() {
       final candidate = find.byKey(
         const ValueKey('material-analysis-pending-make-make-path-1'),
       );
-      final arrange = find.descendant(
-        of: candidate,
-        matching: find.byKey(
-          const ValueKey('material-analysis-pending-make-arrange-make-path-1'),
-        ),
-      );
-      expect(
-        find.descendant(of: candidate, matching: find.text('需先创建自制子件任务')),
-        findsOneWidget,
-      );
       expect(
         find.descendant(of: candidate, matching: find.text('全部 8 个')),
         findsOneWidget,
       );
-      expect(
-        find.descendant(of: arrange, matching: find.text('创建子件并填写生产数量')),
-        findsOneWidget,
+      // 两段式第一步：勾选候选卡 → 底部「创建子件并填写生产数量」。
+      final checkbox = find.byKey(
+        const ValueKey('material-analysis-pending-make-select-make-path-1'),
       );
-      await tester.tap(arrange);
+      expect(checkbox, findsOneWidget);
+      await tester.tap(checkbox);
+      await tester.pumpAndSettle();
+      final createButton = find.text('创建子件并填写生产数量(1)');
+      expect(createButton, findsOneWidget);
+      await tester.ensureVisible(createButton);
+      await tester.tap(createButton);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('supply-quantity-dialog')), findsNothing);
 
@@ -3722,6 +3731,28 @@ void main() {
           },
         ],
       });
+      // 创建后不跳计划单：留在本页，子件已勾选并预填数量。
+      expect(find.text('填写生产计划单'), findsNothing);
+      expect(
+        find.byKey(const Key('batch-qty-make-child-ready-1')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('batch-qty-make-child-ready-1')),
+            )
+            .controller
+            ?.text,
+        '8',
+      );
+      expect(find.text('安排子件生产(1)'), findsOneWidget);
+
+      // 第二步：点「安排子件生产」才进入计划向导。
+      final arrange = find.text('安排子件生产(1)');
+      await tester.ensureVisible(arrange);
+      await tester.tap(arrange);
+      await tester.pumpAndSettle();
       expect(find.text('填写生产计划单'), findsWidgets);
       final wizardQty = find.byKey(
         const ValueKey('production-plan-wizard-qty-make-child-ready-1'),

@@ -146,9 +146,8 @@ void main() {
         ),
       );
 
-      await DioClientRepository(
-        ApiClient(dio),
-      ).search('legacy', excludeLegacyFinanceStub: false);
+      await DioClientRepository(ApiClient(dio))
+          .search('legacy', excludeLegacyFinanceStub: false);
       expect(captured.queryParameters['excludeLegacyFinanceStub'], isFalse);
       expect(captured.queryParameters['selectableOnly'], isFalse);
     },
@@ -178,9 +177,8 @@ void main() {
       ),
     );
 
-    await DioClientRepository(
-      ApiClient(dio),
-    ).search('客户', size: 100, selectableOnly: true);
+    await DioClientRepository(ApiClient(dio))
+        .search('客户', size: 100, selectableOnly: true);
 
     expect(captured.path, '/master/clients');
     expect(captured.queryParameters['excludeLegacyFinanceStub'], isTrue);

@@ -707,9 +707,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   @override
   Widget build(BuildContext context) {
     ref.watch(currentPermissionsProvider);
-    final filteredLabel = AccountType.byValue(
-      widget.initialAccountTypeFilter,
-    )?.label;
+    final filteredLabel = AccountType.byValue(widget.initialAccountTypeFilter)
+        ?.label;
     final title = widget.initialAccountTypeFilter == null
         ? '账户资料'
         : '${filteredLabel ?? '账户'}账户';

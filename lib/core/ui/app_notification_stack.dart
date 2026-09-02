@@ -5,13 +5,12 @@ import 'package:flutter/material.dart';
 /// [active] 为 true 时，该项当前完整可见，可以启动自动关闭计时；收拢状态下仅最上层
 /// 通知 active，背后的层只渲染不可交互的卡片轮廓，避免用户尚未读到就自动消失。
 /// [announce] 仅对本次需要播报的新顶层通知为 true，展开旧通知不会重复打断读屏。
-typedef UtenNotificationStackItemBuilder =
-    Widget Function(
-      BuildContext context,
-      int index,
-      bool active,
-      bool announce,
-    );
+typedef UtenNotificationStackItemBuilder = Widget Function(
+  BuildContext context,
+  int index,
+  bool active,
+  bool announce,
+);
 
 /// iPhone 式顶部通知叠放展示层。
 ///

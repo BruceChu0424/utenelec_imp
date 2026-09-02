@@ -37,9 +37,8 @@ void main() {
       ),
     );
 
-    final page = await DioClientRepository(
-      ApiClient(dio),
-    ).accessCandidates(search: '  甲  ');
+    final page = await DioClientRepository(ApiClient(dio))
+        .accessCandidates(search: '  甲  ');
 
     expect(captured.path, '/master/clients/access-candidates');
     expect(captured.queryParameters, {'page': 1, 'size': 20, 'search': '甲'});

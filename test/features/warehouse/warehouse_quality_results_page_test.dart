@@ -16,11 +16,9 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test('work status parses, labels and stays amount-free', () {
-    final task = WarehouseQualityResultTask.fromJson(_summaryJson(
-      'ALL_PASSED',
-      pendingSliceCount: 2,
-      passedLineCount: 3,
-    ));
+    final task = WarehouseQualityResultTask.fromJson(
+      _summaryJson('ALL_PASSED', pendingSliceCount: 2, passedLineCount: 3),
+    );
     expect(task.workStatus, WarehouseQualityWorkStatus.allPassed);
     expect(task.workStatus.label, '全部合格 · 待入库');
     expect(task.workStatus.actionable, isTrue);
@@ -108,7 +106,10 @@ void main() {
           );
       final columnKeys = {for (final column in table.columns) column.key};
       expect(columnKeys, containsAll({'workStatus', 'pendingSliceCount'}));
-      expect(columnKeys.intersection(warehouseIqcStockInForbiddenKeys), isEmpty);
+      expect(
+        columnKeys.intersection(warehouseIqcStockInForbiddenKeys),
+        isEmpty,
+      );
       // 多选 + 行色接线：全绿行 tint 非空，选集由页面持有。
       expect(table.selectable, isTrue);
       expect(
@@ -119,8 +120,10 @@ void main() {
       );
       expect(find.text('全部合格 · 待入库'), findsWidgets);
       expect(find.text('等待结果'), findsWidgets);
-      expect(find.byKey(const Key('warehouse-quality-result-batch-stock-in')),
-          findsOneWidget);
+      expect(
+        find.byKey(const Key('warehouse-quality-result-batch-stock-in')),
+        findsOneWidget,
+      );
       expect(find.text('999999.99'), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -145,8 +148,9 @@ void main() {
     await tester.tap(find.byType(Checkbox).last);
     await tester.pumpAndSettle();
 
-    await tester
-        .tap(find.byKey(const Key('warehouse-quality-result-batch-stock-in')));
+    await tester.tap(
+      find.byKey(const Key('warehouse-quality-result-batch-stock-in')),
+    );
     await tester.pumpAndSettle();
 
     // 批量弹窗：改库位 + 改小数量（部分入库），提交。
@@ -189,7 +193,9 @@ Widget _app(
   return ProviderScope(
     overrides: [
       warehouseQualityResultRepositoryProvider.overrideWithValue(gateway),
-      warehouseIqcStockInRepositoryProvider.overrideWithValue(_FailingGateway()),
+      warehouseIqcStockInRepositoryProvider.overrideWithValue(
+        _FailingGateway(),
+      ),
       sharedPreferencesProvider.overrideWithValue(preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),

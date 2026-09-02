@@ -89,9 +89,8 @@ void main() {
     final repository = File(
       'lib/features/warehouse/repositories/stock_doc_repository.dart',
     ).readAsStringSync();
-    final page = File(
-      'lib/features/warehouse/pages/stock_doc_detail_page.dart',
-    ).readAsStringSync();
+    final page = File('lib/features/warehouse/pages/stock_doc_detail_page.dart')
+        .readAsStringSync();
 
     expect(repository, contains('/finished-in/reverse'));
     expect(repository, contains('reverseFinishedInbound'));

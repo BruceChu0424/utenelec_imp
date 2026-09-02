@@ -344,29 +344,26 @@ void main() {
       });
     });
 
-    test(
-      'public auth exchanges bypass unavailable storage and strip stale authorization',
-      () async {
-        Object? authorization;
-        final dio = _staffDio(_ThrowingSnapshotSecureStorage(), (request) {
-          authorization = request.headers['Authorization'];
-          return _jsonResponse(request, 200, <String, Object>{'ok': true});
-        });
+    test('public auth exchanges bypass unavailable storage and strip stale authorization', () async {
+      Object? authorization;
+      final dio = _staffDio(_ThrowingSnapshotSecureStorage(), (request) {
+        authorization = request.headers['Authorization'];
+        return _jsonResponse(request, 200, <String, Object>{'ok': true});
+      });
 
-        final response = await dio.post<dynamic>(
-          '/auth/logout',
-          data: <String, String>{},
-          options: Options(
-            headers: const <String, String>{
-              'Authorization': 'Bearer stale-access',
-            },
-          ),
-        );
+      final response = await dio.post<dynamic>(
+        '/auth/logout',
+        data: <String, String>{},
+        options: Options(
+          headers: const <String, String>{
+            'Authorization': 'Bearer stale-access',
+          },
+        ),
+      );
 
-        expect(response.statusCode, 200);
-        expect(authorization, isNull);
-      },
-    );
+      expect(response.statusCode, 200);
+      expect(authorization, isNull);
+    });
   });
 
   group('VisitorAuthInterceptor', () {
@@ -441,8 +438,9 @@ void main() {
   });
 }
 
-typedef _Responder =
-    FutureOr<ResponseBody> Function(RequestOptions requestOptions);
+typedef _Responder = FutureOr<ResponseBody> Function(
+  RequestOptions requestOptions,
+);
 
 Dio _staffDio(SecureStorage storage, _Responder responder) {
   Dio clientFactory() {

@@ -13,8 +13,10 @@ import '../../../core/ui/app_notification.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_work_card.dart';
 
-typedef ProductionPdfPrinter =
-    Future<bool> Function(Uint8List bytes, String filename);
+typedef ProductionPdfPrinter = Future<bool> Function(
+  Uint8List bytes,
+  String filename,
+);
 
 const int _maxPrintBatchPlans = 50;
 const int _maxPrintBatchCards = 200;

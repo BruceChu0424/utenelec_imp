@@ -215,47 +215,41 @@ void main() {
     },
   );
 
-  test(
-    'external logout invalidates this tab and a later external login restores it',
-    () async {
-      FlutterSecureStorage.setMockInitialValues(<String, String>{});
-      const rawStorage = FlutterSecureStorage();
-      final localStorage = SecureStorage(rawStorage);
-      final otherTabStorage = SecureStorage(rawStorage);
-      await localStorage.saveTokens(
-        accessToken: 'first-access',
-        refreshToken: 'first-refresh',
-      );
-      final repository = _MutableProfileRepository(
-        _profile('first', 'First user'),
-      );
-      final container = _container(localStorage, repository);
-      addTearDown(container.dispose);
+  test('external logout invalidates this tab and a later external login restores it', () async {
+    FlutterSecureStorage.setMockInitialValues(<String, String>{});
+    const rawStorage = FlutterSecureStorage();
+    final localStorage = SecureStorage(rawStorage);
+    final otherTabStorage = SecureStorage(rawStorage);
+    await localStorage.saveTokens(
+      accessToken: 'first-access',
+      refreshToken: 'first-refresh',
+    );
+    final repository = _MutableProfileRepository(
+      _profile('first', 'First user'),
+    );
+    final container = _container(localStorage, repository);
+    addTearDown(container.dispose);
 
-      container.read(sessionProvider);
-      await pumpEventQueue();
-      expect(container.read(sessionProvider).status, AuthStatus.authenticated);
+    container.read(sessionProvider);
+    await pumpEventQueue();
+    expect(container.read(sessionProvider).status, AuthStatus.authenticated);
 
-      await otherTabStorage.clearForLogoutIntent();
-      await pumpEventQueue();
-      expect(
-        container.read(sessionProvider).status,
-        AuthStatus.unauthenticated,
-      );
+    await otherTabStorage.clearForLogoutIntent();
+    await pumpEventQueue();
+    expect(container.read(sessionProvider).status, AuthStatus.unauthenticated);
 
-      repository.profile = _profile('second', 'Second user');
-      final login = await otherTabStorage.beginSessionIntent(clearTokens: true);
-      await otherTabStorage.commitSessionIntentTokens(
-        intent: login.intent,
-        accessToken: 'second-access',
-        refreshToken: 'second-refresh',
-      );
-      await pumpEventQueue();
+    repository.profile = _profile('second', 'Second user');
+    final login = await otherTabStorage.beginSessionIntent(clearTokens: true);
+    await otherTabStorage.commitSessionIntentTokens(
+      intent: login.intent,
+      accessToken: 'second-access',
+      refreshToken: 'second-refresh',
+    );
+    await pumpEventQueue();
 
-      expect(container.read(sessionProvider).status, AuthStatus.authenticated);
-      expect(container.read(sessionProvider).user?.name, 'Second user');
-    },
-  );
+    expect(container.read(sessionProvider).status, AuthStatus.authenticated);
+    expect(container.read(sessionProvider).user?.name, 'Second user');
+  });
 
   test(
     'final logout storage failure is surfaced and blocks automatic restore',

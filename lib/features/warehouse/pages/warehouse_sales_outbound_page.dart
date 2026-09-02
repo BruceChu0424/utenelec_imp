@@ -3,6 +3,7 @@
 // 「出库任务中心 · 销售出库」分段（/warehouse/tasks/outbound）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -35,7 +36,10 @@ class _WarehouseSalesOutboundPageState
   @override
   Widget build(BuildContext context) {
     // 返回即刷新：从详情页回到本页时重拉列表并同步角标。
-    _myLocation ??= currentLocationOr(context, RouteName.warehouseSalesOutbound);
+    _myLocation ??= currentLocationOr(
+      context,
+      RouteName.warehouseSalesOutbound,
+    );
     ref.onPageResume(_myLocation!, () {
       if (!_resumeArmed) {
         _resumeArmed = true;

@@ -40,15 +40,14 @@ void main() {
       // 汇总渲染；独立任务页路由保留（深链），入口改为 /warehouse/tasks/inbound。
       expect(warehouseHub, contains('WarehouseInboundTaskBadge'));
       expect(
-        File(
-          'lib/features/warehouse/widgets/warehouse_task_center_badges.dart',
-        ).readAsStringSync(),
+        File('lib/features/warehouse/widgets/warehouse_task_center_badges.dart')
+            .readAsStringSync(),
         contains('warehouseProductionFinishedInboundPendingCountProvider'),
       );
       expect(
-        RegExp(
-          r'warehouseProductionFinishedInboundPendingCountProvider',
-        ).allMatches(stockDetail).length,
+        RegExp(r'warehouseProductionFinishedInboundPendingCountProvider')
+            .allMatches(stockDetail)
+            .length,
         greaterThanOrEqualTo(3),
         reason:
             'approve/issue/finished-in confirm and reverse paths must refresh '

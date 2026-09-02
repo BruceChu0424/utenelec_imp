@@ -60,15 +60,12 @@ void main() {
       final workflow = File('.github/workflows/quality.yml').readAsStringSync();
       final index = File('web/index.html').readAsStringSync();
       final bootstrap = File('web/flutter_bootstrap.js').readAsStringSync();
-      final nginx = File(
-        'deploy/nginx/uten-imp.conf.example',
-      ).readAsStringSync();
-      final macosDebug = File(
-        'macos/Runner/DebugProfile.entitlements',
-      ).readAsStringSync();
-      final macosRelease = File(
-        'macos/Runner/Release.entitlements',
-      ).readAsStringSync();
+      final nginx = File('deploy/nginx/uten-imp.conf.example')
+          .readAsStringSync();
+      final macosDebug = File('macos/Runner/DebugProfile.entitlements')
+          .readAsStringSync();
+      final macosRelease = File('macos/Runner/Release.entitlements')
+          .readAsStringSync();
 
       expect(workflow, contains('--no-web-resources-cdn'));
       expect(index, contains('<html lang="zh-CN">'));

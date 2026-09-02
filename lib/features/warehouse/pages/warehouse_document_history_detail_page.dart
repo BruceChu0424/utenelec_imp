@@ -138,9 +138,8 @@ class _WarehouseDocumentHistoryDetailPageState
                     const SizedBox(height: UtenSpacing.s16),
                     Text(
                       '实物明细 (${detail.items.length})',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: UtenSpacing.s8),
                     MasterDataTableView<WarehouseDocumentPhysicalItem>(

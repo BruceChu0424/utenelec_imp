@@ -64,9 +64,8 @@ String _formatProductionDecimal(double value, int scale) {
 
 bool isValidProductionPlanningQuantityText(String raw) {
   final value = raw.trim();
-  return RegExp(
-    r'^(?:[0-9]+|[0-9]+\.[0-9]{1,4}|\.[0-9]{1,4})$',
-  ).hasMatch(value);
+  return RegExp(r'^(?:[0-9]+|[0-9]+\.[0-9]{1,4}|\.[0-9]{1,4})$')
+      .hasMatch(value);
 }
 
 class ProductionPlanningPreview {

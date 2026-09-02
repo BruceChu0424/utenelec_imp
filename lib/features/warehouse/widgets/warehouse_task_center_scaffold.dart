@@ -88,8 +88,7 @@ class _WarehouseTaskCenterScaffoldState
   void didUpdateWidget(WarehouseTaskCenterScaffold oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 权限变化导致当前分段被移除时，回到未选择引导态（保持「不预选」范式）。
-    if (_segment != null &&
-        !widget.segments.any((s) => s.value == _segment)) {
+    if (_segment != null && !widget.segments.any((s) => s.value == _segment)) {
       _segment = null;
     }
   }

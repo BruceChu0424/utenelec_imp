@@ -197,8 +197,9 @@ class _Failure {
   );
 }
 
-typedef _Responder =
-    FutureOr<ResponseBody> Function(RequestOptions requestOptions);
+typedef _Responder = FutureOr<ResponseBody> Function(
+  RequestOptions requestOptions,
+);
 
 Dio _staffDio(SecureStorage storage, _Responder responder) {
   Dio factory() {

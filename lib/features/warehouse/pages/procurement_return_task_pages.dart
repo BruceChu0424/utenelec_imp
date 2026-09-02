@@ -685,9 +685,8 @@ class _ReturnStatusBanner extends StatelessWidget {
           Expanded(
             child: Text(
               completed ? '已退回供应商' : '财务未批准的数量待退供应商',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -713,9 +712,8 @@ class _ReturnFactsCard extends StatelessWidget {
           children: [
             Text(
               '${task.goodsCode} ${task.goodsName}'.trim(),
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const Divider(height: UtenSpacing.s24),
             _Fact(

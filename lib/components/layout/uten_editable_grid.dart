@@ -872,7 +872,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
         child: Checkbox(
           value: all ? true : (some ? null : false),
           tristate: true,
-          onChanged: targets.isEmpty ? null : (_) => _toggleSelectAllRows(targets, all),
+          onChanged: targets.isEmpty
+              ? null
+              : (_) => _toggleSelectAllRows(targets, all),
         ),
       ),
     );
@@ -1346,8 +1348,8 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       decoration: BoxDecoration(
         color: isSelected
             ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
-            : (rowTint
-                  ?? (isOdd ? theme.colorScheme.surfaceContainerLowest : null)),
+            : (rowTint ??
+                  (isOdd ? theme.colorScheme.surfaceContainerLowest : null)),
         border: Border(bottom: divider),
       ),
       child: Row(

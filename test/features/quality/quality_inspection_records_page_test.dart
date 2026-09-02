@@ -37,9 +37,8 @@ Future<void> _pumpPage(
         darkTheme: ThemeData.dark(),
         themeMode: themeMode,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
         home: QualityInspectionRecordsPage(initialDomain: initialDomain),

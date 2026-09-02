@@ -120,23 +120,23 @@ class PagePermissionStaffPage {
 
   bool get hasMore => page < totalPages;
 
-  factory PagePermissionStaffPage.fromJson(
-    Map<String, dynamic> json,
-  ) => PagePermissionStaffPage(
-    surfaceKey: json['surfaceKey'] as String? ?? '',
-    departmentId: json['departmentId'] as String?,
-    departmentName: json['departmentName'] as String?,
-    items: ((json['items'] ?? json['staff']) as List<dynamic>? ?? const [])
-        .map(
-          (item) =>
-              PagePermissionStaffSummary.fromJson(item as Map<String, dynamic>),
-        )
-        .toList(growable: false),
-    page: (json['page'] as num?)?.toInt() ?? 1,
-    size: (json['size'] as num?)?.toInt() ?? 0,
-    total: (json['total'] as num?)?.toInt() ?? 0,
-    totalPages: (json['totalPages'] as num?)?.toInt() ?? 0,
-  );
+  factory PagePermissionStaffPage.fromJson(Map<String, dynamic> json) =>
+      PagePermissionStaffPage(
+        surfaceKey: json['surfaceKey'] as String? ?? '',
+        departmentId: json['departmentId'] as String?,
+        departmentName: json['departmentName'] as String?,
+        items: ((json['items'] ?? json['staff']) as List<dynamic>? ?? const [])
+            .map(
+              (item) => PagePermissionStaffSummary.fromJson(
+                item as Map<String, dynamic>,
+              ),
+            )
+            .toList(growable: false),
+        page: (json['page'] as num?)?.toInt() ?? 1,
+        size: (json['size'] as num?)?.toInt() ?? 0,
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        totalPages: (json['totalPages'] as num?)?.toInt() ?? 0,
+      );
 }
 
 class PageStaffPermissionState {

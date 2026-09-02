@@ -242,10 +242,8 @@ class _CapsuleTab extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: weight,
-                      color: color,
-                    ),
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: weight, color: color),
                   ),
                 ),
               ),

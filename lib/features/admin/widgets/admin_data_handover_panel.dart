@@ -560,9 +560,8 @@ class _AdminDataHandoverPanelState
         Text(
           '人员数据交接已完成',
           textAlign: TextAlign.center,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          style: Theme.of(context).textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: UtenSpacing.s12),
         Text('交接批次：${result.sequenceNo}'),
@@ -571,9 +570,8 @@ class _AdminDataHandoverPanelState
         const SizedBox(height: UtenSpacing.s8),
         Text(
           '同一业务记录可能因“责任转移”和“历史查阅”分别计入不同项次。',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         if (details.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s12),

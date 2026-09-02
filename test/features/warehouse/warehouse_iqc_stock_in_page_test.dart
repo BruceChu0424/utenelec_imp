@@ -44,9 +44,8 @@ void main() {
   });
 
   test('detail route, merged badge and warehouse-wide refresh stay wired', () {
-    final hub = File(
-      'lib/features/warehouse/pages/warehouse_hub_page.dart',
-    ).readAsStringSync();
+    final hub = File('lib/features/warehouse/pages/warehouse_hub_page.dart')
+        .readAsStringSync();
     final moduleBadge = File(
       'lib/features/dashboard/widgets/module_badge_sum.dart',
     ).readAsStringSync();
@@ -69,14 +68,20 @@ void main() {
       countRefresh,
       contains('warehouseQualityResultPendingCountProvider'),
     );
-    expect(
-      countRefresh,
-      contains('warehouseQualityResultTypeCountsProvider'),
-    );
+    expect(countRefresh, contains('warehouseQualityResultTypeCountsProvider'));
     expect(moduleBadge, contains('warehouseQualityResultPendingCountProvider'));
-    expect(globalRefresh, contains('warehouseQualityResultPendingCountProvider'));
-    expect(moduleBadge, isNot(contains('warehouseIqcStockInPendingCountProvider')));
-    expect(globalRefresh, isNot(contains('warehouseIqcStockInPendingCountProvider')));
+    expect(
+      globalRefresh,
+      contains('warehouseQualityResultPendingCountProvider'),
+    );
+    expect(
+      moduleBadge,
+      isNot(contains('warehouseIqcStockInPendingCountProvider')),
+    );
+    expect(
+      globalRefresh,
+      isNot(contains('warehouseIqcStockInPendingCountProvider')),
+    );
     expect(router, contains("name: 'warehouse-iqc-stock-ins'"));
     expect(router, contains("name: 'warehouse-iqc-stock-in-detail'"));
     expect(router, contains("name: 'warehouse-quality-results'"));
@@ -89,9 +94,8 @@ void main() {
       isFalse,
     );
     expect(
-      File(
-        'lib/features/warehouse/pages/warehouse_iqc_return_detail_page.dart',
-      ).existsSync(),
+      File('lib/features/warehouse/pages/warehouse_iqc_return_detail_page.dart')
+          .existsSync(),
       isFalse,
     );
   });
@@ -107,9 +111,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final table = tester.widget<MasterDataTableView<WarehouseQualityResultTask>>(
-        find.byKey(const Key('warehouse-quality-result-table')),
-      );
+      final table = tester
+          .widget<MasterDataTableView<WarehouseQualityResultTask>>(
+            find.byKey(const Key('warehouse-quality-result-table')),
+          );
       final columnKeys = {for (final column in table.columns) column.key};
       expect(
         columnKeys,
@@ -122,7 +127,10 @@ void main() {
           'pendingReturnCount',
         }),
       );
-      expect(columnKeys.intersection(warehouseIqcStockInForbiddenKeys), isEmpty);
+      expect(
+        columnKeys.intersection(warehouseIqcStockInForbiddenKeys),
+        isEmpty,
+      );
       expect(find.text('等待检查结果'), findsWidgets);
       expect(find.text('等待结果'), findsWidgets);
       expect(find.text('999999.99'), findsNothing);
@@ -144,7 +152,9 @@ Widget _qualityApp(
   return ProviderScope(
     overrides: [
       warehouseQualityResultRepositoryProvider.overrideWithValue(gateway),
-      warehouseIqcStockInRepositoryProvider.overrideWithValue(_FailingGateway()),
+      warehouseIqcStockInRepositoryProvider.overrideWithValue(
+        _FailingGateway(),
+      ),
       sharedPreferencesProvider.overrideWithValue(preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),

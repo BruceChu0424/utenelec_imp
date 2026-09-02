@@ -9,6 +9,7 @@ import 'package:uten_imp/features/production/pages/production_plan_detail_page.d
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+
 import '../../../support/document_scope_capability_overrides.dart';
 
 void main() {
@@ -261,9 +262,8 @@ void main() {
           ],
           child: MaterialApp(
             builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(
-                context,
-              ).copyWith(textScaler: const TextScaler.linear(1.3)),
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(1.3)),
               child: child!,
             ),
             home: const ProductionPlanDetailPage(id: 'plan-1'),

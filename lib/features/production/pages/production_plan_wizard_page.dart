@@ -226,9 +226,9 @@ class _ProductionPlanWizardPageState
                             horizontal: UtenSpacing.s12,
                             vertical: UtenSpacing.s8,
                           ),
-                          color: Theme.of(
-                            dialogContext,
-                          ).colorScheme.surfaceContainerHigh,
+                          color: Theme.of(dialogContext)
+                              .colorScheme
+                              .surfaceContainerHigh,
                           child: Text(
                             '${group.key} · ${group.value.length} 张',
                             style: Theme.of(dialogContext).textTheme.titleSmall

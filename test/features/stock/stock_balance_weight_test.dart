@@ -17,9 +17,8 @@ void main() {
 
   test('stock item detail keeps quantity and exposes sortable weight', () {
     // 库存余额并入库存详情页（/stock/item/:goodsId）后，数量/重量列契约随之迁移。
-    final source = File(
-      'lib/features/stock/pages/stock_item_detail_page.dart',
-    ).readAsStringSync();
+    final source = File('lib/features/stock/pages/stock_item_detail_page.dart')
+        .readAsStringSync();
 
     expect(source, contains("key: 'qty'"));
     expect(source, contains("label: '当前数量'"));

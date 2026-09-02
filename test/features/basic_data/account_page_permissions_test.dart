@@ -300,9 +300,9 @@ void main() {
       );
       expect(
         warningIcon.color,
-        Theme.of(
-          tester.element(find.byIcon(Icons.warning_amber_rounded)),
-        ).colorScheme.error,
+        Theme.of(tester.element(find.byIcon(Icons.warning_amber_rounded)))
+            .colorScheme
+            .error,
       );
     },
   );

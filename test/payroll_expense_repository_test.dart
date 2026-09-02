@@ -23,9 +23,8 @@ void main() {
         PayrollSlipStatus.published,
       );
       expect(
-        PayrollSlip.fromJson(
-          _slipJson(viewedAt: '2026-07-09T08:00:00Z'),
-        ).status,
+        PayrollSlip.fromJson(_slipJson(viewedAt: '2026-07-09T08:00:00Z'))
+            .status,
         PayrollSlipStatus.viewed,
       );
       expect(

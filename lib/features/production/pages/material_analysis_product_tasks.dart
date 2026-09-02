@@ -1,7 +1,7 @@
 part of 'production_material_analysis_page.dart';
 
-abstract class _MaterialAnalysisProductTasksState extends _MaterialAnalysisPlanActionsState {
-
+abstract class _MaterialAnalysisProductTasksState
+    extends _MaterialAnalysisPlanActionsState {
   List<ProductionMaterialAnalysisMaterial> _depth1MaterialsFor(
     ProductionMaterialAnalysisProduct product,
   ) {
@@ -89,9 +89,8 @@ abstract class _MaterialAnalysisProductTasksState extends _MaterialAnalysisPlanA
     if (authoritative != null) return authoritative;
     final analysis = _analysis;
     if (analysis == null) return true;
-    return (_analysisIndexes(
-              analysis,
-            ).materialsByProduct[product.analysisLineId] ??
+    return (_analysisIndexes(analysis)
+                .materialsByProduct[product.analysisLineId] ??
             const [])
         .isNotEmpty;
   }
@@ -169,7 +168,6 @@ abstract class _MaterialAnalysisProductTasksState extends _MaterialAnalysisPlanA
       _planPreview = null;
     });
   }
-
 
   /// MAKE 路线已确认但尚未创建子件任务的候选卡投影：下层未齐 → 暂不可安排
   /// 待办卡（只读，继续处理下方 BOM）；下层齐套 → 可安排区可勾选，批量
@@ -943,9 +941,7 @@ abstract class _MaterialAnalysisProductTasksState extends _MaterialAnalysisPlanA
                 ),
                 title: '勾选后创建自制子件任务',
                 trailing: fullMakeQuantityLabel,
-                detail: _canGenerate
-                    ? '创建后留在本页填写本批生产数量'
-                    : '创建后由有计划权限的员工填写生产数量',
+                detail: _canGenerate ? '创建后留在本页填写本批生产数量' : '创建后由有计划权限的员工填写生产数量',
                 accent: theme.colorScheme.primary,
                 surface: theme.colorScheme.primaryContainer.withValues(
                   alpha: 0.5,
@@ -1928,10 +1924,8 @@ abstract class _MaterialAnalysisProductTasksState extends _MaterialAnalysisPlanA
       Flexible(
         child: Text(
           label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: color,
-            fontWeight: FontWeight.w700,
-          ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: color, fontWeight: FontWeight.w700),
         ),
       ),
     ],
@@ -2101,7 +2095,6 @@ abstract class _MaterialAnalysisProductTasksState extends _MaterialAnalysisPlanA
 
   /// 该物料组当前有效的「已下达通知」目标（跳过已撤销 CANCELLED）。
 
-
   /// 物料类型三色角标（采购/委外/自制/待定）。与「层级 N」徽章同一套
   /// 外观（小胶囊：浅底 + 描边 + 彩色加粗字，上下内边距 2），仅颜色不同。
   Widget _typeBadge(
@@ -2128,8 +2121,6 @@ abstract class _MaterialAnalysisProductTasksState extends _MaterialAnalysisPlanA
       onColor: onColor,
     );
   }
-
-
 
   Widget _factChip(ThemeData theme, IconData icon, String label) => Container(
     constraints: const BoxConstraints(maxWidth: 280),
@@ -2190,6 +2181,4 @@ abstract class _MaterialAnalysisProductTasksState extends _MaterialAnalysisPlanA
       ],
     ),
   );
-
-
 }

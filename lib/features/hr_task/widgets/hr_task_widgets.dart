@@ -354,10 +354,8 @@ class _Chip extends StatelessWidget {
           ],
           Text(
             label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: fg,
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(context).textTheme.labelSmall
+                ?.copyWith(color: fg, fontWeight: FontWeight.w600),
           ),
         ],
       ),

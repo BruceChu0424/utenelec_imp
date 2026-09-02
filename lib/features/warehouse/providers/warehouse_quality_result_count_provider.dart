@@ -19,29 +19,25 @@ final warehouseQualityResultPendingCountProvider =
       if (!canView) return 0;
       final timer = Timer(const Duration(seconds: 60), ref.invalidateSelf);
       ref.onDispose(timer.cancel);
-      return ref
-          .watch(warehouseQualityResultRepositoryProvider)
-          .pendingCount();
+      return ref.watch(warehouseQualityResultRepositoryProvider).pendingCount();
     });
 
 /// 父分类（来源类型）分段计数：各来源未完结任务数（页内大类徽章用；
 /// 「父分类徽章 = 其子类待办之和」，此处即该来源全部未完结状态之和）。
 final warehouseQualityResultTypeCountsProvider =
-    FutureProvider.autoDispose<Map<WarehouseIqcStockInReceiptType, int>>(
-      (ref) async {
-        final permissions = ref.watch(currentPermissionsProvider);
-        final superAdmin = ref.watch(isSuperAdminProvider);
-        final canView =
-            superAdmin ||
-            permissions.contains(Perm.warehouseIqcStockInView) ||
-            permissions.contains(Perm.warehouseIqcReturnView);
-        if (!canView) {
-          return const <WarehouseIqcStockInReceiptType, int>{};
-        }
-        final timer = Timer(const Duration(seconds: 60), ref.invalidateSelf);
-        ref.onDispose(timer.cancel);
-        return ref
-            .watch(warehouseQualityResultRepositoryProvider)
-            .typeCounts();
-      },
-    );
+    FutureProvider.autoDispose<Map<WarehouseIqcStockInReceiptType, int>>((
+      ref,
+    ) async {
+      final permissions = ref.watch(currentPermissionsProvider);
+      final superAdmin = ref.watch(isSuperAdminProvider);
+      final canView =
+          superAdmin ||
+          permissions.contains(Perm.warehouseIqcStockInView) ||
+          permissions.contains(Perm.warehouseIqcReturnView);
+      if (!canView) {
+        return const <WarehouseIqcStockInReceiptType, int>{};
+      }
+      final timer = Timer(const Duration(seconds: 60), ref.invalidateSelf);
+      ref.onDispose(timer.cancel);
+      return ref.watch(warehouseQualityResultRepositoryProvider).typeCounts();
+    });

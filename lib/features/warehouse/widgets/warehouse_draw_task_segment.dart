@@ -178,9 +178,7 @@ class _WarehouseDrawTaskSegmentState
             error: tasks.isEmpty ? _error : null,
             onRetry: () => _load(_result?.page ?? 1),
             emptyMessage: widget.keyword.trim().isEmpty
-                ? (_status == _kOpenAnyStatus
-                      ? '目前没有待领任务'
-                      : '当前状态下暂无任务')
+                ? (_status == _kOpenAnyStatus ? '目前没有待领任务' : '当前状态下暂无任务')
                 : '没有匹配的待领任务',
             currentPage: _result?.page ?? 1,
             totalPages: _result?.totalPages ?? 1,

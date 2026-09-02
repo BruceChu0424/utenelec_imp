@@ -36,10 +36,7 @@ void main() {
   });
 
   test('order source column surfaces request lineage for imported rows', () {
-    final columns = purchaseGridColumns(
-      (_) async {},
-      showSource: true,
-    );
+    final columns = purchaseGridColumns((_) async {}, showSource: true);
     final source = columns.firstWhere((c) => c.key == 'source');
     expect(source.label, '申请来源');
 

@@ -110,10 +110,8 @@ class _HrProfileChangesListPageState
                   ref.invalidate(hrProfileChangesProvider);
                   ref.read(pendingReviewCountProvider.notifier).refresh();
                   await ref.read(
-                    hrProfileChangesProvider((
-                      status: _status,
-                      page: _page,
-                    )).future,
+                    hrProfileChangesProvider((status: _status, page: _page))
+                        .future,
                   );
                 },
                 // 服务端按页拉取：当页 items 铺进网格，外层 SingleChildScrollView

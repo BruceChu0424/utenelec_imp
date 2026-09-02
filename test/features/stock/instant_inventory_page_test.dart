@@ -72,17 +72,18 @@ void main() {
       );
 
       // 一级分类（成品）与无子级根（未分类孤儿）都暴露为分段。
-      expect(find.descendant(of: segments, matching: find.text('成品')),
-          findsOneWidget);
       expect(
-        find.descendant(
-          of: segments,
-          matching: find.text('未分类（历史孤儿）'),
-        ),
+        find.descendant(of: segments, matching: find.text('成品')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: segments, matching: find.text('未分类（历史孤儿）')),
         findsOneWidget,
       );
 
-      await tester.tap(find.descendant(of: segments, matching: find.text('成品')));
+      await tester.tap(
+        find.descendant(of: segments, matching: find.text('成品')),
+      );
       await tester.pumpAndSettle();
       expect(stock.lastCategoryId, 'finished');
 
@@ -107,20 +108,24 @@ void main() {
     );
     final keys = table.columns.map((column) => column.key).toSet();
     // 数量/重量等运营事实列保留；台账金额即使持权也不出现在页面/打印。
-    expect(keys, containsAll(<String>{'weight', 'qty', 'pendingQty', 'moreQty'}));
+    expect(
+      keys,
+      containsAll(<String>{'weight', 'qty', 'pendingQty', 'moreQty'}),
+    );
     expect(keys, isNot(contains('costAmount')));
   });
 
-  testWidgets('warehouse dropdown, defective toggle and count share the toolbar', (
-    tester,
-  ) async {
-    final stock = _RecordingStockRepository();
-    await pumpPage(tester, stock: stock);
+  testWidgets(
+    'warehouse dropdown, defective toggle and count share the toolbar',
+    (tester) async {
+      final stock = _RecordingStockRepository();
+      await pumpPage(tester, stock: stock);
 
-    expect(find.text('仓库'), findsOneWidget);
-    expect(find.widgetWithText(FilterChip, '含不良品仓'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^共 \d+ 项$')), findsOneWidget);
-  });
+      expect(find.text('仓库'), findsOneWidget);
+      expect(find.widgetWithText(FilterChip, '含不良品仓'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^共 \d+ 项$')), findsOneWidget);
+    },
+  );
 }
 
 class _InventoryApi extends ApiClient {

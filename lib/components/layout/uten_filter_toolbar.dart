@@ -177,10 +177,7 @@ class UtenFilterToolbar<T> extends StatelessWidget {
                 const SizedBox(width: UtenSpacing.s12),
                 SizedBox(width: searchWidth, child: search),
               ],
-              if (trailing != null) ...[
-                const Spacer(),
-                trailing!,
-              ],
+              if (trailing != null) ...[const Spacer(), trailing!],
             ],
           ),
         );

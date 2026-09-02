@@ -744,9 +744,8 @@ class _SelectionBar extends StatelessWidget {
             liveRegion: true,
             child: Text(
               '已选 ${selected.length} 项',
-              style: Theme.of(
-                context,
-              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+              style: Theme.of(context).textTheme.labelLarge
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
           UtenButton(
@@ -765,9 +764,8 @@ class _SelectionBar extends StatelessWidget {
           if (unavailableReason != null)
             Text(
               unavailableReason!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.error,
-              ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.error),
             ),
         ],
       ),
@@ -943,9 +941,8 @@ class _DesktopTaskTable extends StatelessWidget {
           ).withValues(alpha: 0.10);
         }
         return item.hasException
-            ? Theme.of(
-                context,
-              ).colorScheme.errorContainer.withValues(alpha: 0.35)
+            ? Theme.of(context).colorScheme.errorContainer
+                  .withValues(alpha: 0.35)
             : null;
       },
       isLoading: loading,
@@ -1121,10 +1118,8 @@ class _StatusPill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
+        style: Theme.of(context).textTheme.labelSmall
+            ?.copyWith(color: color, fontWeight: FontWeight.w600),
       ),
     );
   }

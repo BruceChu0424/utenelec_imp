@@ -225,8 +225,7 @@ class _SalesReturnQualityCardState
                 key: ValueKey('sales-return-quality-history-empty'),
                 icon: Icons.history,
                 title: '未找到质检冻结台账',
-                message:
-                    '通常表示这是 V189 上线前已审核的历史退货。系统不会补造收货或质检事实；如果这是新审核单，请联系管理员核查，勿手工释放库存。',
+                message: '通常表示这是 V189 上线前已审核的历史退货。系统不会补造收货或质检事实；如果这是新审核单，请联系管理员核查，勿手工释放库存。',
               )
             else
               for (var index = 0; index < _items!.length; index++) ...[

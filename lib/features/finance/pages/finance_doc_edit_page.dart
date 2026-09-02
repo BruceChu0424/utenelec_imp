@@ -992,9 +992,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       'exchangeRateEffectiveAt': ChinaDateTime.wallTimeToUtc(
         _exchangeRateEffectiveAt,
       ).toIso8601String(),
-      'bankBookedAt': ChinaDateTime.wallTimeToUtc(
-        _bankBookedAt,
-      ).toIso8601String(),
+      'bankBookedAt': ChinaDateTime.wallTimeToUtc(_bankBookedAt)
+          .toIso8601String(),
       'bankReference': _bankReference.text.trim(),
       'agentStatementNo': _settlementChannel == _settlementChannelAgent
           ? _agentStatementNo.text.trim()
@@ -1225,15 +1224,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
               ),
               decoration: InputDecoration(labelText: '其它费用($feeCurrency)'),
             ),
-            _dropdown(
-              '其它费用项目',
-              _otherFeeStyleId,
-              {
-                for (final style in names.stylesFor('EXPENSE'))
-                  style.id: style.name ?? style.id,
-              },
-              (value) => setState(() => _otherFeeStyleId = value),
-            ),
+            _dropdown('其它费用项目', _otherFeeStyleId, {
+              for (final style in names.stylesFor('EXPENSE'))
+                style.id: style.name ?? style.id,
+            }, (value) => setState(() => _otherFeeStyleId = value)),
           ],
         ),
       ],

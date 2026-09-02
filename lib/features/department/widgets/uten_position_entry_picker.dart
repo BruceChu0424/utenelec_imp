@@ -116,9 +116,8 @@ class _UtenPositionEntryPickerState
       result = await showGeneralDialog<PositionEntryValue>(
         context: context,
         barrierDismissible: true,
-        barrierLabel: MaterialLocalizations.of(
-          context,
-        ).modalBarrierDismissLabel,
+        barrierLabel: MaterialLocalizations.of(context)
+            .modalBarrierDismissLabel,
         barrierColor: Colors.black54,
         transitionDuration: const Duration(milliseconds: 250),
         pageBuilder: (dialogContext, _, _) => Align(

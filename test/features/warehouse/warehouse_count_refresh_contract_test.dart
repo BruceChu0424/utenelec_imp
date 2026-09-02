@@ -7,8 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('warehouse task counts refresh immediately after every mutation', () {
-    String source(String path) =>
-        File(path).readAsStringSync();
+    String source(String path) => File(path).readAsStringSync();
     int count(String path, String needle) =>
         source(path).split(needle).length - 1;
 
@@ -45,19 +44,26 @@ void main() {
     // 写操作成功点必须接线（数量与各页成功链路数一致）。
     final sites = <String, int>{
       // 到货登记/继续送检（_announceRegistration 是两条链路共同出口）。
-      'lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart': 1,
+      'lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart':
+          1,
       // 到货异常：单条一键入库 + 批量按批准量处理。
-      'lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart': 2,
+      'lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart':
+          2,
       // 产成品：批量点收 + 登记页返回变更。
-      'lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart': 2,
+      'lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart':
+          2,
       'lib/features/warehouse/pages/warehouse_arrival_receipt_page.dart': 1,
-      'lib/features/warehouse/pages/production_finished_arrival_registration_page.dart': 1,
+      'lib/features/warehouse/pages/production_finished_arrival_registration_page.dart':
+          1,
       // 销售出库详情：拣货/交接状态流转。
-      'lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart': 1,
+      'lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart':
+          1,
       // 委外出仓：保存草稿 / 审核出仓 / 关闭计划。
-      'lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart': 3,
+      'lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart':
+          3,
       // 三张任务中心页返回即刷新 + hub 返回即刷新。
-      'lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart': 1,
+      'lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart':
+          1,
       'lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart': 1,
       'lib/features/warehouse/pages/warehouse_draw_task_center_page.dart': 1,
       'lib/features/warehouse/pages/warehouse_hub_page.dart': 1,

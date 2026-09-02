@@ -37,9 +37,7 @@ void main() {
   });
 
   testWidgets('null count (loading/unknown) hides the badge', (tester) async {
-    await tester.pumpWidget(
-      _wrap(const UtenSegmentBadgeLabel(label: '全部待检单')),
-    );
+    await tester.pumpWidget(_wrap(const UtenSegmentBadgeLabel(label: '全部待检单')));
 
     expect(find.text('全部待检单'), findsOneWidget);
     expect(find.byType(UtenNotificationBadge), findsNothing);

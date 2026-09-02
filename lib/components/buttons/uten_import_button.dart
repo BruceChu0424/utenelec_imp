@@ -40,7 +40,9 @@ class UtenImportButton extends StatelessWidget {
         textStyle: theme.textTheme.bodyLarge?.copyWith(
           fontWeight: FontWeight.w700,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(UtenRadius.control),
+        ),
       ),
     );
   }

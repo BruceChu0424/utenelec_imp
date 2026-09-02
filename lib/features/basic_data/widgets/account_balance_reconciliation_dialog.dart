@@ -504,9 +504,9 @@ class _AccountBalanceReconciliationDialogState
                         '本次只调整当前余额，并新增不可变余额调整证据。',
                         style: Theme.of(dialogContext).textTheme.bodySmall
                             ?.copyWith(
-                              color: Theme.of(
-                                dialogContext,
-                              ).colorScheme.onSurfaceVariant,
+                              color: Theme.of(dialogContext)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                               height: 1.5,
                             ),
                       ),
@@ -536,9 +536,9 @@ class _AccountBalanceReconciliationDialogState
                       '提交后会生成可审计的余额调整批次和账户流水；不能通过普通编辑覆盖。',
                       style: Theme.of(dialogContext).textTheme.bodySmall
                           ?.copyWith(
-                            color: Theme.of(
-                              dialogContext,
-                            ).colorScheme.onSurfaceVariant,
+                            color: Theme.of(dialogContext)
+                                .colorScheme
+                                .onSurfaceVariant,
                           ),
                     ),
                   ],
@@ -767,9 +767,8 @@ class _AccountBalanceReconciliationDialogState
       '活动账户 ${_accounts.length} 个 · '
       '本次需输入 ${_targetAccounts.length} 个 · '
       '当前匹配 ${visible.length} 个',
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
+      style: Theme.of(context).textTheme.bodySmall
+          ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
     );
     final reason = TextField(
       key: const ValueKey('account-balance-reason'),
@@ -1023,9 +1022,8 @@ class _AccountBalanceReconciliationDialogState
     return Container(
       decoration: BoxDecoration(
         color: selected
-            ? Theme.of(
-                context,
-              ).colorScheme.primaryContainer.withValues(alpha: 0.22)
+            ? Theme.of(context).colorScheme.primaryContainer
+                  .withValues(alpha: 0.22)
             : null,
         border: Border(
           bottom: BorderSide(

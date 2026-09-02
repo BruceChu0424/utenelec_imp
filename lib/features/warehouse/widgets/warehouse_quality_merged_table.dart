@@ -101,10 +101,8 @@ class WarehouseQualityMergedTable extends StatelessWidget {
                 const SizedBox(width: UtenSpacing.s4),
                 Text(
                   verdict.label,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: color, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -143,9 +141,8 @@ class WarehouseQualityMergedTable extends StatelessWidget {
                   vertical: 1,
                 ),
                 decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.10),
+                  color: Theme.of(context).colorScheme.primary
+                      .withValues(alpha: 0.10),
                   borderRadius: UtenRadius.smAll,
                 ),
                 child: Text(
@@ -224,8 +221,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           final slice = draft?.slice;
           if (slice == null) return const Text('—');
           final text = [
-            if (slice.releasedBy?.isNotEmpty == true)
-              '放行人 ${slice.releasedBy}',
+            if (slice.releasedBy?.isNotEmpty == true) '放行人 ${slice.releasedBy}',
             if (slice.releasedAt?.isNotEmpty == true)
               warehouseQualityDateTime(slice.releasedAt),
             if (slice.releaseNote?.isNotEmpty == true) slice.releaseNote!,
@@ -269,9 +265,8 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         slice!.placeHint!,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
       );
     }
     return const Text('—');

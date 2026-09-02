@@ -4475,10 +4475,8 @@ class _AuditJsonExpansion extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: SelectableText(
                 _AuditJsonPanel._pretty(rawJson),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontFamily: 'monospace',
-                  height: 1.45,
-                ),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(fontFamily: 'monospace', height: 1.45),
               ),
             ),
           ),
@@ -4956,9 +4954,8 @@ class _DeviceEvidenceBanner extends StatelessWidget {
                   const SizedBox(height: UtenSpacing.s8),
                   Text(
                     assessment.description,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(height: 1.5),
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(height: 1.5),
                   ),
                 ],
               ),
@@ -5693,9 +5690,8 @@ class _AuditDetailHeader extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: Theme.of(context).textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     if (subtitle != null)
                       Text(

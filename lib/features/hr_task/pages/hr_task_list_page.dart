@@ -197,8 +197,9 @@ class HrTaskListPage extends ConsumerWidget {
           );
       if (!context.mounted) return;
       // V454：一天一类型一张聚合卡；toast 说清「卡数 + 覆盖人数」
-      final covered =
-          result.notices > 0 ? '已发布祝福卡，覆盖 ${result.published} 位同事' : '今日同事均已祝福';
+      final covered = result.notices > 0
+          ? '已发布祝福卡，覆盖 ${result.published} 位同事'
+          : '今日同事均已祝福';
       context.appSuccess(
         result.skipped > 0 ? '$covered（${result.skipped} 人本年已祝福）' : covered,
       );

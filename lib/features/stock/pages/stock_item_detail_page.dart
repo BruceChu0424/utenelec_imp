@@ -148,7 +148,10 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     ref.watch(currentPermissionsProvider);
-    _myLocation ??= currentLocationOr(context, RouteName.stockItemDetail(widget.goodsId));
+    _myLocation ??= currentLocationOr(
+      context,
+      RouteName.stockItemDetail(widget.goodsId),
+    );
     ref.onPageResume(_myLocation!, () {
       if (!_resumeArmed) {
         _resumeArmed = true;

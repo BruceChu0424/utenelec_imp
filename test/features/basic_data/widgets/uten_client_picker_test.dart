@@ -32,10 +32,7 @@ void main() {
       '搜索分类/客户',
     );
 
-    await tester.enterText(
-      _searchEditable(),
-      '远洋',
-    );
+    await tester.enterText(_searchEditable(), '远洋');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
@@ -53,10 +50,7 @@ void main() {
     // 点击包含客户命中的父分类仍保留左侧查询，并用「分类 + 查询词」刷新右侧。
     await tester.tap(find.text('海外客户(OVERSEAS)'));
     await tester.pumpAndSettle();
-    expect(
-      tester.widget<TextField>(_searchTextField()).controller?.text,
-      '远洋',
-    );
+    expect(tester.widget<TextField>(_searchTextField()).controller?.text, '远洋');
     expect(clientRepository.listKeywords.last, '远洋');
 
     await tester.tap(find.text('远洋电器(C-002)'));
@@ -80,10 +74,7 @@ void main() {
     );
 
     await _openPicker(tester);
-    await tester.enterText(
-      _searchEditable(),
-      '海外客户',
-    );
+    await tester.enterText(_searchEditable(), '海外客户');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
@@ -117,10 +108,7 @@ void main() {
     );
 
     await _openPicker(tester);
-    await tester.enterText(
-      _searchEditable(),
-      '集团',
-    );
+    await tester.enterText(_searchEditable(), '集团');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
@@ -140,10 +128,7 @@ void main() {
     );
 
     await _openPicker(tester);
-    await tester.enterText(
-      _searchEditable(),
-      '含占位',
-    );
+    await tester.enterText(_searchEditable(), '含占位');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
@@ -170,10 +155,7 @@ void main() {
     expect(find.byKey(const Key('uten-client-picker-search')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.enterText(
-      _searchEditable(),
-      '远洋',
-    );
+    await tester.enterText(_searchEditable(), '远洋');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 

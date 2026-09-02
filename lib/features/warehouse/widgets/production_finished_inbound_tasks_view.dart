@@ -398,9 +398,8 @@ class _ProductionFinishedInboundTasksViewState
     );
     final count = Text(
       '共 ${result.total} 项 · 单击多选，双击详情',
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
+      style: Theme.of(context).textTheme.bodySmall
+          ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
     );
     return Semantics(
       header: true,

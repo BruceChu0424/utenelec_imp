@@ -1,6 +1,7 @@
 part of 'production_material_analysis_page.dart';
 
-abstract class _MaterialAnalysisBomTreeState extends _MaterialAnalysisProductTasksState {
+abstract class _MaterialAnalysisBomTreeState
+    extends _MaterialAnalysisProductTasksState {
   /// 去重后筛出非目标仓，避免同 SKU 在多个 BOM 兄弟节点上重复报数。
   List<_OffTargetWarehousePeg> _offTargetWarehousePegs(
     ProductionMaterialAnalysisView analysis,
@@ -264,7 +265,8 @@ abstract class _MaterialAnalysisBomTreeState extends _MaterialAnalysisProductTas
                   selected: _bomViewMode == mode,
                   onSelected: () => setState(() {
                     _bomViewMode = mode;
-                    _bomProductVisibleLimit = _MaterialAnalysisPageBase._bomProductPageSize;
+                    _bomProductVisibleLimit =
+                        _MaterialAnalysisPageBase._bomProductPageSize;
                   }),
                   label: '${mode.label} ${_bomModeCount(analysis, mode)}',
                 ),
@@ -1087,8 +1089,10 @@ abstract class _MaterialAnalysisBomTreeState extends _MaterialAnalysisProductTas
             fontWeight: FontWeight.w700,
           ),
         ),
-        onPressed: () =>
-            setState(() => _bomProductVisibleLimit += _MaterialAnalysisPageBase._bomProductPageSize),
+        onPressed: () => setState(
+          () => _bomProductVisibleLimit +=
+              _MaterialAnalysisPageBase._bomProductPageSize,
+        ),
         icon: const Icon(Icons.expand_more_rounded),
         label: Text('继续显示下一批产品(还有 $remainingProducts 个)'),
       ),
@@ -2171,5 +2175,4 @@ abstract class _MaterialAnalysisBomTreeState extends _MaterialAnalysisProductTas
     _bomProjectionCache = projection;
     return projection;
   }
-
 }

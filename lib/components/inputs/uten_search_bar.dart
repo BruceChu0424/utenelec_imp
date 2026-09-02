@@ -152,10 +152,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
       isDense: true,
       filled: true,
       fillColor: theme.inputDecorationTheme.fillColor,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 10,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       enabledBorder: border(theme.colorScheme.outline),
       focusedBorder: border(theme.colorScheme.primary, 2),
     );

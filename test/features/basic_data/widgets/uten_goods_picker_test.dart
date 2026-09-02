@@ -52,10 +52,7 @@ void main() {
     await tester.tap(find.text('分区乙(B)'));
     await tester.pumpAndSettle();
     expect(goodsRepository.listCalls.last, ('section-b', 'G-'));
-    expect(
-      tester.widget<TextField>(_searchTextField()).controller?.text,
-      'G-',
-    );
+    expect(tester.widget<TextField>(_searchTextField()).controller?.text, 'G-');
 
     // 清除只退出搜索，保留当前位置并恢复分类列表（UtenSearchBar 内置清除按钮）。
     await tester.tap(
@@ -80,10 +77,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('open-goods-picker')));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      _searchEditable(),
-      'RAW-001',
-    );
+    await tester.enterText(_searchEditable(), 'RAW-001');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
@@ -97,10 +91,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('open-goods-picker')));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      _searchEditable(),
-      '分区',
-    );
+    await tester.enterText(_searchEditable(), '分区');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
@@ -125,10 +116,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('open-goods-picker')));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      _searchEditable(),
-      'G-',
-    );
+    await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
 
@@ -163,17 +151,11 @@ void main() {
 
     await tester.tap(find.byKey(const Key('open-goods-picker')));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      _searchEditable(),
-      '旧关键词',
-    );
+    await tester.enterText(_searchEditable(), '旧关键词');
     await tester.pump(const Duration(milliseconds: 301));
     expect(goodsRepository.searchQueries, ['旧关键词']);
 
-    await tester.enterText(
-      _searchEditable(),
-      'G-',
-    );
+    await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
     expect(find.text('连接器甲(G-001)'), findsOneWidget);

@@ -13,6 +13,7 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_doc_edit_page.da
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart' as mn;
+
 import '../../support/document_scope_capability_overrides.dart';
 
 const _settlementId = '10000000-0000-0000-0000-000000000030';
@@ -94,9 +95,8 @@ Widget _app({
     currentPermissionsProvider.overrideWithValue(const <String>{
       Perm.subcontractOrderPriceView,
     }),
-    subcontractRepositoryProvider(
-      SubcontractDocType.order,
-    ).overrideWithValue(repository),
+    subcontractRepositoryProvider(SubcontractDocType.order)
+        .overrideWithValue(repository),
     mn.masterNameServiceProvider.overrideWithValue(mn.MasterNameService(api)),
     settlementOverride,
   ],

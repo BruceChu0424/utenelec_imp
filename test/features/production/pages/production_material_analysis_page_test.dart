@@ -1720,7 +1720,9 @@ void main() {
       );
       expect(
         find.byKey(
-          const ValueKey('material-analysis-pending-make-select-pending-make-1'),
+          const ValueKey(
+            'material-analysis-pending-make-select-pending-make-1',
+          ),
         ),
         findsNothing,
       );
@@ -1798,7 +1800,9 @@ void main() {
       // 卡内不再有单卡按钮：勾选后由底部动作区统一创建。
       expect(
         find.byKey(
-          const ValueKey('material-analysis-pending-make-arrange-pending-make-1'),
+          const ValueKey(
+            'material-analysis-pending-make-arrange-pending-make-1',
+          ),
         ),
         findsNothing,
       );
@@ -1853,7 +1857,9 @@ void main() {
       // 执行门禁关闭：固定 48px 门禁图标，不出勾选框。
       expect(
         find.byKey(
-          const ValueKey('material-analysis-pending-make-select-pending-make-1'),
+          const ValueKey(
+            'material-analysis-pending-make-select-pending-make-1',
+          ),
         ),
         findsNothing,
       );
@@ -6171,9 +6177,8 @@ Future<_Harness> _pumpPage(
   final TransitionBuilder? mediaBuilder = textScale == 1
       ? null
       : (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         );
   final GoRouter? router = withPlanRoute || withSubcontractPreparationRoute

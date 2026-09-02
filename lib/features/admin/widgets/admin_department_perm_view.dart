@@ -417,9 +417,8 @@ class _AdminDepartmentPermViewState
                   description: permission.description,
                   bulkAssignable: permission.bulkAssignable,
                   sensitivity: permission.sensitivity,
-                  nameStyle: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  nameStyle: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               const SizedBox(width: UtenSpacing.s8),

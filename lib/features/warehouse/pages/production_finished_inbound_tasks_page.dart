@@ -3,6 +3,7 @@
 // 入口是「入库任务中心 · 产成品入库」待点收分段（/warehouse/tasks/inbound）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -33,7 +34,10 @@ class _ProductionFinishedInboundTasksPageState
 
   @override
   Widget build(BuildContext context) {
-    _myLocation ??= currentLocationOr(context, RouteName.warehouseProductionFinishedInboundTasks);
+    _myLocation ??= currentLocationOr(
+      context,
+      RouteName.warehouseProductionFinishedInboundTasks,
+    );
     ref.onPageResume(_myLocation!, () {
       if (!_resumeArmed) {
         _resumeArmed = true;
@@ -56,7 +60,9 @@ class _ProductionFinishedInboundTasksPageState
               type: UtenButtonType.tonal,
               icon: Icons.refresh_rounded,
               isLoading: _viewLoading && _refreshTick > 0,
-              onPressed: _viewLoading ? null : () => setState(() => _refreshTick++),
+              onPressed: _viewLoading
+                  ? null
+                  : () => setState(() => _refreshTick++),
               child: const Text('刷新'),
             ),
           ),

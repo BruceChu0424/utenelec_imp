@@ -51,7 +51,8 @@ void main() {
       expect(
         searchHeight,
         moreOrLessEquals(segmentHeight, epsilon: 0.5),
-        reason: '${density.$1}密度下搜索框应与分段条同高'
+        reason:
+            '${density.$1}密度下搜索框应与分段条同高'
             '（segment=$segmentHeight, search=$searchHeight）',
       );
     });

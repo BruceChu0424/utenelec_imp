@@ -9,8 +9,9 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/production/widgets/where_used_material_picker.dart';
 
-typedef _RequestHandler =
-    Future<Map<String, dynamic>> Function(Map<String, dynamic> query);
+typedef _RequestHandler = Future<Map<String, dynamic>> Function(
+  Map<String, dynamic> query,
+);
 
 class _FakeApiClient extends ApiClient {
   _FakeApiClient(this.handler) : super(Dio());
@@ -174,10 +175,7 @@ void main() {
 
     // UtenSearchBar 内置清除按钮（无独立 key，按搜索框内关闭图标定位）。
     await tester.tap(
-      find.descendant(
-        of: search,
-        matching: find.byIcon(Icons.close_rounded),
-      ),
+      find.descendant(of: search, matching: find.byIcon(Icons.close_rounded)),
     );
     await tester.pumpAndSettle();
     expect(find.text('输入编号/名称开始搜索'), findsOneWidget);
@@ -192,10 +190,7 @@ void main() {
     expect(find.textContaining('查看全部'), findsNothing);
     expect(api.queries, hasLength(2));
     await tester.tap(
-      find.descendant(
-        of: search,
-        matching: find.byIcon(Icons.close_rounded),
-      ),
+      find.descendant(of: search, matching: find.byIcon(Icons.close_rounded)),
     );
     await tester.pumpAndSettle();
     expect(find.text('输入编号/名称开始搜索'), findsOneWidget);

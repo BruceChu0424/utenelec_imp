@@ -155,8 +155,7 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                           UtenFilterSegment(value: t, label: _docLabel(t)),
                       ],
                       selected: {_docType!},
-                      onSelectionChanged: (v) =>
-                          setState(() => _docType = v),
+                      onSelectionChanged: (v) => setState(() => _docType = v),
                     ),
                     const SizedBox(height: UtenSpacing.s8),
                     Wrap(

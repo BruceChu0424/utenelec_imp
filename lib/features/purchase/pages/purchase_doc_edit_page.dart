@@ -510,8 +510,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   ) async {
     if (!_cfg.hasSettlement || _settlementMethodId != null) return;
     if (supplierId == null || supplierId.isEmpty) return;
-    final candidate =
-        (upstreamSettlementId?.isNotEmpty ?? false)
+    final candidate = (upstreamSettlementId?.isNotEmpty ?? false)
         ? upstreamSettlementId
         : ref
               .read(masterNameServiceProvider)
@@ -1255,9 +1254,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                   ),
                                   label: Text('统一设供应商 (${ctl.selectedCount})'),
                                   style: TextButton.styleFrom(
-                                    foregroundColor: Theme.of(
-                                      ctx,
-                                    ).colorScheme.primary,
+                                    foregroundColor: Theme.of(ctx)
+                                        .colorScheme
+                                        .primary,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 10,
                                       vertical: 2,
@@ -1265,9 +1264,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                     minimumSize: const Size(0, 36),
                                     tapTargetSize:
                                         MaterialTapTargetSize.shrinkWrap,
-                                    textStyle: Theme.of(
-                                      ctx,
-                                    ).textTheme.titleSmall,
+                                    textStyle: Theme.of(ctx)
+                                        .textTheme
+                                        .titleSmall,
                                   ),
                                 ),
                               ]

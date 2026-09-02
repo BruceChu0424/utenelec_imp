@@ -171,7 +171,9 @@ void main() {
         find.byKey(const Key('quality-slice-place-pass-1')),
         'B-02',
       );
-      await tester.tap(find.byKey(const Key('warehouse-quality-detail-confirm')));
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-detail-confirm')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, '确认入库'));
       await tester.pumpAndSettle();
@@ -403,7 +405,11 @@ Map<String, dynamic> _detailJson() => {
         'passedBaseQty': verdict.$3,
         'failedBaseQty': verdict.$4,
         'warehouseStockedBaseQty': 0,
-        'pendingStockBaseQty': switch (index) { 0 => 10, 1 => 6, _ => 0 },
+        'pendingStockBaseQty': switch (index) {
+          0 => 10,
+          1 => 6,
+          _ => 0,
+        },
       },
   ],
   'items': [

@@ -545,9 +545,8 @@ class _ProductionDailyReportEditPageState
         Text(
           '候选范围：制造与研发管理中心 / 生产部。选择车间后收窄到该车间及班组；'
           '这里记录整单参与人员，不代表个人产量或计件工资。',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
     );

@@ -211,9 +211,8 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
         'plateNo': _hasVehicle ? _plateCtl.text.trim() : null,
         'hostEmployeeId': _hostId,
         'hostDepartmentId': _deptId,
-        'plannedVisitAt': ChinaDateTime.wallTimeToUtc(
-          _visitTime!,
-        ).toIso8601String(),
+        'plannedVisitAt': ChinaDateTime.wallTimeToUtc(_visitTime!)
+            .toIso8601String(),
       });
       if (!mounted) return;
       context.appSuccess(l10n.visitorApplySuccess);

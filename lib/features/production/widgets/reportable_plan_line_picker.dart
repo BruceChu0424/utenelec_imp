@@ -337,9 +337,9 @@ class _ReportablePlanLineSheetState
           }
           final date = DateTime.tryParse(item.deliveryDate ?? '');
           if (date == null) return null;
-          final days = DateUtils.dateOnly(
-            date,
-          ).difference(DateUtils.dateOnly(DateTime.now())).inDays;
+          final days = DateUtils.dateOnly(date)
+              .difference(DateUtils.dateOnly(DateTime.now()))
+              .inDays;
           if (days <= 3) {
             return theme.colorScheme.errorContainer.withValues(alpha: 0.28);
           }

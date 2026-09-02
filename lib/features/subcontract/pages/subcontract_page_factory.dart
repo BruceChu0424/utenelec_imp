@@ -84,8 +84,7 @@ abstract final class SubcontractPageFactory {
       if (type == SubcontractDocType.receipt) {
         return const SubcontractExecutionCreateBlockedPage(
           title: '委外回厂必须从预计到货登记',
-          description:
-              '请从仓库预计到货进入独立到货登记页。正式仓库服务会带入不可变来源并执行先出后进、数量与仓库校验；委外通用单据页不再受理新回厂登记。',
+          description: '请从仓库预计到货进入独立到货登记页。正式仓库服务会带入不可变来源并执行先出后进、数量与仓库校验；委外通用单据页不再受理新回厂登记。',
           actionLabel: '去仓库预计到货',
           actionRoute: RouteName.warehouseInboundExpectations,
         );

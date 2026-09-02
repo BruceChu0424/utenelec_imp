@@ -179,7 +179,10 @@ void main() {
     expect(_segmentBadge('1'), findsOneWidget);
     expect(find.text(_reportNo), findsOneWidget);
     // 无审批权限 → 不可选、无批量动作。
-    expect(find.byKey(const Key('production-fqc-batch-pass-all')), findsNothing);
+    expect(
+      find.byKey(const Key('production-fqc-batch-pass-all')),
+      findsNothing,
+    );
   });
 
   testWidgets('IQC-only account never requests FQC endpoints', (tester) async {
@@ -198,34 +201,35 @@ void main() {
     expect(find.text('WT20260823000002'), findsOneWidget);
   });
 
-  testWidgets('segment bar matches the stadium search height and shows no check', (
-    tester,
-  ) async {
-    await _pumpPage(
-      tester,
-      api: _FqcApi(),
-      iqc: _FakeIqcRepository(),
-      permissions: _bothViewPerms,
-    );
+  testWidgets(
+    'segment bar matches the stadium search height and shows no check',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        api: _FqcApi(),
+        iqc: _FakeIqcRepository(),
+        permissions: _bothViewPerms,
+      );
 
-    // 分类框高度对齐搜索框（同一工具条并排视觉一致）。
-    final segmentHeight = tester
-        .getSize(find.byType(SegmentedButton<String>))
-        .height;
-    final searchHeight = tester.getSize(find.byType(TextField)).height;
-    expect(segmentHeight, closeTo(searchHeight, 0.5));
+      // 分类框高度对齐搜索框（同一工具条并排视觉一致）。
+      final segmentHeight = tester
+          .getSize(find.byType(SegmentedButton<String>))
+          .height;
+      final searchHeight = tester.getSize(find.byType(TextField)).height;
+      expect(segmentHeight, closeTo(searchHeight, 0.5));
 
-    // 选中分段只变背景色，不出现 ✓ 图标。
-    await tester.tap(_segmentText('自制产成品'));
-    await tester.pumpAndSettle();
-    expect(
-      find.descendant(
-        of: find.byType(SegmentedButton<String>),
-        matching: find.byIcon(Icons.check),
-      ),
-      findsNothing,
-    );
-  });
+      // 选中分段只变背景色，不出现 ✓ 图标。
+      await tester.tap(_segmentText('自制产成品'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(SegmentedButton<String>),
+          matching: find.byIcon(Icons.check),
+        ),
+        findsNothing,
+      );
+    },
+  );
 }
 
 class _FakeIqcRepository implements ProcurementInspectionRepository {

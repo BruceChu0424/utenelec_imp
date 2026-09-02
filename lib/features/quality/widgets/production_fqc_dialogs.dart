@@ -415,7 +415,9 @@ class _ProductionFqcDecisionDialogState
                   liveRegion: true,
                   child: Text(
                     _error!,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
                   ),
                 ),
               ],

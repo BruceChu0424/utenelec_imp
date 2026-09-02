@@ -1,6 +1,7 @@
 part of 'production_material_analysis_page.dart';
 
-abstract class _MaterialAnalysisSupplyActionsState extends _MaterialAnalysisCandidatesState {
+abstract class _MaterialAnalysisSupplyActionsState
+    extends _MaterialAnalysisCandidatesState {
   Future<void> _confirmSuggestedRoute(_MaterialGroup group) async {
     final analysis = _analysis;
     final suggestion = group.representative.sourceSuggestion;
@@ -82,7 +83,11 @@ abstract class _MaterialAnalysisSupplyActionsState extends _MaterialAnalysisCand
 
   List<List<T>> _chunked<T>(List<T> values) {
     final result = <List<T>>[];
-    for (var start = 0; start < values.length; start += _MaterialAnalysisPageBase._requestChunkSize) {
+    for (
+      var start = 0;
+      start < values.length;
+      start += _MaterialAnalysisPageBase._requestChunkSize
+    ) {
       final proposedEnd = start + _MaterialAnalysisPageBase._requestChunkSize;
       final end = proposedEnd < values.length ? proposedEnd : values.length;
       result.add(values.sublist(start, end));
@@ -215,9 +220,9 @@ abstract class _MaterialAnalysisSupplyActionsState extends _MaterialAnalysisCand
         _savingRoutes = false;
         _clearBulkOperation();
         _applyAnalysis(current);
-        final currentKeys = _materialGroups(
-          current,
-        ).map((group) => group.key).toSet();
+        final currentKeys = _materialGroups(current)
+            .map((group) => group.key)
+            .toSet();
         for (final groupKey in remainingGroupKeys) {
           final draft = pendingDrafts[groupKey];
           if (draft == null || !currentKeys.contains(groupKey)) continue;
@@ -379,9 +384,9 @@ abstract class _MaterialAnalysisSupplyActionsState extends _MaterialAnalysisCand
 
   int _selectedExecutableCount(MaterialSupplyRoute route) {
     final selected = _selectedSupplyGroups[route]!;
-    return _executableSupplyGroups(
-      route,
-    ).where((group) => selected.contains(group.key)).length;
+    return _executableSupplyGroups(route)
+        .where((group) => selected.contains(group.key))
+        .length;
   }
 
   String _notifyLabel(MaterialSupplyRoute route) {
@@ -390,9 +395,8 @@ abstract class _MaterialAnalysisSupplyActionsState extends _MaterialAnalysisCand
       MaterialSupplyRoute.buy => '提交采购需求($count)',
       MaterialSupplyRoute.subcontract => '下达委外准备($count)',
       // 两段式第一步：创建任务后留在本页填数量，不直接进计划向导。
-      MaterialSupplyRoute.make => _canGenerate
-          ? '创建子件并填写生产数量($count)'
-          : '创建自制子件任务($count)',
+      MaterialSupplyRoute.make =>
+        _canGenerate ? '创建子件并填写生产数量($count)' : '创建自制子件任务($count)',
     };
   }
 
@@ -1052,12 +1056,12 @@ abstract class _MaterialAnalysisSupplyActionsState extends _MaterialAnalysisCand
     if (analysis == null || !_canNotify || _notifyingRoute != null) return;
     final groups = onlyGroup != null
         ? <_MaterialGroup>[onlyGroup]
-        : _executableSupplyGroups(
-            MaterialSupplyRoute.make,
-          ).where(
-            (group) => _selectedSupplyGroups[MaterialSupplyRoute.make]!
-                .contains(group.key),
-          ).toList(growable: false);
+        : _executableSupplyGroups(MaterialSupplyRoute.make)
+              .where(
+                (group) => _selectedSupplyGroups[MaterialSupplyRoute.make]!
+                    .contains(group.key),
+              )
+              .toList(growable: false);
     if (groups.isEmpty) {
       context.appInfo('请先勾选要创建子件任务的自制件');
       return;
@@ -1107,8 +1111,7 @@ abstract class _MaterialAnalysisSupplyActionsState extends _MaterialAnalysisCand
     }
     final parts = <String>[
       '已创建 $created 个自制子件任务',
-      if (readySelected > 0)
-        '$readySelected 个已进入填写数量，核对后点「安排子件生产」提交计划单',
+      if (readySelected > 0) '$readySelected 个已进入填写数量，核对后点「安排子件生产」提交计划单',
       if (waiting > 0) '$waiting 个待下层齐套后继续备料',
       if (refreshing > 0) '$refreshing 个子件分析正在刷新，稍后从本页继续',
       if (needPermission > 0) '请由有生产计划权限的员工继续填写计划单',
@@ -1362,8 +1365,11 @@ abstract class _MaterialAnalysisSupplyActionsState extends _MaterialAnalysisCand
     }
     return showDialog<List<MaterialSupplyQuantityInput>>(
       context: context,
-      builder: (_) =>
-          MaterialSupplyQuantityDialog(route: route, entries: entries, qtyText: _qty),
+      builder: (_) => MaterialSupplyQuantityDialog(
+        route: route,
+        entries: entries,
+        qtyText: _qty,
+      ),
     );
   }
 

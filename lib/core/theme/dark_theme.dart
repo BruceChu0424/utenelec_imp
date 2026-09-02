@@ -217,7 +217,9 @@ ThemeData buildDarkTheme() {
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(UtenRadius.control),
+        ),
         textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
@@ -231,7 +233,9 @@ ThemeData buildDarkTheme() {
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(UtenRadius.control),
+        ),
         textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
@@ -243,7 +247,9 @@ ThemeData buildDarkTheme() {
         overlayColor: UtenColors.teal400,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(UtenRadius.control),
+        ),
         side: const BorderSide(color: UtenColors.darkBorderStrong),
         textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
@@ -254,7 +260,9 @@ ThemeData buildDarkTheme() {
         overlayColor: UtenColors.teal400,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         minimumSize: const Size(0, 40),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(UtenRadius.control),
+        ),
         textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
@@ -262,7 +270,9 @@ ThemeData buildDarkTheme() {
       style: IconButton.styleFrom(
         foregroundColor: UtenColors.darkTextSecondary,
         minimumSize: const Size(40, 40),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(UtenRadius.control),
+        ),
       ),
     ),
 
@@ -364,7 +374,9 @@ ThemeData buildDarkTheme() {
         color: UtenColors.darkTextSecondary,
       ),
       side: const BorderSide(color: UtenColors.darkBorder),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(UtenRadius.control),
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     ),
 
@@ -419,7 +431,9 @@ ThemeData buildDarkTheme() {
       foregroundColor: UtenColors.teal950,
       elevation: 2,
       highlightElevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(UtenRadius.control)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(UtenRadius.control),
+      ),
       extendedTextStyle: const TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w600,

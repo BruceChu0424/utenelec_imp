@@ -17,6 +17,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart' as mn;
 import 'package:uten_imp/shared/providers/session_provider.dart';
+
 import '../../support/document_scope_capability_overrides.dart';
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {
@@ -122,11 +123,10 @@ Future<void> _pumpPendingOrder(
       overrides: [
         subcontractWriteAllDocumentScope(),
         currentPermissionsProvider.overrideWithValue(permissions),
-        subcontractRepositoryProvider(
-          SubcontractDocType.order,
-        ).overrideWithValue(
-          SubcontractRepository(api, SubcontractDocType.order),
-        ),
+        subcontractRepositoryProvider(SubcontractDocType.order)
+            .overrideWithValue(
+              SubcontractRepository(api, SubcontractDocType.order),
+            ),
         mn.masterNameServiceProvider.overrideWithValue(
           mn.MasterNameService(api),
         ),
@@ -331,11 +331,10 @@ void main() {
             Perm.subcontractReceiptApprove,
           }),
           sessionProvider.overrideWith(_WarehouseReviewerSessionNotifier.new),
-          subcontractRepositoryProvider(
-            SubcontractDocType.receipt,
-          ).overrideWithValue(
-            SubcontractRepository(api, SubcontractDocType.receipt),
-          ),
+          subcontractRepositoryProvider(SubcontractDocType.receipt)
+              .overrideWithValue(
+                SubcontractRepository(api, SubcontractDocType.receipt),
+              ),
           mn.masterNameServiceProvider.overrideWithValue(
             mn.MasterNameService(api),
           ),

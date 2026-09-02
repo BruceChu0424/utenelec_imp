@@ -174,9 +174,8 @@ class _SupplierCreditApplyPanelState
       context.appError('请填写贷项应用原因');
       return;
     }
-    final sourceCapacity = _scaledDecimal(
-      widget.source.outstandingOriginal,
-    )?.abs();
+    final sourceCapacity = _scaledDecimal(widget.source.outstandingOriginal)
+        ?.abs();
     if (sourceCapacity == null || sourceCapacity == BigInt.zero) {
       context.appError('贷项可用原币余额无效，请刷新后重试');
       return;
@@ -247,9 +246,8 @@ class _SupplierCreditApplyPanelState
                 children: [
                   Text(
                     '${source.sourceDocNo ?? '—'} · ${source.supplierName ?? '—'}',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   Text(
                     '可用余额 $currency ${source.outstandingOriginal ?? '—'}'

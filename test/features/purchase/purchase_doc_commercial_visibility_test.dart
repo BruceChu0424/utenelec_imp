@@ -137,9 +137,8 @@ Future<void> _pumpDetail(
       overrides: [
         writeAllDocumentScope(DocumentDataScope.purchase),
         currentPermissionsProvider.overrideWithValue(permissions),
-        purchaseRepositoryProvider(
-          docType,
-        ).overrideWithValue(PurchaseRepository(api, docType)),
+        purchaseRepositoryProvider(docType)
+            .overrideWithValue(PurchaseRepository(api, docType)),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
       ],
       child: MaterialApp(

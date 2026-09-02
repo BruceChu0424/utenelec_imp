@@ -690,9 +690,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           : _goodsLabel(single),
       onClear: widget.multiSelect ? () => setState(_selected.clear) : null,
       confirmLabel: widget.multiSelect ? '确定(${_selected.length})' : '确定',
-      onConfirm: () => Navigator.of(
-        context,
-      ).pop(widget.multiSelect ? _selected.values.toList() : single),
+      onConfirm: () =>
+          Navigator.of(context)
+              .pop(widget.multiSelect ? _selected.values.toList() : single),
     );
   }
 

@@ -38,8 +38,9 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   String? _error;
   String _keyword = '';
 
-  bool get _canCreate =>
-      ref.read(currentPermissionsProvider).contains(Perm.settlementMethodCreate);
+  bool get _canCreate => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.settlementMethodCreate);
 
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.settlementMethodEdit);
@@ -133,9 +134,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
 
   void _showEditTerms(SettlementMethodAdminItem m) {
     if (m.lockedBySystemRole) {
-      context.appInfo(
-        '系统角色(${m.systemRole})的账期口径由迁移锁定：现金=收货当天到期，月结=月末+30天',
-      );
+      context.appInfo('系统角色(${m.systemRole})的账期口径由迁移锁定：现金=收货当天到期，月结=月末+30天');
       return;
     }
     if (!_canEdit) {
@@ -343,8 +342,10 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                             itemCount: items.length,
                             separatorBuilder: (_, _) =>
                                 const SizedBox(height: UtenSpacing.s8),
-                            itemBuilder: (context, i) =>
-                                _MethodCard(item: items[i], onTap: _showEditTerms),
+                            itemBuilder: (context, i) => _MethodCard(
+                              item: items[i],
+                              onTap: _showEditTerms,
+                            ),
                           ),
                         ),
                 ),

@@ -88,10 +88,12 @@ void main() {
   testWidgets('merged card badge sums IQC and FQC pending counts', (
     tester,
   ) async {
-    await _pumpTaskCenter(tester, {
-      Perm.procurementInspectionView,
-      Perm.productionQualityInspectionView,
-    }, iqcCount: 2, fqcCount: 3);
+    await _pumpTaskCenter(
+      tester,
+      {Perm.procurementInspectionView, Perm.productionQualityInspectionView},
+      iqcCount: 2,
+      fqcCount: 3,
+    );
 
     // 红圆数字徽章显示两域合计；单域数字 2/3 不应独立出现。
     expect(find.text('5'), findsOneWidget);

@@ -3,6 +3,7 @@
 // 2026-09-01 起主入口是「入库任务中心 · 采购入库」的到货异常分段（/warehouse/tasks/inbound）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -32,7 +33,10 @@ class _WarehouseArrivalExceptionsPageState
 
   @override
   Widget build(BuildContext context) {
-    _myLocation ??= currentLocationOr(context, RouteName.warehouseArrivalExceptions);
+    _myLocation ??= currentLocationOr(
+      context,
+      RouteName.warehouseArrivalExceptions,
+    );
     ref.onPageResume(_myLocation!, () {
       if (!_resumeArmed) {
         _resumeArmed = true;

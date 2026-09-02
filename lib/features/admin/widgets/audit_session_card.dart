@@ -7,12 +7,11 @@ import '../models/audit_event_presentation.dart';
 import '../models/audit_log_entry.dart';
 import '../models/audit_session.dart';
 
-typedef AuditSessionEventLoader =
-    Future<AuditSessionEventPage> Function({
-      String? cursorAt,
-      int? cursorId,
-      int? snapshotAuditId,
-    });
+typedef AuditSessionEventLoader = Future<AuditSessionEventPage> Function({
+  String? cursorAt,
+  int? cursorId,
+  int? snapshotAuditId,
+});
 
 /// 审计中心只展示会话摘要；点击后进入独立路由查看时间线。
 class AuditSessionCard extends StatelessWidget {
@@ -737,10 +736,8 @@ class _StatusBadge extends StatelessWidget {
           const SizedBox(width: UtenSpacing.s4),
           Text(
             label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(context).textTheme.labelMedium
+                ?.copyWith(color: color, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -837,10 +834,8 @@ class _TinyLabel extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w700,
-        ),
+        style: Theme.of(context).textTheme.labelSmall
+            ?.copyWith(color: color, fontWeight: FontWeight.w700),
       ),
     );
   }

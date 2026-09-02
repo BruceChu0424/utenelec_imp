@@ -197,10 +197,8 @@ class SupplierDetail {
     version: (json['version'] as num?)?.toInt(),
     ownerEmployeeId: json['ownerEmployeeId'] as String?,
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
-    defaultSettlementMethodId:
-        json['defaultSettlementMethodId'] as String?,
-    defaultSettlementMethodName:
-        json['defaultSettlementMethodName'] as String?,
+    defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
+    defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
   );
 }
 

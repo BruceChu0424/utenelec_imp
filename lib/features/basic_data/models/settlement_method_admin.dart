@@ -51,8 +51,7 @@ class SettlementMethodAdminItem {
         remark: json['remark'] as String?,
       );
 
-  bool get lockedBySystemRole =>
-      systemRole != null && systemRole!.isNotEmpty;
+  bool get lockedBySystemRole => systemRole != null && systemRole!.isNotEmpty;
 }
 
 const settlementTermsBaseLabels = <String, String>{
@@ -80,7 +79,8 @@ String settlementDueRuleLabel(String? v) =>
 String settlementTermsSummary(SettlementMethodAdminItem m) {
   if (m.lockedBySystemRole && m.systemRole == 'CASH') return '现金：收货/进仓当天到期';
   final base = settlementTermsBaseLabel(m.termsBase);
-  final futureBase = m.termsBase == 'QC_ACCEPTANCE_DATE' ||
+  final futureBase =
+      m.termsBase == 'QC_ACCEPTANCE_DATE' ||
       m.termsBase == 'STATEMENT_CONFIRM_DATE' ||
       m.termsBase == 'INVOICE_DATE';
   if (futureBase) {
@@ -103,7 +103,7 @@ String settlementTermsSummary(SettlementMethodAdminItem m) {
 
 /// 系统角色徽标文案。
 String settlementSystemRoleLabel(String? role) => switch (role) {
-      'CASH' => '现金 · 系统锁定',
-      'MONTHLY' => '月结 · 系统锁定',
-      _ => '—',
-    };
+  'CASH' => '现金 · 系统锁定',
+  'MONTHLY' => '月结 · 系统锁定',
+  _ => '—',
+};

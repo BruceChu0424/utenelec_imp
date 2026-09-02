@@ -550,9 +550,8 @@ class _WarehouseSubcontractOutboundEditPageState
                 children: [
                   Text(
                     '委外目标件出仓明细',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: UtenSpacing.s8),
                   if (_lines.isEmpty)
@@ -592,9 +591,8 @@ class _WarehouseSubcontractOutboundEditPageState
                   children: [
                     Text(
                       '出仓记录',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: UtenSpacing.s8),
                     for (final d in detail.drafts)
@@ -609,9 +607,9 @@ class _WarehouseSubcontractOutboundEditPageState
                                   ? Icons.pending_actions_outlined
                                   : Icons.undo_rounded,
                               size: 16,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                             const SizedBox(width: UtenSpacing.s8),
                             Expanded(
@@ -630,9 +628,9 @@ class _WarehouseSubcontractOutboundEditPageState
                               },
                               style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                   ),
                             ),
                           ],

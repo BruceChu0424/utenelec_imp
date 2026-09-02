@@ -198,9 +198,8 @@ class _IntroCard extends StatelessWidget {
                   children: [
                     Text(
                       '原设备核查入口',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: UtenSpacing.s8),
                     const Text(
@@ -249,9 +248,8 @@ class _DeviceProfileCard extends StatelessWidget {
         children: [
           Text(
             '当前设备',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: UtenSpacing.s12),
           Wrap(
@@ -304,9 +302,8 @@ class _SearchCard extends StatelessWidget {
         children: [
           Text(
             '查询本机操作回执',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: UtenSpacing.s8),
           const Text('从审计详情复制“本地操作 ID”，再回到原操作设备粘贴查询。'),
@@ -361,9 +358,8 @@ class _ReceiptResultCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   '查询结果',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
               UtenStatusBadge(

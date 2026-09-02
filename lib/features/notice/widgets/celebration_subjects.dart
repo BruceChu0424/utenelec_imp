@@ -99,7 +99,12 @@ class CelebrationSubjectChips extends StatelessWidget {
       spacing: UtenSpacing.s8,
       runSpacing: UtenSpacing.s8,
       children: [
-        for (final s in visible) _SubjectChip(subject: s, color: color, showEventLabel: showEventLabel),
+        for (final s in visible)
+          _SubjectChip(
+            subject: s,
+            color: color,
+            showEventLabel: showEventLabel,
+          ),
         if (overflow > 0)
           Container(
             padding: const EdgeInsets.symmetric(

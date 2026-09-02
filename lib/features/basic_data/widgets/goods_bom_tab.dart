@@ -739,9 +739,8 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
         context.appSuccess(
           '已添加 $ok 个组件${errors.isNotEmpty ? '，${errors.length} 个跳过' : ''}',
         );
-        Navigator.of(
-          context,
-        ).pop(_AddResult(saved: true, parentGoodsId: _parentGoodsId));
+        Navigator.of(context)
+            .pop(_AddResult(saved: true, parentGoodsId: _parentGoodsId));
       } else {
         setState(() {
           _saving = false;

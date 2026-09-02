@@ -23,14 +23,14 @@ import '../providers/notice_providers.dart';
 import '../repositories/notice_repository.dart';
 import '../widgets/notice_detail_dialog.dart';
 
-typedef NoticeArrivalLoader =
-    Future<NoticeArrivalPage> Function(NoticeArrivalCursor? after);
-typedef NoticeArrivalDispatcher =
-    void Function(
-      BuildContext context,
-      Notice notice,
-      VoidCallback onDelivered,
-    );
+typedef NoticeArrivalLoader = Future<NoticeArrivalPage> Function(
+  NoticeArrivalCursor? after,
+);
+typedef NoticeArrivalDispatcher = void Function(
+  BuildContext context,
+  Notice notice,
+  VoidCallback onDelivered,
+);
 
 /// 轻量到达 feed。服务端按 (publishedAt,id) 高水位升序分页，不受置顶排序影响。
 /// Provider 单独抽出，既便于 Widget 测试，也为后续 SSE/WebSocket 替换保留同一入口。
@@ -376,9 +376,8 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
       ..sort((left, right) {
         // 顶部栈是“后入在上”：低优先级先派发，important / urgent 后派发，
         // 最终仍由最高优先级位于最上层；同级按时间由旧到新入栈。
-        final byPriority = _noticePriorityRank(
-          left.priority,
-        ).compareTo(_noticePriorityRank(right.priority));
+        final byPriority = _noticePriorityRank(left.priority)
+            .compareTo(_noticePriorityRank(right.priority));
         if (byPriority != 0) return byPriority;
         final byTime = left.publishedAt.compareTo(right.publishedAt);
         return byTime != 0 ? byTime : left.id.compareTo(right.id);

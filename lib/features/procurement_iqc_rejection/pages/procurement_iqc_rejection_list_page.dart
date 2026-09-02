@@ -401,9 +401,8 @@ class _ProcurementIqcRejectionListPageState
           item.status == ProcurementIqcRejectionStatus.financeException
           ? Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.32)
           : item.status == ProcurementIqcRejectionStatus.returnRecorded
-          ? Theme.of(
-              context,
-            ).colorScheme.secondaryContainer.withValues(alpha: 0.26)
+          ? Theme.of(context).colorScheme.secondaryContainer
+                .withValues(alpha: 0.26)
           : null,
       isLoading: _loading,
       loadingMore: _loading && _result != null,

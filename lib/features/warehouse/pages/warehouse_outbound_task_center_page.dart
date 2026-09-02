@@ -152,7 +152,11 @@ class _SubcontractOutboundSegmentState
             segmentsKey: const Key('subcontract-outbound-mode'),
             segments: [
               if (widget.canTasks)
-                UtenFilterSegment(value: 0, label: '待出仓任务', count: widget.taskCount),
+                UtenFilterSegment(
+                  value: 0,
+                  label: '待出仓任务',
+                  count: widget.taskCount,
+                ),
               if (widget.canHistory)
                 const UtenFilterSegment(value: 1, label: '出仓历史'),
             ],

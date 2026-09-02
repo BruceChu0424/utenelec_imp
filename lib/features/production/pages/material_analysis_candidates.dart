@@ -1,6 +1,7 @@
 part of 'production_material_analysis_page.dart';
 
-abstract class _MaterialAnalysisCandidatesState extends _MaterialAnalysisPageBase {
+abstract class _MaterialAnalysisCandidatesState
+    extends _MaterialAnalysisPageBase {
   /// 候选搜索：防抖由 UtenSearchBar 内置（300ms），停止输入后再检索。
   void _searchCandidates(String value) {
     _candidateKeyword = value.trim();
@@ -14,7 +15,8 @@ abstract class _MaterialAnalysisCandidatesState extends _MaterialAnalysisPageBas
       _sourceQtyControllers.length + _manualSources.length;
 
   int get _remainingSalesSourceSlots =>
-      (_MaterialAnalysisPageBase._maxAnalysisItems - _manualSources.length).clamp(0, _MaterialAnalysisPageBase._maxAnalysisItems);
+      (_MaterialAnalysisPageBase._maxAnalysisItems - _manualSources.length)
+          .clamp(0, _MaterialAnalysisPageBase._maxAnalysisItems);
 
   void _toggleCandidate(
     MaterialAnalysisSalesCandidateLine line,
@@ -26,7 +28,8 @@ abstract class _MaterialAnalysisCandidatesState extends _MaterialAnalysisPageBas
     }
     if (selected &&
         !_sourceQtyControllers.containsKey(line.salesOrderItemId) &&
-        _selectedAnalysisSourceCount >= _MaterialAnalysisPageBase._maxAnalysisItems) {
+        _selectedAnalysisSourceCount >=
+            _MaterialAnalysisPageBase._maxAnalysisItems) {
       context.appWarning('单次联合分析最多 500 个产品，其余请另开一个批次');
       return;
     }
@@ -189,7 +192,8 @@ abstract class _MaterialAnalysisCandidatesState extends _MaterialAnalysisPageBas
       (existing) => existing.canonicalKey == source.canonicalKey,
     );
     if (!replacesExisting &&
-        _selectedAnalysisSourceCount >= _MaterialAnalysisPageBase._maxAnalysisItems) {
+        _selectedAnalysisSourceCount >=
+            _MaterialAnalysisPageBase._maxAnalysisItems) {
       context.appWarning('单次联合分析最多 500 个来源；请先移除一个已选产品或手工计划');
       return;
     }
@@ -297,7 +301,6 @@ abstract class _MaterialAnalysisCandidatesState extends _MaterialAnalysisPageBas
       });
     }
   }
-
 
   Widget _candidateBody(ThemeData theme) {
     if (_error != null && _candidatePage == null) {
@@ -690,7 +693,10 @@ abstract class _MaterialAnalysisCandidatesState extends _MaterialAnalysisPageBas
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: '来源类型 *'),
                     items: [
-                      for (final entry in _MaterialAnalysisPageBase._manualSourceTypes.entries)
+                      for (final entry
+                          in _MaterialAnalysisPageBase
+                              ._manualSourceTypes
+                              .entries)
                         DropdownMenuItem(
                           value: entry.key,
                           child: Text(entry.value),
@@ -1058,5 +1064,4 @@ abstract class _MaterialAnalysisCandidatesState extends _MaterialAnalysisPageBas
       ),
     );
   }
-
 }

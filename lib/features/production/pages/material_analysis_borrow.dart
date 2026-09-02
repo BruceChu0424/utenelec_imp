@@ -1,7 +1,7 @@
 part of 'production_material_analysis_page.dart';
 
-abstract class _MaterialAnalysisBorrowState extends _MaterialAnalysisBomTreeState {
-
+abstract class _MaterialAnalysisBorrowState
+    extends _MaterialAnalysisBomTreeState {
   // ===== 现货层借用（调货） =====
   //
   // 同一分析内把某条直接组件路径已分配的现货覆盖量调给另一产品的同物料
@@ -695,5 +695,4 @@ abstract class _MaterialAnalysisBorrowState extends _MaterialAnalysisBomTreeStat
       ),
     );
   }
-
 }

@@ -1003,7 +1003,10 @@ class _DetailPaneState extends State<_DetailPane> {
       d.initTotal?.toStringAsFixed(2),
     ), // TODO(l10n): 补 arb
     MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
-    MasterDetailRow('默认结算方式', d.defaultSettlementMethodName), // TODO(l10n): 补 arb
+    MasterDetailRow(
+      '默认结算方式',
+      d.defaultSettlementMethodName,
+    ), // TODO(l10n): 补 arb
     MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
     MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
     MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb

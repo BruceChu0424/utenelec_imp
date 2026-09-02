@@ -46,10 +46,7 @@ void main() {
         'monthsAhead': 0,
       });
 
-      expect(
-        settlementTermsSummary(invoice),
-        contains('到期日保持未定'),
-      );
+      expect(settlementTermsSummary(invoice), contains('到期日保持未定'));
     });
 
     test('fixed day rule mentions month offset and day', () {

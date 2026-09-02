@@ -1,6 +1,7 @@
 part of 'production_material_analysis_page.dart';
 
-abstract class _MaterialAnalysisPlanActionsState extends _MaterialAnalysisSupplyActionsState {
+abstract class _MaterialAnalysisPlanActionsState
+    extends _MaterialAnalysisSupplyActionsState {
   List<MaterialAnalysisPlanItemInput>? _planItems() {
     final items = <MaterialAnalysisPlanItemInput>[];
     final products = {
@@ -287,7 +288,9 @@ abstract class _MaterialAnalysisPlanActionsState extends _MaterialAnalysisSupply
         ) {
           final group = plans.sublist(
             start,
-            (start + _MaterialAnalysisPageBase._maxConcurrentPrintLoads).clamp(0, plans.length).toInt(),
+            (start + _MaterialAnalysisPageBase._maxConcurrentPrintLoads)
+                .clamp(0, plans.length)
+                .toInt(),
           );
           final loaded = await Future.wait([
             for (final plan in group)
@@ -393,9 +396,9 @@ abstract class _MaterialAnalysisPlanActionsState extends _MaterialAnalysisSupply
                                 '仓库按单发料；可在「生产计划详情」查看进度。',
                       style: Theme.of(dialogContext).textTheme.bodyMedium
                           ?.copyWith(
-                            color: Theme.of(
-                              dialogContext,
-                            ).colorScheme.onSurfaceVariant,
+                            color: Theme.of(dialogContext)
+                                .colorScheme
+                                .onSurfaceVariant,
                             height: 1.45,
                           ),
                     ),
@@ -553,9 +556,9 @@ abstract class _MaterialAnalysisPlanActionsState extends _MaterialAnalysisSupply
                         ].join('；'),
                         style: Theme.of(dialogContext).textTheme.bodySmall
                             ?.copyWith(
-                              color: Theme.of(
-                                dialogContext,
-                              ).colorScheme.onSurfaceVariant,
+                              color: Theme.of(dialogContext)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                       ),
                     ],
@@ -579,7 +582,6 @@ abstract class _MaterialAnalysisPlanActionsState extends _MaterialAnalysisSupply
       // a second 50-plan group or another individual plan remains reachable.
     }
   }
-
 
   String get _planActionLabel {
     final analysis = _analysis;
@@ -722,7 +724,6 @@ abstract class _MaterialAnalysisPlanActionsState extends _MaterialAnalysisSupply
     );
   }
 }
-
 
 enum _GeneratedPlanDialogActionType { view, printOne, printAll }
 

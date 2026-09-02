@@ -16,12 +16,7 @@ void main() {
           'status': '使用',
           'defaultSettlementMethodId': 'm-monthly-60',
         },
-        {
-          'id': 's-none',
-          'code': 'WJ0002',
-          'name': '无默认',
-          'status': '使用',
-        },
+        {'id': 's-none', 'code': 'WJ0002', 'name': '无默认', 'status': '使用'},
         {
           'id': 's-empty',
           'code': 'WJ0003',

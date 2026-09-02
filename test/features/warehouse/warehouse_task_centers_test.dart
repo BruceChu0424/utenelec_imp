@@ -71,9 +71,7 @@ void main() {
         warehouseInboundExpectationTypeCountsProvider.overrideWith(
           (ref) async => const {'PURCHASE': 2, 'SUBCONTRACT': 1},
         ),
-        warehouseArrivalExceptionCountProvider.overrideWith(
-          (ref) async => 0,
-        ),
+        warehouseArrivalExceptionCountProvider.overrideWith((ref) async => 0),
         warehouseProductionFinishedInboundPendingCountProvider.overrideWith(
           (ref) async => 0,
         ),
@@ -89,37 +87,32 @@ void main() {
 
   group('route permission contract', () {
     test('task centers accept any of their business view permissions', () {
+      expect(requiredAnyPermFor(RouteName.warehouseOutboundTasks), const [
+        Perm.salesShipmentWarehouseWork,
+        Perm.subcontractOutboundView,
+        Perm.stockDocView,
+      ]);
       expect(
-        requiredAnyPermFor(RouteName.warehouseOutboundTasks),
+        requiredAnyPermFor('${RouteName.warehouseOutboundTasks}/x'),
         const [
           Perm.salesShipmentWarehouseWork,
           Perm.subcontractOutboundView,
           Perm.stockDocView,
         ],
       );
-      expect(requiredAnyPermFor('${RouteName.warehouseOutboundTasks}/x'), const [
-        Perm.salesShipmentWarehouseWork,
-        Perm.subcontractOutboundView,
+      expect(requiredAnyPermFor(RouteName.warehouseInboundTasks), const [
+        Perm.warehouseInboundView,
+        Perm.stockDocView,
+        Perm.warehousePurchaseReceiptHistoryView,
+        Perm.warehouseSubcontractReceiptHistoryView,
+      ]);
+      expect(requiredAnyPermFor(RouteName.warehouseDrawTasks), const [
         Perm.stockDocView,
       ]);
-      expect(
-        requiredAnyPermFor(RouteName.warehouseInboundTasks),
-        const [
-          Perm.warehouseInboundView,
-          Perm.stockDocView,
-          Perm.warehousePurchaseReceiptHistoryView,
-          Perm.warehouseSubcontractReceiptHistoryView,
-        ],
-      );
-      expect(
-        requiredAnyPermFor(RouteName.warehouseDrawTasks),
-        const [Perm.stockDocView],
-      );
       // 库存详情与库存查询同权（/stock/ 前缀 → stock:view）。
-      expect(
-        requiredAnyPermFor(RouteName.stockItemDetail('goods-1')),
-        const [Perm.stockView],
-      );
+      expect(requiredAnyPermFor(RouteName.stockItemDetail('goods-1')), const [
+        Perm.stockView,
+      ]);
       // 任务中心静态段不能落入 /warehouse/:code 单据回退：未知子段 fail-closed
       //（返回空列表 → 路由守卫送 notFound）。
       expect(requiredAnyPermFor('/warehouse/tasks/unknown'), isEmpty);
@@ -130,10 +123,10 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      app(
-        const WarehouseOutboundTaskCenterPage(),
-        const {Perm.salesShipmentWarehouseWork, Perm.stockDocView},
-      ),
+      app(const WarehouseOutboundTaskCenterPage(), const {
+        Perm.salesShipmentWarehouseWork,
+        Perm.stockDocView,
+      }),
     );
     await tester.pump();
 
@@ -162,10 +155,10 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      app(
-        const WarehouseOutboundTaskCenterPage(),
-        const {Perm.stockDocView, Perm.stockDocCreate},
-      ),
+      app(const WarehouseOutboundTaskCenterPage(), const {
+        Perm.stockDocView,
+        Perm.stockDocCreate,
+      }),
     );
     await tester.pump();
     await tester.tap(find.text('其它出库'));
@@ -181,10 +174,9 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      app(
-        const WarehouseInboundTaskCenterPage(),
-        const {Perm.warehouseInboundView},
-      ),
+      app(const WarehouseInboundTaskCenterPage(), const {
+        Perm.warehouseInboundView,
+      }),
     );
     await tester.pump();
 
@@ -221,9 +213,6 @@ void main() {
       app(const WarehouseDrawTaskCenterPage(), const <String>{}),
     );
     await tester.pump();
-    expect(
-      find.text('暂无库存单据查看权限，请联系仓库主管开通。'),
-      findsOneWidget,
-    );
+    expect(find.text('暂无库存单据查看权限，请联系仓库主管开通。'), findsOneWidget);
   });
 }

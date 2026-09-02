@@ -26,9 +26,9 @@ void main() {
       expect(snapshot.accessToken, 'legacy-access');
       expect(snapshot.refreshToken, 'legacy-refresh');
       expect(snapshot.generation, 1);
-      final record =
-          jsonDecode((await rawStorage.read(key: 'auth.token_record.v1'))!)
-              as Map<String, dynamic>;
+      final record = jsonDecode(
+        (await rawStorage.read(key: 'auth.token_record.v1'))!,
+      ) as Map<String, dynamic>;
       expect(record['accessToken'], 'legacy-access');
       expect(record['refreshToken'], 'legacy-refresh');
       expect(record['generation'], 1);
@@ -77,9 +77,9 @@ void main() {
       expect(second.accessToken, 'second-access');
       expect(second.refreshToken, 'first-refresh');
       expect(second.generation, 2);
-      final record =
-          jsonDecode((await rawStorage.read(key: 'auth.token_record.v1'))!)
-              as Map<String, dynamic>;
+      final record = jsonDecode(
+        (await rawStorage.read(key: 'auth.token_record.v1'))!,
+      ) as Map<String, dynamic>;
       expect(record['version'], 2);
       expect(record['generation'], 2);
       expect(record['intentGeneration'], 2);

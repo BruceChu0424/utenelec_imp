@@ -49,9 +49,8 @@ void main() {
   });
 
   test('money stays as exact server decimal strings', () async {
-    final result = await FinancePayablesRepository(
-      _PayablesApi(_response),
-    ).list();
+    final result = await FinancePayablesRepository(_PayablesApi(_response))
+        .list();
 
     expect(result.summary.payableLocal, '9007199254740993.12');
     expect(result.summary.outstandingLocal, '5000.01');

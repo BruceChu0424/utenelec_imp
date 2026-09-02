@@ -16,9 +16,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          salesRepositoryProvider(
-            SalesDocType.order,
-          ).overrideWithValue(_analysisRepository()),
+          salesRepositoryProvider(SalesDocType.order)
+              .overrideWithValue(_analysisRepository()),
           currentPermissionsProvider.overrideWithValue(const {}),
           isSuperAdminProvider.overrideWithValue(false),
         ],
@@ -71,9 +70,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            salesRepositoryProvider(
-              SalesDocType.order,
-            ).overrideWithValue(_repository()),
+            salesRepositoryProvider(SalesDocType.order)
+                .overrideWithValue(_repository()),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionPlanView,
             }),

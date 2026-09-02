@@ -50,39 +50,36 @@ void main() {
     },
   );
 
-  test(
-    'new execution entry points fail closed only where an authoritative task is required',
-    () {
-      expect(
-        SubcontractPageFactory.editor(type: SubcontractDocType.materialIssue),
-        isA<SubcontractExecutionCreateBlockedPage>(),
-      );
-      expect(
-        SubcontractPageFactory.editor(type: SubcontractDocType.receipt),
-        isA<SubcontractExecutionCreateBlockedPage>(),
-      );
-      expect(
-        SubcontractPageFactory.editor(type: SubcontractDocType.application),
-        isA<SubcontractExecutionCreateBlockedPage>(),
-      );
-      expect(
-        SubcontractPageFactory.editor(type: SubcontractDocType.inquiry),
-        isA<SubcontractExecutionCreateBlockedPage>(),
-      );
-      expect(
-        SubcontractPageFactory.editor(type: SubcontractDocType.returnDoc),
-        isA<SubcontractFinishedReturnEditorPage>(),
-      );
-      expect(
-        SubcontractPageFactory.editor(type: SubcontractDocType.materialReturn),
-        isA<SubcontractMaterialReturnEditorPage>(),
-      );
-      expect(
-        SubcontractPageFactory.editor(type: SubcontractDocType.waste),
-        isA<SubcontractWasteResponsibilityEditorPage>(),
-      );
-    },
-  );
+  test('new execution entry points fail closed only where an authoritative task is required', () {
+    expect(
+      SubcontractPageFactory.editor(type: SubcontractDocType.materialIssue),
+      isA<SubcontractExecutionCreateBlockedPage>(),
+    );
+    expect(
+      SubcontractPageFactory.editor(type: SubcontractDocType.receipt),
+      isA<SubcontractExecutionCreateBlockedPage>(),
+    );
+    expect(
+      SubcontractPageFactory.editor(type: SubcontractDocType.application),
+      isA<SubcontractExecutionCreateBlockedPage>(),
+    );
+    expect(
+      SubcontractPageFactory.editor(type: SubcontractDocType.inquiry),
+      isA<SubcontractExecutionCreateBlockedPage>(),
+    );
+    expect(
+      SubcontractPageFactory.editor(type: SubcontractDocType.returnDoc),
+      isA<SubcontractFinishedReturnEditorPage>(),
+    );
+    expect(
+      SubcontractPageFactory.editor(type: SubcontractDocType.materialReturn),
+      isA<SubcontractMaterialReturnEditorPage>(),
+    );
+    expect(
+      SubcontractPageFactory.editor(type: SubcontractDocType.waste),
+      isA<SubcontractWasteResponsibilityEditorPage>(),
+    );
+  });
 
   test('commercial permissions are exact per business page', () {
     expect(

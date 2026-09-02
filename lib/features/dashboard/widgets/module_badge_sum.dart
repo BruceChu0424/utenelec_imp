@@ -171,11 +171,8 @@ int _sum(
 ) {
   var total = 0;
   for (final provider in providers) {
-    total += watch(provider).when(
-      data: (value) => value,
-      error: (_, _) => 0,
-      loading: () => 0,
-    );
+    total += watch(provider)
+        .when(data: (value) => value, error: (_, _) => 0, loading: () => 0);
   }
   return total;
 }

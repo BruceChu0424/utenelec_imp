@@ -8,20 +8,17 @@ import 'package:uten_imp/features/subcontract/repositories/subcontract_repositor
 void main() {
   // 订货单支持从管理卡片直达新建（与销售/采购一致，见 subcontract_doc_config.dart 注释），
   // 两条入口并存：可从任务中心带入计划申请，也可直接录入目标委外件；申请单本身只读。
-  test(
-    'planning applications are read-only and orders support analysis or direct target lines',
-    () {
-      expect(SubcontractDocConfig.application.allowDirectCreate, isFalse);
-      expect(SubcontractDocConfig.application.skipListOnCreate, isFalse);
-      expect(SubcontractDocConfig.application.hasSupplier, isFalse);
-      expect(SubcontractDocConfig.application.itemHasPrice, isFalse);
+  test('planning applications are read-only and orders support analysis or direct target lines', () {
+    expect(SubcontractDocConfig.application.allowDirectCreate, isFalse);
+    expect(SubcontractDocConfig.application.skipListOnCreate, isFalse);
+    expect(SubcontractDocConfig.application.hasSupplier, isFalse);
+    expect(SubcontractDocConfig.application.itemHasPrice, isFalse);
 
-      expect(SubcontractDocConfig.order.allowDirectCreate, isTrue);
-      expect(SubcontractDocConfig.order.skipListOnCreate, isTrue);
-      expect(SubcontractDocConfig.order.supplierRequired, isTrue);
-      expect(SubcontractDocConfig.order.linkToApplicationItem, isTrue);
-    },
-  );
+    expect(SubcontractDocConfig.order.allowDirectCreate, isTrue);
+    expect(SubcontractDocConfig.order.skipListOnCreate, isTrue);
+    expect(SubcontractDocConfig.order.supplierRequired, isTrue);
+    expect(SubcontractDocConfig.order.linkToApplicationItem, isTrue);
+  });
 
   test('decomposition preview keeps all fourteen server fields', () {
     final line = SubcontractDecompositionLine.fromJson({

@@ -40,7 +40,10 @@ class WarehouseHubPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // 返回即刷新：重拉任务中心各计数（角标 = 分段之和，口径与工作台仓库卡一致）。
-    ref.onPageResume(RouteName.warehouse, () => invalidateWarehouseTaskCounts(ref));
+    ref.onPageResume(
+      RouteName.warehouse,
+      () => invalidateWarehouseTaskCounts(ref),
+    );
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     // 权限门控（V305）：卡片按权限点显隐，权限管理授权后才可见。

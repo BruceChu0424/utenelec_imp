@@ -31,9 +31,7 @@ class ReferenceMethodRepository {
   /// 结算方式管理页全量（含禁用行与账期策略；settlement_method:view）。
   Future<List<SettlementMethodAdminItem>> settlementAdminList() async {
     final rows = await api.getList(ApiEndpoints.settlementMethodsAdmin);
-    return rows
-        .map(SettlementMethodAdminItem.fromJson)
-        .toList();
+    return rows.map(SettlementMethodAdminItem.fromJson).toList();
   }
 
   /// 维护账期策略与可选改名（settlement_method:edit；系统角色锁定由服务端拒绝）。

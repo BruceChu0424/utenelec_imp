@@ -63,6 +63,7 @@ class ProductionMaterialAnalysisPage extends ConsumerStatefulWidget {
   ConsumerState<ProductionMaterialAnalysisPage> createState() =>
       _ProductionMaterialAnalysisPageState();
 }
+
 abstract class _MaterialAnalysisPageBase
     extends ConsumerState<ProductionMaterialAnalysisPage> {
   static const int _maxAnalysisItems = 500;
@@ -430,7 +431,6 @@ abstract class _MaterialAnalysisPageBase
     }
   }
 
-
   void _applyAnalysis(ProductionMaterialAnalysisView view) {
     _analysis = view;
     _serverRefreshNotice = null;
@@ -772,9 +772,9 @@ abstract class _MaterialAnalysisPageBase
     Map<MaterialSupplyRoute, Set<String>> snapshot,
   ) {
     for (final entry in snapshot.entries) {
-      final valid = _executableSupplyGroups(
-        entry.key,
-      ).map((group) => group.key).toSet();
+      final valid = _executableSupplyGroups(entry.key)
+          .map((group) => group.key)
+          .toSet();
       _selectedSupplyGroups[entry.key]!.addAll(
         entry.value.where(valid.contains),
       );
@@ -1131,7 +1131,6 @@ abstract class _MaterialAnalysisPageBase
     }
     return null;
   }
-
 }
 
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。
@@ -1698,5 +1697,4 @@ class _ProductionMaterialAnalysisPageState
     }
     return parts.join('\n');
   }
-
 }

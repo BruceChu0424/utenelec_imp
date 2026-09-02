@@ -227,9 +227,8 @@ class _WarehouseSalesOutboundDetailPageState
                     const SizedBox(height: UtenSpacing.s16),
                     Text(
                       '拣货明细 (${detail.lines.length})',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: UtenSpacing.s8),
                     MasterDataTableView<WarehouseSalesOutboundLine>(

@@ -944,9 +944,8 @@ class _FinanceAssetActionInputState
                     Expanded(
                       child: Text(
                         _actionLabel(widget.action),
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                        style: Theme.of(context).textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                     ),
                     IconButton(
@@ -1075,9 +1074,8 @@ class _FinanceAssetActionInputState
                   const SizedBox(height: UtenSpacing.s8),
                   Text(
                     _selectionError!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.error),
                   ),
                 ],
                 const SizedBox(height: UtenSpacing.s12),

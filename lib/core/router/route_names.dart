@@ -90,7 +90,8 @@ abstract final class RouteName {
   static const String basicinfoAccount = '/basicinfo/account';
   static const String basicinfoAccountDetail = '/basicinfo/account/:id';
   static const String basicinfoPaymentStyle = '/basicinfo/payment-style';
-  static const String basicinfoSettlementMethod = '/basicinfo/settlement-methods';
+  static const String basicinfoSettlementMethod =
+      '/basicinfo/settlement-methods';
 
   // 工资条
   static const String payrollSlipList = '/payroll/slip';
@@ -472,9 +473,9 @@ abstract final class RoutePath {
     );
     return safeReturnTo == null
         ? path
-        : Uri.parse(
-            path,
-          ).replace(queryParameters: {'returnTo': safeReturnTo}).toString();
+        : Uri.parse(path)
+              .replace(queryParameters: {'returnTo': safeReturnTo})
+              .toString();
   }
 
   static String procurementArrivalException(String id) =>

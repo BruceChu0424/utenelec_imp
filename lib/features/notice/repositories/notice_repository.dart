@@ -153,9 +153,8 @@ class DioNoticeRepository implements NoticeRepository {
     final items = (json['items'] as List<dynamic>? ?? const [])
         .cast<Map<String, dynamic>>();
     final cursorPublishedAt =
-        DateTime.tryParse(
-          json['cursorPublishedAt'] as String? ?? '',
-        )?.toUtc() ??
+        DateTime.tryParse(json['cursorPublishedAt'] as String? ?? '')
+            ?.toUtc() ??
         after?.publishedAt ??
         DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     final cursorId =
@@ -429,7 +428,9 @@ class DioNoticeRepository implements NoticeRepository {
           (json['blessingTemplates'] as List<dynamic>? ?? const [])
               .cast<String>(),
       subjects: (json['subjects'] as List<dynamic>? ?? const [])
-          .map((e) => NoticeCelebrationSubject.fromJson(e as Map<String, dynamic>))
+          .map(
+            (e) => NoticeCelebrationSubject.fromJson(e as Map<String, dynamic>),
+          )
           .toList(),
     );
   }

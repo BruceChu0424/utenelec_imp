@@ -190,7 +190,8 @@ class _QualityPendingDisposalPageState
       _loading = false;
       _error = errors.isEmpty ? null : errors.join('；');
       if (_page > _totalPages) _page = _totalPages;
-      final fqcIds = _fqcInspections?.map((item) => item.id).toSet() ?? const <String>{};
+      final fqcIds =
+          _fqcInspections?.map((item) => item.id).toSet() ?? const <String>{};
       _selectedIds.removeWhere((id) => !fqcIds.contains(id));
     });
     ref.invalidate(procurementInspectionPendingCountProvider);
@@ -514,17 +515,19 @@ class _QualityPendingDisposalPageState
                   _selectType(value);
                 },
                 selectable: _canDecideFqc,
-                idOf: (row) =>
-                    row.isFqc && row.inspection!.active
-                        ? row.inspection!.id
-                        : null,
+                idOf: (row) => row.isFqc && row.inspection!.active
+                    ? row.inspection!.id
+                    : null,
                 // 勾选门控与 idOf 同源（IQC 行返回 null 不可勾选），
                 // 行稳定键单独给：IQC 用收货单 id，FQC 用任务 id。
                 rowKeyOf: (row) =>
                     row.isFqc ? row.inspection!.id : row.receipt!.receiptId,
                 selectedIds: _selectedIds,
-                onSelectedIdsChanged: (next) =>
-                    setState(() => _selectedIds..clear()..addAll(next)),
+                onSelectedIdsChanged: (next) => setState(
+                  () => _selectedIds
+                    ..clear()
+                    ..addAll(next),
+                ),
                 batchActionsBuilder: _canDecideFqc ? _batchActions : null,
                 onRowTap: (row) => row.isFqc
                     ? _openFqcDetail(row)
@@ -604,7 +607,11 @@ class _QualityPendingDisposalPageState
                 ),
               ],
               if (_canViewFqc)
-                UtenFilterSegment(value: 'fqc', label: '自制产成品', count: fqcCount),
+                UtenFilterSegment(
+                  value: 'fqc',
+                  label: '自制产成品',
+                  count: fqcCount,
+                ),
             ],
             selected: _typeFilterSelected ? {selected} : const {},
             onSelectionChanged: (value) => _selectType(switch (value) {
@@ -659,9 +666,8 @@ class _QualityPendingDisposalPageState
                   child: Text(
                     '自制产成品待检任务共 $_fqcTotal 条，超过单次拉取上限，'
                     '仅显示前 $_fqcFetchSize 条；请先处理当前任务后刷新。',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.error),
                   ),
                 ),
               ),
@@ -776,9 +782,8 @@ class _DisposalRow {
   bool get isFqc => inspection != null;
 
   /// 与分段/表头筛选同一取值域：PURCHASE / SUBCONTRACT / FQC。
-  String get kind => isFqc
-      ? 'FQC'
-      : (receipt!.isSubcontract ? 'SUBCONTRACT' : 'PURCHASE');
+  String get kind =>
+      isFqc ? 'FQC' : (receipt!.isSubcontract ? 'SUBCONTRACT' : 'PURCHASE');
 }
 
 /// 单张收货单的 IQC 处置页：明细多选表格 + 批量合格放行 / 单行检验弹窗。

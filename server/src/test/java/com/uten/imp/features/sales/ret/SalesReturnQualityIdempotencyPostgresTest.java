@@ -579,7 +579,8 @@ class SalesReturnQualityIdempotencyPostgresTest {
         int clientCodeSequence = CLIENT_CODE_SEQUENCE.incrementAndGet();
 
         jdbc.update(
-                "INSERT INTO clients(id, code, name, code_sequence) VALUES (?, ?, ?, ?)",
+                "INSERT INTO clients(id, code, name, code_sequence, sales_payment_type) "
+                        + "VALUES (?, ?, ?, ?, 'MONTHLY')",
                 clientId,
                 "KH%06d".formatted(clientCodeSequence),
                 "Quality test client " + suffix,

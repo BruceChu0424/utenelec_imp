@@ -317,7 +317,8 @@ class SalesReservationSafetyStockPostgresTest {
     private static void insertClient(Connection c, UUID id, String name) throws Exception {
         int codeSequence = CLIENT_CODE_SEQUENCE.incrementAndGet();
         try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO clients(id, code, name, code_sequence) VALUES (?, ?, ?, ?)")) {
+                "INSERT INTO clients(id, code, name, code_sequence, sales_payment_type) "
+                        + "VALUES (?, ?, ?, ?, 'MONTHLY')")) {
             ps.setObject(1, id);
             ps.setString(2, "KH%06d".formatted(codeSequence));
             ps.setString(3, name);

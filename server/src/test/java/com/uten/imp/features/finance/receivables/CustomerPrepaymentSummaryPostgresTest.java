@@ -65,7 +65,8 @@ class CustomerPrepaymentSummaryPostgresTest {
         // fn_reserve_business_document_identifier 要求 XD+YYYYMMDD+6位流水
         String orderBillNo = "XD20260827000001";
         jdbc.update("""
-                INSERT INTO clients(id,code,name,status,code_sequence) VALUES(?,?,?,'使用',2)
+                INSERT INTO clients(id,code,name,status,code_sequence,sales_payment_type)
+                VALUES(?,?,?,'使用',2,'MONTHLY')
                 """, clientId, "CP-SUM-" + suffix, "Customer prepayment summary");
         jdbc.update("""
                 INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,?,?,1,'使用')

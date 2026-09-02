@@ -2139,6 +2139,15 @@ class FullChainEndToEndTest {
                         .InspectionDispositionRequest(
                         "PASS", null, "让料优先补齐真链验收",
                         "idem-cross-priority-" + idempotencySuffix));
+        // V446 后分析归属 peg 在仓库确认入库事务写入（attributeInspectionStockIn），
+        // 仅 IQC PASS 不再形成 exactPegged——补确认步骤与真实作业一致。
+        loginAs(createIqcWarehouseConfirmer(w, "iqc-stock-" + idempotencySuffix));
+        iqcStockInService.confirm(
+                "PURCHASE", receiptId,
+                latestIqcStockInRequest(
+                        "PURCHASE", receiptId, inspectionItemId, qty,
+                        "stock-in-" + idempotencySuffix + "-" + inspectionItemId,
+                        "AUTO-A01"));
         return receiptId;
     }
 
@@ -4486,10 +4495,14 @@ class FullChainEndToEndTest {
                 select reconciliation_state
                 from v_receipt_v0_gl_reconciliation where receipt_id=?
                 """,receiptId),"历史 V0 已审收款缺凭证必须进入异常队列");
+        // 同月已有其它链路测试立账（共享库），先配齐过账角色科目才能到达 V0 闸
+        seedChartOfAccounts();
         ApiException blocked=assertThrows(ApiException.class,()->
                 glPostingService.generate(BusinessTime.today().toString().substring(0,7)));
         assertTrue(blocked.getMessage().contains("历史 V0 已审收款"),blocked.getMessage());
         assertTrue(blocked.getMessage().contains("禁止按当前科目自动补账"),blocked.getMessage());
+        // 清理夹具：V0 收款留在共享库会阻断后续测试对本期间 generate（如 amounts_gl）
+        jdbc.update("delete from finance_receipts where id = ?", receiptId);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -5514,9 +5527,7 @@ class FullChainEndToEndTest {
         line.setUnitId(w.unitId());
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal("5"));
-        line.setPrice(new BigDecimal("10"));
-        line.setAmountOriginal(new BigDecimal("50"));
-        line.setAmountLocal(new BigDecimal("50"));
+        // 纯数量行：keeperA 无 goods:cost:view，带价/金额会被 StockDocService 拒绝
         req.setItems(List.of(line));
         return stockDocService.create(req).getId();
     }
@@ -5871,22 +5882,89 @@ class FullChainEndToEndTest {
 
     /** Create + approve a production daily report for one plan line; returns the report id.
      *  Setting warehouseId makes approve auto-generate a FINISHED_IN draft linked to the plan. */
+    private record StartedSegment(UUID segmentId, UUID salesAllocationId) {}
+
+    /**
+     * V414 后报工行必须引用已开工执行段。旧式夹具计划（approvedPlan / 编排器子计划）可能
+     * 没有段，这里按 exactExecutionSegment 配方自举：无段时放宽 BOM 硬门禁（段因此成为
+     * ZERO_MATERIAL 可直接开工）→ 包确认建段；随后 assign→dispatch→start 到 IN_PROGRESS。
+     * 已开工段直接复用（同计划二次报工）。
+     */
+    private StartedSegment startedSegmentFor(World w, UUID planId, UUID planItemId, UUID orderItemId) {
+        UUID segmentId = jdbc.query("""
+                select id from production_execution_segments
+                where plan_id = ? and source_plan_item_id = ? and is_deleted = false
+                order by created_at
+                """, (rs, i) -> rs.getObject("id", UUID.class), planId, planItemId)
+                .stream().findFirst().orElse(null);
+        if (segmentId == null) {
+            jdbc.update("""
+                    update goods_bom_items set hard_gate = false
+                    where goods_id = (select goods_id from production_plan_items where id = ?)
+                    """, planItemId);
+            PlanningPreviewResult preview = planningPackageService.preview(planId, w.warehouseId());
+            GeneratePlanningPackageRequest req = new GeneratePlanningPackageRequest();
+            req.setWarehouseId(w.warehouseId());
+            req.setIdempotencyKey("e2e-seg-" + planId);
+            req.setPreviewFingerprint(preview.fingerprint());
+            req.setGeneratePurchaseRequest(false);
+            PlanningPackageResult confirmed = planningPackageService.confirm(planId, req);
+            segmentId = confirmed.executionSegments().getFirst().segmentId();
+        }
+        UUID salesAllocationId = salesAllocationOf(segmentId, orderItemId);
+
+        String status = jdbc.queryForObject(
+                "select status from production_execution_segments where id = ?",
+                String.class, segmentId);
+        if (!"IN_PROGRESS".equals(status)) {
+            final UUID startedSegmentId = segmentId;
+            ProductionAssignment assignment = productionAssignment("e2e-" + planId);
+            ExecutionSegmentView current = executionSegmentService.list(planId)
+                    .stream()
+                    .filter(segment -> segment.id().equals(startedSegmentId))
+                    .findFirst()
+                    .orElseThrow();
+            ExecutionSegmentView assigned = executionSegmentService.assign(
+                    planId, startedSegmentId,
+                    new SegmentAssignmentRequest(
+                            current.lockVersion(),
+                            "e2e-assign-" + startedSegmentId,
+                            assignment.workshopId(), null, assignment.workerId(),
+                            LocalDate.of(2026, 1, 20),
+                            LocalDate.of(2026, 1, 31)));
+            ExecutionSegmentView dispatched = executionSegmentService.dispatch(
+                    planId, startedSegmentId,
+                    new SegmentTransitionRequest(
+                            assigned.lockVersion(),
+                            "e2e-dispatch-" + startedSegmentId));
+            executionSegmentService.start(
+                    planId, startedSegmentId,
+                    new SegmentTransitionRequest(
+                            dispatched.lockVersion(),
+                            "e2e-start-" + startedSegmentId));
+        }
+        return new StartedSegment(segmentId, salesAllocationId);
+    }
+
+    private UUID salesAllocationOf(UUID segmentId, UUID orderItemId) {
+        if (orderItemId == null) {
+            return null;
+        }
+        return jdbc.query("""
+                select id from execution_segment_sales_allocations
+                where execution_segment_id = ? and sales_order_item_id = ?
+                """, (rs, i) -> rs.getObject("id", UUID.class), segmentId, orderItemId)
+                .stream().findFirst().orElse(null);
+    }
+
     private UUID reportAndApprove(World w, UUID planItemId, UUID orderItemId,
                                   UUID goodsId, String qty) {
-        DailyReportSaveRequest req = new DailyReportSaveRequest();
-        req.setIdempotencyKey("e2e-report-" + UUID.randomUUID());
-        req.setBillDate(LocalDate.of(2026, 1, 25));
-        DailyReportItemLine line = new DailyReportItemLine();
-        line.setGoodsId(goodsId);
-        line.setUnitId(w.unitId());
-        line.setUnitRate(BigDecimal.ONE);
-        line.setQty(new BigDecimal(qty));
-        line.setPlanItemId(planItemId);
-        line.setSalesOrderItemId(orderItemId);
-        req.setItems(List.of(line));
-        DailyReportDetail d = reportService.create(req);
-        reportService.approve(d.getId());
-        return d.getId();
+        UUID planId = jdbc.queryForObject(
+                "select plan_id from production_plan_items where id = ?", UUID.class, planItemId);
+        StartedSegment segment = startedSegmentFor(w, planId, planItemId, orderItemId);
+        return reportAndApproveExecutionSegment(
+                w, planItemId, orderItemId, goodsId,
+                segment.segmentId(), segment.salesAllocationId(), qty);
     }
 
     private UUID reportAndApproveExecutionSegment(
@@ -6242,10 +6320,12 @@ class FullChainEndToEndTest {
 
     // ---------------------------------------------------------------------------------------------
     // #13 (bottom-up auto-release) With a clean MAKE-only tree X→Y→Z, after confirmFullTree(X) the
-    // segments are WAITING (X waits on Y, Y waits on Z; Z is a BOM-less MAKE leaf → no segment, made
-    // directly). Producing Z (report + FINISHED_IN) fires the existing V194 hook
+    // segments are WAITING (X waits on Y, Y waits on Z; Z 最深层、仅软门禁物料 → READY).
+    // Producing Z (segment report + FINISHED_IN) fires the existing V194 hook
     // (onFinishedInboundApproved) which promotes Y's WAITING segment → READY — proving the
     // orchestrator-built tree composes with the existing bottom-up auto-release ("下层完成自动释放上层").
+    // V414 后报工必须引用已开工执行段（见 DailyReportExecutionSegmentGuard），无段直产路径已封死，
+    // 故 Z 配软门禁 BOM 让整树确认自然为其建段。
     // ---------------------------------------------------------------------------------------------
     @Test
     void bottomUpConfirm_childFinishedInboundReleasesParentSegment() {
@@ -6256,6 +6336,10 @@ class FullChainEndToEndTest {
         insertGoods(z, "Z-s13r", "叶子Z-s13r", "自制", w.unitId(), w.unitLegacy());
         insertBom(x, y, "1"); // X → Y
         insertBom(y, z, "1"); // Y → Z
+        // Z 挂一个软门禁采购件 BOM：不产生需求/子计划（软门禁物料不参与展开），
+        // 但让整树确认走到 Z 层为其建 ZERO_MATERIAL 执行段（V414 后报工必须有段）。
+        insertBom(z, w.goodsD(), "1");
+        jdbc.update("update goods_bom_items set hard_gate = false where goods_id = ?", z);
         loginAs(w.superAdminUserId());
         UUID planId = approvedPlan(w, x, "10", "10");
         PlanningPreviewResult preview = planningPackageService.preview(planId, w.warehouseId());
@@ -6269,14 +6353,12 @@ class FullChainEndToEndTest {
         UUID yPlan = subplanOf(planId);
         UUID zPlan = subplanOf(yPlan);
         UUID zPlanItem = planItemOfPlan(zPlan);
-        // before any production: X & Y WAITING on their MAKE child; Z (leaf) has no segment
+        // before any production: X & Y WAITING on their MAKE child; Z（最深层，仅软门禁物料）READY
         assertTrue(hasSegmentStatus(planId, "WAITING"), "X 段 WAITING(等 Y 完工)");
         assertTrue(hasSegmentStatus(yPlan, "WAITING"), "Y 段 WAITING(等 Z 完工)");
-        assertEquals(0, count(
-                "select count(*) from production_execution_segments where plan_id = ? and is_deleted = false",
-                zPlan), "Z 是无 BOM 自制叶子件 → 无执行段(直接报工生产)");
+        assertTrue(hasSegmentStatus(zPlan, "READY"), "Z 段 READY(最深层，无硬门禁需求)");
 
-        // produce Z (leaf): old-style report + FINISHED_IN (no segment, no sales link)
+        // produce Z (leaf): segment report + FINISHED_IN (no sales link)
         loginAs(w.superAdminUserId());
         produceInternal(w, zPlanItem, z, "10");
 
@@ -6375,20 +6457,14 @@ class FullChainEndToEndTest {
     /** Produce an internal (no-sales-link) MAKE subplan via old-style report + FINISHED_IN. For MAKE
      *  leaves (no BOM, no segment) or unconfirmed plans. Fires the V194 auto-release hook on approval. */
     private void produceInternal(World w, UUID planItemId, UUID goodsId, String qty) {
-        DailyReportSaveRequest req = new DailyReportSaveRequest();
-        req.setIdempotencyKey("e2e-report-" + UUID.randomUUID());
-        req.setBillDate(LocalDate.of(2026, 1, 25));
-        req.setWarehouseId(w.warehouseId());
-        DailyReportItemLine line = new DailyReportItemLine();
-        line.setGoodsId(goodsId);
-        line.setUnitId(w.unitId());
-        line.setUnitRate(BigDecimal.ONE);
-        line.setQty(new BigDecimal(qty));
-        line.setPlanItemId(planItemId);
-        req.setItems(List.of(line));
-        DailyReportDetail d = reportService.create(req);
-        reportService.approve(d.getId());
-        confirmFinishedInboundFully(finishedInDocForReport(d.getId()));
+        UUID planId = jdbc.queryForObject(
+                "select plan_id from production_plan_items where id = ?", UUID.class, planItemId);
+        // V414 后内部件报工同样必须引用已开工执行段（无销售关联 → 分摊为空）
+        StartedSegment segment = startedSegmentFor(w, planId, planItemId, null);
+        UUID reportId = reportAndApproveExecutionSegment(
+                w, planItemId, null, goodsId,
+                segment.segmentId(), null, qty);
+        confirmFinishedInboundFully(finishedInDocForReport(reportId));
     }
 
     private UUID subplanOf(UUID parentPlanId) {

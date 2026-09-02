@@ -434,9 +434,9 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
         UUID clientId = UUID.randomUUID();
         UUID makerId = seedCurrentActor("concurrency-direct-maker").employeeId();
         jdbc.update("""
-                INSERT INTO clients (id, code, name, status, code_sequence)
+                INSERT INTO clients (id, code, name, status, code_sequence, sales_payment_type)
                 VALUES (?, ?, '财务并发测试客户', '使用',
-                        (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM clients))
+                        (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM clients), 'MONTHLY')
                 """, clientId, "CLI-" + suffix);
 
         UUID receiptAccount = seedAccount(currencyId, suffix + "-RECEIPT");

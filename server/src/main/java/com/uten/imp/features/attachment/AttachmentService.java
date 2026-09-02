@@ -251,7 +251,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 attachment.getStorageKey(), attachment.getStorageVersion());
         audit.logExplicit(user.getId(), user.getLoginAccount(),
                 "attachment_download_grant", "attachments",
-                "附件=" + id + "；存储=" + storage.backend(), "success");
+                id.toString(), "success");
         return new AttachmentDownloadResponse(grant.url(), grant.expiresAt());
     }
 
@@ -345,7 +345,7 @@ public class AttachmentService implements AttachmentAccessPort {
         // 与 downloadGrant（OSS/通用入口）对等的业务级下载审计：谁在何时取走了哪个附件。
         audit.logExplicit(user.getId(), user.getLoginAccount(),
                 "attachment_download_raw", "attachments",
-                "附件=" + metadata.getId() + "；存储=" + storage.backend(), "success");
+                metadata.getId().toString(), "success");
         return new RawDownload(input, contentType, fileName);
     }
 

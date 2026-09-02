@@ -119,7 +119,102 @@ git tag v2026.09.01-1 && git push origin v2026.09.01-1
   # 失败：代码回滚、应用停止、备份文件路径会打印出来，按路径人工恢复
   ```
 
-## 五、故障速查
+## 五、数据刷新：把本地/外部数据库灌到服务器
+
+> 适用：测试期把本地开发库刷上去重测；正式数据切换同流程但必须先对账演练。
+> 日常经营数据由员工操作直接写入服务器库，**永远不需要手动传输**（需要真实数据做测试时
+> 方向反过来：从服务器 `pg_dump` 拉副本下来）。
+
+### 0. 前提
+
+- Tailscale 通：`ssh utenelec@100.109.196.17` 免密可登
+- 本地库容器在跑：`docker ps --filter name=uten-imp-postgres`
+- 若本地库 Flyway 版本**高于**服务器发布版本：先确认新迁移对现行后端透明（纯新增表/索引），
+  否则先走第四节发版再灌数据
+
+### 1. 本地打包
+
+```bash
+# 记下版本号（写进文件名）
+docker exec uten-imp-postgres psql -U uten -d uten_imp -Atc \
+  "SELECT version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"
+docker exec uten-imp-postgres pg_dump -U uten -Fc uten_imp > ~/uten_imp-dev-V<版本>-<日期>.dump
+```
+
+### 2. 传输并校验（两端 md5 一致才继续）
+
+```bash
+scp ~/uten_imp-dev-V*.dump utenelec@100.109.196.17:/tmp/
+md5sum ~/uten_imp-dev-V*.dump
+ssh utenelec@100.109.196.17 'md5sum /tmp/uten_imp-dev-V*.dump'
+```
+
+### 3. 服务器执行（整段贴入，逐步有输出）
+
+```bash
+ssh utenelec@100.109.196.17 'bash -s' <<'REMOTE'
+set -e
+echo "== 1. 备份现有库（保后悔药）"
+sudo -u postgres pg_dump -Fc uten_imp > ~/db-before-refresh-$(date +%Y%m%d-%H%M).dump
+ls -lh ~/db-before-refresh-*.dump | tail -1
+echo "== 2. 停应用（数据库保持运行）"
+sudo systemctl stop uten-imp
+echo "== 3. 清空重建"
+sudo -u postgres psql -c "DROP DATABASE uten_imp WITH (FORCE);"
+sudo -u postgres psql -c "CREATE DATABASE uten_imp OWNER uten;"
+echo "== 4. 恢复（postgis 类报错无害，见坑②）"
+DBPASS=$(sudo grep -E "^UTEN_DB_PASSWORD=" /etc/uten-imp/server.env | cut -d= -f2-)
+PGPASSWORD="$DBPASS" pg_restore -h 127.0.0.1 -U uten --no-owner --no-privileges \
+  -d uten_imp /tmp/uten_imp-dev-V*.dump || echo "(已忽略 postgis 类报错)"
+echo "== 5. 核对（版本号与员工数应与预期一致）"
+PGPASSWORD="$DBPASS" psql -h 127.0.0.1 -U uten -d uten_imp -Atc \
+  "SELECT installed_rank||' / '||version FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 1"
+PGPASSWORD="$DBPASS" psql -h 127.0.0.1 -U uten -d uten_imp -Atc "SELECT count(*) FROM employees"
+echo "== 6. 启动 + 健康检查"
+sudo systemctl start uten-imp
+for i in $(seq 1 30); do sleep 3
+  curl -fsS --max-time 4 http://127.0.0.1:8080/actuator/health 2>/dev/null | grep -q '"status":"UP"' \
+    && { echo "健康 UP"; exit 0; }
+done
+echo "未就绪——优先查坑①（引导账号撞库）"; sudo journalctl -u uten-imp -n 40 --no-pager | tail -15; exit 1
+REMOTE
+```
+
+### 4. 验收
+
+浏览器登录（账号 = 灌入库里的账号）抽查数据是否符合预期。
+
+### 已知坑（2026-09-03 实战记录）
+
+1. **引导账号撞库（会崩溃循环）**：应用启动时确保 `BOOTSTRAP_ADMIN_LOGIN`
+   （`/etc/uten-imp/server.env`）在库中存在，不存在就新建并可能撞 employees 唯一约束。
+   **灌库后该值必须是库中已有账号**（当前=17665410007）。修复：
+
+   ```bash
+   ssh utenelec@100.109.196.17
+   sudo sed -i 's/^BOOTSTRAP_ADMIN_LOGIN=.*/BOOTSTRAP_ADMIN_LOGIN=<库中已有账号>/' /etc/uten-imp/server.env
+   sudo systemctl reset-failed uten-imp && sudo systemctl start uten-imp   # StartLimit 卡死必须先 reset
+   ```
+
+2. **postgis 噪音（约 14 条报错，无害）**：本地 postgis 镜像自动装的地理扩展混进 dump，
+   服务器没有也不需要，业务零影响。根治（下次 dump 前在本地库执行一次即可）：
+
+   ```sql
+   DROP EXTENSION postgis_tiger_geocoder CASCADE;
+   DROP EXTENSION postgis_topology CASCADE;
+   DROP EXTENSION postgis CASCADE;   -- ERP 无几何字段，安全
+   ```
+
+3. **版本不匹配**：库**可以**高于后端（新迁移纯新增时透明）；库**低于**发布版本时恢复后必须补跑
+   `java -jar /opt/uten-imp/current/server/uten-imp-migrator.jar`（加载 `/etc/uten-imp/migrator.env`）。
+
+### 正式数据切换（老系统 → 服务器，未来做）
+
+同一流程，但顺序必须是：**源头先在本地演练并逐项对账**（客户/供应商/库存数量/关键金额）
+→ 打包传输 → 恢复 →（版本低时）跑 migrator → 员工岗位 UAT 抽查 → **冻结源头机器**。
+对账不过关不得让员工开始使用。
+
+## 六、故障速查
 
 | 症状 | 命令 |
 |---|---|
@@ -128,8 +223,9 @@ git tag v2026.09.01-1 && git push origin v2026.09.01-1
 | 手动回滚到旧版 | `ln -sfn releases/<旧版> /opt/uten-imp/current.new && mv -T /opt/uten-imp/current.new /opt/uten-imp/current && systemctl restart uten-imp && echo <旧版> > /opt/uten-imp/active-version.txt` |
 | 迁移失败恢复库 | 用 `/var/backups/uten-imp/*.dump`：`pg_restore -U postgres -d uten_imp --clean --if-exists <dump>` |
 | 误激活坏版本 | 纯代码版早已自动回滚；含迁移版按上一条恢复备份 |
+| 应用反复崩溃（duplicate key users_employee_id_key） | 坑①：BOOTSTRAP_ADMIN_LOGIN 不是库中账号；改 env 后 reset-failed 再 start（见第五节） |
 
-## 六、纪律红线
+## 七、纪律红线
 
 - 永远不要手工改 `/opt/uten-imp/current` 指向未验签目录、或往 releases 目录手工拷 JAR；
 - 私钥（`RELEASE_SIGNING_KEY`）只存在 GitHub secret + 你的冷备份两处，不出现在任何服务器；

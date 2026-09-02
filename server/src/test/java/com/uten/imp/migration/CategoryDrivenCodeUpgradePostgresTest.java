@@ -68,7 +68,9 @@ class CategoryDrivenCodeUpgradePostgresTest {
             }
         }
 
-        flyway(null).migrate();
+        // V425 审计日志全新开始会在链中 TRUNCATE audit_log，V258 回填产生的
+        // 脱敏证据必须在 V425 之前取证；先推进到 V424 再断言，随后继续到当前头。
+        flyway("424").migrate();
 
         try (Connection connection = connection();
              PreparedStatement query = connection.prepareStatement("""
@@ -94,6 +96,9 @@ class CategoryDrivenCodeUpgradePostgresTest {
                         "migration audit rows must stay lightweight even when goods has bytea images");
             }
         }
+
+        // 取证完成后继续 V425（清空审计）到当前迁移头，保持非空 257 基线全链演练。
+        flyway(null).migrate();
     }
 
     private static Flyway flyway(String target) {

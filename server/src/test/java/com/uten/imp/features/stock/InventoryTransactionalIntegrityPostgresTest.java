@@ -60,13 +60,15 @@ class InventoryTransactionalIntegrityPostgresTest {
     void installsPostingAndCumulativeQuantityGuards() throws Exception {
         try (Connection connection = connection();
              Statement statement = connection.createStatement()) {
+            // V408 追加式账户流把对账唯一索引升级为含 entry_kind 的
+            // uq_finance_reconciliation_active_source_account_kind。
             assertEquals(2, scalarLong(statement, """
                     select count(*)
                     from pg_indexes
                     where schemaname = 'public'
                       and indexname in (
                           'uq_arap_active_source',
-                          'uq_finance_reconciliation_active_source_account'
+                          'uq_finance_reconciliation_active_source_account_kind'
                       )
                     """));
             assertTrue(scalarBoolean(statement, """

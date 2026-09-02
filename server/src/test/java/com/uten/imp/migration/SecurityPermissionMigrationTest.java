@@ -1,9 +1,19 @@
 package com.uten.imp.migration;
 
+import com.uten.imp.audit.AuditActorDirectory;
+import com.uten.imp.audit.AuditEventInterpreter;
+import com.uten.imp.audit.AuditLog;
 import com.uten.imp.audit.AuditLogRepository;
+import com.uten.imp.audit.AuditQueryService;
 import com.uten.imp.audit.AuditRetentionScheduler;
 import com.uten.imp.audit.AuditRuntimeSettings;
+import com.uten.imp.audit.AuditSearchCriteria;
 import com.uten.imp.audit.AuditService;
+import com.uten.imp.audit.AuditSummary;
+import com.uten.imp.audit.AuditSummaryAggregation;
+import com.uten.imp.common.time.BusinessTime;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -11,19 +21,22 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.postgresql.ds.PGSimpleDataSource;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Properties;
 import java.util.UUID;
-import java.time.OffsetDateTime;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -33,12 +46,11 @@ import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * Applies the complete migration chain to a clean PostgreSQL instance and verifies the
@@ -353,7 +365,8 @@ class SecurityPermissionMigrationTest {
                           'report_materialized_view_refresh_state', 'password_history',
                           'refresh_tokens', 'visitor_refresh_tokens', 'visitor_sms_codes',
                           'notices', 'notice_user_states', 'notice_acknowledgments',
-                          'notice_blessings', 'business_outbox',
+                          'notice_blessings', 'notice_celebration_subjects',
+                          'business_outbox',
                           'attachment_object_outbox', 'account_flow_monthly_summaries',
                           'production_daily_report_commands',
                           'production_fqc_release_commands',
@@ -452,7 +465,8 @@ class SecurityPermissionMigrationTest {
     }
 
     @Test
-    void nativeAuditTrendUsesEffectiveRiskAndInvestigationCategory() throws Exception {
+    @SuppressWarnings("unchecked")
+    void auditTrendAggregationUsesEffectiveRiskAndInvestigationCategory() throws Exception {
         try (Connection connection = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(),
                 POSTGRES.getUsername(),
@@ -469,32 +483,93 @@ class SecurityPermissionMigrationTest {
                     """);
         }
 
+        // 旧的 AuditLogRepository.summarizeDaily 原生 SQL 已演进为
+        // AuditQueryService 过滤规格 + AuditSummaryAggregation 的 JPA Criteria 聚合。
+        // 这里用真实 Hibernate/PostgreSQL 执行同一读路径：Asia/Shanghai 分组、
+        // 有效风险（view_audit_log_detail 提升为中风险）与调查动作强制归 security
+        // 只在真库上能被完整验证。
         PGSimpleDataSource dataSource = new PGSimpleDataSource();
         dataSource.setUrl(POSTGRES.getJdbcUrl());
         dataSource.setUser(POSTGRES.getUsername());
         dataSource.setPassword(POSTGRES.getPassword());
-        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(dataSource);
-        String sql = AuditLogRepository.class.getDeclaredMethod(
-                        "summarizeDaily",
-                        OffsetDateTime.class,
-                        OffsetDateTime.class,
-                        String.class,
-                        String.class,
-                        String.class)
-                .getAnnotation(Query.class)
-                .value();
-        MapSqlParameterSource parameters = new MapSqlParameterSource()
-                .addValue("fromInclusive", OffsetDateTime.now().minusHours(1))
-                .addValue("toExclusive", OffsetDateTime.now().plusHours(1))
-                .addValue("actionPrefix", "view_audit_log_")
-                .addValue("actorAccount", "")
-                .addValue("eventCategory", "security");
+        LocalContainerEntityManagerFactoryBean factory =
+                new LocalContainerEntityManagerFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+        factory.setPackagesToScan("com.uten.imp.audit");
+        Properties jpaProperties = new Properties();
+        jpaProperties.setProperty("hibernate.hbm2ddl.auto", "none");
+        jpaProperties.setProperty("hibernate.show_sql", "false");
+        jpaProperties.setProperty("hibernate.jdbc.time_zone", "UTC");
+        factory.setJpaProperties(jpaProperties);
+        factory.afterPropertiesSet();
+        EntityManagerFactory entityManagerFactory = factory.getObject();
+        assertNotNull(entityManagerFactory);
+        EntityManager entityManager = entityManagerFactory.createEntityManager();
+        try {
+            AuditSummaryAggregation aggregation = new AuditSummaryAggregation();
+            Field entityManagerField =
+                    AuditSummaryAggregation.class.getDeclaredField("entityManager");
+            entityManagerField.setAccessible(true);
+            entityManagerField.set(aggregation, entityManager);
 
-        var rows = jdbc.queryForList(sql, parameters);
+            AuditQueryService queryService = new AuditQueryService(
+                    mock(AuditLogRepository.class),
+                    mock(AuditEventInterpreter.class),
+                    mock(AuditActorDirectory.class),
+                    aggregation);
 
-        assertEquals(1, rows.size());
-        assertEquals(2L, ((Number) rows.getFirst().get("total_count")).longValue());
-        assertEquals(1L, ((Number) rows.getFirst().get("risk_count")).longValue());
+            LocalDate today = LocalDate.now(BusinessTime.ZONE);
+            AuditSearchCriteria criteria = new AuditSearchCriteria(
+                    "view_audit_log_", null, null, null, "security",
+                    null, null, null, null, null, null, null,
+                    today.minusDays(1), today, null, null, false);
+            Method specification = AuditQueryService.class.getDeclaredMethod(
+                    "specification", AuditSearchCriteria.class);
+            specification.setAccessible(true);
+            Specification<AuditLog> base = (Specification<AuditLog>)
+                    specification.invoke(queryService, criteria);
+            Method riskSpecification = AuditQueryService.class.getDeclaredMethod(
+                    "riskSpecification", String.class);
+            riskSpecification.setAccessible(true);
+            Specification<AuditLog> risky = (Specification<AuditLog>)
+                    riskSpecification.invoke(queryService, "risky");
+            Specification<AuditLog> critical = (Specification<AuditLog>)
+                    riskSpecification.invoke(queryService, "critical");
+            Method outcomeSpecification = AuditQueryService.class.getDeclaredMethod(
+                    "outcomeSpecification", String.class);
+            outcomeSpecification.setAccessible(true);
+            Specification<AuditLog> failed = (Specification<AuditLog>)
+                    outcomeSpecification.invoke(queryService, "failure");
+            Method operationSpecification = AuditQueryService.class.getDeclaredMethod(
+                    "operationSpecification", String.class);
+            operationSpecification.setAccessible(true);
+            Specification<AuditLog> dataChange = (Specification<AuditLog>)
+                    operationSpecification.invoke(queryService, "write");
+
+            Method summarize = AuditSummaryAggregation.class.getDeclaredMethod(
+                    "summarize",
+                    Specification.class, Specification.class,
+                    Specification.class, Specification.class,
+                    Specification.class,
+                    LocalDate.class, LocalDate.class);
+            summarize.setAccessible(true);
+            AuditSummary summary = (AuditSummary) summarize.invoke(
+                    aggregation, base, risky, critical, failed, dataChange,
+                    today.minusDays(1), today);
+
+            long total = summary.dailyTrend().stream()
+                    .mapToLong(AuditSummary.DailyPoint::total).sum();
+            long risk = summary.dailyTrend().stream()
+                    .mapToLong(AuditSummary.DailyPoint::riskCount).sum();
+            assertEquals(2L, total,
+                    "both investigation rows must be counted in the trend window");
+            assertEquals(1L, risk,
+                    "only the forced-medium-risk detail view counts as risky");
+        } finally {
+            entityManager.close();
+            entityManagerFactory.close();
+        }
     }
 
     @Test
@@ -630,13 +705,9 @@ class SecurityPermissionMigrationTest {
                     where target_id = 'retention-to-delete'
                     """));
         }
-        verify(audit).logExplicit(
-                eq(null),
-                eq("system"),
-                eq("delete"),
-                eq("audit_retention"),
-                contains("onlineRemoved=1"),
-                eq("success"));
+        // V424 审计降噪口径：调度保留成功属于系统管道行为，不再写显式审计事件
+        // （对齐 AuditRetentionSchedulerTest.successfulAutomaticRetentionDoesNotCreateUserActivityNoise）。
+        verifyNoInteractions(audit);
     }
 
     @Test

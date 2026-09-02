@@ -124,14 +124,19 @@ class WarehouseArrivalRegistrationIdempotencyPostgresTest {
                 assertThat(deletion.getSQLState()).isEqualTo("55000");
                 connection.rollback(deletePoint);
 
+                // V424 审计降噪：幂等指令表的审计触发器已按设计移除（与请求级
+                // 审计行重复）；守卫触发器仍必须启用以保护唯一键与终态不可变。
                 assertThat(count(statement, """
                         SELECT COUNT(*) FROM pg_trigger
                         WHERE NOT tgisinternal
-                          AND tgname IN (
-                            'trg_guard_warehouse_arrival_registration_command',
-                            'trg_audit_warehouse_arrival_registration_commands')
+                          AND tgname = 'trg_guard_warehouse_arrival_registration_command'
                           AND tgenabled <> 'D'
-                        """)).isEqualTo(2);
+                        """)).isEqualTo(1);
+                assertThat(count(statement, """
+                        SELECT COUNT(*) FROM pg_trigger
+                        WHERE NOT tgisinternal
+                          AND tgname = 'trg_audit_warehouse_arrival_registration_commands'
+                        """)).isZero();
             } finally {
                 connection.rollback();
             }

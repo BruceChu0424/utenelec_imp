@@ -169,10 +169,16 @@ class ProductionDailyReportCommandPostgresTest {
             insertCommand(
                     connection, appendOnlyKey, "c".repeat(64), reportId);
         }
-        assertTrue(count("""
+        // V424 审计降噪：幂等指令表是命令去重记录，与请求级审计行重复，
+        // 其插入不再挂审计触发器；业务事实仍由报表本体的审计触发器留痕。
+        assertEquals(0, count("""
                 SELECT count(*) FROM audit_log
                 WHERE target_type='production_daily_report_commands'
-                """) >= 1, "accepted command insert must be audited");
+                """), "idempotent command rows must stay out of trigger audit");
+        assertTrue(count("""
+                SELECT count(*) FROM audit_log
+                WHERE target_type='production_daily_reports'
+                """) >= 1, "accepted report insert must be audited");
         try (Connection connection = connection()) {
             PSQLException update = assertThrows(
                     PSQLException.class,

@@ -50,7 +50,13 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
-                    .withPassword("uten-test-only");
+                    .withPassword("uten-test-only")
+                    // 当前 schema 已有 200+ 张表/数千外键，Flyway clean 逐对象 DROP
+                    // 需要的锁位远超默认 64；提高 max_locks_per_transaction 避免
+                    // resetDatabase 出现 out of shared memory。
+                    .withCommand(
+                            "postgres",
+                            "-c", "max_locks_per_transaction=512");
 
     @BeforeAll
     static void startDatabase() {
@@ -77,6 +83,25 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
     void bootstrapSqlStillExecutesAgainstTheCurrentSchema() throws Exception {
         List<String> scripts = bootstrapSqlScripts();
         assertFalse(scripts.isEmpty(), "bootstrap-all must resolve at least one SQL script");
+
+        // 真实 migrate.sh 在执行任何 bootstrap SQL 前先登记 manifest 绑定的
+        // RUNNING 运行（record_run_start）；migrate_measurement_profiles.sql 的
+        // 守卫要求该运行存在，这里按同形结构补一条测试运行。
+        scalar("""
+                INSERT INTO legacy_migration_runs(
+                    target, status, migration_mode,
+                    export_manifest_sha256, checksum_manifest_sha256,
+                    source_backup_sha256, export_approval_reference,
+                    migration_repository_commit, migration_script_sha256,
+                    mapping_version)
+                VALUES (
+                    '--bootstrap-all', 'RUNNING', 'BOOTSTRAP',
+                    repeat('a1', 32), repeat('b2', 32),
+                    repeat('c3', 32), 'legacy-schema-compat-approval',
+                    'legacy-schema-compat-commit', repeat('d4', 32),
+                    'bootstrap-v10-v426')
+                RETURNING run_id
+                """);
 
         for (String filename : scripts) {
             if ("migrate_currency.sql".equals(filename)) {
@@ -220,7 +245,9 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
         Map<String, String> expectations = currentReconciliationExpectations();
         String passedRun = newReconciliationRun();
         executeReconciliation(passedRun, expectations);
-        assertEquals("20|0", scalar("""
+        // migrate_reconciliation.sql 的指标集已扩到 24 项（与安全合同测试钉扎的
+        // `select :'run_id'::uuid` 出现次数一致）。
+        assertEquals("24|0", scalar("""
                 SELECT count(*) || '|' || count(*) FILTER (WHERE passed = FALSE)
                 FROM legacy_migration_reconciliation_items
                 WHERE run_id = '%s'::uuid
@@ -236,7 +263,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
 
         String failedRun = newReconciliationRun();
         executeReconciliation(failedRun, expectations);
-        assertEquals("20|1", scalar("""
+        assertEquals("24|1", scalar("""
                 SELECT count(*) || '|' || count(*) FILTER (WHERE passed = FALSE)
                 FROM legacy_migration_reconciliation_items
                 WHERE run_id = '%s'::uuid

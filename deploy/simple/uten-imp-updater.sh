@@ -49,21 +49,17 @@ urlencode() {
   printf '%s' "$out"
 }
 
-# OSS V1 签名 GET（只读 RAM 子账号；curl+openssl 零额外依赖）
+# OSS V1 签名 GET（只读 RAM 子账号；curl+openssl 零额外依赖）。
+# 签名放 Authorization 头：开启版本控制的桶不支持把 V1 签名放 URL 查询参数。
 oss_get() {
-  local key=$1 expires string_to_sign sig
-  expires=$(( $(date +%s) + 300 ))
-  string_to_sign="GET
-
-
-
-
-${expires}
-/${UTEN_OSS_BUCKET}/${key}"
-  sig=$(printf '%s' "$string_to_sign" \
+  local key=$1 date sig
+  date=$(date -u "+%a, %d %b %Y %H:%M:%S GMT")
+  sig=$(printf '%s' "GET\n\n\n${date}\n/${UTEN_OSS_BUCKET}/${key}" \
     | openssl dgst -sha1 -hmac "$UTEN_OSS_KEY_SECRET" -binary | base64 | tr -d '\n')
   curl -fsSL --retry 3 --retry-delay 2 \
-    "https://${UTEN_OSS_BUCKET}.${UTEN_OSS_ENDPOINT}/${key}?OSSAccessKeyId=$(urlencode "$UTEN_OSS_KEY_ID")&Expires=${expires}&Signature=$(urlencode "$sig")"
+    -H "Date: ${date}" \
+    -H "Authorization: OSS ${UTEN_OSS_KEY_ID}:${sig}" \
+    "https://${UTEN_OSS_BUCKET}.${UTEN_OSS_ENDPOINT}/${key}"
 }
 
 # 校验 SHA256SUMS 的每一行：路径必须相对、无 ..，文件哈希必须一致
@@ -135,6 +131,9 @@ do_check() {
     )
     verify_sums "$tmp"
     mv "$tmp" "$RELEASES_DIR/$latest"
+    # 服务账号 uten-imp 需可读；nginx(www-data, 加入 uten-imp 组) 提供 web 静态
+    chown -R root:uten-imp "$RELEASES_DIR/$latest"
+    chmod -R g+rX "$RELEASES_DIR/$latest"
     log "暂存完成：$RELEASES_DIR/$latest"
   fi
 

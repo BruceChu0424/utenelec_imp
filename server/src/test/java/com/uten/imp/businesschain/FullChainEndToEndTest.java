@@ -2980,6 +2980,65 @@ class FullChainEndToEndTest {
         loginAs(reviewer);
         approvePendingFinance("SUBCONTRACT", subcontractOrderId);
 
+        // V447 起 MAKE 行（目标件带 BOM）财务批准后停在 ACTION_REQUIRED：先由前置协调器
+        // 生成内部自制分析 → 下达正式计划 → 领料发放 → 分段报工 → 实收入库，前置 READY 后
+        // 自动生成发料草稿（SubcontractMaterialPlanService.afterFinishedInboundApproved）。
+        loginAs(w.superAdminUserId());
+        Map<String, Object> prepTask = jdbc.queryForMap("""
+                SELECT plan_item.id, plan_item.preparation_version
+                FROM subcontract_material_plan_items plan_item
+                JOIN subcontract_material_plans plan ON plan.id = plan_item.plan_id
+                WHERE plan.order_id = ? AND plan_item.flow_mode = 'MAKE_THEN_OUTBOUND'
+                  AND plan_item.is_deleted = FALSE
+                """, subcontractOrderId);
+        UUID prepPlanItemId = (UUID) prepTask.get("id");
+        long prepVersion = ((Number) prepTask.get("preparation_version")).longValue();
+        var prepStarted = subcontractPreparationCoordinator.start(
+                prepPlanItemId,
+                new com.uten.imp.features.production.analysis
+                        .SubcontractPreparationContracts.StartRequest(
+                        prepVersion, "prep-s23c-" + prepPlanItemId, w.warehouseId()));
+        AnalysisView prepDetail = analysisService.detail(prepStarted.analysisId());
+        UUID prepProductLineId = prepDetail.products().getFirst().analysisLineId();
+        PlanPreview prepPreview = analysisService.planPreview(
+                prepStarted.analysisId(),
+                new PlanPreviewRequest(
+                        prepDetail.version(), prepDetail.fingerprint(), w.warehouseId(),
+                        List.of(new PlanQuantity(prepProductLineId, quantity)),
+                        null));
+        AnalysisView prepBeforeGenerate = analysisService.detail(prepStarted.analysisId());
+        GeneratedPlan prepGenerated = analysisCommandService.generatePlan(
+                prepStarted.analysisId(),
+                new GeneratePlanRequest(
+                        prepBeforeGenerate.version(), prepBeforeGenerate.fingerprint(),
+                        prepPreview.previewFingerprint(),
+                        "gen-s23c-prep-" + prepStarted.analysisId(),
+                        w.warehouseId(), LocalDate.of(2026, 1, 18), null,
+                        null, null, null, true,
+                        List.of(new PlanQuantity(prepProductLineId, quantity)),
+                        null)).plans().getFirst();
+        // 领料发放：DRAW 确认 + 全额分轮出库 → 物料需求 FULFILLED → 执行段可开工
+        for (UUID drawId : prepGenerated.drawIds()) {
+            stockDocService.approve(drawId);
+            var drawLines = jdbc.queryForList(
+                    "select id, qty from stock_document_items where doc_id = ? and is_deleted = false",
+                    drawId);
+            var issueReq = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
+            issueReq.setIdempotencyKey("prep-draw-issue-" + drawId);
+            issueReq.setLines(drawLines.stream().map(row -> {
+                var line = new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();
+                line.setItemId((UUID) row.get("id"));
+                line.setQty((BigDecimal) row.get("qty"));
+                return line;
+            }).toList());
+            stockDocService.issue(drawId, issueReq);
+        }
+        // 目标件分段报工 + 实收确认 → 前置 READY → 发料草稿自动生成
+        UUID prepProductionPlanItem = planItemOfPlan(prepGenerated.planId());
+        UUID prepReportId = reportAndApprove(
+                w, prepProductionPlanItem, null, subcontracted, quantity.toPlainString());
+        confirmFinishedInboundFully(finishedInDocForReport(prepReportId));
+
         loginAs(w.superAdminUserId());
         UUID materialIssueId = jdbc.queryForObject("""
                 select issue.id

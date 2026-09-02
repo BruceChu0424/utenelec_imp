@@ -2676,8 +2676,8 @@ DO $$ DECLARE membership record; BEGIN
     EXECUTE format('REVOKE %I FROM %I', membership.parent_name, membership.member_name);
   END LOOP;
 END $$;
-ALTER ROLE uten_migrator PASSWORD :'migrator_password';
-ALTER ROLE uten PASSWORD :'app_password';
+SELECT format('ALTER ROLE %I PASSWORD %L', 'uten_migrator', :'migrator_password') \\gexec
+SELECT format('ALTER ROLE %I PASSWORD %L', 'uten', :'app_password') \\gexec
 GRANT uten_owner TO uten_migrator;
 SELECT 'CREATE DATABASE uten_imp OWNER uten_owner' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='uten_imp')\\gexec
 REVOKE ALL ON DATABASE uten_imp FROM PUBLIC;

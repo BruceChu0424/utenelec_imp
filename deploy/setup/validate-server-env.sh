@@ -99,10 +99,10 @@ require_credential() {
 }
 
 validate_bootstrap_admin_state() {
-  local login retired password normalized unique_characters
+  local login retired admin_secret normalized unique_characters
   login="$(env_value BOOTSTRAP_ADMIN_LOGIN)"
   retired="$(env_value UTEN_BOOTSTRAP_ADMIN_RETIRED)"
-  password="$(env_value BOOTSTRAP_ADMIN_PASSWORD)"
+  admin_secret="$(env_value BOOTSTRAP_ADMIN_PASSWORD)"
 
   [[ -n "$login" && ${#login} -le 128 && "$login" != *[[:space:]]* \
     && "$login" != *REPLACE* && "$login" != *CHANGE_ME* ]] \
@@ -110,21 +110,21 @@ validate_bootstrap_admin_state() {
 
   case "$retired" in
     false)
-      [[ -n "$password" ]] || die 'BOOTSTRAP_ADMIN_PASSWORD must not be empty before controlled retirement'
-      normalized="${password,,}"
+      [[ -n "$admin_secret" ]] || die 'BOOTSTRAP_ADMIN_PASSWORD must not be empty before controlled retirement'
+      normalized="${admin_secret,,}"
       [[ "$normalized" != *replace* && "$normalized" != *change_me* \
         && "$normalized" != *changeme* && "$normalized" != *password* \
         && "$normalized" != *temporary* && "$normalized" != *qwerty* \
         && "$normalized" != *admin* && "$normalized" != *uten* ]] \
         || die 'BOOTSTRAP_ADMIN_PASSWORD contains a placeholder or predictable product/account word'
-      [[ "$password" =~ ^[0-9a-f]{48,128}$ ]] \
+      [[ "$admin_secret" =~ ^[0-9a-f]{48,128}$ ]] \
         || die 'active BOOTSTRAP_ADMIN_PASSWORD must be 48-128 lowercase hex characters from an approved CSPRNG (phase3 uses openssl rand -hex 24)'
-      unique_characters="$(LC_ALL=C printf '%s' "$password" | fold -w1 | sort -u | wc -l)"
+      unique_characters="$(LC_ALL=C printf '%s' "$admin_secret" | fold -w1 | sort -u | wc -l)"
       (( unique_characters >= 12 )) \
         || die 'BOOTSTRAP_ADMIN_PASSWORD has insufficient character diversity for the approved random-secret format'
       ;;
     true)
-      [[ -z "$password" ]] \
+      [[ -z "$admin_secret" ]] \
         || die 'BOOTSTRAP_ADMIN_PASSWORD must be empty after UTEN_BOOTSTRAP_ADMIN_RETIRED=true'
       ;;
     *)

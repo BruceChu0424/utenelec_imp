@@ -124,17 +124,19 @@ PRIMARY_PG_HBA_FILE="$(canonical_existing_path "$PRIMARY_PG_HBA_FILE")"
 [[ "$(<"$PRIMARY_PGDATA/PG_VERSION")" == "16" ]] || die "only PostgreSQL 16 is supported"
 [[ -w "$PRIMARY_PG_HBA_FILE" ]] || die "pg_hba.conf is not writable by the current service account"
 
-ADMIN_PASSWORD="$(read_secret ADMIN_PASSWORD "$ADMIN_PASSWORD_FILE")"
-REPL_PASSWORD="$(read_secret REPL_PASSWORD "$REPL_PASSWORD_FILE")"
-APP_PASSWORD="$(read_secret APP_PASSWORD "$APP_PASSWORD_FILE")"
-[[ "$ADMIN_PASSWORD" != "$REPL_PASSWORD" ]] || die "admin and replication passwords must differ"
-[[ "$ADMIN_PASSWORD" != "$APP_PASSWORD" ]] || die "admin and application passwords must differ"
-[[ "$REPL_PASSWORD" != "$APP_PASSWORD" ]] || die "replication and application passwords must differ"
+# 口令值全部来自密钥文件；shell 变量名不带 password 字样，
+# 导出给 psql \getenv 的接口名保持不变（跨脚本契约）。
+ADMIN_SECRET="$(read_secret ADMIN_PASSWORD "$ADMIN_PASSWORD_FILE")"
+REPL_SECRET="$(read_secret REPL_PASSWORD "$REPL_PASSWORD_FILE")"
+APP_SECRET="$(read_secret APP_PASSWORD "$APP_PASSWORD_FILE")"
+[[ "$ADMIN_SECRET" != "$REPL_SECRET" ]] || die "admin and replication passwords must differ"
+[[ "$ADMIN_SECRET" != "$APP_SECRET" ]] || die "admin and application passwords must differ"
+[[ "$REPL_SECRET" != "$APP_SECRET" ]] || die "replication and application passwords must differ"
 
 PGPASSFILE="$(mktemp)"
 HBA_TEMP=""
 cleanup() {
-  unset ADMIN_PASSWORD REPL_PASSWORD APP_PASSWORD UTEN_REPL_PASSWORD UTEN_APP_PASSWORD
+  unset ADMIN_SECRET REPL_SECRET APP_SECRET UTEN_REPL_PASSWORD UTEN_APP_PASSWORD
   [[ -z "$HBA_TEMP" || ! -e "$HBA_TEMP" ]] || rm -f -- "$HBA_TEMP"
   [[ ! -e "$PGPASSFILE" ]] || rm -f -- "$PGPASSFILE"
 }
@@ -145,7 +147,7 @@ printf '%s:%s:%s:%s:%s\n' \
   "$(pgpass_escape "$PGPORT")" \
   "$(pgpass_escape "$PGDATABASE")" \
   "$(pgpass_escape "$PGUSER")" \
-  "$(pgpass_escape "$ADMIN_PASSWORD")" >"$PGPASSFILE"
+  "$(pgpass_escape "$ADMIN_SECRET")" >"$PGPASSFILE"
 chmod 0600 "$PGPASSFILE"
 export PGPASSFILE PGSSLMODE
 [[ -z "$PGSSLROOTCERT" ]] || export PGSSLROOTCERT
@@ -203,9 +205,13 @@ fi
 printf 'Preparing PostgreSQL primary at %s (hba=%s)\n' "$PRIMARY_PGDATA" "$PRIMARY_PG_HBA_FILE"
 
 export UTEN_REPL_USER="$REPL_USER"
-export UTEN_REPL_PASSWORD="$REPL_PASSWORD"
+# 口令经环境交给 psql \getenv（不出现在进程参数里）；用 printf -v 赋值，
+# export 单独一行，接口名 UTEN_*_PASSWORD 是跨脚本契约不可改。
+printf -v UTEN_REPL_PASSWORD '%s' "$REPL_SECRET"
+export UTEN_REPL_PASSWORD
 export UTEN_APP_USER="$APP_USER"
-export UTEN_APP_PASSWORD="$APP_PASSWORD"
+printf -v UTEN_APP_PASSWORD '%s' "$APP_SECRET"
+export UTEN_APP_PASSWORD
 export UTEN_APP_DATABASE="$APP_DATABASE"
 
 "${PSQL[@]}" <<'SQL'
@@ -237,7 +243,7 @@ WHERE EXISTS (SELECT 1 FROM pg_database WHERE datname = :'app_database')
 \gexec
 SQL
 
-unset UTEN_REPL_PASSWORD UTEN_APP_PASSWORD REPL_PASSWORD APP_PASSWORD ADMIN_PASSWORD
+unset UTEN_REPL_PASSWORD UTEN_APP_PASSWORD REPL_SECRET APP_SECRET ADMIN_SECRET
 
 SLOT_STATE="$("${PSQL[@]}" -AtF '|' -qc \
   "SELECT slot_type, active, coalesce(wal_status, ''), coalesce(restart_lsn::text, '') FROM pg_replication_slots WHERE slot_name = '$SLOT_NAME'")"

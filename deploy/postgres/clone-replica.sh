@@ -115,7 +115,7 @@ esac
 command -v mountpoint >/dev/null 2>&1 && mountpoint -q "$REPLICA_PGDATA" &&
   die "REPLICA_PGDATA is a mount point; clone to a staging volume and switch it manually"
 
-REPL_PASSWORD="$(read_secret "$REPL_PASSWORD_FILE")"
+REPL_SECRET="$(read_secret "$REPL_PASSWORD_FILE")"
 PGPASSFILE="$(mktemp)"
 PGPASS_TEMP_PATH="$PGPASSFILE"
 STAGE="${REPLICA_PGDATA}.uten-stage.$$"
@@ -123,7 +123,7 @@ BACKUP="${REPLICA_PGDATA}.preclone.$(date -u +%Y%m%dT%H%M%SZ)"
 SWAPPED="no"
 
 cleanup() {
-  unset REPL_PASSWORD PGPASSWORD
+  unset REPL_SECRET PGPASSWORD
   [[ -z "${PGPASS_TEMP_PATH:-}" || ! -e "$PGPASS_TEMP_PATH" ]] || rm -f -- "$PGPASS_TEMP_PATH"
   if [[ "$SWAPPED" == "no" && -d "$STAGE" ]]; then
     rm -rf -- "$STAGE"
@@ -138,7 +138,7 @@ printf '%s:%s:replication:%s:%s\n' \
   "$(pgpass_escape "$PRIMARY_HOST")" \
   "$(pgpass_escape "$PRIMARY_PORT")" \
   "$(pgpass_escape "$REPL_USER")" \
-  "$(pgpass_escape "$REPL_PASSWORD")" >"$PGPASSFILE"
+  "$(pgpass_escape "$REPL_SECRET")" >"$PGPASSFILE"
 chmod 0600 "$PGPASSFILE"
 export PGPASSFILE
 export PGSSLMODE="$PRIMARY_SSLMODE"
@@ -169,7 +169,7 @@ printf '%s:%s:replication:%s:%s\n' \
   "$(pgpass_escape "$PRIMARY_HOST")" \
   "$(pgpass_escape "$PRIMARY_PORT")" \
   "$(pgpass_escape "$REPL_USER")" \
-  "$(pgpass_escape "$REPL_PASSWORD")" >"$STANDBY_PGPASS"
+  "$(pgpass_escape "$REPL_SECRET")" >"$STANDBY_PGPASS"
 chmod 0600 "$STANDBY_PGPASS"
 
 ROOT_CERT_SETTING=""
@@ -188,7 +188,7 @@ POSTGRES_CONFIG_VALUE="${CONNINFO//\'/\'\'}"
   printf "hot_standby = 'on'\n"
 } >>"$STAGE/postgresql.auto.conf"
 touch "$STAGE/standby.signal"
-unset REPL_PASSWORD
+unset REPL_SECRET
 rm -f -- "$PGPASS_TEMP_PATH"
 unset PGPASSFILE PGSSLMODE PGSSLROOTCERT
 

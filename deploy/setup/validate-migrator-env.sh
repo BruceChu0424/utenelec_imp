@@ -45,8 +45,8 @@ esac
 [[ "$(stat -c '%U:%G:%a:%h' "$ENV_FILE")" == "root:$SERVICE_GROUP:640:1" ]] \
   || die "$ENV_FILE must be root:$SERVICE_GROUP mode 0640 with one hard link"
 
-service_passwd="$(getent passwd "$SERVICE_USER")" || die "missing service user $SERVICE_USER"
-IFS=: read -r account_name _ account_uid account_gid _ account_home account_shell <<<"$service_passwd"
+service_account_record="$(getent passwd "$SERVICE_USER")" || die "missing service user $SERVICE_USER"
+IFS=: read -r account_name _ account_uid account_gid _ account_home account_shell <<<"$service_account_record"
 [[ "$account_name" == "$SERVICE_USER" && "$account_uid" =~ ^[0-9]+$ && "$account_uid" != 0 ]] \
   || die "invalid service account record for $SERVICE_USER"
 uid_names="$(getent passwd | awk -F: -v uid="$account_uid" '$3 == uid { print $1 }')"
@@ -95,13 +95,13 @@ if ! LC_ALL=C awk '
   die "$ENV_FILE must contain only one canonical UTEN_MIGRATOR_DB_PASSWORD assignment"
 fi
 
-configured_password="$(env_value UTEN_MIGRATOR_DB_PASSWORD)"
-authoritative_password="$(<"$POSTGRES_SECRET")"
-[[ "$configured_password" =~ ^[A-Za-z0-9]{20,512}$ ]] \
+configured_secret="$(env_value UTEN_MIGRATOR_DB_PASSWORD)"
+authoritative_secret="$(<"$POSTGRES_SECRET")"
+[[ "$configured_secret" =~ ^[A-Za-z0-9]{20,512}$ ]] \
   || die 'UTEN_MIGRATOR_DB_PASSWORD is outside the reviewed credential format'
-[[ "$configured_password" == "$authoritative_password" ]] \
+[[ "$configured_secret" == "$authoritative_secret" ]] \
   || die 'UTEN_MIGRATOR_DB_PASSWORD does not match the root-managed PostgreSQL secret'
-unset configured_password authoritative_password
+unset configured_secret authoritative_secret
 
 printf '%s\n' \
   'MIGRATOR_ENV_CONFIGURATION_OK' \

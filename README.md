@@ -246,7 +246,7 @@ dart format path/to/file1.dart path/to/file2.dart
 ## 🔒 安全声明
 
 - **后端已实现**（Spring Boot 3 + PostgreSQL）：HR 与鉴权为真实安全实现（Argon2id 密码、JWT 轮换、pgcrypto 字段加密、触发器审计、部门权限 + 个人覆盖 + 按权限点脱敏——角色体系已于 2026-07-24 下线，见 [ADR-011](docs/99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md)）
-- 令牌存 `flutter_secure_storage`；开发秘密使用不进 Git 的 `server/.env`，生产秘密由
+- 令牌记录按标签页存储（Web：sessionStorage，多标签页多账号并行，ADR-061；原生：`flutter_secure_storage`）；开发秘密使用不进 Git 的 `server/.env`，生产秘密由
   `/etc/uten-imp/server.env`、Vault/KMS 或等价密钥管理注入（缺省 fail-fast）
 - 销售/采购/委外/仓库/生产/钱流/HR/访客/通知/建议已接真实后端；工资和员工报销活动 Mock 已移除，V133 表、真实 API 与固定状态机已有源码，但业务口径和生产 E2E 仍须验收；实验室和空调设备接入仍待后续
 - CI 已加入 Git 历史密钥扫描、后端 Java 21 验证、Flutter 格式/analyze/test/Web 构建、CodeQL Java 安全与质量分析和 OSV 依赖扫描；工作流存在不等于远端已全绿，结果以 Actions 运行记录为准

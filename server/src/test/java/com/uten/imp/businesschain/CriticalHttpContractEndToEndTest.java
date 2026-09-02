@@ -60,12 +60,22 @@ class CriticalHttpContractEndToEndTest {
             "get", "post", "put", "patch", "delete", "head", "options");
     private static final String PROBE_UUID = "00000000-0000-0000-0000-000000000001";
 
-    private static final String ADMIN_LOGIN = "http-bootstrap-admin-test";
-    private static final String ADMIN_INITIAL_PASSWORD = "HttpBootstrapPass-1!";
-    private static final String ADMIN_NEW_PASSWORD = "HttpAdminPass-2!";
+    // 夹具身份固定与上面 bootstrap 属性一致；env 覆盖只服务于 CI 轮换测试机密。
+    private static final String ADMIN_LOGIN = fixtureSecret(
+            "UTEN_TEST_HTTP_ADMIN_LOGIN", "http-bootstrap-admin-test");
+    private static final String ADMIN_INITIAL_PASSWORD = fixtureSecret(
+            "UTEN_TEST_HTTP_ADMIN_INITIAL_PASSWORD", "HttpBootstrapPass-1!");
+    private static final String ADMIN_NEW_PASSWORD = fixtureSecret(
+            "UTEN_TEST_HTTP_ADMIN_NEW_PASSWORD", "HttpAdminPass-2!");
     private static final String EMPLOYEE_LOGIN = "138" + "0".repeat(8);
-    private static final String EMPLOYEE_INITIAL_PASSWORD = "31002X";
-    private static final String EMPLOYEE_NEW_PASSWORD = "EmployeePass-3!";
+    private static final String EMPLOYEE_INITIAL_PASSWORD = fixtureSecret(
+            "UTEN_TEST_HTTP_EMPLOYEE_INITIAL_PASSWORD", "31002X");
+    private static final String EMPLOYEE_NEW_PASSWORD = fixtureSecret(
+            "UTEN_TEST_HTTP_EMPLOYEE_NEW_PASSWORD", "EmployeePass-3!");
+
+    private static String fixtureSecret(String environmentKey, String fallback) {
+        return System.getenv().getOrDefault(environmentKey, fallback);
+    }
     private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration OPENAPI_GENERATION_TIMEOUT = Duration.ofSeconds(45);
 

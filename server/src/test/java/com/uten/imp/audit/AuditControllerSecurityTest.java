@@ -76,6 +76,8 @@ class AuditControllerSecurityTest {
 
     private static final String VIEW = "audit_log:view";
     private static final String EXPORT = "audit_log:export";
+    // 导出/解密确认接口的口令探针：任意非空值都只用于驱动 403/200 断言。
+    private static final String EXPORT_PROBE_SECRET = "secret12";
     private static final UUID ACTOR_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID EMPLOYEE_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final UUID CLIENT_EVENT_ID =
@@ -164,9 +166,7 @@ class AuditControllerSecurityTest {
                         .with(viewUser())
                         .with(csrf())
                         .contentType(APPLICATION_JSON)
-                        .content("""
-                                {"password":"secret12"}
-                                """))
+                        .content("{\"password\":\"" + EXPORT_PROBE_SECRET + "\"}"))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(auditQuery, audit);
     }
@@ -263,8 +263,7 @@ class AuditControllerSecurityTest {
                         .param("eventSource", "database")
                         .param("snapshotId", "321")
                         .contentType(APPLICATION_JSON)
-                        .content("{'password':'secret12'}"
-                                .replace((char) 39, (char) 34)))
+                        .content("{\"password\":\"" + EXPORT_PROBE_SECRET + "\"}"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<AuditSearchCriteria> exportCaptor =
@@ -285,9 +284,7 @@ class AuditControllerSecurityTest {
                         .param("dateFrom", "2026-08-01")
                         .param("dateTo", "2026-08-01")
                         .contentType(APPLICATION_JSON)
-                        .content("""
-                                {"password":"secret12"}
-                                """))
+                        .content("{\"password\":\"" + EXPORT_PROBE_SECRET + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(content().bytes(new byte[]{9}));
 
@@ -471,7 +468,7 @@ class AuditControllerSecurityTest {
                         .param("dateTo", "2026-08-01")
                         .param("outcome", "maybe")
                         .contentType(APPLICATION_JSON)
-                        .content("{\"password\":\"secret12\"}"))
+                        .content("{\"password\":\"" + EXPORT_PROBE_SECRET + "\"}"))
                 .andExpect(status().isBadRequest());
 
         mvc.perform(get("/api/admin/audit-logs")

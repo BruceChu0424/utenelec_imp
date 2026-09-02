@@ -21,6 +21,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
+import '../widgets/celebration_subjects.dart';
 import '../widgets/notice_detail_dialog.dart';
 import '../widgets/notice_interaction_footer.dart';
 
@@ -416,6 +417,16 @@ class _NoticeCard extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        // 多主角聚合卡：主角徽章行（超员折叠 +N）
+                        if (notice.isGroupCelebration) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          CelebrationSubjectChips(
+                            subjects: notice.subjects,
+                            showEventLabel:
+                                notice.type == NoticeType.anniversary,
+                            accent: notice.type.color,
+                          ),
+                        ],
                         const SizedBox(height: UtenSpacing.s8),
                         // 摘要
                         Text(

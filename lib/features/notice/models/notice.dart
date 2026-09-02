@@ -160,6 +160,7 @@ class Notice {
     this.recentAckers = const [],
     this.recentBlessings = const [],
     this.blessingTemplates = const [],
+    this.subjects = const [],
   });
 
   final String id;
@@ -252,6 +253,12 @@ class Notice {
   /// 发布者勾选提供给送祝福者的模板（空=用系统默认）。
   final List<String> blessingTemplates;
 
+  /// 庆典主角名单（V454 聚合卡逐人姓名+标签；单人卡一项；非庆典类为空）。
+  final List<NoticeCelebrationSubject> subjects;
+
+  /// 是否多主角聚合卡（一天一类型一张卡，多人同祝）。
+  bool get isGroupCelebration => subjects.length > 1;
+
   Notice copyWith({
     bool? isRead,
     DateTime? readAt,
@@ -294,6 +301,28 @@ class Notice {
       myBlessing: myBlessing ?? this.myBlessing,
       recentAckers: recentAckers ?? this.recentAckers,
       recentBlessings: recentBlessings ?? this.recentBlessings,
+      subjects: subjects,
+    );
+  }
+}
+
+/// 庆典通知主角（聚合卡逐人快照；入职周年各人年数不同，标签逐人）。
+class NoticeCelebrationSubject {
+  const NoticeCelebrationSubject({
+    required this.name,
+    required this.eventLabel,
+  });
+
+  /// 主角姓名快照。
+  final String name;
+
+  /// 该主角的事件标签（如「生日快乐」「入职5周年」）。
+  final String eventLabel;
+
+  factory NoticeCelebrationSubject.fromJson(Map<String, dynamic> json) {
+    return NoticeCelebrationSubject(
+      name: json['name'] as String? ?? '',
+      eventLabel: json['eventLabel'] as String? ?? '',
     );
   }
 }
@@ -417,20 +446,28 @@ class MyCelebrationToday {
   };
 }
 
-/// 一键批量发布庆典祝福结果。
+/// 一键批量发布庆典祝福结果（V454：合并为一张聚合卡）。
 class CelebrationBatchResult {
   const CelebrationBatchResult({
     required this.published,
     required this.skipped,
+    this.notices = 0,
   });
 
+  /// 覆盖的祝福对象人数。
   final int published;
+
+  /// 跳过人数（不存在，或本类型本年已出现在任何庆典卡）。
   final int skipped;
+
+  /// 实际新建通知张数（正常 0 或 1——一天一类型一张聚合卡）。
+  final int notices;
 
   factory CelebrationBatchResult.fromJson(Map<String, dynamic> json) {
     return CelebrationBatchResult(
       published: (json['published'] as num?)?.toInt() ?? 0,
       skipped: (json['skipped'] as num?)?.toInt() ?? 0,
+      notices: (json['notices'] as num?)?.toInt() ?? 0,
     );
   }
 }

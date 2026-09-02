@@ -10,6 +10,10 @@ import java.util.List;
  * <p>互动字段（新增）：interactionMode 派生自 type（none/acknowledge/bless），
  * 庆典字段（subjectName/eventLabel/blessingTemplates）仅 bless 类有值；
  * 计数/我的状态/最近列表用于角标与按钮态，对列表页逐条查询可接受（默认上限 MAX_LIST_ITEMS）。
+ *
+ * <p>V454：subjects 为主角名单快照（聚合卡逐人姓名+标签，周年年数各自不同；
+ * 单人卡一行；非庆典类为空列表）。subjectName/eventLabel 继续作为单人卡主展示，
+ * 聚合卡 subjectName 为「张三、李四等 N 人」摘要。
  */
 public record NoticeDto(
         String id,
@@ -31,7 +35,7 @@ public record NoticeDto(
         Instant dueAt,
         boolean taskCompleted,
         Instant taskCompletedAt,
-        // ---- 互动 + 庆典字段（保持原字段顺序）；sourceEvent 始终追加在最末尾 ----
+        // ---- 互动 + 庆典字段（保持原字段顺序）----
         String interactionMode,
         String subjectName,
         String eventLabel,
@@ -42,5 +46,7 @@ public record NoticeDto(
         List<String> recentAckers,
         List<NoticeBlessingDto> recentBlessings,
         List<String> blessingTemplates,
-        String sourceEvent) {
+        String sourceEvent,
+        // ---- V454：主角名单（聚合卡逐人姓名+标签；单人卡一行；非庆典类空列表）----
+        List<NoticeCelebrationSubjectDto> subjects) {
 }

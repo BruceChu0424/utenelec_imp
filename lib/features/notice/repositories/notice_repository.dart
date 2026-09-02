@@ -428,6 +428,9 @@ class DioNoticeRepository implements NoticeRepository {
       blessingTemplates:
           (json['blessingTemplates'] as List<dynamic>? ?? const [])
               .cast<String>(),
+      subjects: (json['subjects'] as List<dynamic>? ?? const [])
+          .map((e) => NoticeCelebrationSubject.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 

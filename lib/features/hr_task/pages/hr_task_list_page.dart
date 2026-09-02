@@ -160,7 +160,7 @@ class HrTaskListPage extends ConsumerWidget {
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: Text(
-                  '一键为今日$noun的 ${toBless.length} 人送上祝福',
+                  '一键为今日$noun的 ${toBless.length} 人发布一张聚合祝福卡',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onPrimaryContainer,
                     fontWeight: FontWeight.w600,
@@ -196,10 +196,11 @@ class HrTaskListPage extends ConsumerWidget {
             employeeIds: [for (final i in toBless) i.employeeId],
           );
       if (!context.mounted) return;
+      // V454：一天一类型一张聚合卡；toast 说清「卡数 + 覆盖人数」
+      final covered =
+          result.notices > 0 ? '已发布祝福卡，覆盖 ${result.published} 位同事' : '今日同事均已祝福';
       context.appSuccess(
-        result.skipped > 0
-            ? '已为 ${result.published} 人发布祝福(${result.skipped} 人今日已祝福)'
-            : '已为 ${result.published} 人发布祝福',
+        result.skipped > 0 ? '$covered（${result.skipped} 人本年已祝福）' : covered,
       );
     } on ApiException catch (e) {
       if (!context.mounted) return;

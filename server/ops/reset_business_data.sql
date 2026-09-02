@@ -1,18 +1,19 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（V443–V453；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（V443–V454；保留主档、人事、权限与治理证据）
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
 --       干净测试起点。只允许在可丢弃的本地/测试库停写后运行。
 --
 -- 唯一范围事实：
---   · CLEAR 212/214/219 张：V443 为212张，V446新增两张 IQC 仓库入库事实表后为214张，V447新增五张交接事实表后为219张；V448–V450不新增父表；
+--   · CLEAR 212/214/219/220 张：V443 为212张，V446新增两张 IQC 仓库入库事实表后为214张，V447新增五张交接事实表后为219张；V448–V450不新增父表；
 --     V448 只增合并页读路径索引、不新增业务表，CLEAR 维持 219 张；
 --     V449 只替换 V446 的 IQC 入库校验触发器函数（放开同人放行+确认限制），
 --     不新增业务表，CLEAR 维持 219 张；
 --     V451 只泛化库位学习表来源维度（IQC 确认入库也能学习库位），CLEAR 维持 219 张；
 --     V452 只给供应商加默认结算方式列/触发器与核对视图、V453 只登记结算方式
 --     管理页权限与权限面，均不新增业务表，CLEAR 维持 219 张；
+--     V454 新增通知庆典主角表 notice_celebration_subjects（聚合祝福卡逐人快照，CLEAR），CLEAR 为 220 张；
 --     建议、任务认领和业务 outbox。
 --   · PRESERVE 95 张：V442 的四张单位/迁移计量治理证据表明确保留；PostGIS 扩展表不进入业务策略计数；其余为主档、人事、账号/权限、系统配置、Flyway、审计日志、
 --     人事附件、导入/迁移证据、编号终身占用和单调流水。账户主档保留，
@@ -232,6 +233,7 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('mrp_generations', 'CLEAR'),
 ('notice_acknowledgments', 'CLEAR'),
 ('notice_blessings', 'CLEAR'),
+('notice_celebration_subjects', 'CLEAR'),
 ('notice_user_states', 'CLEAR'),
 ('notices', 'CLEAR'),
 ('payroll_batches', 'CLEAR'),
@@ -560,6 +562,7 @@ DECLARE
     v447_business_table_count BIGINT;
     v448_read_index_count BIGINT;
     v451_place_source_count BIGINT;
+    v454_celebration_table_count BIGINT;
     applied_migration_count BIGINT;
     applied_max_version INTEGER;
     unsafe_fk_edges TEXT;
@@ -711,11 +714,24 @@ BEGIN
         (450, 412),
         (451, 413),
         (452, 414),
-        (453, 415)
+        (453, 415),
+        (454, 416)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414 或 V453/415 目录，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415 或 V454/416 目录，当前 V%/%',
             applied_max_version, applied_migration_count;
+    END IF;
+
+    -- V454 新增通知庆典主角表（CLEAR）：目录到 V454 时必须存在；V454 前的旧目录不允许出现。
+    SELECT count(*)
+    INTO v454_celebration_table_count
+    FROM reset_business_table_policy
+    WHERE table_name = 'notice_celebration_subjects';
+
+    IF (applied_max_version >= 454) <> (v454_celebration_table_count = 1) THEN
+        RAISE EXCEPTION
+            'V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符，拒绝在部分迁移目录上重置',
+            v454_celebration_table_count, applied_max_version;
     END IF;
 
     SELECT count(*)
@@ -794,17 +810,21 @@ BEGIN
     IF preserve_count <> 95
        OR NOT (
            (v446_business_table_count = 0
-                AND v447_business_table_count = 0 AND clear_count = 212)
+                AND v447_business_table_count = 0
+                AND clear_count - v454_celebration_table_count = 212)
            OR (v446_business_table_count = 2
-                AND v447_business_table_count = 0 AND clear_count = 214)
+                AND v447_business_table_count = 0
+                AND clear_count - v454_celebration_table_count = 214)
            OR (v446_business_table_count = 2
-                AND v447_business_table_count = 5 AND clear_count = 219)
+                AND v447_business_table_count = 5
+                AND clear_count - v454_celebration_table_count = 219)
        ) THEN
         RAISE EXCEPTION
-            'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V442表 %/8，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5',
+            'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V442表 %/8，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5，V454表 %/1',
             clear_count, preserve_count, measurement_table_count,
             v440_business_table_count, v443_business_table_count,
-            v446_business_table_count, v447_business_table_count;
+            v446_business_table_count, v447_business_table_count,
+            v454_celebration_table_count;
     END IF;
 
     SELECT string_agg(

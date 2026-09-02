@@ -1,25 +1,29 @@
 package com.uten.imp.features.notice;
 
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.notice.NoticeService.CelebrationSubject;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.matches;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -35,6 +39,10 @@ import static org.mockito.Mockito.when;
  * exact SQL the scheduler emits against a real PostgreSQL 16 with the full
  * Flyway migration chain, so any future grammar/typo regression fails here
  * instead of being swallowed by the scheduler's warn-only catch block.
+ *
+ * <p>V454 semantics: each type publishes exactly ONE aggregated group card per
+ * scan (all of today's uncovered subjects in a single call); per-person
+ * anniversary labels are derived per subject (张三 入职5周年、李四 入职10周年).
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class CelebrationSchedulerPostgresTest {
@@ -94,33 +102,49 @@ class CelebrationSchedulerPostgresTest {
     }
 
     @Test
-    void publishesBirthdayForActiveAndProbationEmployeesMatchingToday() {
+    void publishesOneAggregatedBirthdayCardForAllMatchingEmployees() {
         UUID active = insertEmployee("bday-active", "active", false, todayMonthDay(), safeNonTodayDate());
         UUID probation = insertEmployee("bday-probation", "probation", false, todayMonthDay(), safeNonTodayDate());
         insertEmployee("bday-empty", "active", false, null, safeNonTodayDate());
 
         scheduler.scan();
 
-        verify(noticeService).publishCelebrationBroadcast(
-                eq("birthday"), eq(active), eq("CELEB 测试 bday-active"), eq("生日快乐"), eq("公司"));
-        verify(noticeService).publishCelebrationBroadcast(
-                eq("birthday"), eq(probation), eq("CELEB 测试 bday-probation"), eq("生日快乐"), eq("公司"));
-        verify(noticeService, times(2)).publishCelebrationBroadcast(
-                any(), any(), any(), any(), any());
+        // 一张聚合卡：两位今日主角在同一次调用里，而不是每人一张卡
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("birthday"), captureSubjects(), eq("公司"));
+        List<CelebrationSubject> subjects = capturedSubjects();
+        assertEquals(2, subjects.size());
+        assertTrue(subjects.stream().anyMatch(s -> s.employeeId().equals(active)
+                && "CELEB 测试 bday-active".equals(s.name()) && "生日快乐".equals(s.eventLabel())));
+        assertTrue(subjects.stream().anyMatch(s -> s.employeeId().equals(probation)
+                && "CELEB 测试 bday-probation".equals(s.name())));
+        // 周年类型当天无主角 → 不发卡
+        verify(noticeService, never()).publishCelebrationGroupBroadcast(
+                eq("anniversary"), any(), any());
     }
 
     @Test
-    void publishesAnniversaryOnlyForEmployeesHiredAtLeastOneFullYearAgoToday() {
+    void publishesOneAggregatedAnniversaryCardWithPerPersonLabels() {
         UUID veteran = insertEmployee("anniv-veteran", "active", false, null, hiredYearsAgoToday(5));
+        UUID veteran2 = insertEmployee("anniv-veteran2", "active", false, null, hiredYearsAgoToday(10));
         insertEmployee("anniv-fresh", "active", false, null, LocalDate.now(SHANGHAI));
 
         scheduler.scan();
 
-        verify(noticeService).publishCelebrationBroadcast(
-                eq("anniversary"), eq(veteran), eq("CELEB 测试 anniv-veteran"),
-                matches("入职\\d+周年"), eq("公司"));
-        verify(noticeService, times(1)).publishCelebrationBroadcast(
-                any(), any(), any(), any(), any());
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("anniversary"), captureSubjects(), eq("公司"));
+        List<CelebrationSubject> subjects = capturedSubjects();
+        // 未满 1 年不进卡；满年的逐人带自己的年数标签。
+        // 注：容器 DB 会话时区可能与上海日期差一天（跨日窗口），年数允许 ±1，
+        // 只断言「各自年数」且工龄更长者年数严格更大（10 年 > 5 年）。
+        assertEquals(2, subjects.size(), () -> "subjects=" + subjects);
+        String veteranLabel = labelOf(subjects, veteran);
+        String veteran2Label = labelOf(subjects, veteran2);
+        assertTrue(veteranLabel.matches("入职[45]周年"), () -> "veteran label=" + veteranLabel);
+        assertTrue(veteran2Label.matches("入职(9|10)周年"),
+                () -> "veteran2 label=" + veteran2Label);
+        assertTrue(yearsOf(veteran2Label) > yearsOf(veteranLabel),
+                "工龄 10 年者的周年数必须大于工龄 5 年者");
     }
 
     @Test
@@ -135,20 +159,45 @@ class CelebrationSchedulerPostgresTest {
 
         scheduler.scan();
 
-        verify(noticeService, never()).publishCelebrationBroadcast(
-                any(), eq(resigned), any(), any(), any());
-        verify(noticeService, never()).publishCelebrationBroadcast(
-                any(), eq(deleted), any(), any(), any());
-        verify(noticeService, never()).publishCelebrationBroadcast(
-                any(), eq(duplicated), any(), any(), any());
-        // 去年的通知不挡今年：去年发过生日的员工今年仍应再发一次。
-        verify(noticeService).publishCelebrationBroadcast(
-                eq("birthday"), eq(lastYearOnly), any(), eq("生日快乐"), eq("公司"));
-        verify(noticeService, times(1)).publishCelebrationBroadcast(
-                any(), any(), any(), any(), any());
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("birthday"), captureSubjects(), eq("公司"));
+        List<CelebrationSubject> subjects = capturedSubjects();
+        // 离职/已删/本年已祝福者不进卡；去年发过不挡今年
+        assertEquals(1, subjects.size());
+        assertEquals(lastYearOnly, subjects.getFirst().employeeId());
+        assertTrue(subjects.stream().noneMatch(s -> s.employeeId().equals(resigned)));
+        assertTrue(subjects.stream().noneMatch(s -> s.employeeId().equals(deleted)));
+        assertTrue(subjects.stream().noneMatch(s -> s.employeeId().equals(duplicated)));
     }
 
     // ------------------------------------------------------------------
+
+    @SuppressWarnings("unchecked")
+    private final ArgumentCaptor<List<CelebrationSubject>> subjectCaptor =
+            ArgumentCaptor.forClass(List.class);
+
+    /** 作为 matcher 用：verify(...).publishCelebrationGroupBroadcast(eq(...), captureSubjects(), eq(...)) */
+    private List<CelebrationSubject> captureSubjects() {
+        return subjectCaptor.capture();
+    }
+
+    private List<CelebrationSubject> capturedSubjects() {
+        return subjectCaptor.getValue();
+    }
+
+    private static String labelOf(List<CelebrationSubject> subjects, UUID employeeId) {
+        return subjects.stream()
+                .filter(s -> employeeId.equals(s.employeeId()))
+                .findFirst()
+                .map(CelebrationSubject::eventLabel)
+                .orElse("（缺失）");
+    }
+
+    /** 从「入职N周年」标签提取 N（缺失/畸形 → -1）。 */
+    private static int yearsOf(String label) {
+        var m = java.util.regex.Pattern.compile("入职(\\d+)周年").matcher(label);
+        return m.find() ? Integer.parseInt(m.group(1)) : -1;
+    }
 
     private static String todayMonthDay() {
         LocalDate today = LocalDate.now(SHANGHAI);
@@ -191,13 +240,20 @@ class CelebrationSchedulerPostgresTest {
     }
 
     private static void insertCelebrationNotice(UUID employeeId, String type, LocalDate publishedOn) {
+        // V454 去重按主角表判定 → 存量卡同时落 notice_celebration_subjects（迁移回填同口径）
         jdbc.update("""
-                INSERT INTO notices (title, content, type, publisher, subject_employee_id, published_at)
-                VALUES (?, '测试内容', ?, '公司', ?, ?::date AT TIME ZONE 'Asia/Shanghai')
+                INSERT INTO notices (title, content, type, publisher, subject_employee_id, subject_name, published_at)
+                VALUES (?, '测试内容', ?, '公司', ?, '历史寿星', ?::date AT TIME ZONE 'Asia/Shanghai')
                 """,
                 "CELEB-TEST-" + type + "-" + employeeId,
                 type,
                 employeeId,
                 publishedOn.toString());
+        jdbc.update("""
+                INSERT INTO notice_celebration_subjects (notice_id, employee_id, employee_name, event_label)
+                SELECT id, subject_employee_id, COALESCE(subject_name, '（未知）'), '生日快乐'
+                FROM notices WHERE title = ?
+                """,
+                "CELEB-TEST-" + type + "-" + employeeId);
     }
 }

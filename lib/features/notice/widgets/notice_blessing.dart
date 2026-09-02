@@ -155,8 +155,18 @@ class _BlessSectionState extends ConsumerState<_BlessSection> {
     return kDefaultBlessingTemplates[widget.notice.type] ?? const [];
   }
 
-  String _resolved(String template) =>
-      template.replaceAll('{name}', widget.notice.subjectName ?? '');
+  /// 模板 {name} 解析：单人卡替换为主角姓名；聚合卡面向「大家」，
+  /// 去掉「{name}，」前缀避免以逗号开头（服务端聚合模板本身不含占位符，此处兜底）。
+  String _resolved(String template) {
+    final name = widget.notice.subjectName ?? '';
+    if (!widget.notice.isGroupCelebration) {
+      return template.replaceAll('{name}', name);
+    }
+    return template
+        .replaceFirst('{name}，', '')
+        .replaceFirst('{name},', '')
+        .replaceAll('{name}', '大家');
+  }
 
   @override
   void dispose() {

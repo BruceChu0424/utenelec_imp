@@ -195,6 +195,17 @@ class AuditTriggerCoverageMigrationContractTest {
             Map.entry("production_material_analysis_commands", "idempotency command ledger"));
 
     /**
+     * Notice-domain snapshot mechanics table created by V454 (celebration group
+     * cards) after the latest full sweep. Consistent with the V424 noise
+     * exclusion above (notice publishing mechanics; human publish/batch actions
+     * already carry explicit audit events notice_publish /
+     * notice_celebration_batch_publish), it stays outside row-image auditing.
+     * Any future full sweep must keep it excluded.
+     */
+    private static final Map<String, Integer> V454_NOTICE_MECHANICS_EXCLUSIONS =
+            Map.of("notice_celebration_subjects", 454);
+
+    /**
      * Business tables created after the latest full sweep that are narrowly
      * covered by an explicit trigger in their own forward migration.
      */
@@ -393,6 +404,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         !POST_SWEEP_EXPLICIT_AUDIT_TABLES.containsKey(entry.getKey()))
                 .filter(entry ->
                         !POST_SWEEP_FORWARD_AUDIT_TABLES.containsKey(entry.getKey()))
+                .filter(entry ->
+                        !V454_NOTICE_MECHANICS_EXCLUSIONS.containsKey(entry.getKey()))
                 .sorted(Map.Entry.comparingByKey())
                 .map(entry -> entry.getKey() + "@V" + entry.getValue())
                 .toList();
@@ -520,6 +533,11 @@ class AuditTriggerCoverageMigrationContractTest {
                     assertTrue(sql.contains("'" + table + "'"),
                             () -> path.getFileName() + " must keep the approved V424 "
                                     + "noise exclusion: " + table);
+                }
+                for (String table : V454_NOTICE_MECHANICS_EXCLUSIONS.keySet()) {
+                    assertTrue(sql.contains("'" + table + "'"),
+                            () -> path.getFileName() + " must keep the V454 notice "
+                                    + "mechanics exclusion: " + table);
                 }
             }
         }

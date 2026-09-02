@@ -50,11 +50,14 @@ class ResetBusinessDataScriptContractTest {
     void currentPolicyClassifiesEveryKnownParentTableAndPreservesEvidence() {
         Map<String, String> policy = policy();
 
-        assertThat(policy).hasSize(314);
+        assertThat(policy).hasSize(315);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(219);
+                .isEqualTo(220);
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
                 .isEqualTo(95);
+
+        // V454：通知庆典主角表随聚合祝福卡引入，属可清业务数据
+        assertThat(policy).containsEntry("notice_celebration_subjects", "CLEAR");
 
         assertThat(policy).containsAllEntriesOf(Map.of(
                 "preplan_analysis_stock_exact_pegs", "CLEAR",
@@ -167,7 +170,11 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(449, 411)")
                 .contains("(450, 412)")
                 .contains("(451, 413)")
-                .contains("仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412 或 V451/413 目录")
+                .contains("(452, 414)")
+                .contains("(453, 415)")
+                .contains("(454, 416)")
+                .contains("仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415 或 V454/416 目录")
+                .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")
                 .contains("V451 库位学习来源泛化构件缺失 %/4")
@@ -176,10 +183,10 @@ class ResetBusinessDataScriptContractTest {
                 .contains("V443 财审事件表必须存在")
                 .contains("V446 IQC 入库表只出现 %/2")
                 .contains("v446_business_table_count = 0")
-                .contains("v447_business_table_count = 0 AND clear_count = 212")
+                .contains("clear_count - v454_celebration_table_count = 212")
                 .contains("v446_business_table_count = 2")
-                .contains("v447_business_table_count = 0 AND clear_count = 214")
-                .contains("v447_business_table_count = 5 AND clear_count = 219")
+                .contains("clear_count - v454_celebration_table_count = 214")
+                .contains("clear_count - v454_celebration_table_count = 219")
                 .contains("V443/V446/V447 白名单数量异常")
                 .contains("V447 委外前置自制权益交接表只出现 %/5")
                 .contains("V447新增五张交接事实表后为219张")

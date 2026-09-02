@@ -18,6 +18,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../dashboard/providers/dashboard_overview_provider.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
+import '../widgets/celebration_subjects.dart';
 import '../widgets/notice_blessing.dart';
 
 class NoticeDetailPage extends ConsumerWidget {
@@ -246,6 +247,11 @@ class _Content extends ConsumerWidget {
                   ),
                 ],
               ),
+            ],
+            // 多主角聚合卡：主角全员面板（今日寿星/周年之星；周年逐人年数）
+            if (notice.isGroupCelebration) ...[
+              const SizedBox(height: UtenSpacing.s16),
+              CelebrationSubjectsPanel(notice: notice),
             ],
             const SizedBox(height: UtenSpacing.s24),
             // 正文

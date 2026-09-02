@@ -44,6 +44,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,6 +54,7 @@ class NoticeServiceTest {
     private NoticeUserStateRepository stateRepository;
     private NoticeAcknowledgmentRepository ackRepository;
     private NoticeBlessingRepository blessRepo;
+    private NoticeCelebrationSubjectRepository subjectRepo;
     private EmployeeRepository employeeRepository;
     private SecurityContextCurrentUser currentUser;
     private NoticeAudienceService audienceService;
@@ -67,6 +69,7 @@ class NoticeServiceTest {
         stateRepository = mock(NoticeUserStateRepository.class);
         ackRepository = mock(NoticeAcknowledgmentRepository.class);
         blessRepo = mock(NoticeBlessingRepository.class);
+        subjectRepo = mock(NoticeCelebrationSubjectRepository.class);
         employeeRepository = mock(EmployeeRepository.class);
         currentUser = mock(SecurityContextCurrentUser.class);
         audienceService = mock(NoticeAudienceService.class);
@@ -77,12 +80,18 @@ class NoticeServiceTest {
         when(currentUser.get()).thenReturn(Optional.of(authUser));
         when(authUser.isVisitor()).thenReturn(false);
         when(authUser.getId()).thenReturn(userId);
+        // V454：主角名单默认空（bless 卡 toDto 装配路径不 NPE）
+        when(subjectRepo.findByNoticeIdOrderByCreatedAtAsc(any()))
+                .thenReturn(List.of());
+        when(subjectRepo.findByNoticeIdInOrderByCreatedAtAsc(any()))
+                .thenReturn(List.of());
 
         service = new NoticeService(
                 noticeRepository,
                 stateRepository,
                 ackRepository,
                 blessRepo,
+                subjectRepo,
                 employeeRepository,
                 currentUser,
                 new ObjectMapper(),
@@ -713,6 +722,79 @@ class NoticeServiceTest {
         assertEquals("all", n.getAudienceScope());
         assertEquals("赵六", n.getSubjectName());
         assertEquals(subjectId, n.getSubjectEmployeeId());
+
+        // V454：单人卡也落一行主角快照（幂等/跳转口径统一）
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<NoticeCelebrationSubject>> subjectsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(subjectRepo).saveAll(subjectsCaptor.capture());
+        assertEquals(1, subjectsCaptor.getValue().size());
+        NoticeCelebrationSubject row = subjectsCaptor.getValue().getFirst();
+        assertEquals(n.getId(), row.getNoticeId());
+        assertEquals(subjectId, row.getEmployeeId());
+        assertEquals("赵六", row.getEmployeeName());
+        assertEquals("生日快乐", row.getEventLabel());
+    }
+
+    @Test
+    void publishCelebrationGroupBroadcastMergesAllSubjectsIntoOneCard() {
+        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> {
+            Notice n = i.getArgument(0);
+            n.setId(UUID.randomUUID());
+            return n;
+        });
+
+        Notice n = service.publishCelebrationGroupBroadcast(
+                "anniversary",
+                List.of(
+                        new NoticeService.CelebrationSubject(
+                                UUID.randomUUID(), "张三", "入职5周年"),
+                        new NoticeService.CelebrationSubject(
+                                UUID.randomUUID(), "李四", "入职10周年")),
+                "公司");
+
+        assertEquals("anniversary", n.getType());
+        assertEquals("bless", n.getInteractionMode());
+        // 聚合卡：无单人外键，摘要快照 + 类型级标签（逐人标签在主角表）
+        assertNull(n.getSubjectEmployeeId());
+        assertEquals("张三、李四", n.getSubjectName());
+        assertEquals("入职周年快乐", n.getEventLabel());
+        assertEquals("祝 张三、李四 入职周年快乐！", n.getTitle());
+        assertTrue(n.getContent().contains("2 位同事"));
+        assertTrue(n.getContent().contains("张三（入职5周年）"));
+        assertTrue(n.getContent().contains("李四（入职10周年）"));
+
+        verify(noticeRepository, times(1)).saveAndFlush(any());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<NoticeCelebrationSubject>> subjectsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(subjectRepo).saveAll(subjectsCaptor.capture());
+        assertEquals(2, subjectsCaptor.getValue().size());
+        // 聚合卡模板面向「各位」，不含 {name} 占位符
+        assertNotNull(n.getBlessingTemplates());
+        assertTrue(n.getBlessingTemplates().contains("祝各位"));
+        assertFalse(n.getBlessingTemplates().contains("{name}"));
+    }
+
+    @Test
+    void publishCelebrationGroupBroadcastWithSingleSubjectKeepsPersonalCard() {
+        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> {
+            Notice n = i.getArgument(0);
+            n.setId(UUID.randomUUID());
+            return n;
+        });
+        UUID subjectId = UUID.randomUUID();
+
+        Notice n = service.publishCelebrationGroupBroadcast(
+                "birthday",
+                List.of(new NoticeService.CelebrationSubject(
+                        subjectId, "王五", "生日快乐")),
+                "公司");
+
+        // 单人卡保持原样式（外键 + 姓名 + {name} 模板），避免单人场景体验回退
+        assertEquals(subjectId, n.getSubjectEmployeeId());
+        assertEquals("祝 王五 生日快乐！", n.getTitle());
+        assertTrue(n.getBlessingTemplates().contains("{name}"));
     }
 
     @Test
@@ -740,7 +822,7 @@ class NoticeServiceTest {
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
         UUID noticeId = UUID.randomUUID();
-        when(noticeRepository.findCelebrationNoticeIds(eq(empId), eq("birthday"), any()))
+        when(subjectRepo.findCelebrationNoticeIds(eq(empId), eq("birthday"), any()))
                 .thenReturn(List.of(noticeId));
 
         List<MyCelebrationTodayDto> items = service.myCelebrationToday();
@@ -779,7 +861,7 @@ class NoticeServiceTest {
         wedding.setId(UUID.randomUUID());
         wedding.setType("wedding");
         wedding.setEventLabel("新婚快乐");
-        when(noticeRepository.findBySubjectAndTypesSince(eq(empId), any(), any()))
+        when(subjectRepo.findBySubjectAndTypesSince(eq(empId), any(), any()))
                 .thenReturn(List.of(wedding));
 
         List<MyCelebrationTodayDto> items = service.myCelebrationToday();
@@ -797,7 +879,7 @@ class NoticeServiceTest {
         me.setBirthMonthDay(String.format("%02d-%02d", nonBirthday.getMonthValue(), nonBirthday.getDayOfMonth()));
         when(authUser.getEmployeeId()).thenReturn(empId);
         when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
-        when(noticeRepository.findBySubjectAndTypesSince(eq(empId), any(), any()))
+        when(subjectRepo.findBySubjectAndTypesSince(eq(empId), any(), any()))
                 .thenReturn(List.of());
 
         assertTrue(service.myCelebrationToday().isEmpty());
@@ -810,24 +892,35 @@ class NoticeServiceTest {
     }
 
     @Test
-    void publishCelebrationBatchPublishesForEachEligibleEmployee() {
+    void publishCelebrationBatchMergesEligibleEmployeesIntoOneGroupCard() {
         UUID a = UUID.randomUUID();
         UUID b = UUID.randomUUID();
         when(employeeRepository.findById(a)).thenReturn(
                 Optional.of(celebrationSubject(a, "张三", BusinessTime.today().minusYears(2))));
         when(employeeRepository.findById(b)).thenReturn(
                 Optional.of(celebrationSubject(b, "李四", BusinessTime.today().minusYears(4))));
-        when(noticeRepository.existsCelebrationSince(any(), any(), any())).thenReturn(false);
-        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+        when(subjectRepo.existsCelebrationSince(any(), any(), any())).thenReturn(false);
+        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> {
+            Notice n = i.getArgument(0);
+            n.setId(UUID.randomUUID());
+            return n;
+        });
         when(authUser.getEmployeeId()).thenReturn(null);
         when(authUser.getLoginAccount()).thenReturn("hr");
 
         CelebrationBatchResult result = service.publishCelebrationBatch(
                 new CelebrationBatchRequest("birthday", List.of(a, b)));
 
+        // V454：覆盖 2 位主角，但只发一张聚合卡
         assertEquals(2, result.published());
         assertEquals(0, result.skipped());
-        verify(noticeRepository, atLeastOnce()).saveAndFlush(any());
+        assertEquals(1, result.notices());
+        verify(noticeRepository, times(1)).saveAndFlush(any());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<NoticeCelebrationSubject>> subjectsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(subjectRepo).saveAll(subjectsCaptor.capture());
+        assertEquals(2, subjectsCaptor.getValue().size());
     }
 
     @Test
@@ -835,7 +928,7 @@ class NoticeServiceTest {
         UUID a = UUID.randomUUID();
         when(employeeRepository.findById(a)).thenReturn(
                 Optional.of(celebrationSubject(a, "张三", BusinessTime.today().minusYears(2))));
-        when(noticeRepository.existsCelebrationSince(any(), any(), any())).thenReturn(true);
+        when(subjectRepo.existsCelebrationSince(any(), any(), any())).thenReturn(true);
         when(authUser.getEmployeeId()).thenReturn(null);
         when(authUser.getLoginAccount()).thenReturn("hr");
 
@@ -844,7 +937,9 @@ class NoticeServiceTest {
 
         assertEquals(0, result.published());
         assertEquals(1, result.skipped());
+        assertEquals(0, result.notices());
         verify(noticeRepository, never()).saveAndFlush(any());
+        verify(subjectRepo, never()).saveAll(any());
     }
 
     @Test

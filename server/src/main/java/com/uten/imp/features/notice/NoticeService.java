@@ -15,6 +15,7 @@ import com.uten.imp.features.notice.dto.CelebrationBatchResult;
 import com.uten.imp.features.notice.dto.NoticeAcknowledgerDto;
 import com.uten.imp.features.notice.dto.NoticeBlessingDto;
 import com.uten.imp.features.notice.dto.NoticeCelebrationPreviewDto;
+import com.uten.imp.features.notice.dto.NoticeCelebrationSubjectDto;
 import com.uten.imp.features.notice.dto.NoticeCelebrationSettingsDto;
 import com.uten.imp.features.notice.dto.NoticeDto;
 import com.uten.imp.features.notice.dto.NoticePublishRequest;
@@ -130,10 +131,25 @@ public class NoticeService {
                     "{name}，祝宝宝健康成长，万事顺意！",
                     "{name}，恭喜！愿小宝贝快乐无忧。"));
 
+    /**
+     * 聚合卡（多主角）的默认祝福语模板：无 {@code {name}} 占位符——
+     * 一张卡祝福多位主角，模板直接面向「各位」，前端原样填充。
+     */
+    private static final Map<String, List<String>> GROUP_CELEBRATION_TEMPLATES = Map.of(
+            "birthday", List.of(
+                    "祝各位寿星生日快乐，万事如意！",
+                    "生日快乐！愿你们新的一岁所求皆所愿。",
+                    "为今天的寿星们送上祝福，工作顺利，笑口常开！"),
+            "anniversary", List.of(
+                    "祝各位入职周年快乐！感谢一路同行。",
+                    "感谢你们与公司并肩作战，周年快乐！",
+                    "祝各位前程似锦，周年快乐！"));
+
     private final NoticeRepository noticeRepo;
     private final NoticeUserStateRepository stateRepo;
     private final NoticeAcknowledgmentRepository ackRepo;
     private final NoticeBlessingRepository blessRepo;
+    private final NoticeCelebrationSubjectRepository subjectRepo;
     private final EmployeeRepository employeeRepo;
     private final SecurityContextCurrentUser currentUser;
     private final ObjectMapper objectMapper;
@@ -165,8 +181,10 @@ public class NoticeService {
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
                 notices.stream().map(Notice::getId).toList());
+        Map<UUID, List<NoticeCelebrationSubject>> subjects = subjectsMap(notices);
         return notices.stream()
-                .map(notice -> toDto(notice, states.get(notice.getId()), userId))
+                .map(notice -> toDto(notice, states.get(notice.getId()), userId,
+                        subjects.getOrDefault(notice.getId(), List.of())))
                 .toList();
     }
 
@@ -203,9 +221,11 @@ public class NoticeService {
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
                 page.stream().map(Notice::getId).toList());
+        Map<UUID, List<NoticeCelebrationSubject>> subjects = subjectsMap(page);
         List<NoticeDto> items = page.stream()
                 .map(notice -> toDto(
-                        notice, states.get(notice.getId()), userId, false))
+                        notice, states.get(notice.getId()), userId, false,
+                        subjects.getOrDefault(notice.getId(), List.of())))
                 .toList();
         if (page.isEmpty()) {
             return new ArrivalPage(
@@ -234,8 +254,10 @@ public class NoticeService {
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
                 notices.stream().map(Notice::getId).toList());
+        Map<UUID, List<NoticeCelebrationSubject>> subjects = subjectsMap(notices);
         return notices.stream()
-                .map(notice -> toDto(notice, states.get(notice.getId()), userId))
+                .map(notice -> toDto(notice, states.get(notice.getId()), userId,
+                        subjects.getOrDefault(notice.getId(), List.of())))
                 .toList();
     }
 
@@ -367,6 +389,11 @@ public class NoticeService {
             stateRepo.saveAll(audience.userIds().stream()
                     .map(userId -> newState(noticeId, userId))
                     .toList());
+        }
+        // V454：单人庆典卡也写主角快照行，与聚合卡共用统一的幂等/跳转口径
+        if (bless) {
+            saveCelebrationSubjects(n.getId(), List.of(
+                    new CelebrationSubject(subjectEmployeeId, subjectName, eventLabel)));
         }
         // 人工发布公告：V424 起 notices 表不再走触发器审计，这里补显式用户操作记录
         audit.logCommitted(u.getId(), u.getLoginAccount(),
@@ -512,20 +539,62 @@ public class NoticeService {
     }
 
     /**
-     * 系统直接发布庆典广播（调度器调用，绕过 notice:publish 权限检查）。
-     * audience=all / kind=NORMAL / priority=normal / interactionMode=bless，title 与 content 由调用方派生。
+     * 系统直接发布单人庆典广播（调度器/兼容旧调用，绕过 notice:publish 权限检查）。
+     * audience=all / kind=NORMAL / priority=normal / interactionMode=bless，title 与 content 由服务端派生。
+     * V454 起同时写主角快照行；新调用方（调度器/批量祝福）请用
+     * {@link #publishCelebrationGroupBroadcast}（每天每类一张聚合卡）。
      */
     @Transactional
     public Notice publishCelebrationBroadcast(
             String type, UUID subjectEmployeeId, String subjectName,
             String eventLabel, String publisherName) {
+        return publishCelebrationGroupBroadcast(
+                type,
+                List.of(new CelebrationSubject(subjectEmployeeId, subjectName, eventLabel)),
+                publisherName);
+    }
+
+    /**
+     * 发布庆典聚合卡（V454 核心入口）：一天一类型一张卡，卡内列出全部主角。
+     *
+     * <p>单人（subjects.size()==1）保持单人卡样式（「祝 张三 生日快乐！」+ {name} 模板）；
+     * 多人聚合卡标题/正文列全名单，入职周年各人年数不同、逐人 eventLabel 快照落
+     * notice_celebration_subjects（幂等去重 / 我的今日庆典 / HR 已祝福标记均按该表口径）。
+     *
+     * @param type         庆典类型（BLESS_TYPES）
+     * @param subjects     主角名单（姓名与事件标签由调用方按当天数据快照）
+     * @param publisherName 署名（空 → 公司）
+     */
+    @Transactional
+    public Notice publishCelebrationGroupBroadcast(
+            String type, List<CelebrationSubject> subjects, String publisherName) {
         if (!BLESS_TYPES.contains(type)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "非庆典类型: " + type);
         }
+        if (subjects == null || subjects.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "庆典卡至少需要一位主角");
+        }
+        boolean group = subjects.size() > 1;
         Notice n = new Notice();
         n.setType(type);
-        n.setTitle("祝 " + subjectName + " " + eventLabel + "！");
-        n.setContent(defaultCelebrationBody(subjectName, eventLabel));
+        if (!group) {
+            CelebrationSubject only = subjects.getFirst();
+            n.setTitle("祝 " + only.name() + " " + only.eventLabel() + "！");
+            n.setContent(defaultCelebrationBody(only.name(), only.eventLabel()));
+            n.setSubjectEmployeeId(only.employeeId());
+            n.setSubjectName(only.name());
+            n.setEventLabel(only.eventLabel());
+            n.setBlessingTemplates(writeTemplates(suggestedTemplates(type)));
+        } else {
+            String summary = groupSubjectSummary(subjects);
+            n.setTitle("祝 " + summary + " " + groupEventLabel(type) + "！");
+            n.setContent(groupCelebrationBody(type, subjects));
+            // 聚合卡不落单人外键；摘要快照供列表横幅/兜底展示，逐人标签见主角表
+            n.setSubjectEmployeeId(null);
+            n.setSubjectName(summary);
+            n.setEventLabel(groupEventLabel(type));
+            n.setBlessingTemplates(writeTemplates(GROUP_CELEBRATION_TEMPLATES.get(type)));
+        }
         n.setPublisher(publisherName == null || publisherName.isBlank() ? "公司" : publisherName);
         n.setPublishedAt(Instant.now());
         n.setTopPriority(false);
@@ -535,11 +604,21 @@ public class NoticeService {
         n.setAudienceScope("all");
         n.setAudienceSummary("全体员工");
         n.setInteractionMode("bless");
-        n.setSubjectEmployeeId(subjectEmployeeId);
-        n.setSubjectName(subjectName);
-        n.setEventLabel(eventLabel);
-        n.setBlessingTemplates(writeTemplates(suggestedTemplates(type)));
-        return noticeRepo.saveAndFlush(n);
+        Notice saved = noticeRepo.saveAndFlush(n);
+        saveCelebrationSubjects(saved.getId(), subjects);
+        return saved;
+    }
+
+    /** 批量落主角快照（同一事务；notice 删除时级联）。 */
+    private void saveCelebrationSubjects(UUID noticeId, List<CelebrationSubject> subjects) {
+        subjectRepo.saveAll(subjects.stream().map(s -> {
+            NoticeCelebrationSubject row = new NoticeCelebrationSubject();
+            row.setNoticeId(noticeId);
+            row.setEmployeeId(s.employeeId());
+            row.setEmployeeName(s.name() == null || s.name().isBlank() ? "（未知）" : s.name());
+            row.setEventLabel(s.eventLabel() == null ? "" : s.eventLabel());
+            return row;
+        }).toList());
     }
 
     /**
@@ -568,11 +647,12 @@ public class NoticeService {
         List<MyCelebrationTodayDto> out = new ArrayList<>();
 
         // 生日祝福：birth_date 已加密，改用低敏个人属性 birth_month_day（MM-DD）匹配今日。
+        // V454：跳转目标按主角表口径（聚合卡/单人卡统一）。
         String todayMonthDay = String.format("%02d-%02d", today.getMonthValue(), today.getDayOfMonth());
         if (todayMonthDay.equals(me.getBirthMonthDay())) {
             out.add(new MyCelebrationTodayDto(
                     "birthday", me.getFullName(), "生日快乐",
-                    firstNoticeId(noticeRepo.findCelebrationNoticeIds(empId, "birthday", yearStart))));
+                    firstNoticeId(subjectRepo.findCelebrationNoticeIds(empId, "birthday", yearStart))));
         }
         if (me.getHireDate() != null
                 && me.getHireDate().getMonthValue() == today.getMonthValue()
@@ -581,11 +661,11 @@ public class NoticeService {
             if (years >= 1) {
                 out.add(new MyCelebrationTodayDto(
                         "anniversary", me.getFullName(), "入职" + years + "周年",
-                        firstNoticeId(noticeRepo.findCelebrationNoticeIds(empId, "anniversary", yearStart))));
+                        firstNoticeId(subjectRepo.findCelebrationNoticeIds(empId, "anniversary", yearStart))));
             }
         }
         Instant dayStart = today.atStartOfDay(SHANGHAI).toInstant();
-        for (Notice n : noticeRepo.findBySubjectAndTypesSince(
+        for (Notice n : subjectRepo.findBySubjectAndTypesSince(
                 empId, List.of("wedding", "newborn"), dayStart)) {
             String label = n.getEventLabel() != null
                     ? n.getEventLabel() : eventLabelFor(n.getType(), null);
@@ -595,9 +675,9 @@ public class NoticeService {
     }
 
     /**
-     * 一键批量发布庆典祝福（HR 任务中心子页，notice:publish）。逐人按默认模板 / 服务端派生
-     * 标题发布；本类型本年已发过者幂等跳过（与 {@link CelebrationScheduler} 同口径）。
-     * 发布人取当前 HR 姓名快照。
+     * 一键批量发布庆典祝福（HR 任务中心子页，notice:publish）。V454 起合并为
+     * 一张聚合卡：今天该类型的未祝福主角全部列入同一张卡；本类型本年已出现在
+     * 任何庆典卡者幂等跳过（与 {@link CelebrationScheduler} 同口径）。发布人取当前 HR 姓名快照。
      */
     @Transactional
     public CelebrationBatchResult publishCelebrationBatch(CelebrationBatchRequest req) {
@@ -619,30 +699,29 @@ public class NoticeService {
         String publisher = publisherName(u);
         LocalDate today = LocalDate.now(SHANGHAI);
         Instant yearStart = LocalDate.of(today.getYear(), 1, 1).atStartOfDay(SHANGHAI).toInstant();
-        int published = 0;
+        List<CelebrationSubject> toPublish = new ArrayList<>();
         int skipped = 0;
         for (UUID empId : distinct) {
             Employee e = employeeRepo.findById(empId).orElse(null);
-            if (e == null) {
-                skipped++;
-                continue;
-            }
-            if (noticeRepo.existsCelebrationSince(empId, type, yearStart)) {
+            if (e == null || subjectRepo.existsCelebrationSince(empId, type, yearStart)) {
                 skipped++;
                 continue;
             }
             Integer years = e.getHireDate() == null
                     ? null : Period.between(e.getHireDate(), today).getYears();
-            publishCelebrationBroadcast(
-                    type, e.getId(), e.getFullName(), eventLabelFor(type, years), publisher);
-            published++;
+            toPublish.add(new CelebrationSubject(
+                    e.getId(), e.getFullName(), eventLabelFor(type, years)));
         }
+        int published = toPublish.size();
+        int notices = 0;
         if (published > 0) {
+            publishCelebrationGroupBroadcast(type, toPublish, publisher);
+            notices = 1;
             auditExplicit(
                     "notice_celebration_batch_publish",
-                    "庆典批量发布：成功 " + published + " 条，跳过 " + skipped + " 条");
+                    "庆典聚合卡发布：覆盖 " + published + " 人，跳过 " + skipped + " 人");
         }
-        return new CelebrationBatchResult(published, skipped);
+        return new CelebrationBatchResult(published, skipped, notices);
     }
 
     private static UUID firstNoticeId(List<UUID> ids) {
@@ -1029,6 +1108,61 @@ public class NoticeService {
                 + "让我们一起送上最真挚的祝福，感谢 TA 与公司同行！";
     }
 
+    // ---------- V454：聚合卡标题 / 正文 / 摘要派生 ----------
+
+    /** 聚合卡的类型级标签（逐人标签在主角表；周年不落具体年数）。 */
+    private static String groupEventLabel(String type) {
+        return switch (type) {
+            case "birthday" -> "生日快乐";
+            case "anniversary" -> "入职周年快乐";
+            case "wedding" -> "新婚快乐";
+            case "newborn" -> "喜添新丁";
+            default -> "";
+        };
+    }
+
+    /** 主角姓名全名单（顿号连接，正文用；人数再多也全列，正文无长度压力）。 */
+    private static String joinNames(List<CelebrationSubject> subjects) {
+        return subjects.stream()
+                .map(CelebrationSubject::name)
+                .collect(Collectors.joining("、"));
+    }
+
+    /** 主角「姓名（事件标签）」名单（周年各人年数不同，逐人标注）。 */
+    private static String joinLabeledNames(List<CelebrationSubject> subjects) {
+        return subjects.stream()
+                .map(s -> s.name() + "（" + s.eventLabel() + "）")
+                .collect(Collectors.joining("、"));
+    }
+
+    /**
+     * 主角摘要（标题与 notices.subject_name 快照用）：
+     * ≤3 人列全名，>3 人取前 2 位 +「等 N 人」；整体硬截断 100 字符（列宽上限）。
+     */
+    private static String groupSubjectSummary(List<CelebrationSubject> subjects) {
+        int n = subjects.size();
+        String summary = n <= 3
+                ? joinNames(subjects)
+                : subjects.get(0).name() + "、" + subjects.get(1).name() + "等 " + n + " 人";
+        return summary.length() > 100 ? summary.substring(0, 97) + "…" : summary;
+    }
+
+    /** 聚合卡正文（按类型点名；周年逐人标签，其余全名）。 */
+    private static String groupCelebrationBody(String type, List<CelebrationSubject> subjects) {
+        int n = subjects.size();
+        return switch (type) {
+            case "anniversary" -> "今天有 " + n + " 位同事迎来入职周年："
+                    + joinLabeledNames(subjects)
+                    + "。感谢他们与公司一路同行，让我们一起送上最真挚的祝福！";
+            case "wedding" -> "今天有 " + n + " 位同事迎来新婚之喜：" + joinNames(subjects)
+                    + "。让我们一起送上最真挚的祝福！";
+            case "newborn" -> "今天有 " + n + " 位同事喜添新丁：" + joinNames(subjects)
+                    + "。让我们一起送上最真挚的祝福！";
+            default -> "今天有 " + n + " 位同事生日：" + joinNames(subjects)
+                    + "。让我们一起为他们送上最真挚的祝福！";
+        };
+    }
+
     private Map<UUID, NoticeUserState> stateMap(UUID userId, List<UUID> noticeIds) {
         Map<UUID, NoticeUserState> map = new HashMap<>();
         if (noticeIds.isEmpty()) {
@@ -1047,15 +1181,22 @@ public class NoticeService {
     }
 
     /**
-     * Notice → DTO（含 9 个新字段）。为防止 task/approval/workflow 这类
-     * 高频链路通知（interaction_mode=none）也被多查 4 次，对 none 模式直接短路返回零值。
+     * Notice → DTO（含互动 + V454 主角名单）。为防止 task/approval/workflow 这类
+     * 高频链路通知（interaction_mode=none）也被多查，对 none 模式直接短路返回零值；
+     * subjects 由调用方批量装配（列表路径）或此处单查（详情/发布回执路径）。
      */
     private NoticeDto toDto(Notice n, NoticeUserState st, UUID userId) {
-        return toDto(n, st, userId, true);
+        return toDto(n, st, userId, true, null);
     }
 
     private NoticeDto toDto(
-            Notice n, NoticeUserState st, UUID userId, boolean includeInteractions) {
+            Notice n, NoticeUserState st, UUID userId, List<NoticeCelebrationSubject> subjects) {
+        return toDto(n, st, userId, true, subjects);
+    }
+
+    private NoticeDto toDto(
+            Notice n, NoticeUserState st, UUID userId,
+            boolean includeInteractions, List<NoticeCelebrationSubject> subjects) {
         String mode = effectiveInteractionMode(n);
         long ackCount = 0L;
         long blessingCount = 0L;
@@ -1117,7 +1258,37 @@ public class NoticeService {
                 recentAckers,
                 recentBlessings,
                 readAttachments(n.getBlessingTemplates()),
-                n.getSourceEvent());
+                n.getSourceEvent(),
+                subjectDtos(n, mode, subjects));
+    }
+
+    /** 主角名单出参：列表路径批量传入；null 时对 bless 卡单查（详情/发布回执）。 */
+    private List<NoticeCelebrationSubjectDto> subjectDtos(
+            Notice n, String mode, List<NoticeCelebrationSubject> subjects) {
+        List<NoticeCelebrationSubject> rows = subjects;
+        if (rows == null && "bless".equals(mode)) {
+            rows = subjectRepo.findByNoticeIdOrderByCreatedAtAsc(n.getId());
+        }
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        return rows.stream()
+                .map(s -> new NoticeCelebrationSubjectDto(
+                        s.getEmployeeName(), s.getEventLabel()))
+                .toList();
+    }
+
+    /** 列表路径批量装配主角（一次 IN 查询，避免逐卡 N+1）。 */
+    private Map<UUID, List<NoticeCelebrationSubject>> subjectsMap(List<Notice> notices) {
+        List<UUID> blessIds = notices.stream()
+                .filter(n -> "bless".equals(effectiveInteractionMode(n)))
+                .map(Notice::getId)
+                .toList();
+        if (blessIds.isEmpty()) {
+            return Map.of();
+        }
+        return subjectRepo.findByNoticeIdInOrderByCreatedAtAsc(blessIds).stream()
+                .collect(Collectors.groupingBy(NoticeCelebrationSubject::getNoticeId));
     }
 
     private String validatedActionRoute(String raw, String kind) {
@@ -1226,4 +1397,10 @@ public class NoticeService {
 
     /** 内部临时持有 myBlessing 字段，避免到 toDto 中重复查询。 */
     private record OptionalBlessing(String content, Instant createdAt) {}
+
+    /**
+     * 庆典主角快照输入（V454）：聚合卡逐人姓名 + 事件标签（周年各人年数不同），
+     * 由调度器 / 批量祝福按当天数据派生后传入 {@link #publishCelebrationGroupBroadcast}。
+     */
+    public record CelebrationSubject(UUID employeeId, String name, String eventLabel) {}
 }

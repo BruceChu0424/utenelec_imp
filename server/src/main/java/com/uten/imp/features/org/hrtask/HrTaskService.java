@@ -136,16 +136,19 @@ public class HrTaskService {
             birthdayUpcoming = new ArrayList<>();
         }
 
-        // 本类型本年已发布过庆典祝福的员工（与 CelebrationScheduler 同口径去重）：
-        // 已祝福的生日/周年不再计入徽标（HR 发布祝福后角标即减），但列表仍保留并标记 blessed。
+        // 本类型本年已出现在任何庆典卡（聚合或单人）的员工（V454 起按主角表口径，
+        // 与 CelebrationScheduler / 一键祝福去重一致）：已祝福的生日/周年不再计入徽标
+        // （HR 发布祝福后角标即减），但列表仍保留并标记 blessed。
         Set<UUID> blessedBirthday = new HashSet<>();
         Set<UUID> blessedAnniversary = new HashSet<>();
         if (!birthdayToday.isEmpty() || !anniversaryToday.isEmpty()) {
             List<Map<String, Object>> celeb = jdbc.queryForList("""
-                    SELECT type, subject_employee_id AS sid FROM notices
-                    WHERE type IN ('birthday','anniversary')
-                      AND subject_employee_id IS NOT NULL
-                      AND published_at >= make_date(?::int, 1, 1)
+                    SELECT n.type, s.employee_id AS sid
+                    FROM notices n
+                    JOIN notice_celebration_subjects s ON s.notice_id = n.id
+                    WHERE n.type IN ('birthday','anniversary')
+                      AND s.employee_id IS NOT NULL
+                      AND n.published_at >= make_date(?::int, 1, 1)
                     """, today.getYear());
             for (Map<String, Object> r : celeb) {
                 UUID sid = (UUID) r.get("sid");

@@ -122,52 +122,6 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             """)
     long countPendingTodos(@Param("userId") UUID userId);
 
-    /**
-     * 某员工某庆典类型在指定时间点之后是否已有通知（用于一键批量祝福去重，
-     * 与 {@code CelebrationScheduler} 的 (subject,type,当年) 幂等口径一致）。
-     */
-    @Query("""
-            SELECT COUNT(n) > 0
-            FROM Notice n
-            WHERE n.subjectEmployeeId = :subjectId
-              AND n.type = :type
-              AND n.publishedAt >= :since
-            """)
-    boolean existsCelebrationSince(
-            @Param("subjectId") UUID subjectId,
-            @Param("type") String type,
-            @Param("since") Instant since);
-
-    /**
-     * 查某员工某庆典类型在指定时间点之后已发的通知 ID（取最新一条），
-     * 用于「我的今日庆典」卡片/弹窗跳转祝福墙。返回空列表=尚无。
-     */
-    @Query("""
-            SELECT n.id
-            FROM Notice n
-            WHERE n.subjectEmployeeId = :subjectId
-              AND n.type = :type
-              AND n.publishedAt >= :since
-            ORDER BY n.publishedAt DESC
-            """)
-    List<UUID> findCelebrationNoticeIds(
-            @Param("subjectId") UUID subjectId,
-            @Param("type") String type,
-            @Param("since") Instant since);
-
-    /**
-     * 查某员工作为祝福对象、指定类型集合、指定时间点之后的通知（如今日发布的新婚/新生儿）。
-     */
-    @Query("""
-            SELECT n
-            FROM Notice n
-            WHERE n.subjectEmployeeId = :subjectId
-              AND n.type IN :types
-              AND n.publishedAt >= :since
-            ORDER BY n.publishedAt DESC
-            """)
-    List<Notice> findBySubjectAndTypesSince(
-            @Param("subjectId") UUID subjectId,
-            @Param("types") List<String> types,
-            @Param("since") Instant since);
+    // V454 起，按祝福对象的庆典查询（幂等去重 / 我的今日庆典 / 今日新婚新生儿）
+    // 统一迁至 NoticeCelebrationSubjectRepository（聚合卡与单人卡同口径）。
 }

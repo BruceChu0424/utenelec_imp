@@ -1,5 +1,7 @@
 // 安全存储：令牌（access/refresh）与登录账号。
 // 文档：docs/00-项目准则/10-安全准则.md（敏感数据走 flutter_secure_storage，不进 shared_preferences）
+// 员工令牌记录/模拟身份键落在标签页级存储（Web=sessionStorage，每标签页独立会话）：
+// 见 ADR-061「多账号多标签页独立会话」。
 import 'dart:convert';
 import 'dart:math';
 
@@ -7,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'auth_refresh_lock.dart';
+import 'tab_scoped_store.dart';
 
 /// 员工令牌对的一致性快照。
 ///
@@ -207,15 +210,21 @@ class _AuthTokenRecordRead {
 }
 
 class SecureStorage {
-  SecureStorage(this._storage)
-    : _staffTokenRecordLock = AuthRefreshLock('staff-token-record.v2'),
-      _staffTokenChangeBus = AuthTokenChangeBus('staff-token-record.v2'),
-      _origin = _newIdentifier();
+  SecureStorage(this._storage, {TabScopedStore? sessionScope})
+    : _sessionScope = sessionScope ?? defaultSessionScopeStore(_storage),
+      _staffTokenRecordLock = AuthRefreshLock('staff-token-record.v2'),
+      _legacyAdoptionLock = AuthRefreshLock('staff-token-record-adopt.v1');
 
   final FlutterSecureStorage _storage;
+
+  /// 员工令牌记录与模拟身份键的落点：Web 每标签页独立（sessionStorage），
+  /// 原生回退为 [_storage]（进程级共享，与历史行为一致）。
+  final TabScopedStore _sessionScope;
   final AuthRefreshLock _staffTokenRecordLock;
-  final AuthTokenChangeBus _staffTokenChangeBus;
-  final String _origin;
+
+  /// 收编旧版共享令牌记录的专用锁：与记录锁分离，避免嵌套获取同一把锁。
+  final AuthRefreshLock _legacyAdoptionLock;
+  bool _legacyAdoptionChecked = false;
 
   static const _keyTokenRecord = 'auth.token_record.v1';
   static const _keyAccess = 'auth.access_token';
@@ -230,10 +239,6 @@ class SecureStorage {
   static const _keyVisitorRefresh = 'visitor.refresh_token';
 
   static final Random _random = Random.secure();
-
-  /// Record changes made by another SecureStorage instance or browser tab.
-  Stream<AuthTokenChangeNotice> get onExternalAuthTokenChanged =>
-      _staffTokenChangeBus.changes.where((notice) => notice.origin != _origin);
 
   Future<String?> getAccessToken() async =>
       (await getAuthTokenSnapshot()).accessToken;
@@ -397,9 +402,10 @@ class SecureStorage {
       // An unreadable authoritative record cannot be safely handed off. Make
       // it non-reloadable; corrupt data is never allowed to revive a session.
       await _forceDeleteAllStaffTokenKeys();
-      const empty = AuthTokenSnapshot.empty();
-      _publishTokenChange(empty);
-      return const AuthTokenClearResult(previous: empty, tombstone: empty);
+      return const AuthTokenClearResult(
+        previous: AuthTokenSnapshot.empty(),
+        tombstone: AuthTokenSnapshot.empty(),
+      );
     }
 
     // Do not catch this failure in the destructive fallback below. If the
@@ -421,9 +427,10 @@ class SecureStorage {
       // Queue handoff has already succeeded. If tombstone persistence fails,
       // deletion is the safe local fallback and the queued revocation remains.
       await _forceDeleteAllStaffTokenKeys();
-      const empty = AuthTokenSnapshot.empty();
-      _publishTokenChange(empty);
-      return AuthTokenClearResult(previous: current, tombstone: empty);
+      return AuthTokenClearResult(
+        previous: current,
+        tombstone: const AuthTokenSnapshot.empty(),
+      );
     }
   });
 
@@ -459,43 +466,77 @@ class SecureStorage {
     await _storage.delete(key: _keyVisitorRefresh);
   }
 
-  // ===== 模拟身份令牌（独立 key，不与员工主令牌记录耦合）=====
+  // ===== 模拟身份令牌（独立 key，不与员工主令牌记录耦合；随标签页存储隔离）=====
 
   /// 读取当前模拟会话记录（含可能已过期的）。
   /// 注意：不在此处按过期自动删除——由调用方（AuthInterceptor / 横幅 / 退出）判定过期并
   /// 触发恢复 admin，避免「读到过期记录→静默回退 admin」导致 UI 与真实身份不一致。
   Future<ImpersonationRecord?> getImpersonationRecord() async {
-    final raw = await _storage.read(key: _keyImpersonationRecord);
+    final raw = await _sessionScope.read(_keyImpersonationRecord);
     return ImpersonationRecord.tryParse(raw);
   }
 
-  Future<void> saveImpersonationRecord(ImpersonationRecord record) => _storage
-      .write(key: _keyImpersonationRecord, value: jsonEncode(record.toJson()));
+  Future<void> saveImpersonationRecord(ImpersonationRecord record) =>
+      _sessionScope.write(_keyImpersonationRecord, jsonEncode(record.toJson()));
 
   Future<String?> getImpersonationModeToken() =>
-      _storage.read(key: _keyImpersonationMode);
+      _sessionScope.read(_keyImpersonationMode);
 
   Future<void> saveImpersonationModeToken(String token) =>
-      _storage.write(key: _keyImpersonationMode, value: token);
+      _sessionScope.write(_keyImpersonationMode, token);
 
   /// 清除全部模拟状态（退出 / 到期 / 冷启动丢弃）。
   Future<void> clearAllImpersonation() async {
-    await _storage.delete(key: _keyImpersonationRecord);
-    await _storage.delete(key: _keyImpersonationMode);
+    await _sessionScope.delete(_keyImpersonationRecord);
+    await _sessionScope.delete(_keyImpersonationMode);
   }
 
   /// 仅清模拟会话记录（目标 token），保留 mode token。
   /// 用于模拟 token 到期但模式窗口仍有效时——admin 可在窗口内免密切换。
   Future<void> clearImpersonationRecord() =>
-      _storage.delete(key: _keyImpersonationRecord);
+      _sessionScope.delete(_keyImpersonationRecord);
 
   Future<_AuthTokenRecordRead> _readStaffTokenRecord() async {
-    final raw = await _storage.read(key: _keyTokenRecord);
-    if (raw == null) return const _AuthTokenRecordRead.absent();
-    return _AuthTokenRecordRead(
-      exists: true,
-      snapshot: AuthTokenSnapshot.tryParse(raw),
-    );
+    final scopedRaw = await _sessionScope.read(_keyTokenRecord);
+    if (scopedRaw != null) {
+      return _AuthTokenRecordRead(
+        exists: true,
+        snapshot: AuthTokenSnapshot.tryParse(scopedRaw),
+      );
+    }
+    final adopted = await _adoptLegacySharedTokenRecord();
+    if (adopted != null) {
+      return _AuthTokenRecordRead(
+        exists: true,
+        snapshot: AuthTokenSnapshot.tryParse(adopted),
+      );
+    }
+    return const _AuthTokenRecordRead.absent();
+  }
+
+  /// 一次性收编旧版「同源全标签页共享」的令牌记录（ADR-061 前的落点）。
+  ///
+  /// 迁入本标签页独立存储后立刻删除共享副本：后续新开的标签页不再继承旧会话，
+  /// 必须各自显式登录。共享副本删除失败不影响本标签页正确性——最坏情况是
+  /// 下一个新标签页重复收编同一记录，服务端刷新轮换的复用检测会让旧副本失效。
+  Future<String?> _adoptLegacySharedTokenRecord() {
+    if (_legacyAdoptionChecked) return Future<String?>.value();
+    return _legacyAdoptionLock.synchronized(() async {
+      if (_legacyAdoptionChecked) return null;
+      try {
+        final scoped = await _sessionScope.read(_keyTokenRecord);
+        if (scoped != null) return scoped;
+        final legacy = await _storage.read(key: _keyTokenRecord);
+        if (legacy == null) return null;
+        await _sessionScope.write(_keyTokenRecord, legacy);
+        try {
+          await _storage.delete(key: _keyTokenRecord);
+        } catch (_) {}
+        return legacy;
+      } finally {
+        _legacyAdoptionChecked = true;
+      }
+    });
   }
 
   Future<AuthTokenSnapshot> _readStaffTokensForDestructiveClearLocked() async {
@@ -571,48 +612,37 @@ class SecureStorage {
 
   Future<void> _writeStaffTokenRecord(AuthTokenSnapshot snapshot) async {
     // The authoritative single-key write must succeed or the mutation fails.
-    // Legacy cleanup and change notification are explicitly best-effort.
-    await _storage.write(
-      key: _keyTokenRecord,
-      value: jsonEncode(snapshot.toJson()),
-    );
+    // Legacy cleanup is explicitly best-effort.
+    await _sessionScope.write(_keyTokenRecord, jsonEncode(snapshot.toJson()));
     try {
       await _storage.delete(key: _keyAccess);
     } catch (_) {}
     try {
       await _storage.delete(key: _keyRefresh);
     } catch (_) {}
-    _publishTokenChange(snapshot);
   }
 
   Future<void> _forceDeleteAllStaffTokenKeys() async {
     Object? firstError;
     StackTrace? firstStackTrace;
-    for (final key in <String>[_keyTokenRecord, _keyAccess, _keyRefresh]) {
+    // 标签页级记录与共享存储中的所有历史令牌键一并清除（含旧版共享记录副本）。
+    Future<void> deleteKey(Future<void> Function() action) async {
       try {
-        await _storage.delete(key: key);
+        await action();
       } catch (error, stackTrace) {
         firstError ??= error;
         firstStackTrace ??= stackTrace;
       }
     }
-    if (firstError != null) {
-      Error.throwWithStackTrace(firstError, firstStackTrace!);
-    }
-  }
 
-  void _publishTokenChange(AuthTokenSnapshot snapshot) {
-    try {
-      _staffTokenChangeBus.publish(
-        AuthTokenChangeNotice(
-          origin: _origin,
-          generation: snapshot.generation,
-          intentGeneration: snapshot.intentGeneration,
-          sessionLineage: snapshot.sessionLineage,
-          hasTokens: snapshot.hasTokens,
-        ),
-      );
-    } catch (_) {}
+    await deleteKey(() => _sessionScope.delete(_keyTokenRecord));
+    for (final key in <String>[_keyTokenRecord, _keyAccess, _keyRefresh]) {
+      await deleteKey(() => _storage.delete(key: key));
+    }
+    if (firstError != null) {
+      // firstError 在上方闭包内被赋值，流程分析无法做 null 提升，须显式断言。
+      Error.throwWithStackTrace(firstError!, firstStackTrace!);
+    }
   }
 
   Future<T> _mutateStaffTokens<T>(Future<T> Function() mutation) =>

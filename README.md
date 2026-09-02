@@ -108,7 +108,7 @@
 - **intl + gen_l10n** —— 官方国际化方案
 - **shared_preferences** —— 偏好持久化（主题/语言/字号/性能档）
 - **device_info_plus** —— 设备能力检测，喂给性能分级
-- **flutter_secure_storage** —— access / refresh token 等敏感数据安全存储
+- **flutter_secure_storage** —— 敏感数据安全存储（账号历史/撤销队列/访客令牌；Web 端员工令牌记录为标签页级 sessionStorage，多标签页多账号并行，见 ADR-061）
 - **very_good_analysis** —— 严格 lint 规则
 
 详细选型理由见 [docs/01-规划/技术选型.md](docs/01-规划/技术选型.md) 和 [docs/99-决策记录-ADR/](docs/99-决策记录-ADR/)。
@@ -214,7 +214,7 @@ dart format path/to/file1.dart path/to/file2.dart
 4. 设置页验证主题、语言、字号、性能档、版本信息、修改密码与二次确认退出。
 5. 拉伸 Web/桌面窗口并在手机/平板验证响应式、文本缩放、键盘和滚动边界。
 6. 切换 lite/standard/rich，确认动画与特效按性能策略降级且业务功能不受影响。
-7. 退出后当前安装和所有标签应立即 fail-closed，旧 refresh 在加密队列中最终撤销。普通 logout 不保证已泄露的 access 立即在服务端失效；它最多存活到短 TTL（源码默认 15 分钟），需要立即全局清退时必须另用 `auth_version`/授权 epoch/issuer/签名密钥轮换等受控机制。
+7. 退出后当前标签页立即 fail-closed（同一浏览器其他标签页的独立会话不受影响，ADR-061）；旧 refresh 在加密队列中最终撤销。普通 logout 不保证已泄露的 access 立即在服务端失效；它最多存活到短 TTL（源码默认 15 分钟），需要立即全局清退时必须另用 `auth_version`/授权 epoch/issuer/签名密钥轮换等受控机制。
 8. 验证短时断网、超时、HTML/空体/未知 401 和结构化 503 不清会话；恢复后横幅显示“网络已恢复，可以继续使用”，当前工作台自动重读。
 9. 验证只对 GET/HEAD/OPTIONS 最多额外重试两次（400/1200 ms），创建、审批、过账等写请求不自动重放。
 10. 用三标签、离线退出后重启、损坏安全记录、真实 12/18 KiB 请求头和严格 JSON health 完成稳定性验收；发布入口不得使用会随调试进程退出的 localhost。

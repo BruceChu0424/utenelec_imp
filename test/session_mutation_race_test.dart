@@ -8,6 +8,7 @@ import 'package:uten_imp/core/network/connection_recovery.dart';
 import 'package:uten_imp/core/network/session_event_bus.dart';
 import 'package:uten_imp/core/security/auth_logout_fence.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/security/tab_scoped_store.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -215,47 +216,51 @@ void main() {
     },
   );
 
-  test(
-    'external logout invalidates this tab and a later external login restores it',
-    () async {
-      FlutterSecureStorage.setMockInitialValues(<String, String>{});
-      const rawStorage = FlutterSecureStorage();
-      final localStorage = SecureStorage(rawStorage);
-      final otherTabStorage = SecureStorage(rawStorage);
-      await localStorage.saveTokens(
-        accessToken: 'first-access',
-        refreshToken: 'first-refresh',
-      );
-      final repository = _MutableProfileRepository(
-        _profile('first', 'First user'),
-      );
-      final container = _container(localStorage, repository);
-      addTearDown(container.dispose);
+  test('another tab logout/login never invalidates this tab session', () async {
+    // ADR-061：会话记录按标签页隔离。另一标签页（独立记录）登出、再登录
+    // 其他账号，本标签页的会话与身份必须原样保持。
+    FlutterSecureStorage.setMockInitialValues(<String, String>{});
+    const rawStorage = FlutterSecureStorage();
+    final thisTab = SecureStorage(
+      rawStorage,
+      sessionScope: _InMemoryTabScope(),
+    );
+    final otherTab = SecureStorage(
+      rawStorage,
+      sessionScope: _InMemoryTabScope(),
+    );
+    await thisTab.saveTokens(
+      accessToken: 'first-access',
+      refreshToken: 'first-refresh',
+    );
+    final repository = _MutableProfileRepository(
+      _profile('first', 'First user'),
+    );
+    final container = _container(thisTab, repository);
+    addTearDown(container.dispose);
 
-      container.read(sessionProvider);
-      await pumpEventQueue();
-      expect(container.read(sessionProvider).status, AuthStatus.authenticated);
+    container.read(sessionProvider);
+    await pumpEventQueue();
+    expect(container.read(sessionProvider).status, AuthStatus.authenticated);
 
-      await otherTabStorage.clearForLogoutIntent();
-      await pumpEventQueue();
-      expect(
-        container.read(sessionProvider).status,
-        AuthStatus.unauthenticated,
-      );
+    await otherTab.clearForLogoutIntent();
+    final login = await otherTab.beginSessionIntent(clearTokens: true);
+    await otherTab.commitSessionIntentTokens(
+      intent: login.intent,
+      accessToken: 'second-access',
+      refreshToken: 'second-refresh',
+    );
+    await pumpEventQueue();
 
-      repository.profile = _profile('second', 'Second user');
-      final login = await otherTabStorage.beginSessionIntent(clearTokens: true);
-      await otherTabStorage.commitSessionIntentTokens(
-        intent: login.intent,
-        accessToken: 'second-access',
-        refreshToken: 'second-refresh',
-      );
-      await pumpEventQueue();
-
-      expect(container.read(sessionProvider).status, AuthStatus.authenticated);
-      expect(container.read(sessionProvider).user?.name, 'Second user');
-    },
-  );
+    expect(
+      container.read(sessionProvider).status,
+      AuthStatus.authenticated,
+      reason: '其他标签页的登出/登录不得登出本标签页',
+    );
+    expect(container.read(sessionProvider).user?.name, 'First user');
+    expect(await thisTab.getAccessToken(), 'first-access');
+    expect(await otherTab.getAccessToken(), 'second-access');
+  });
 
   test(
     'final logout storage failure is surfaced and blocks automatic restore',
@@ -322,6 +327,23 @@ void main() {
     expect(container.read(sessionProvider).status, AuthStatus.unauthenticated);
     storage.releaseAccountWrite();
   });
+}
+
+class _InMemoryTabScope implements TabScopedStore {
+  final Map<String, String> _values = <String, String>{};
+
+  @override
+  Future<String?> read(String key) async => _values[key];
+
+  @override
+  Future<void> write(String key, String value) async {
+    _values[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    _values.remove(key);
+  }
 }
 
 ProviderContainer _container(SecureStorage storage, AuthRepository repository) {

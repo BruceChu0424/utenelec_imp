@@ -9,7 +9,6 @@ import '../../core/network/api_exception.dart';
 import '../../core/network/connection_recovery.dart';
 import '../../core/network/session_event_bus.dart';
 import '../../core/security/auth_logout_fence.dart';
-import '../../core/security/auth_refresh_lock.dart';
 import '../../core/security/secure_storage.dart';
 import '../../features/admin/repositories/impersonation_repository.dart';
 import '../../features/auth/models/auth_session.dart';
@@ -65,7 +64,6 @@ class SessionNotifier extends Notifier<SessionState> {
   // successfully reaches secure storage.
   bool _localStorageFailClosed = false;
   String? _visibleSessionLineage;
-  var _visibleIntentGeneration = 0;
 
   static const _profileGenerationKey = '_utenAuthTokenGeneration';
   static const _profileIntentKey = '_utenAuthIntentGeneration';
@@ -95,11 +93,6 @@ class SessionNotifier extends Notifier<SessionState> {
         .listen((userJson) {
           unawaited(_applyRefreshedProfileIfCurrent(userJson));
         });
-    final tokenChangeSubscription = _storage.onExternalAuthTokenChanged.listen((
-      notice,
-    ) {
-      unawaited(_reconcileExternalTokenChange(notice));
-    });
     // 模拟 token 到期（AuthInterceptor 401 触发）：退出模拟、恢复 admin，不登出主会话。
     final impersonationExpiredSubscription = SessionEventBus
         .instance
@@ -110,7 +103,6 @@ class SessionNotifier extends Notifier<SessionState> {
     ref.onDispose(() {
       unawaited(expirationSubscription.cancel());
       unawaited(profileSubscription.cancel());
-      unawaited(tokenChangeSubscription.cancel());
       unawaited(impersonationExpiredSubscription.cancel());
     });
     return const SessionState();
@@ -159,42 +151,6 @@ class SessionNotifier extends Notifier<SessionState> {
       }
     } catch (_) {
       // A profile event is advisory; storage/read failure cannot change state.
-    }
-  }
-
-  Future<void> _reconcileExternalTokenChange(
-    AuthTokenChangeNotice notice,
-  ) async {
-    if (_localStorageFailClosed) return;
-    try {
-      final current = await _storage.getAuthTokenSnapshot();
-      // A delayed BroadcastChannel signal may describe an older record. The
-      // authoritative read above is the only state that can be applied.
-      if (current.generation < notice.generation) return;
-
-      final intentChanged =
-          current.intentGeneration != _visibleIntentGeneration;
-      final lineageChanged = current.sessionLineage != _visibleSessionLineage;
-      if (intentChanged || lineageChanged) {
-        ++_sessionMutationEpoch;
-      }
-
-      if (!current.hasRefreshToken) {
-        _rememberVisibleRecord(current);
-        state = const SessionState();
-        return;
-      }
-
-      if (lineageChanged) {
-        // Never render the prior profile while requests already use a different
-        // cross-tab session. /auth/me will install the matching profile.
-        state = const SessionState();
-      } else if (intentChanged) {
-        _visibleIntentGeneration = current.intentGeneration;
-      }
-      await _restore();
-    } catch (_) {
-      // A notification is only a wakeup. Recovery/startup can retry the read.
     }
   }
 
@@ -507,7 +463,6 @@ class SessionNotifier extends Notifier<SessionState> {
 
   void _rememberVisibleRecord(AuthTokenSnapshot snapshot) {
     _visibleSessionLineage = snapshot.sessionLineage;
-    _visibleIntentGeneration = snapshot.intentGeneration;
   }
 
   Future<T> _serializeSessionCommit<T>(Future<T> Function() commit) async {

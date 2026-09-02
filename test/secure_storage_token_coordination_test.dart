@@ -131,26 +131,4 @@ void main() {
       expect(currentCommit?.accessToken, 'new-access');
     },
   );
-
-  test(
-    'another storage instance receives non-sensitive record notice',
-    () async {
-      const rawStorage = FlutterSecureStorage();
-      final observing = SecureStorage(rawStorage);
-      final writing = SecureStorage(rawStorage);
-      final noticeFuture = observing.onExternalAuthTokenChanged.first;
-
-      await writing.saveTokens(
-        accessToken: 'new-access',
-        refreshToken: 'new-refresh',
-      );
-      final notice = await noticeFuture;
-      final current = await observing.getAuthTokenSnapshot();
-
-      expect(notice.generation, current.generation);
-      expect(notice.intentGeneration, current.intentGeneration);
-      expect(notice.sessionLineage, current.sessionLineage);
-      expect(notice.hasTokens, isTrue);
-    },
-  );
 }

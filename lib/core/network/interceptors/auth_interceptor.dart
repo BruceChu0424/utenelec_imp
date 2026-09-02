@@ -392,7 +392,7 @@ class AuthInterceptor extends Interceptor {
       _localSessionBoundaryError(
         options,
         code: 'SESSION_CHANGED',
-        message: '账号已在其他窗口切换，本次旧页面结果已忽略',
+        message: '登录状态已切换，本次旧请求结果已忽略',
       );
 
   static DioException _sessionCheckUnavailableError(RequestOptions options) =>

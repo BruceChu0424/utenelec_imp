@@ -6,101 +6,15 @@ import 'dart:math';
 
 import 'package:web/web.dart' as web;
 
-/// Non-sensitive notification that the authoritative staff token record moved
-/// to another generation. Tokens are deliberately never included.
-class AuthTokenChangeNotice {
-  const AuthTokenChangeNotice({
-    required this.origin,
-    required this.generation,
-    required this.intentGeneration,
-    required this.sessionLineage,
-    required this.hasTokens,
-  });
-
-  final String origin;
-  final int generation;
-  final int intentGeneration;
-  final String? sessionLineage;
-  final bool hasTokens;
-
-  Map<String, Object?> toJson() => <String, Object?>{
-    'origin': origin,
-    'generation': generation,
-    'intentGeneration': intentGeneration,
-    'sessionLineage': sessionLineage,
-    'hasTokens': hasTokens,
-  };
-
-  static AuthTokenChangeNotice? tryParse(String raw) {
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) return null;
-      final origin = decoded['origin'];
-      final generation = decoded['generation'];
-      final intentGeneration = decoded['intentGeneration'];
-      final sessionLineage = decoded['sessionLineage'];
-      final hasTokens = decoded['hasTokens'];
-      if (origin is! String ||
-          generation is! num ||
-          intentGeneration is! num ||
-          (sessionLineage != null && sessionLineage is! String) ||
-          hasTokens is! bool) {
-        return null;
-      }
-      return AuthTokenChangeNotice(
-        origin: origin,
-        generation: generation.toInt(),
-        intentGeneration: intentGeneration.toInt(),
-        sessionLineage: sessionLineage as String?,
-        hasTokens: hasTokens,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-}
-
-/// Cross-tab token-record notification bus. Only lineage/counters are sent;
-/// credentials remain exclusively in secure storage.
-class AuthTokenChangeBus {
-  factory AuthTokenChangeBus(String scope) =>
-      _buses.putIfAbsent(scope, () => AuthTokenChangeBus._(scope));
-
-  AuthTokenChangeBus._(String scope)
-    : _channel = web.BroadcastChannel(
-        'uten-auth-token-change-${_stableHash(scope)}',
-      ) {
-    _channel.onmessage = ((web.Event event) {
-      final message = event as web.MessageEvent;
-      final raw = message.data.dartify();
-      if (raw is! String) return;
-      final notice = AuthTokenChangeNotice.tryParse(raw);
-      if (notice != null && !_controller.isClosed) {
-        _controller.add(notice);
-      }
-    }).toJS;
-  }
-
-  static final Map<String, AuthTokenChangeBus> _buses =
-      <String, AuthTokenChangeBus>{};
-
-  final web.BroadcastChannel _channel;
-  final StreamController<AuthTokenChangeNotice> _controller =
-      StreamController<AuthTokenChangeNotice>.broadcast();
-
-  Stream<AuthTokenChangeNotice> get changes => _controller.stream;
-
-  void publish(AuthTokenChangeNotice notice) {
-    if (!_controller.isClosed) _controller.add(notice);
-    _channel.postMessage(jsonEncode(notice.toJson()).toJS);
-  }
-}
-
 /// Serializes staff token refreshes in this isolate and across same-origin tabs.
 ///
 /// Web Locks is the primary mechanism. Browsers without that API use a short,
 /// renewable localStorage lease. The lock/lease contains only random ownership
 /// metadata and expiry timestamps; credentials are never copied into it.
+///
+/// 会话记录自 ADR-061 起按标签页隔离，本锁不再承担「跨标签页会话协调」，
+/// 只保留互斥语义（同一标签页内的登录/登出/刷新串行化，跨标签页退化为
+/// 短临界区的全局互斥，无害）。
 class AuthRefreshLock {
   factory AuthRefreshLock(String scope) =>
       _locks.putIfAbsent(scope, () => AuthRefreshLock._(scope));

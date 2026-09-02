@@ -24,6 +24,8 @@ import com.uten.imp.features.master.goods.dto.GoodsStockSummary;
 import com.uten.imp.features.master.goods.dto.GoodsStockRow;
 import com.uten.imp.features.master.materialcategory.MaterialCategory;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
+import com.uten.imp.features.master.mould.Mould;
+import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.security.AuthUser;
@@ -79,7 +81,8 @@ public class GoodsService {
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "series", "model", "material", "code", "name", "spec",
-            "cNumber", "requireRemark", "colorLegacyId", "unitLegacyId", "sourceType");
+            "cNumber", "requireRemark", "paper", "rearInsertCode",
+            "colorLegacyId", "unitLegacyId", "sourceType");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（金额/编号等可排序列；命中才排序，否则默认 id ASC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("price", "price", "code", "code");
@@ -100,7 +103,8 @@ public class GoodsService {
         FACET_COLUMNS.put("name", "name");
         FACET_COLUMNS.put("spec", "spec");
         FACET_COLUMNS.put("material", "material");
-        FACET_COLUMNS.put("requireRemark", "require_remark");
+        FACET_COLUMNS.put("paper", "paper");
+        FACET_COLUMNS.put("rearInsertCode", "rear_insert_code");
         FACET_COLUMNS.put("colorLegacyId", "color_legacy_id");
         FACET_COLUMNS.put("unitLegacyId", "unit_legacy_id");
         FACET_COLUMNS.put("sourceType", "source_type");
@@ -110,6 +114,7 @@ public class GoodsService {
     private final MaterialCategoryRepository categoryRepo;
     private final ColorRepository colorRepo;
     private final UnitRepository unitRepo;
+    private final MouldRepository mouldRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final CategoryDrivenCodeService categoryCodes;
@@ -163,10 +168,13 @@ public class GoodsService {
                 content.stream().map(Goods::getColorLegacyId).toList());
         Map<Integer, String> unitNames = unitNamesFor(
                 content.stream().map(Goods::getUnitLegacyId).toList());
+        // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补模具编号（列表「模具编号」列）。
+        Map<Integer, Mould> mouldsByLegacy = mouldsByLegacyFor(
+                content.stream().map(Goods::getMouldLegacyId).toList());
         Map<UUID, BigDecimal> stockByGoods = stockQuantitiesFor(
                 content.stream().map(Goods::getId).toList());
         List<GoodsListItem> items = content.stream()
-                .map(g -> toList(g, colorNames, unitNames, stockByGoods))
+                .map(g -> toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods))
                 .toList();
         return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
     }
@@ -222,7 +230,13 @@ public class GoodsService {
                     ? cb.disjunction()
                     : root.get("category").get("id").in(subtreeIds));
         }
-        if (f.keyword() != null && !f.keyword().isBlank()) {
+        boolean keywordPresent = f.keyword() != null && !f.keyword().isBlank();
+        boolean mouldCodeFilter = f.mouldCode() != null && !f.mouldCode().isBlank();
+        // 模具编号筛选/搜索需要跨关系取 moulds.code：LEFT JOIN 保证无模具货品不被整支 OR 过滤掉。
+        var mouldJoin = keywordPresent || mouldCodeFilter
+                ? root.join("mould", jakarta.persistence.criteria.JoinType.LEFT)
+                : null;
+        if (keywordPresent) {
             String like = "%" + f.keyword().toLowerCase() + "%";
             ps.add(cb.or(
                     cb.like(cb.lower(root.get("name")), like),
@@ -232,7 +246,9 @@ public class GoodsService {
                     cb.like(cb.lower(root.get("series")), like),
                     cb.like(cb.lower(root.get("cNumber")), like),
                     cb.like(cb.lower(root.get("material")), like),
-                    cb.like(cb.lower(root.get("requireRemark")), like)));
+                    cb.like(cb.lower(root.get("requireRemark")), like),
+                    cb.like(cb.lower(root.get("paper")), like),
+                    cb.like(cb.lower(mouldJoin.get("code")), like)));
         }
         addEq(ps, cb, root, "series", f.series());
         addEq(ps, cb, root, "model", f.model());
@@ -242,6 +258,11 @@ public class GoodsService {
         addEq(ps, cb, root, "spec", f.spec());
         addEq(ps, cb, root, "cNumber", f.cNumber());
         addEq(ps, cb, root, "requireRemark", f.requireRemark());
+        addEq(ps, cb, root, "paper", f.paper());
+        addEq(ps, cb, root, "rearInsertCode", f.rearInsertCode());
+        if (mouldCodeFilter) {
+            ps.add(cb.equal(mouldJoin.get("code"), f.mouldCode()));
+        }
         addEq(ps, cb, root, "sourceType", f.sourceType());
         if (f.colorLegacyId() != null) ps.add(cb.equal(root.get("colorLegacyId"), f.colorLegacyId()));
         if (f.unitLegacyId() != null) ps.add(cb.equal(root.get("unitLegacyId"), f.unitLegacyId()));
@@ -352,6 +373,39 @@ public class GoodsService {
     }
 
     /**
+     * 历史只读回显：批量按 legacy_id 查 moulds（仅未软删）。空集合返回空 map。
+     * 绝不据此建立新关系，仅补「模具编号/名称」展示。
+     */
+    private Map<Integer, com.uten.imp.features.master.mould.Mould> mouldsByLegacyFor(
+            Collection<Integer> legacyIds) {
+        Set<Integer> distinct = legacyIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (distinct.isEmpty()) return Map.of();
+        return mouldRepo.findByLegacyIdInAndDeletedFalse(distinct).stream()
+                .filter(m -> m.getLegacyId() != null)
+                .collect(Collectors.toMap(Mould::getLegacyId, m -> m, (a, b) -> a));
+    }
+
+    /** 模具编号展示值：UUID 关系优先（软删不显）；历史 UUID 缺失回落 legacy 快照，均无则 null。 */
+    private static String mouldCodeOf(Goods g, Map<Integer, Mould> mouldsByLegacy) {
+        if (g.getMould() != null) {
+            return g.getMould().isDeleted() ? null : g.getMould().getCode();
+        }
+        Mould m = g.getMouldLegacyId() == null ? null : mouldsByLegacy.get(g.getMouldLegacyId());
+        return m == null ? null : m.getCode();
+    }
+
+    /** 模具名称展示值：口径同 [mouldCodeOf]（详情页展示用）。 */
+    private static String mouldNameOf(Goods g, Map<Integer, Mould> mouldsByLegacy) {
+        if (g.getMould() != null) {
+            return g.getMould().isDeleted() ? null : g.getMould().getName();
+        }
+        Mould m = g.getMouldLegacyId() == null ? null : mouldsByLegacy.get(g.getMouldLegacyId());
+        return m == null ? null : m.getName();
+    }
+
+    /**
      * 批量按 goods_id 聚合即时库存（仅参与核算仓库 is_accountable），列表「库存量」列用。
      * 口径同即时库存/货品详情。空集合返回空 map（toList 对缺省键回落 BigDecimal.ZERO）。
      */
@@ -446,7 +500,9 @@ public class GoodsService {
                 new ExportColumn("spec", "规格", ExportColumn.TEXT),
                 new ExportColumn("material", "材质", ExportColumn.TEXT),
                 new ExportColumn("cNumber", "客户型号", ExportColumn.TEXT),
-                new ExportColumn("requireRemark", "备注", ExportColumn.TEXT),
+                new ExportColumn("mouldCode", "模具编号", ExportColumn.TEXT),
+                new ExportColumn("rearInsertCode", "后模镶件编号", ExportColumn.TEXT),
+                new ExportColumn("paper", "备注", ExportColumn.TEXT),
                 new ExportColumn("colorName", "主颜色", ExportColumn.TEXT),
                 new ExportColumn("unitName", "单位", ExportColumn.TEXT),
                 new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
@@ -469,7 +525,9 @@ public class GoodsService {
                 row.put("spec", g.getSpec());
                 row.put("material", g.getMaterial());
                 row.put("cNumber", g.getCNumber());
-                row.put("requireRemark", g.getRequireRemark());
+                row.put("mouldCode", g.getMouldCode());
+                row.put("rearInsertCode", g.getRearInsertCode());
+                row.put("paper", g.getPaper());
                 row.put("colorName", g.getColorName());
                 row.put("unitName", g.getUnitName());
                 row.put("sourceType", g.getSourceType());
@@ -535,7 +593,8 @@ public class GoodsService {
         return new GoodsFacets(
                 buckets.get("code"), buckets.get("series"), buckets.get("model"),
                 buckets.get("name"), buckets.get("spec"), buckets.get("material"),
-                buckets.get("requireRemark"), buckets.get("colorLegacyId"), buckets.get("unitLegacyId"),
+                buckets.get("rearInsertCode"), buckets.get("paper"),
+                buckets.get("colorLegacyId"), buckets.get("unitLegacyId"),
                 buckets.get("sourceType"),
                 nullCounts);
     }
@@ -915,6 +974,12 @@ public class GoodsService {
                 g.setMouldLegacyId(target.getLegacyId());
             }
         }
+        // 后模镶件编号（V457）：与备注同界面的短码；空白归一为 NULL。
+        g.setRearInsertCode(
+                req.getRearInsertCode() == null || req.getRearInsertCode().isBlank()
+                        ? null : req.getRearInsertCode().trim());
+        // 备注（老库 Paper 真身）：原样落库，仅 trim。
+        g.setPaper(req.getPaper() == null ? null : req.getPaper().trim());
         if (req.hasClientReference()) {
             if (clearsReference(req.getClientId(), req.getClientLegacyId())) {
                 g.setClient(null);
@@ -975,6 +1040,9 @@ public class GoodsService {
         UUID categoryId = g.getCategory() == null ? null : g.getCategory().getId();
         String categoryName = g.getCategory() == null ? null : g.getCategory().getName();
         GoodsStockSummary stock = stockSummaryForGoods(g.getId());
+        Map<Integer, Mould> mouldByLegacy = g.getMouldLegacyId() == null
+                ? Map.of()
+                : mouldsByLegacyFor(List.of(g.getMouldLegacyId()));
         GoodsDetail d = new GoodsDetail(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
                 g.getPrice(), g.getDiscount(), g.getStatus(), g.getLegacyId(),
@@ -987,6 +1055,10 @@ public class GoodsService {
                 g.getColor() == null ? g.getColorLegacyId() : g.getColor().getLegacyId(),
                 g.getMould() == null ? null : g.getMould().getId(),
                 g.getMould() == null ? g.getMouldLegacyId() : g.getMould().getLegacyId(),
+                mouldCodeOf(g, mouldByLegacy),
+                mouldNameOf(g, mouldByLegacy),
+                g.getRearInsertCode(),
+                g.getPaper(),
                 g.getClient() == null ? null : g.getClient().getId(),
                 g.getClient() == null ? g.getClientLegacyId() : g.getClient().getLegacyId(),
                 g.getDefaultSupplier() == null ? null : g.getDefaultSupplier().getId(),
@@ -1024,11 +1096,14 @@ public class GoodsService {
     }
 
     private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames,
-                                 Map<UUID, BigDecimal> stockByGoods) {
+                                 Map<Integer, Mould> mouldsByLegacy, Map<UUID, BigDecimal> stockByGoods) {
         return new GoodsListItem(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
                 g.getPrice(), canViewDiscount() ? g.getDiscount() : null, g.getStatus(), g.getLegacyId(),
                 g.getSeries(), g.getMaterial(), g.getCNumber(), g.getRequireRemark(),
+                mouldCodeOf(g, mouldsByLegacy),
+                g.getRearInsertCode(),
+                g.getPaper(),
                 g.getColor() == null ? null : g.getColor().getId(),
                 g.getUnit() == null ? null : g.getUnit().getId(),
                 g.getColor() == null ? g.getColorLegacyId() : g.getColor().getLegacyId(),

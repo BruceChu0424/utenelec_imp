@@ -20,6 +20,56 @@ void main() {
     },
   );
 
+  test('GoodsListItem parses mould code, rear insert code and paper', () {
+    final item = GoodsListItem.fromJson({
+      'id': 'goods-uuid',
+      'mouldCode': '19-05-43-A',
+      'rearInsertCode': '45A',
+      'paper': '换后模45A镶件',
+    });
+
+    expect(item.mouldCode, '19-05-43-A');
+    expect(item.rearInsertCode, '45A');
+    expect(item.paper, '换后模45A镶件');
+  });
+
+  test('GoodsDetail parses mould display fields, rear insert and paper', () {
+    final detail = GoodsDetail.fromJson({
+      'id': 'goods-1',
+      'mouldId': 'mould-uuid',
+      'mouldLegacyId': 3482,
+      'mouldCode': '19-05-43',
+      'mouldName': 'Z9二开13A插面',
+      'rearInsertCode': '平',
+      'paper': '换后模平镶件',
+    });
+
+    expect(detail.mouldId, 'mould-uuid');
+    expect(detail.mouldLegacyId, 3482);
+    expect(detail.mouldCode, '19-05-43');
+    expect(detail.mouldName, 'Z9二开13A插面');
+    expect(detail.rearInsertCode, '平');
+    expect(detail.paper, '换后模平镶件');
+  });
+
+  test('GoodsFacets reads paper and rearInsertCode buckets', () {
+    final facets = GoodsFacets.fromJson({
+      'paper': [
+        {'value': '换后模平镶件', 'count': 4},
+      ],
+      'rearInsertCode': [
+        {'value': '平', 'count': 4},
+        {'value': '45A', 'count': 2},
+      ],
+      'nullCounts': {'rearInsertCode': 35000},
+    });
+
+    expect(facets.fields['paper']!.single.value, '换后模平镶件');
+    expect(facets.fields['rearInsertCode']!.length, 2);
+    expect(facets.fields['rearInsertCode']!.first.value, '平');
+    expect(facets.nullCounts['rearInsertCode'], 35000);
+  });
+
   test('GoodsDetail parses UUID relations, legacy fallbacks and version', () {
     final detail = GoodsDetail.fromJson({
       'id': 'goods-1',

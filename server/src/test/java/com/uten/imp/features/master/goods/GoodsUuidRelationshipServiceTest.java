@@ -11,6 +11,7 @@ import com.uten.imp.features.master.goods.dto.GoodsDetail;
 import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 import com.uten.imp.features.master.materialcategory.MaterialCategory;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
+import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.security.OwnerVisibility;
@@ -27,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -51,7 +53,7 @@ class GoodsUuidRelationshipServiceTest {
         GoodsCostMasker costMasker = mock(GoodsCostMasker.class);
         when(costMasker.canView()).thenReturn(true);
         GoodsService service = new GoodsService(
-                goodsRepo, categoryRepo, colorRepo, unitRepo, tx,
+                goodsRepo, categoryRepo, colorRepo, unitRepo, mock(MouldRepository.class), tx,
                 em, codes, mock(OwnerVisibility.class), currentUser, costMasker, relationships);
 
         MaterialCategory category = new MaterialCategory();
@@ -105,6 +107,51 @@ class GoodsUuidRelationshipServiceTest {
     }
 
     @Test
+    void rearInsertCodeNormalizesBlankToNullAndTrimsSurroundingSpaces() {
+        GoodsRepository goodsRepo = mock(GoodsRepository.class);
+        MaterialCategoryRepository categoryRepo = mock(MaterialCategoryRepository.class);
+        MaterialCategory category = new MaterialCategory();
+        when(categoryRepo.findById(category.getId())).thenReturn(Optional.of(category));
+        when(goodsRepo.findById(org.mockito.ArgumentMatchers.any(UUID.class)))
+                .thenReturn(Optional.empty());
+        CategoryDrivenCodeService codes = mock(CategoryDrivenCodeService.class);
+        when(codes.allocate(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.isNull()))
+                .thenReturn(new CategoryCodeAllocation("HP000002", 2, null, true));
+        GoodsService service = new GoodsService(
+                goodsRepo, categoryRepo, mock(ColorRepository.class), mock(UnitRepository.class),
+                mock(MouldRepository.class), mock(TxSessionVars.class), stubbedEm(),
+                codes, mock(OwnerVisibility.class),
+                unauthenticatedUser(), mock(GoodsCostMasker.class),
+                mock(GoodsMasterRelationshipResolver.class));
+
+        GoodsSaveRequest request = new GoodsSaveRequest();
+        request.setCategoryId(category.getId());
+        request.setName("Rear insert fixture");
+        request.setRearInsertCode("  45A ");
+        request.setPaper(" 换后模45A镶件 ");
+
+        service.create(request);
+
+        ArgumentCaptor<Goods> saved = ArgumentCaptor.forClass(Goods.class);
+        verify(goodsRepo).save(saved.capture());
+        assertEquals("45A", saved.getValue().getRearInsertCode());
+        assertEquals("换后模45A镶件", saved.getValue().getPaper());
+
+        // 空白后模镶件编号归一为 NULL，不残留空串。
+        GoodsSaveRequest blank = new GoodsSaveRequest();
+        blank.setCategoryId(category.getId());
+        blank.setName("Rear insert blank");
+        blank.setRearInsertCode("   ");
+        service.create(blank);
+        ArgumentCaptor<Goods> savedBlank = ArgumentCaptor.forClass(Goods.class);
+        verify(goodsRepo, org.mockito.Mockito.times(2)).save(savedBlank.capture());
+        assertNull(savedBlank.getValue().getRearInsertCode());
+    }
+
+    @Test
     void uuidBomRequestPersistsUuidAndCanonicalLegacySnapshot() {
         GoodsRepository goodsRepo = mock(GoodsRepository.class);
         GoodsBomItemRepository bomRepo = mock(GoodsBomItemRepository.class);
@@ -149,5 +196,12 @@ class GoodsUuidRelationshipServiceTest {
         when(q.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenReturn(q);
         return em;
+    }
+
+    /** 未认证上下文：create() 不走价权/折扣可见性分支。 */
+    private static SecurityContextCurrentUser unauthenticatedUser() {
+        SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
+        when(currentUser.get()).thenReturn(Optional.empty());
+        return currentUser;
     }
 }

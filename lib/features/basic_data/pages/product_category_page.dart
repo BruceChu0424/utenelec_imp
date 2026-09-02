@@ -841,6 +841,9 @@ class _DetailPaneState extends State<_DetailPane> {
       'thickness': d.thickness,
       'mWeight': d.mWeight,
       ...goodsUuidFirstReferenceBody(d),
+      // 后模镶件编号 + 备注（老库 Paper 真身）：粘贴/状态切换等全量回传路径同步携带。
+      'rearInsertCode': d.rearInsertCode,
+      'paper': d.paper,
       'pack': d.pack,
       'pieces': d.pieces,
       // 成本字段全量回传（后端 apply 全量覆盖语义，缺字段会被清 null）。
@@ -1918,16 +1921,31 @@ class _DetailPaneState extends State<_DetailPane> {
               : '#${g.colorLegacyId}'),
     ),
     MasterColumnDef(
-      key: 'requireRemark',
+      key: 'paper',
       label: '备注',
       width: 180,
-      value: (g) => g.requireRemark,
+      // 老系统「备注」列即 B_Goods.Paper（新库 goods.paper）；require_remark 是
+      // Require 列迁移残值（真实迁移恒空），仅作兜底回显。
+      value: (g) => g.paper ?? g.requireRemark,
     ),
     MasterColumnDef(
       key: 'cNumber',
       label: '客户型号',
       width: 120,
       value: (g) => g.cNumber,
+    ),
+    MasterColumnDef(
+      key: 'mouldCode',
+      label: '模具编号',
+      width: 130,
+      value: (g) => g.mouldCode,
+    ),
+    MasterColumnDef(
+      key: 'rearInsertCode',
+      label: '后模镶件编号',
+      width: 110,
+      // 生产该货品需更换的后模镶件标识（老备注解析迁移；空=无需换件或待人工补录）。
+      value: (g) => g.rearInsertCode,
     ),
     MasterColumnDef(
       key: 'unitLegacyId',

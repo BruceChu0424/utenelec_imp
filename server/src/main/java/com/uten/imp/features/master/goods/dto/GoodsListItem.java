@@ -32,6 +32,9 @@ public class GoodsListItem {
     private String material;
     private String cNumber;
     private String requireRemark;
+    private String mouldCode;       // 模具编号（moulds.code；UUID 关系优先，历史缺失回落 legacy 快照解析）
+    private String rearInsertCode;  // 后模镶件编号（V457）：生产该货品需使用的后模镶件标识
+    private String paper;           // 备注（老库 B_Goods.Paper；列表「备注」列数据源）
     private UUID colorId;
     private UUID unitId;
     private Integer colorLegacyId;

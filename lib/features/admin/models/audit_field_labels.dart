@@ -91,6 +91,9 @@ abstract final class AuditFieldLabels {
     'description': '描述',
     'exchange_rate': '汇率',
     'settlement_method': '结算方式',
+    'mould_id': '模具',
+    'rear_insert_code': '后模镶件编号',
+    'paper': '备注（货品）',
 
     // 单据通用
     'doc_no': '单据编号',

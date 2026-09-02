@@ -8,6 +8,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -60,6 +61,10 @@ public class GoodsSaveRequest {
     private Integer unitLegacyId;   // UnitID 旧库快照；单位下拉只提交 unitId UUID
     private UUID mouldId;
     private Integer mouldLegacyId; // 旧库模具主键快照；不能单独建立关系
+    @Size(max = 100)
+    private String rearInsertCode; // 后模镶件编号（V457）：生产该货品需使用的后模镶件标识
+    @Size(max = 5000)
+    private String paper;          // Paper 备注（老系统备注列的真身；require_remark 仅迁移残值）
     private UUID clientId;
     private Integer clientLegacyId; // 旧库客户主键快照；不能单独建立关系
     private UUID defaultSupplierId;

@@ -76,6 +76,9 @@ public class GoodsController {
             @RequestParam(required = false) String spec,
             @RequestParam(name = "cNumber", required = false) String cNumber,
             @RequestParam(required = false) String requireRemark,
+            @RequestParam(required = false) String mouldCode,
+            @RequestParam(required = false) String rearInsertCode,
+            @RequestParam(required = false) String paper,
             @RequestParam(required = false) Integer colorLegacyId,
             @RequestParam(required = false) Integer unitLegacyId,
             @RequestParam(required = false) String sourceType,
@@ -89,6 +92,7 @@ public class GoodsController {
             @RequestParam(required = false) String order) {
         return service.list(new GoodsQueryFilter(categoryId, categoryRootIds, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
+                mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly), page, size, sort, order);
     }
@@ -104,6 +108,7 @@ public class GoodsController {
         return service.matchingCategoryIds(new GoodsQueryFilter(
                 null, categoryRootIds, keyword, Set.of(),
                 null, null, null, null, null, null, null, null,
+                null, null, null,
                 null, null, null, excludeDisabled, excludeStub, null, null));
     }
 
@@ -155,6 +160,9 @@ public class GoodsController {
             @RequestParam(required = false) String spec,
             @RequestParam(name = "cNumber", required = false) String cNumber,
             @RequestParam(required = false) String requireRemark,
+            @RequestParam(required = false) String mouldCode,
+            @RequestParam(required = false) String rearInsertCode,
+            @RequestParam(required = false) String paper,
             @RequestParam(required = false) Integer colorLegacyId,
             @RequestParam(required = false) Integer unitLegacyId,
             @RequestParam(required = false) String sourceType,
@@ -167,6 +175,7 @@ public class GoodsController {
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new GoodsQueryFilter(categoryId, null, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
+                mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly), sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());

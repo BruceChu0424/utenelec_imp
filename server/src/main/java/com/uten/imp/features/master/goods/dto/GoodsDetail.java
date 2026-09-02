@@ -52,6 +52,10 @@ public class GoodsDetail {
     private Integer colorLegacyId;   // 旧库主颜色主键快照；不能作为新关系键
     private UUID mouldId;
     private Integer mouldLegacyId;
+    private String mouldCode;       // 模具编号（moulds.code；UUID 关系优先，历史缺失回落 legacy 快照解析）
+    private String mouldName;       // 模具名称（moulds.name；同上回落）
+    private String rearInsertCode;  // 后模镶件编号（V457）：生产该货品需使用的后模镶件标识
+    private String paper;           // 备注（老库 B_Goods.Paper；require_remark 仅迁移残值不再展示）
     private UUID clientId;
     private Integer clientLegacyId;
     private UUID defaultSupplierId;

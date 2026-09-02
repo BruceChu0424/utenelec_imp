@@ -109,6 +109,13 @@ public class Goods extends SoftDeletableEntity {
     @Column(name = "make_legacy_id")
     private Integer makeLegacyId;       // MakeID
 
+    /**
+     * 后模镶件编号（V457）：生产该货品时需使用的后模镶件标识（部分模具换件生产，
+     * 模具师傅对板换件依据）。老数据由备注（老库 B_Goods.Paper→goods.paper）保守解析回填。
+     */
+    @Column(name = "rear_insert_code", length = 100)
+    private String rearInsertCode;      // 后模镶件编号（新增，无老库对应列）
+
     /** 归属业务员（外贸系列按人授权；NULL=公共货品全员可见）。新增。 */
     @Column(name = "owner_employee_id")
     private java.util.UUID ownerEmployeeId;

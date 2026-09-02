@@ -30,6 +30,7 @@ import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
 import 'master_detail_sheet.dart';
 import 'master_edit_dialog.dart';
+import 'mould_picker_field.dart';
 import 'number_unit_field.dart';
 import 'packaging_picker_field.dart';
 import 'uten_goods_picker.dart';
@@ -180,6 +181,16 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
     return null;
   }
 
+  /// 模具选择字段的只读展示文案：「编号 名称」（详情快照，选中新模具后由字段自身接管）。
+  String? _mouldDisplay() {
+    final d = _detail;
+    if (d == null) return null;
+    final code = d.mouldCode ?? '';
+    final name = d.mouldName ?? '';
+    if (code.isEmpty) return name.isEmpty ? null : name;
+    return name.isEmpty ? code : '$code $name';
+  }
+
   Future<String?> _addColorId() async {
     final createdId = await showColorAddSheet(context, ref);
     if (!mounted) return null;
@@ -237,6 +248,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         options: kGoodsSourceTypeOptions,
         group: '基础',
       ),
+      const MasterFieldDef(
+        key: 'paper',
+        label: '备注',
+        group: '基础',
+        hint: '老系统备注沿用（外购/外加工等）',
+      ),
       const MasterFieldDef(key: 'model', label: '型号', group: '规格'),
       const MasterFieldDef(key: 'spec', label: '规格', group: '规格'),
       const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
@@ -283,6 +300,23 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         options: _colorIdOptions,
         onAddNew: canAddColor ? _addColorId : null,
         group: '规格',
+      ),
+      MasterFieldDef(
+        key: 'mouldId',
+        label: '模具',
+        type: MasterFieldType.custom,
+        group: '生产',
+        customBuilder: (ctx) => MouldPickerField(
+          initialValue: ctx.initialValue,
+          initialDisplay: _mouldDisplay(),
+          onChanged: ctx.onChanged,
+        ),
+      ),
+      const MasterFieldDef(
+        key: 'rearInsertCode',
+        label: '后模镶件编号',
+        group: '生产',
+        hint: '如：平 / 45A / 1M仁（换后模镶件时模具师傅对板用）',
       ),
       const MasterFieldDef(
         key: 'price',
@@ -344,6 +378,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       'shortName': d.shortName ?? '',
       'status': d.status ?? '使用',
       'sourceType': d.sourceType ?? '',
+      'paper': d.paper ?? '',
       'model': d.model ?? '',
       'spec': d.spec ?? '',
       'material': d.material ?? '',
@@ -352,6 +387,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
       'thickness': s(d.thickness),
       'mWeight': s(d.mWeight),
       'colorId': d.colorId ?? '',
+      'mouldId': d.mouldId ?? '',
+      'rearInsertCode': d.rearInsertCode ?? '',
       'price': s(d.price),
       'discount': s(d.discount),
       'pack': d.pack ?? '',
@@ -772,6 +809,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         MasterDetailRow('简称', d.shortName),
         MasterDetailRow('状态', d.status),
         MasterDetailRow('来源', d.sourceType),
+        MasterDetailRow('备注', d.paper),
       ]),
       _DetailSection('规格', [
         MasterDetailRow('型号', d.model),
@@ -788,6 +826,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody> {
         MasterDetailRow('主颜色', d.colorName),
         MasterDetailRow('系列', d.series),
         MasterDetailRow('库位号', d.stockPlace),
+      ]),
+      _DetailSection('生产', [
+        MasterDetailRow('模具', d.mouldName),
+        MasterDetailRow('模具编号', d.mouldCode),
+        MasterDetailRow('后模镶件编号', d.rearInsertCode),
       ]),
       _DetailSection('商务', [
         MasterDetailRow('价格', s(d.price)),

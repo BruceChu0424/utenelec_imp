@@ -74,6 +74,7 @@ class GoodsDiscountVisibilityTest {
                 categoryRepo,
                 mock(ColorRepository.class),
                 mock(UnitRepository.class),
+                mock(com.uten.imp.features.master.mould.MouldRepository.class),
                 mock(TxSessionVars.class),
                 stubbedEm(),
                 categoryCodes,
@@ -332,6 +333,7 @@ class GoodsDiscountVisibilityTest {
         return new GoodsQueryFilter(
                 null, null, null, Set.of(),
                 null, null, null, null, null, null, null, null,
+                null, null, null,
                 null, null, null, null, null, null, null);
     }
 }

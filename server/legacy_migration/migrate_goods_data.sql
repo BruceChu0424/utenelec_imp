@@ -6,6 +6,8 @@
 -- 来源：老库 B_Goods（35750 条），category_id 关联 material_categories.legacy_id
 --   （B_Goods.ParentID → SystemItem.ItemID）。image 字段不迁（建列留空）。
 -- staging 用真实类型，COPY csv 自动 cast + 空字段→null。
+-- 后模镶件编号（rear_insert_code）：从老备注 Paper 保守解析「换后模X镶件 /
+--   后模镶件用X」两类写法（口径同 V457 存量回填），其余保持 NULL。
 -- =====================================================================
 
 BEGIN;
@@ -59,6 +61,7 @@ INSERT INTO goods (
     kqty, kqty2, pieces, lost_rate, cap,
     material, thickness, l_style, z_weight, m_weight, pack, b_pack, paper, series,
     chart_id, lights, stock_place, c_number, v_number, bs_test, require_remark,
+    rear_insert_code,
     source_e, work_e, lacquer_e, incidental_e, plating_e, casing_e, manage_e,
     polish_e, electric_e, machining_e, lost_e, rent_e, make_e, work_rate, make_rate,
     rent_rate, total, c_total, g_total, bom_status, status, app_status, app_status2,
@@ -85,6 +88,12 @@ SELECT
     gs.material, gs.thickness, gs.l_style, gs.z_weight, gs.m_weight,
     gs.pack, gs.b_pack, gs.paper, gs.series, gs.chart_id, gs.lights,
     gs.stock_place, gs.c_number, gs.v_number, gs.bs_test, gs.require_remark,
+    -- 后模镶件编号：老备注（Paper）只回填能确定后模镶件标识的写法（口径同 V457 存量回填）；
+    -- 「换镶件」「换6M镶件」等未点明后模的保持 NULL，备注原文照迁不动。
+    COALESCE(
+        NULLIF(substring(gs.paper FROM '换后模(.{1,30}?)镶件'), ''),
+        NULLIF(substring(gs.paper FROM '后模镶件用([^ \t，。;；]{1,30})'), '')
+    ),
     gs.source_e, gs.work_e, gs.lacquer_e, gs.incidental_e, gs.plating_e, gs.casing_e,
     gs.manage_e, gs.polish_e, gs.electric_e, gs.machining_e, gs.lost_e, gs.rent_e,
     gs.make_e, gs.work_rate, gs.make_rate, gs.rent_rate, gs.total, gs.c_total, gs.g_total,

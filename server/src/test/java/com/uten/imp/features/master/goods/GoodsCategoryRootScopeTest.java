@@ -6,6 +6,7 @@ import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
 import com.uten.imp.features.master.materialcategory.MaterialCategory;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
+import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -43,6 +44,7 @@ class GoodsCategoryRootScopeTest {
             categoryRepo,
             mock(ColorRepository.class),
             mock(UnitRepository.class),
+            mock(MouldRepository.class),
             mock(TxSessionVars.class),
             mock(EntityManager.class),
             mock(CategoryDrivenCodeService.class),
@@ -144,6 +146,7 @@ class GoodsCategoryRootScopeTest {
         return new GoodsQueryFilter(
                 categoryId, roots, keyword, Set.of(),
                 null, null, null, null, null, null, null, null,
+                null, null, null,
                 null, null, null, null, null, null, null);
     }
 }

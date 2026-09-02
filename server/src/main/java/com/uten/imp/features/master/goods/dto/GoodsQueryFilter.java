@@ -22,6 +22,9 @@ public record GoodsQueryFilter(
         String spec,
         String cNumber,
         String requireRemark,
+        String mouldCode,       // 模具编号精确筛选（goods.mould.code 等值）
+        String rearInsertCode,  // 后模镶件编号精确筛选（V457）
+        String paper,           // 备注精确筛选（老库 Paper）
         Integer colorLegacyId,
         Integer unitLegacyId,
         String sourceType,

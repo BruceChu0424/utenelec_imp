@@ -5,6 +5,8 @@ import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
+import com.uten.imp.features.master.mould.Mould;
+import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.security.OwnerVisibility;
@@ -33,11 +35,13 @@ class GoodsListMasterNameResolutionTest {
     private final MaterialCategoryRepository categoryRepo = mock(MaterialCategoryRepository.class);
     private final ColorRepository colorRepo = mock(ColorRepository.class);
     private final UnitRepository unitRepo = mock(UnitRepository.class);
+    private final MouldRepository mouldRepo = mock(MouldRepository.class);
     private final GoodsService service = new GoodsService(
             goodsRepo,
             categoryRepo,
             colorRepo,
             unitRepo,
+            mouldRepo,
             mock(TxSessionVars.class),
             stubbedEm(),
             mock(CategoryDrivenCodeService.class),
@@ -90,6 +94,69 @@ class GoodsListMasterNameResolutionTest {
         assertNull(item.getUnitName());
     }
 
+    @Test
+    void listResolvesMouldCodeFromLegacySnapshotWhenUuidMissing() {
+        Goods goods = new Goods();
+        goods.setMouldLegacyId(3482);
+        Mould mould = new Mould();
+        mould.setLegacyId(3482);
+        mould.setCode("19-05-43-A");
+        returnPage(goods);
+        when(mouldRepo.findByLegacyIdInAndDeletedFalse(Set.of(3482)))
+                .thenReturn(List.of(mould));
+
+        var item = service.list(emptyFilter(), 1, 20, null, null)
+                .getItems().getFirst();
+
+        // 历史只读回显：UUID 缺失按 legacy 快照补模具编号，不建立新关系。
+        assertEquals("19-05-43-A", item.getMouldCode());
+    }
+
+    @Test
+    void listResolvesMouldCodeFromUuidRelationFirst() {
+        Goods goods = new Goods();
+        Mould mould = new Mould();
+        mould.setCode("19-05-43");
+        goods.setMould(mould);
+        returnPage(goods);
+
+        var item = service.list(emptyFilter(), 1, 20, null, null)
+                .getItems().getFirst();
+
+        assertEquals("19-05-43", item.getMouldCode());
+    }
+
+    @Test
+    void listCarriesRearInsertCodeAndPaperThrough() {
+        Goods goods = new Goods();
+        goods.setRearInsertCode("45A");
+        goods.setPaper("换后模45A镶件");
+        returnPage(goods);
+
+        var item = service.list(emptyFilter(), 1, 20, null, null)
+                .getItems().getFirst();
+
+        // 备注原文与解析出的后模镶件编号同时下发：列表「备注」「后模镶件编号」两列各取所需。
+        assertEquals("45A", item.getRearInsertCode());
+        assertEquals("换后模45A镶件", item.getPaper());
+    }
+
+    @Test
+    void listTreatsDeletedMouldRelationAsUnresolved() {
+        Goods goods = new Goods();
+        Mould deleted = new Mould();
+        deleted.setCode("19-05-43-J");
+        deleted.setDeleted(true);
+        goods.setMould(deleted);
+        returnPage(goods);
+
+        var item = service.list(emptyFilter(), 1, 20, null, null)
+                .getItems().getFirst();
+
+        // 软删模具不显编号（口径同颜色/单位），但关系快照不下发新 mouldId。
+        assertNull(item.getMouldCode());
+    }
+
     private void returnPage(Goods goods) {
         when(goodsRepo.findAll(
                 org.mockito.ArgumentMatchers.<Specification<Goods>>any(),
@@ -101,6 +168,7 @@ class GoodsListMasterNameResolutionTest {
         return new GoodsQueryFilter(
                 null, null, null, Set.of(),
                 null, null, null, null, null, null, null, null,
+                null, null, null,
                 null, null, null, null, null, null, null);
     }
 }

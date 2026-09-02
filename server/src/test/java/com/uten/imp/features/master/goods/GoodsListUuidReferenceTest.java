@@ -5,6 +5,7 @@ import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
+import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.security.AuthUser;
@@ -67,6 +68,7 @@ class GoodsListUuidReferenceTest {
                 mock(MaterialCategoryRepository.class),
                 mock(ColorRepository.class),
                 mock(UnitRepository.class),
+                mock(MouldRepository.class),
                 mock(TxSessionVars.class),
                 emptyNativeQueryEntityManager(),
                 mock(CategoryDrivenCodeService.class),
@@ -96,6 +98,7 @@ class GoodsListUuidReferenceTest {
         return new GoodsQueryFilter(
                 null, null, null, Set.of(),
                 null, null, null, null, null, null, null, null,
+                null, null, null,
                 null, null, null, null, null, null, null);
     }
 }

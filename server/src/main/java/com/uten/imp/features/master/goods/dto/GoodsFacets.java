@@ -21,7 +21,8 @@ public class GoodsFacets {
     private final List<FacetBucket> name;
     private final List<FacetBucket> spec;
     private final List<FacetBucket> material;
-    private final List<FacetBucket> requireRemark;
+    private final List<FacetBucket> rearInsertCode;
+    private final List<FacetBucket> paper;
     private final List<FacetBucket> colorLegacyId;
     private final List<FacetBucket> unitLegacyId;
     private final List<FacetBucket> sourceType;

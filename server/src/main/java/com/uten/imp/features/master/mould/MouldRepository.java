@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,6 +22,9 @@ public interface MouldRepository extends JpaRepository<Mould, UUID>, JpaSpecific
 
     /** 迁移/校验用：按老库主键反查。 */
     Optional<Mould> findByLegacyId(Integer legacyId);
+
+    /** 货品列表历史回显用：批量按老库主键查未软删模具（编号/名称展示）。 */
+    List<Mould> findByLegacyIdInAndDeletedFalse(Collection<Integer> legacyIds);
 
     /** 分类删除预览用：子树（含自身）下未软删的模具数。 */
     @Query(value = """

@@ -41,10 +41,9 @@ class _SubcontractMakeTaskTileState
 
   String _qtyText(double qty) {
     final fixed = qty.toStringAsFixed(4);
-    final trimmed = fixed.replaceAll(RegExp(r'0+$'), '').replaceAll(
-      RegExp(r'\.$'),
-      '',
-    );
+    final trimmed = fixed
+        .replaceAll(RegExp(r'0+$'), '')
+        .replaceAll(RegExp(r'\.$'), '');
     return trimmed.isEmpty ? '0' : trimmed;
   }
 

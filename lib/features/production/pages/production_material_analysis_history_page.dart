@@ -178,7 +178,7 @@ class _ProductionMaterialAnalysisHistoryPageState
         const Expanded(
           child: Text(
             '这里用于找回销售、返工、试制、样品、备库和自制子需求的物料分析。'
-                '记录范围由服务端按负责人和部门权限控制。',
+            '记录范围由服务端按负责人和部门权限控制。',
           ),
         ),
       ],

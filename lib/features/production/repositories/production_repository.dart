@@ -544,10 +544,7 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/subcontract-make-tasks/$taskId/notify',
-      body: {
-        'qty': qty,
-        'idempotencyKey': idempotencyKey,
-      },
+      body: {'qty': qty, 'idempotencyKey': idempotencyKey},
     ); // ENDPOINT
     return SubcontractMakeNotifyResult.fromJson(
       (json as Map).cast<String, dynamic>(),

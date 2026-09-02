@@ -1254,7 +1254,8 @@ abstract class _MaterialAnalysisSupplyActionsState
       final message = switch (route) {
         MaterialSupplyRoute.buy => '采购需求已提交并通知采购',
         // V458：有子层级的委外件由服务端转前置自制，成品入库后才通知委外部。
-        MaterialSupplyRoute.subcontract => '委外任务已下达：无子层已通知委外部；有子层已转前置自制，入库后自动通知',
+        MaterialSupplyRoute.subcontract =>
+          '委外任务已下达：无子层已通知委外部；有子层已转前置自制，入库后自动通知',
         MaterialSupplyRoute.make => '自制备料任务已创建',
       };
       context.appSuccess(

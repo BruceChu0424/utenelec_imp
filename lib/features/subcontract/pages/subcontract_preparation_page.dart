@@ -452,7 +452,8 @@ class _SubcontractPreparationPageState
       return const UtenEmpty(
         icon: Icons.precision_manufacturing_outlined,
         message: '当前没有委外件前置自制任务',
-        description: '物料分析准备对有子层级的委外件「下达委外」后，会在这里形成前置自制进度；'
+        description:
+            '物料分析准备对有子层级的委外件「下达委外」后，会在这里形成前置自制进度；'
             '自制成品入库并通知委外前，委外部不会参与。',
       );
     }
@@ -500,9 +501,7 @@ class _SubcontractPreparationPageState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           header,
-          const Expanded(
-            child: Center(child: CircularProgressIndicator()),
-          ),
+          const Expanded(child: Center(child: CircularProgressIndicator())),
         ],
       );
     }
@@ -528,7 +527,9 @@ class _SubcontractPreparationPageState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           header,
-          Expanded(child: UtenEmpty.error(actionLabel: '重试', onAction: _load)),
+          Expanded(
+            child: UtenEmpty.error(actionLabel: '重试', onAction: _load),
+          ),
         ],
       );
     }
@@ -572,8 +573,7 @@ class _SubcontractPreparationPageState
                   : null,
               onOpenOrder: task.orderId.isEmpty || !_canViewOrder
                   ? null
-                  : () =>
-                        context.push('/subcontract/orders/${task.orderId}'),
+                  : () => context.push('/subcontract/orders/${task.orderId}'),
             ),
             const SizedBox(height: UtenSpacing.s8),
           ],
@@ -600,9 +600,7 @@ class _SubcontractPreparationPageState
       child: UtenSearchBar(
         key: const Key('subcontract-preparation-search'),
         controller: _search,
-        hint: _sourceTab == 0
-            ? '搜索目标件编码、名称或任务号'
-            : '搜索订货单号、目标件编码或名称',
+        hint: _sourceTab == 0 ? '搜索目标件编码、名称或任务号' : '搜索订货单号、目标件编码或名称',
         onChanged: _searchChanged,
       ),
     );

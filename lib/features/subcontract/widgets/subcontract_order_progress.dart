@@ -465,9 +465,8 @@ class _SubcontractOrderProgressSectionState
   static String _flowModeLabel(String flowMode, [bool stockDirect = false]) =>
       switch (flowMode) {
         // 直下单销售式供货：有子层但现货充足拆出的直发行，区别于真无子层件。
-        'DIRECT_OUTBOUND' => stockDirect
-            ? '有子层级 · 仓库现货直发（缺口另行走前置自制）'
-            : '无子层级 · 目标件库存放行后直接出仓',
+        'DIRECT_OUTBOUND' =>
+          stockDirect ? '有子层级 · 仓库现货直发（缺口另行走前置自制）' : '无子层级 · 目标件库存放行后直接出仓',
         'MAKE_THEN_OUTBOUND' => '有子层级 · 先自制、FQC 和入仓，可分批出仓',
         // V458：分析来源的有子层级件在下单前已完成前置自制并通知委外。
         'PREPARED_OUTBOUND' => '前置自制已先行完成 · 批准即出仓',

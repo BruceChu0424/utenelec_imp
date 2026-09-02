@@ -2262,51 +2262,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get subcontractHubReturnVendor => '待退回供应商';
 
   @override
-  String get subcontractHubDocInquiry => '委外询价单';
-
-  @override
-  String get subcontractHubDocInquirySub => '询价(未启用)';
-
-  @override
-  String get subcontractHubDocApplication => '计划下达的委外申请';
-
-  @override
-  String get subcontractHubDocOrder => '委外订货单';
-
-  @override
-  String get subcontractHubDocOrderSub => '下单·跟踪进仓';
-
-  @override
-  String get subcontractHubDocReceipt => '委外进仓单';
-
-  @override
-  String get subcontractHubDocReceiptSub => '成品进仓·立应付';
-
-  @override
-  String get subcontractHubDocMaterialIssue => '委外发料单';
-
-  @override
-  String get subcontractHubDocMaterialIssueSub => '材料出仓';
-
-  @override
-  String get subcontractHubDocReturn => '委外退货单';
-
-  @override
-  String get subcontractHubDocReturnSub => '成品退·出库';
-
-  @override
-  String get subcontractHubDocMaterialReturn => '委外材料退货单';
-
-  @override
-  String get subcontractHubDocMaterialReturnSub => '材料退回入库';
-
-  @override
-  String get subcontractHubDocWaste => '委外材料损耗单';
-
-  @override
-  String get subcontractHubDocWasteSub => '登记供应商损耗';
-
-  @override
   String get subcontractHubReportDetail => '委外明细报表';
 
   @override

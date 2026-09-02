@@ -2311,51 +2311,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get subcontractHubReturnVendor => 'Returns to vendor';
 
   @override
-  String get subcontractHubDocInquiry => 'Subcontract inquiry';
-
-  @override
-  String get subcontractHubDocInquirySub => 'Inquiry (not enabled)';
-
-  @override
-  String get subcontractHubDocApplication => 'Planned subcontract request';
-
-  @override
-  String get subcontractHubDocOrder => 'Subcontract order';
-
-  @override
-  String get subcontractHubDocOrderSub => 'Order & track inbound';
-
-  @override
-  String get subcontractHubDocReceipt => 'Subcontract receipt';
-
-  @override
-  String get subcontractHubDocReceiptSub => 'Inbound goods, post A/P';
-
-  @override
-  String get subcontractHubDocMaterialIssue => 'Material issue';
-
-  @override
-  String get subcontractHubDocMaterialIssueSub => 'Issue materials out';
-
-  @override
-  String get subcontractHubDocReturn => 'Subcontract return';
-
-  @override
-  String get subcontractHubDocReturnSub => 'Return goods out';
-
-  @override
-  String get subcontractHubDocMaterialReturn => 'Material return';
-
-  @override
-  String get subcontractHubDocMaterialReturnSub => 'Return materials in';
-
-  @override
-  String get subcontractHubDocWaste => 'Material loss';
-
-  @override
-  String get subcontractHubDocWasteSub => 'Log vendor material loss';
-
-  @override
   String get subcontractHubReportDetail => 'Subcontract detail report';
 
   @override

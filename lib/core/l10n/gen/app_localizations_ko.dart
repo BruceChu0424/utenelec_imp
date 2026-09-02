@@ -2268,51 +2268,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get subcontractHubReturnVendor => '외주처 반품';
 
   @override
-  String get subcontractHubDocInquiry => '외주 문의';
-
-  @override
-  String get subcontractHubDocInquirySub => '문의 (미사용)';
-
-  @override
-  String get subcontractHubDocApplication => '계획 외주 요청';
-
-  @override
-  String get subcontractHubDocOrder => '외주 주문';
-
-  @override
-  String get subcontractHubDocOrderSub => '주문·입고 추적';
-
-  @override
-  String get subcontractHubDocReceipt => '외주 입고';
-
-  @override
-  String get subcontractHubDocReceiptSub => '입고·매입채권';
-
-  @override
-  String get subcontractHubDocMaterialIssue => '자재 출고';
-
-  @override
-  String get subcontractHubDocMaterialIssueSub => '자재 불출';
-
-  @override
-  String get subcontractHubDocReturn => '외주 반품';
-
-  @override
-  String get subcontractHubDocReturnSub => '반품 출고';
-
-  @override
-  String get subcontractHubDocMaterialReturn => '자재 반입';
-
-  @override
-  String get subcontractHubDocMaterialReturnSub => '자재 반입';
-
-  @override
-  String get subcontractHubDocWaste => '자재 손실';
-
-  @override
-  String get subcontractHubDocWasteSub => '손실 등록';
-
-  @override
   String get subcontractHubReportDetail => '외주 상세 보고서';
 
   @override

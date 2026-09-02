@@ -103,6 +103,35 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             """)
     long countUnreadBySourceEvents(@Param("userId") UUID userId, @Param("events") List<String> events);
 
+    /**
+     * V459 居中审核弹窗的登录检查：当前用户名下**未办结**的待审通知——
+     * 审核目录注册事件、未撤回、未删除、稍后提醒已到期（或从未稍后）；
+     * 已读与否不影响（读没读不重要，办没办才重要；「稍后再看」是唯一静默途径）。
+     */
+    @Query("""
+            SELECT n
+            FROM Notice n
+            LEFT JOIN NoticeUserState s
+              ON s.id.noticeId = n.id AND s.id.userId = :userId
+            WHERE n.audienceUserId = :userId
+              AND n.sourceEvent IN :events
+              AND n.resolvedAt IS NULL
+              AND (s IS NULL OR (
+                    s.deletedAt IS NULL
+                    AND (s.snoozedUntil IS NULL OR s.snoozedUntil <= CURRENT_TIMESTAMP)
+                  ))
+            ORDER BY
+                CASE n.priority
+                    WHEN 'urgent' THEN 0
+                    WHEN 'important' THEN 1
+                    ELSE 2 END,
+                n.publishedAt DESC
+            """)
+    List<Notice> findVisiblePendingReviews(
+            @Param("userId") UUID userId,
+            @Param("events") List<String> events,
+            Pageable pageable);
+
     @Query("""
             SELECT n
             FROM Notice n

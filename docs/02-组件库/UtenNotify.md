@@ -235,6 +235,11 @@ flowchart TD
   标注已读（R6）；稍后再看 = 服务端 `snoozed_until` 15 分钟（跨设备一致，到点未办结重弹）。
   `banner()` 新增 `actions`/`statusLine` 参数并返回卡片 id（办结收卡用）。arrivals 服务端
   排除已办结（resolved_at 非空）与未到期 snooze 的通知。
+- **V459 第二轮（居中审核弹窗）**：同一事件三形态并存——通知中心条目 + 顶部条 +
+  **居中审核弹窗**（[`ReviewPendingDialog`](ReviewPendingDialog.md)，主交互：认领状态
+  实时/去审核/稍后再看/办结自关）。**每次登录检查**：`ReviewPendingLoginGate` 登录后 3s
+  拉 `GET /notices/pending-reviews`（未办结+未稍后）有则弹；snooze 是唯一静默途径，
+  X 关闭下次登录仍提醒。弹窗单例防叠窗。
 
 ## 八、避坑
 

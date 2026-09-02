@@ -23,6 +23,7 @@ import '../providers/notice_providers.dart';
 import '../providers/notice_route_read_bridge.dart';
 import '../repositories/notice_repository.dart';
 import '../widgets/notice_detail_dialog.dart';
+import '../widgets/review_pending_dialog.dart';
 
 typedef NoticeArrivalLoader =
     Future<NoticeArrivalPage> Function(NoticeArrivalCursor? after);
@@ -728,4 +729,16 @@ Future<void> dispatchReviewCard(
       );
 
   heartbeat = Timer.periodic(const Duration(seconds: 30), (_) => checkOnce());
+
+  // 三形态并存（ADR-063 第二轮口径）：通知中心条目（落库即有）+ 顶部通知条
+  // （上方，20s 自然收起）+ 居中审核弹窗（主交互：认领状态/去审核/稍后再看；
+  // 关闭或办结自动退出）。detailContext 为根 Navigator context（提前捕获，
+  // 页面切换不失效；弹前校验后仍挂载才弹）。
+  if (detailContext.mounted) {
+    unawaited(
+      showReviewPendingDialog(detailContext, pending: [notice]).then((_) {
+        // 居中弹窗退出后顶部条继续按自身节奏收起/心跳，无需干预。
+      }),
+    );
+  }
 }

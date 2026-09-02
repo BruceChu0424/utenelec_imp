@@ -70,6 +70,9 @@ abstract interface class NoticeRepository {
   /// V459 弹卡真态校验：按通知 id 批量返回办结与认领状态（弹前 + 停留心跳）。
   Future<List<PendingReviewStatus>> pendingReviewStatus(List<String> ids);
 
+  /// V459 居中审核弹窗（登录检查）：我名下未办结且未稍后的待审通知。
+  Future<List<Notice>> pendingReviews();
+
   /// 发布新通知（需 notice:publish 权限），返回入库后的实体
   Future<Notice> publish({
     required String title,
@@ -249,6 +252,14 @@ class DioNoticeRepository implements NoticeRepository {
     return _api
         .post(ApiEndpoints.noticeSnooze(id), query: {'minutes': minutes})
         .then((_) {});
+  }
+
+  @override
+  Future<List<Notice>> pendingReviews() async {
+    final json = await _api.get(ApiEndpoints.noticesPendingReviews);
+    final rows = json['items'];
+    if (rows is! List) return const [];
+    return rows.whereType<Map<String, dynamic>>().map(_fromJson).toList();
   }
 
   @override

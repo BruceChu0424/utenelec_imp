@@ -15,6 +15,7 @@ import 'core/ui/connection_recovery_banner.dart';
 import 'features/admin/widgets/impersonation_banner.dart';
 import 'features/auth/services/pending_refresh_revocation_drainer.dart';
 import 'features/notice/providers/notice_arrival.dart';
+import 'features/notice/providers/review_pending_login_gate.dart';
 import 'features/notice/providers/notice_route_read_bridge.dart';
 import 'shared/auth/permissions.dart';
 import 'shared/providers/font_scale_provider.dart';
@@ -102,6 +103,12 @@ class UtenApp extends ConsumerWidget {
             children: [
               // 通知目标路由桥（不渲染）：导航到有通知指向的路由时自动已读。
               const NoticeRouteReadBridge(),
+              // V459 登录检查门（不渲染）：登录后拉待审，有则弹居中审核弹窗。
+              ReviewPendingLoginGate(
+                enabled: noticeArrivalEnabled,
+                identityKey: noticeIdentityKey,
+                dialogContext: () => appNavigatorKey.currentContext,
+              ),
               // 模拟身份横幅：占顶「固定」、把页面整体下推，不再覆盖 AppBar/返回键。
               // 非模拟时返回 SizedBox.shrink，自动收起不占空间。
               const ImpersonationBanner(),

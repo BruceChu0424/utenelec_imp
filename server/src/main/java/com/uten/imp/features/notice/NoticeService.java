@@ -1177,6 +1177,26 @@ public class NoticeService {
     private static final int MAX_SNOOZE_MINUTES = 24 * 60;
     private static final int MAX_PENDING_STATUS_ITEMS = 50;
 
+    /**
+     * V459 居中审核弹窗（登录检查）：当前用户名下未办结的待审通知，按
+     * 重要度+时间倒序，上限 20 条。口径=审核目录注册事件、未撤回、稍后已到期；
+     * 已读不排除（办结撤回与「稍后再看」是仅有的两种静默途径）。
+     */
+    @Transactional(readOnly = true)
+    public List<NoticeDto> pendingReviews() {
+        UUID userId = requireStaffId();
+        List<Notice> notices = noticeRepo.findVisiblePendingReviews(
+                userId,
+                List.copyOf(ReviewNoticeCatalog.events()),
+                PageRequest.of(0, 20));
+        Map<UUID, NoticeUserState> states = stateMap(
+                userId,
+                notices.stream().map(Notice::getId).toList());
+        return notices.stream()
+                .map(n -> toDto(n, states.get(n.getId()), userId, false, null))
+                .toList();
+    }
+
     /** 弹卡真态出参：resolved=true 即收卡；claimedByName 非空显示「XX 正在审核」。 */
     public record PendingReviewStatusDto(
             String noticeId,

@@ -560,6 +560,9 @@ abstract final class ApiEndpoints {
 
   /// V459 我的待审收件台聚合。
   static const reviewsInboxSummary = '/reviews/inbox/summary';
+
+  /// V459 居中审核弹窗（登录检查）：我名下未办结且未稍后的待审通知。
+  static const noticesPendingReviews = '/notices/pending-reviews';
   static const noticesBatchDelete = '/notices/batch-delete';
   static const noticesAudiencePreview = '/notices/audience/preview';
   static const noticesAudienceEmployees = '/notices/audience/employees';

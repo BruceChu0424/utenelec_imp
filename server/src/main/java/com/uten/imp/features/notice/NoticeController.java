@@ -185,6 +185,16 @@ public class NoticeController {
         return java.util.Map.of("items", service.pendingReviewStatus(ids));
     }
 
+    /**
+     * V459 居中审核弹窗（登录检查）：我名下未办结的待审通知（重要度+时间序，
+     * 上限 20）。前端登录完成后拉取，有则弹居中弹窗。
+     */
+    @GetMapping("/pending-reviews")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public java.util.Map<String, Object> pendingReviews() {
+        return java.util.Map.of("items", service.pendingReviews());
+    }
+
     @PostMapping("/read-all")
     @PreAuthorize("hasAuthority('notice:read')")
     public void markAllRead() {

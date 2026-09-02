@@ -418,6 +418,34 @@ class NoticeServiceTest {
     }
 
     @Test
+    void pendingReviewsReturnsInteractiveItemsForCurrentUser() {
+        // 登录检查口径：仅审核目录注册事件、定向本人；toDto 带 interactive 标志。
+        Notice review = new Notice();
+        review.setId(UUID.randomUUID());
+        review.setTitle("待财务确认：SO-001");
+        review.setContent("正文");
+        review.setType("approval");
+        review.setPublisher("系统");
+        review.setPublishedAt(Instant.now());
+        review.setAudienceUserId(userId);
+        review.setSourceEvent("SALES_ORDER_PENDING_FINANCE_CONFIRM");
+        when(noticeRepository.findVisiblePendingReviews(
+                eq(userId), argThat(events -> events.contains(
+                        "SALES_ORDER_PENDING_FINANCE_CONFIRM")), any()))
+                .thenReturn(List.of(review));
+        when(stateRepository.findByIdUserIdAndIdNoticeIdIn(eq(userId), any()))
+                .thenReturn(List.of());
+
+        List<com.uten.imp.features.notice.dto.NoticeDto> items =
+                service.pendingReviews();
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, items.size());
+        org.junit.jupiter.api.Assertions.assertTrue(items.getFirst().interactive());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "SALES_ORDER_PENDING_FINANCE_CONFIRM", items.getFirst().sourceEvent());
+    }
+
+    @Test
     void resolveReviewNoticesDelegatesBoundedUpdateAndValidatesShape() {
         org.assertj.core.api.Assertions
                 .assertThatThrownBy(() -> service.resolveReviewNotices(" ", null, null))

@@ -40,6 +40,11 @@ public final class ReviewNoticeCatalog {
     private ReviewNoticeCatalog() {
     }
 
+    /** 全部注册事件（登录检查/待审查询用）。 */
+    public static java.util.Set<String> events() {
+        return ENTRIES.keySet();
+    }
+
     public static boolean isReviewEvent(String sourceEvent) {
         return sourceEvent != null && ENTRIES.containsKey(sourceEvent);
     }

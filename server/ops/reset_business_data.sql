@@ -828,7 +828,9 @@ BEGIN
             v451_place_source_count;
     END IF;
 
-    IF preserve_count <> 95
+    -- V459 新增兼职部门表（PRESERVE 95→96，组织与权限治理数据）。
+    IF (applied_max_version <= 458 AND preserve_count <> 95)
+       OR (applied_max_version >= 459 AND preserve_count <> 96)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0

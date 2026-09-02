@@ -109,7 +109,7 @@ class LegacyMigrationSafetyContractTest {
                 Path.of("../docs/数据迁移/README.md")));
         // 目录头横幅随共享候选演进而更新；离线 bootstrap 常量仍冻结在 v426/388 旧基线。
         assertThat(migrationReadme)
-                .contains("迁移目录头为 v458，共 420 个迁移文件、420 个唯一版本且无重号")
+                .contains("迁移目录头为 v459，共 421 个迁移文件、421 个唯一版本且无重号")
                 .contains("源码校验已同步 v426/388 与 `bootstrap-v10-v426`")
                 .contains("受保护 388 行 manifest")
                 .contains("v426 不授权跨越或执行尚未获准的破坏性 v425");

@@ -3746,15 +3746,22 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         if (effectiveSourceEvent == null || effectiveSourceEvent.isBlank()) {
             effectiveSourceEvent = OUTBOX_EVENT.get();
         }
-        if (explicitPriority == null) {
-            noticeService.publishForUser(
-                    userId, title, content, type, PUBLISHER, actionRoute,
-                    effectiveSourceEvent, null, aggregateId);
-        } else {
-            noticeService.publishForUser(
-                    userId, title, content, type, PUBLISHER, actionRoute,
-                    effectiveSourceEvent, explicitPriority, aggregateId);
+        if (aggregateId == null) {
+            // 无聚合：保持历史调用形态（7/8 参重载），既有测试与语义零变化。
+            if (explicitPriority == null) {
+                noticeService.publishForUser(
+                        userId, title, content, type, PUBLISHER,
+                        actionRoute, effectiveSourceEvent);
+            } else {
+                noticeService.publishForUser(
+                        userId, title, content, type, PUBLISHER,
+                        actionRoute, effectiveSourceEvent, explicitPriority);
+            }
+            return;
         }
+        noticeService.publishForUser(
+                userId, title, content, type, PUBLISHER, actionRoute,
+                effectiveSourceEvent, explicitPriority, aggregateId);
     }
 
     /**

@@ -145,6 +145,34 @@ try {
 ref.read(appNotificationProvider.notifier).clear();
 ```
 
+## 七A、V459 审核待办卡：操作按钮区与动态状态行
+
+`AppNotification` 新增两个可选字段（可空 = 普通弹条，既有行为零变化）：
+
+- `actions: List<AppNotificationAction>`：卡片底部按钮区。`AppNotificationAction{label, onPressed, filled}`，
+  `filled=true` 渲染紧凑 FilledButton（高 36，主按钮），否则 TextButton。点击执行动作后卡片自动关闭
+  （复用整卡关闭路径，`onDismissed` 恰好一次）；按钮命中优先于整卡 `onTap`。
+- `statusLine: ValueNotifier<String?>`：动态状态行（如「张三 正在审核」）。审核卡由到达分派层
+  （`notice_arrival.dart` 的 `dispatchReviewCard`）30s 心调 `/notices/pending-review-status` 更新；
+  null/空 隐藏。注意：该 notifier 不随卡片 dispose（收卡动画窗口内仍在监听，提前 dispose 会崩；
+  数量级个位，可忽略）。
+- `showMessage` / `UtenNotify.banner` 均透传两字段，且**返回卡片 id**——外部（办结心跳）用
+  `appNotificationProvider.notifier.dismiss(id)` 精确收卡。
+
+```dart
+final cardId = UtenNotify.banner(
+  context,
+  title: '待办 · 审批',
+  message: '待财务确认：SO20260902-001',
+  duration: const Duration(seconds: 20),
+  actions: [
+    AppNotificationAction(label: '去审核', filled: true, onPressed: openReview),
+    AppNotificationAction(label: '稍后再看', onPressed: snooze),
+  ],
+  statusLine: statusLine,
+);
+```
+
 ## 八、实现要点
 
 - **不依赖具体页面**：`AppNotificationHost` 通过 `MaterialApp.builder` 挂到全局 `Stack` 顶层。
@@ -156,4 +184,4 @@ ref.read(appNotificationProvider.notifier).clear();
 
 ---
 
-**最后更新**：2026-09-02（②独立计时口径：每条从到达起算、未挂载项宿主统一到期最早先走、默认时长缩至 1.5-2.5s；②叠放深度提示改卡片下缘细边条，修复滑动移开时露出整块灰板的「全屏宽灰条」；③展开控制改紧凑计数胶囊；④溢出正文 Expanded→Flexible） · **位置**：`lib/core/ui/app_notification.dart` · **叠放层**：`lib/core/ui/app_notification_stack.dart` · **外壳**：`lib/core/ui/uten_top_banner_card.dart`
+**最后更新**：2026-09-02（⑤V459 审核待办卡：actions 操作按钮区 + statusLine 动态状态行 + showMessage 返回卡片 id，见 §七A；②独立计时口径：每条从到达起算、未挂载项宿主统一到期最早先走、默认时长缩至 1.5-2.5s；②叠放深度提示改卡片下缘细边条，修复滑动移开时露出整块灰板的「全屏宽灰条」；③展开控制改紧凑计数胶囊；④溢出正文 Expanded→Flexible） · **位置**：`lib/core/ui/app_notification.dart` · **叠放层**：`lib/core/ui/app_notification_stack.dart` · **外壳**：`lib/core/ui/uten_top_banner_card.dart`

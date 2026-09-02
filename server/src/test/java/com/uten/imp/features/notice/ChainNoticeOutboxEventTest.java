@@ -24,6 +24,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -704,6 +705,7 @@ class ChainNoticeOutboxEventTest {
         verify(jdbc).queryForList(
                 contains("WHERE code = 'DEPT_QA'"),
                 eq(UUID.class));
+        // V459：待检通知携带聚合 (IQC_INSPECTION, receiptId)，整单检验结案时批量撤回。
         verify(notice).publishForUser(
                 eq(qualityViewerId),
                 eq("待检处置：CR-001"),
@@ -711,7 +713,9 @@ class ChainNoticeOutboxEventTest {
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/quality/task-center"),
-                eq(ChainNoticeService.EVENT_IQC_PENDING));
+                eq(ChainNoticeService.EVENT_IQC_PENDING),
+                isNull(),
+                eq(receiptId));
         verify(notice, never()).publishForUser(
                 eq(revokedViewerId), anyString(), anyString(), anyString(),
                 anyString(), anyString(), anyString());

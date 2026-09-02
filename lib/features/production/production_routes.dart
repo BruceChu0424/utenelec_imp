@@ -50,6 +50,7 @@ final List<RouteBase> productionRoutes = [
   GoRoute(
     path: RouteName.productionMaterialAnalysisHistory,
     name: 'production-material-analysis-history',
+    // 旧「section=subcontract-preparations」深链兼容：一律改写到委外准备中心。
     redirect: (_, state) {
       if (state.uri.queryParameters['section'] != 'subcontract-preparations') {
         return null;
@@ -60,11 +61,7 @@ final List<RouteBase> productionRoutes = [
         sourceMaterialLineId: state.uri.queryParameters['sourceMaterialLineId'],
       );
     },
-    builder: (_, state) => ProductionMaterialAnalysisHistoryPage(
-      initialSection:
-          state.uri.queryParameters['section'] ?? 'analysis-history',
-      planItemId: state.uri.queryParameters['planItemId'],
-    ),
+    builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(),
   ),
   GoRoute(
     path: '/production/material-analyses/:id/summary',

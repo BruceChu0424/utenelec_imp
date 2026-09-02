@@ -28,7 +28,7 @@ final class SubcontractReturnDueFacts {
             WITH flow_by_item AS (
                 SELECT plan_item.order_item_id,
                        BOOL_OR(plan_item.flow_mode IN (
-                           'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND'))
+                           'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND'))
                            AS target_item_flow
                 FROM subcontract_material_plan_items plan_item
                 WHERE plan_item.is_deleted = FALSE
@@ -39,7 +39,7 @@ final class SubcontractReturnDueFacts {
                        COUNT(*) AS approved_outbound_lines,
                        COALESCE(SUM(
                            CASE WHEN plan_item.flow_mode IN (
-                                   'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND')
+                                   'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
                                 THEN GREATEST(
                                     COALESCE(issue_item.supplier_ending, 0), 0)
                                 ELSE 0 END

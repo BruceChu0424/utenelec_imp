@@ -122,7 +122,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       FROM subcontract_material_plan_items release_plan
                       WHERE release_plan.order_item_id = %1$s.order_item_id
                         AND release_plan.flow_mode IN (
-                            'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                            'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                         AND release_plan.is_deleted = FALSE
                   ) THEN GREATEST(%1$s.ordered_qty - %1$s.accepted_qty, 0)
                   ELSE LEAST(
@@ -139,7 +139,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                               JOIN subcontract_material_plan_items issue_plan
                                 ON issue_plan.id = issue_item.plan_item_id
                                AND issue_plan.flow_mode IN (
-                                   'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                                   'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                                AND issue_plan.is_deleted = FALSE
                               WHERE issue_item.order_item_id = %1$s.order_item_id
                                 AND issue_item.is_deleted = FALSE

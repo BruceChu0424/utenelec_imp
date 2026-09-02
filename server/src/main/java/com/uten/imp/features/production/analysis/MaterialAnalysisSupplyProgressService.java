@@ -442,7 +442,7 @@ public class MaterialAnalysisSupplyProgressService {
                        COUNT(*) FILTER (
                            WHERE pi.flow_mode NOT IN (
                                'LEGACY_BOM_COMPONENT','DIRECT_OUTBOUND',
-                               'MAKE_THEN_OUTBOUND')
+                               'MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                               OR pi.preparation_status NOT IN (
                                'LEGACY_READY','ACTION_REQUIRED','IN_PREPARATION',
                                'WAITING_FQC','WAITING_INBOUND','READY_OUTBOUND',

@@ -352,7 +352,7 @@ public class WarehouseArrivalRegistrationService {
                           FROM subcontract_material_plan_items new_flow_plan
                           WHERE new_flow_plan.order_item_id = order_item.id
                             AND new_flow_plan.flow_mode IN (
-                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                             AND new_flow_plan.is_deleted = FALSE)
                       OR EXISTS (
                           SELECT 1
@@ -364,7 +364,7 @@ public class WarehouseArrivalRegistrationService {
                           JOIN subcontract_material_plan_items release_plan
                             ON release_plan.id = issue_item.plan_item_id
                            AND release_plan.flow_mode IN (
-                               'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                               'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                            AND release_plan.is_deleted = FALSE
                           WHERE issue_item.order_item_id = order_item.id
                             AND issue_item.is_deleted = FALSE)

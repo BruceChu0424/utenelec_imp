@@ -1,7 +1,9 @@
 // 全局顶部通知服务：替代 ScaffoldMessenger.SnackBar，把反馈从底部挪到顶部。
 // - 不依赖具体页面 ScaffoldMessenger，跨页面 / 路由切换时仍能稳定显示。
 // - 同 message 600ms 内合并去重，避免"先 success 再 fail"的叠加抖动。
-// - 最新通知叠在旧通知上；默认收拢，可展开最近 3 条，其余继续保留在可靠队列中。
+// - 最新通知叠在旧通知上；默认收拢，可展开最近 3 条。
+// - 2026-09-02 口径：每条通知从到达时刻独立计时、快进快出——未挂载展示的
+//   （收拢轮廓 / 排队）到点也会自行消失，最早的先走，叠堆不再串行拖延。
 // - API 错误自动带 fieldErrors，高密度提示。
 import 'dart:async';
 
@@ -30,6 +32,7 @@ class AppNotification {
     this.icon,
     this.onTap,
     this.onDismissed,
+    this.createdAtMs = 0,
   });
 
   final String id;
@@ -39,6 +42,10 @@ class AppNotification {
   final int durationMs;
   final List<ApiFieldError>? fieldErrors;
 
+  /// 进入服务队列的真实时刻（毫秒）。宿主用它计算「未挂载」通知的独立到期
+  /// 时间（到达时刻 + 停留时长）；仅服务内部入队时填充。
+  final int createdAtMs;
+
   /// 自定义左侧图标（微信式消息弹条场景，如发送人头像/业务图标）；
   /// null 时回退到 kind 对应的语义图标。
   final IconData? icon;
@@ -46,9 +53,9 @@ class AppNotification {
   /// 点击弹条后的动作（如跳转到对应详情页）；null 时点击仅关闭。
   final VoidCallback? onTap;
 
-  /// 该条已实际显示并由自动/点击/关闭按钮/滑动完成关闭后的回调。
-  ///
-  /// 队列尚未轮到、宿主销毁或服务调用 [AppNotificationService.clear] 时不触发。
+  /// 该条被真正移除后的回调：自动到期（含排队中未完整展示的独立到期）、点击、
+  /// 关闭按钮或滑动关闭。宿主销毁或服务调用 [AppNotificationService.clear]
+  /// 时不触发。
   final VoidCallback? onDismissed;
 }
 
@@ -74,20 +81,26 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     return int.tryParse(first) ?? 0;
   }
 
-  /// 适老化默认停留时长：基础档（info/success/warning 3.2s、error 5s）+ 文案长度与
-  /// 字段错误加成，确保操作人员读得完再消失。调用方显式传 [Duration] 时不走本函数。
+  /// 默认停留时长（2026-09-02 口径：快进快出、每条独立计时）：
+  /// 基础档 success/info 1.5s、warning 2s、error 2.5s；文案每超 20 字 +0.3s
+  /// （封顶 +1.8s）；字段错误再 +1s。挂载中的通知支持悬停 / 后台暂停计时；
+  /// 未挂载的按「到达时刻 + 停留时长」独立到期，最早的先消失。
+  /// 调用方显式传 [Duration] 时不走本函数。
   static int _readMs(
     AppNotificationKind kind,
     String message, {
     bool hasFieldErrors = false,
   }) {
     var ms = switch (kind) {
-      AppNotificationKind.error => 5000,
-      _ => 3200,
+      AppNotificationKind.error => 2500,
+      AppNotificationKind.warning => 2000,
+      _ => 1500,
     };
     final len = message.length;
-    if (len > 24) ms += ((len - 24) ~/ 12) * 600; // 每多约 12 字 +0.6s
-    if (hasFieldErrors) ms += 1500; // 字段错误列表需要更多阅读时间
+    if (len > 20) {
+      ms += (((len - 20) ~/ 20) * 300).clamp(0, 1800); // 每 20 字 +0.3s，封顶 1.8s
+    }
+    if (hasFieldErrors) ms += 1000; // 字段错误列表需要更多阅读时间
     return ms;
   }
 
@@ -116,10 +129,11 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       icon: n.icon,
       onTap: n.onTap,
       onDismissed: n.onDismissed,
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
     );
     // state 同时承担「当前可见 + 等待显示」队列。宿主按新到旧叠放最近 3 条；
-    // 更早的项继续保留，不能在这里 FIFO 丢弃：业务通知批量到达时，每一条都必须
-    // 最终完整显示并拥有自己的停留计时。
+    // 更早的项继续保留，由宿主按「到达时刻 + 停留时长」独立到期移除（最早的
+    // 先走），不在这里做任何 FIFO 丢弃——移除路径统一走 dismiss()。
     state = <AppNotification>[...state, fresh];
   }
 
@@ -297,27 +311,105 @@ extension AppNotificationContextX on BuildContext {
 
 /// 通知宿主：放在 MaterialApp.builder 内最上层（Stack 顶层）。
 /// 监听全局 provider，把队列渲染成可收拢/展开的顶部叠放通知。
-class AppNotificationHost extends ConsumerWidget {
+///
+/// 到期策略（2026-09-02）：**每条通知从到达时刻独立计时**。当前挂载的通知由
+/// banner 自己倒计时（支持悬停 / 后台暂停 + 淡出动画）；未挂载的（收拢时被
+/// 轮廓挡住的、排队超出展示上限的）由本宿主按「到达时刻 + 停留时长」统一到期，
+/// 因此**最早的先消失**，批量到达的叠堆会从后往前在各自时限内清空，不再串行
+/// 拖延。到期同样走 dismiss()，onDismissed 恰好触发一次（含从未完整展示的项）。
+class AppNotificationHost extends ConsumerStatefulWidget {
   const AppNotificationHost({super.key, this.useSafeArea = true});
 
   final bool useSafeArea;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AppNotificationHost> createState() =>
+      _AppNotificationHostState();
+}
+
+class _AppNotificationHostState extends ConsumerState<AppNotificationHost> {
+  bool _expanded = false;
+  final Map<String, Timer> _expiryTimers = {};
+
+  @override
+  void dispose() {
+    _cancelAllExpiryTimers();
+    super.dispose();
+  }
+
+  void _cancelAllExpiryTimers() {
+    for (final timer in _expiryTimers.values) {
+      timer.cancel();
+    }
+    _expiryTimers.clear();
+  }
+
+  /// 未挂载通知的独立到期：到达时刻 + 停留时长，到点即从队列移除。
+  void _expire(AppNotification notification) {
+    _expiryTimers.remove(notification.id);
+    final removed = ref
+        .read(appNotificationProvider.notifier)
+        .dismiss(notification.id);
+    if (removed) notification.onDismissed?.call();
+  }
+
+  /// 与当前挂载集合对齐未挂载项的到期计时器（build 内调用，幂等）。
+  void _syncExpiryTimers(
+    List<AppNotification> list,
+    List<AppNotification> visible,
+  ) {
+    final mountedIds = _expanded
+        ? visible.map((n) => n.id).toSet()
+        : <String>{visible.first.id};
+    final wanted = <String, AppNotification>{};
+    for (final n in list) {
+      if (!mountedIds.contains(n.id) && n.createdAtMs > 0) {
+        wanted[n.id] = n;
+      }
+    }
+    _expiryTimers.removeWhere((id, timer) {
+      if (wanted.containsKey(id)) return false;
+      timer.cancel();
+      return true;
+    });
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final n in wanted.values) {
+      if (_expiryTimers.containsKey(n.id)) continue;
+      final remaining = n.createdAtMs + n.durationMs - now;
+      if (remaining <= 0) {
+        // 已过期的排队项：延迟到 build 之后移除，避免在构建中改 provider 状态。
+        _expiryTimers[n.id] = Timer(Duration.zero, () => _expire(n));
+        continue;
+      }
+      _expiryTimers[n.id] = Timer(
+        Duration(milliseconds: remaining),
+        () => _expire(n),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final list = ref.watch(appNotificationProvider);
-    if (list.isEmpty) return const SizedBox.shrink();
+    if (list.isEmpty) {
+      _cancelAllExpiryTimers();
+      _expanded = false;
+      return const SizedBox.shrink();
+    }
     // 最新通知位于最上层；最多完整展示 3 条，更多项仍留在 provider 队列中。
-    // 收拢状态只挂载最上层真实 banner，背后是 IgnorePointer 轮廓，避免未读到的通知
-    // 倒计时结束，也保证卡片之外的空白继续把点击穿透给页面。
     final visible = list.reversed
         .take(UtenNotificationStack.maxVisibleItems)
         .toList(growable: false);
+    if (visible.length <= 1) _expanded = false;
+    _syncExpiryTimers(list, visible);
     final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         UtenNotificationStack(
           totalCount: list.length,
           visibleCount: visible.length,
+          expanded: _expanded,
+          onToggleExpanded: () => setState(() => _expanded = !_expanded),
           itemBuilder: (context, index, active, announce) {
             final notification = visible[index];
             return _AppNotificationBanner(
@@ -331,7 +423,7 @@ class AppNotificationHost extends ConsumerWidget {
       ],
     );
     const insets = EdgeInsets.fromLTRB(12, 6, 12, 0);
-    return useSafeArea
+    return widget.useSafeArea
         ? SafeArea(bottom: false, minimum: insets, child: content)
         : Padding(padding: insets, child: content);
   }
@@ -415,7 +507,10 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     }
   }
 
-  /// 重排自动消失计时：悬停中或正在收起则暂停，否则按停留时长重新计时。
+  /// 重排自动消失计时：悬停中或正在收起则暂停，否则按「到达时刻 + 停留时长」
+  /// 的**剩余时间**计时（2026-09-02 独立计时口径）——树结构重排导致的重新挂载
+  /// 不会重置整条生命周期；剩余不足 1.5s 时至少留 1.5s 阅读宽限，避免刚挂载
+  /// 或悬停读完就被抽走。
   void _scheduleAutoDismiss() {
     _autoDismissTimer?.cancel();
     final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -425,10 +520,16 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
         (lifecycle != null && lifecycle != AppLifecycleState.resumed)) {
       return;
     }
-    _autoDismissTimer = Timer(
-      Duration(milliseconds: widget.notification.durationMs),
-      _dismiss,
-    );
+    final n = widget.notification;
+    var ms = n.durationMs;
+    if (n.createdAtMs > 0) {
+      final remaining =
+          n.createdAtMs + n.durationMs - DateTime.now().millisecondsSinceEpoch;
+      // 宽限地板不超过通知自身时长，显式设置的短时长（如测试用 200ms）不被抬高。
+      final grace = n.durationMs < 1500 ? n.durationMs : 1500;
+      ms = remaining < grace ? grace : remaining;
+    }
+    _autoDismissTimer = Timer(Duration(milliseconds: ms), _dismiss);
   }
 
   void _setHovering(bool value) {

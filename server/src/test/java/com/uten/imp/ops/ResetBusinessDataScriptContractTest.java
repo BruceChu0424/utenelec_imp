@@ -50,9 +50,10 @@ class ResetBusinessDataScriptContractTest {
     void currentPolicyClassifiesEveryKnownParentTableAndPreservesEvidence() {
         Map<String, String> policy = policy();
 
-        assertThat(policy).hasSize(315);
+        // V458 委外先做后审账本加 2 张业务事实表（315→317，CLEAR 220→222）。
+        assertThat(policy).hasSize(317);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(220);
+                .isEqualTo(222);
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
                 .isEqualTo(95);
 
@@ -175,7 +176,9 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(454, 416)")
                 .contains("(455, 417)")
                 .contains("(456, 418)")
-                .contains("仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417 或 V456/418 目录")
+                .contains("(457, 419)")
+                .contains("(458, 420)")
+                .contains("仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419 或 V458/420 目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

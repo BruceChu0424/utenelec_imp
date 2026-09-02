@@ -120,7 +120,9 @@ public class SubcontractMaterialPlanService
                            BigDecimal plannedBaseQty, String flowMode,
                            String preparationStatus, BigDecimal preparedBaseQty,
                            UUID suggestedWarehouseId,
-                           boolean bomHasChildren, String bomFingerprint) {
+                           boolean bomHasChildren, String bomFingerprint,
+                           UUID preparationAnalysisId, UUID preparationAnalysisItemId,
+                           UUID prepareTaskId) {
         }
         List<PendingLine> pendingLines = new ArrayList<>();
         for (Object[] item : items) {
@@ -137,14 +139,23 @@ public class SubcontractMaterialPlanService
             Object[] master = goodsMaster.get(goodsId);
             UUID baseUnitId = master == null ? (UUID) item[6] : (UUID) master[3];
             BomSnapshot bom = currentBomSnapshot(goodsId);
-            boolean makeFirst = bom.hasChildren();
+            // V458：订货行能追溯到委外前置自制账本批次时，说明自制在下单前
+            // 已完成（produced ≥ notified ≥ planned），批准即待出仓。
+            PreparedLineage prepared = preparedLineage(orderItemId);
+            boolean makeFirst = bom.hasChildren() && prepared == null;
+            boolean preparedOutbound = prepared != null;
             pendingLines.add(new PendingLine(
-                    UUID.randomUUID(), orderItemId, goodsId, colorId, baseUnitId,
-                    orderUnitRate, planned,
-                    makeFirst ? "MAKE_THEN_OUTBOUND" : "DIRECT_OUTBOUND",
+                    UUID.randomUUID(), orderItemId, goodsId, colorId,
+                    baseUnitId, orderUnitRate, planned,
+                    preparedOutbound ? "PREPARED_OUTBOUND"
+                            : makeFirst ? "MAKE_THEN_OUTBOUND" : "DIRECT_OUTBOUND",
                     makeFirst ? "ACTION_REQUIRED" : "READY_OUTBOUND",
                     makeFirst ? BigDecimal.ZERO : planned,
-                    (UUID) item[7], makeFirst, bom.fingerprint()));
+                    preparedOutbound ? prepared.warehouseId() : (UUID) item[7],
+                    makeFirst || preparedOutbound, bom.fingerprint(),
+                    preparedOutbound ? prepared.analysisId() : null,
+                    preparedOutbound ? prepared.analysisItemId() : null,
+                    preparedOutbound ? prepared.taskId() : null));
         }
         if (pendingLines.isEmpty()) {
             return;
@@ -168,9 +179,10 @@ public class SubcontractMaterialPlanService
                         flow_mode, preparation_status, prepared_qty,
                         preparation_warehouse_id, preparation_version,
                         bom_has_children_snapshot, preparation_bom_fingerprint,
+                        preparation_analysis_id, preparation_analysis_item_id,
                         created_by, updated_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0,
-                            ?, ?, ?, ?, 0, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0,
+                            ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
                     """,
                     line.id(), planId, line.orderItemId(), lineNo++,
                     line.goodsId(), line.colorId(),
@@ -179,7 +191,18 @@ public class SubcontractMaterialPlanService
                     line.flowMode(), line.preparationStatus(),
                     line.preparedBaseQty(), line.suggestedWarehouseId(),
                     line.bomHasChildren(), line.bomFingerprint(),
+                    line.preparationAnalysisId(), line.preparationAnalysisItemId(),
                     actorUser, actorUser);
+        }
+        // V458：PREPARED_OUTBOUND 行把任务持有的前置自制预留转换为本行专属
+        // SUBCONTRACT_OUTBOUND 预留（释放旧的、等量新建，保持事实可回放），
+        // 之后再生成出仓草稿。
+        for (PendingLine line : pendingLines) {
+            if ("PREPARED_OUTBOUND".equals(line.flowMode())) {
+                convertPrepareTaskReservations(
+                        line.id(), line.prepareTaskId(),
+                        line.plannedBaseQty(), actorUser);
+            }
         }
         createDraftForPlan(planId, orderBillNo, supplierId, deliverDate, actorUser);
         for (PendingLine line : pendingLines) {
@@ -188,6 +211,189 @@ public class SubcontractMaterialPlanService
             } else {
                 chainNotice.notifySubcontractOutboundReady(line.id());
             }
+        }
+    }
+
+    /** V458 订货红冲：PREPARED 行未消费的计划专属预留对称转回任务持有。 */
+    private void restorePrepareTaskReservations(UUID planId, UUID actorUser) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT DISTINCT plan_item.id, batch.task_id
+                FROM subcontract_material_plan_items plan_item
+                JOIN subcontract_order_items order_item
+                  ON order_item.id = plan_item.order_item_id
+                 AND order_item.is_deleted = FALSE
+                JOIN subcontract_application_items application_item
+                  ON application_item.id = order_item.application_item_id
+                 AND application_item.is_deleted = FALSE
+                JOIN preplan_subcontract_make_task_batches batch
+                  ON batch.application_item_id = application_item.id
+                WHERE plan_item.plan_id = :planId
+                  AND plan_item.flow_mode = 'PREPARED_OUTBOUND'
+                  AND plan_item.is_deleted = FALSE
+                """).setParameter("planId", planId));
+        for (Object[] row : rows) {
+            UUID planItemId = (UUID) row[0];
+            UUID taskId = (UUID) row[1];
+            @SuppressWarnings("unchecked")
+            List<Object[]> reservations = em.createNativeQuery("""
+                    SELECT id, qty - consumed_qty - released_qty,
+                           goods_id, color_id, warehouse_id,
+                           supply_id, source_doc_id
+                    FROM stock_reservations
+                    WHERE owner_type = 'SUBCONTRACT_OUTBOUND'
+                      AND owner_id = :planItemId
+                      AND status = 0 AND consumed_qty = 0 AND is_deleted = FALSE
+                    ORDER BY created_at, id
+                    FOR UPDATE
+                    """).setParameter("planItemId", planItemId).getResultList();
+            for (Object[] reservation : reservations) {
+                BigDecimal slice = decimal(reservation[1]);
+                if (slice.signum() <= 0) continue;
+                em.createNativeQuery("""
+                        UPDATE stock_reservations
+                        SET released_qty = qty, status = 1,
+                            release_reason = 'SUBCONTRACT_PREPARED_ORDER_REVERSED',
+                            lock_version = lock_version + 1,
+                            updated_at = now(), updated_by = :actorId
+                        WHERE id = :id AND consumed_qty = 0
+                        """).setParameter("actorId", actorUser)
+                        .setParameter("id", reservation[0]).executeUpdate();
+                em.createNativeQuery("""
+                        INSERT INTO stock_reservations(
+                            id, order_item_id, goods_id, color_id, warehouse_id,
+                            qty, consumed_qty, released_qty, status, source,
+                            source_doc_type, source_doc_id,
+                            owner_type, owner_id, purpose, demand_id,
+                            supply_type, supply_id, idempotency_key,
+                            created_by, updated_by)
+                        VALUES (
+                            :id, NULL, :goodsId, :colorId, :warehouseId,
+                            :qty, 0, 0, 0, 1,
+                            'PRODUCTION_INBOUND', :sourceDocId,
+                            'SUBCONTRACT_PREPARE_TASK', :taskId,
+                            'SUBCONTRACT_PREPARE_TASK', NULL,
+                            'PRODUCTION_FINISHED_IN', :supplyId, :key,
+                            :actorId, :actorId)
+                        """)
+                        .setParameter("id", UUID.randomUUID())
+                        .setParameter("goodsId", reservation[2])
+                        .setParameter("colorId", reservation[3])
+                        .setParameter("warehouseId", reservation[4])
+                        .setParameter("qty", slice)
+                        .setParameter("sourceDocId", reservation[6])
+                        .setParameter("taskId", taskId)
+                        .setParameter("supplyId", reservation[5])
+                        .setParameter("key", "SC-PREPARED-BACK:" + taskId + ':'
+                                + reservation[0])
+                        .setParameter("actorId", actorUser)
+                        .executeUpdate();
+            }
+        }
+    }
+
+    /** V458 订货行 → 前置自制账本批次 → 任务的谱系（无批次返回 null）。 */
+    private PreparedLineage preparedLineage(UUID orderItemId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT task.id, task.warehouse_id,
+                       task.analysis_id, task.preparation_item_id
+                FROM subcontract_order_items order_item
+                JOIN subcontract_application_items application_item
+                  ON application_item.id = order_item.application_item_id
+                 AND application_item.is_deleted = FALSE
+                JOIN preplan_subcontract_make_task_batches batch
+                  ON batch.application_item_id = application_item.id
+                JOIN preplan_subcontract_make_tasks task
+                  ON task.id = batch.task_id
+                 AND task.status = 'ACTIVE'
+                WHERE order_item.id = :orderItemId
+                  AND order_item.is_deleted = FALSE
+                ORDER BY task.id
+                """).setParameter("orderItemId", orderItemId));
+        if (rows.isEmpty()) return null;
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "委外订货行对应多个前置自制任务，数据谱系异常，禁止自动出仓");
+        }
+        Object[] row = rows.getFirst();
+        return new PreparedLineage((UUID) row[0], (UUID) row[1],
+                (UUID) row[2], (UUID) row[3]);
+    }
+
+    private record PreparedLineage(
+            UUID taskId, UUID warehouseId,
+            UUID analysisId, UUID analysisItemId) {
+    }
+
+    /**
+     * 释放任务持有的 SUBCONTRACT_PREPARE_TASK 预留切片（FIFO，至多 planned），
+     * 并为计划行建立等量 SUBCONTRACT_OUTBOUND / PRODUCTION_FINISHED_IN 预留。
+     */
+    private void convertPrepareTaskReservations(
+            UUID planItemId, UUID taskId, BigDecimal plannedQty, UUID actorUser) {
+        List<Object[]> held = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT reservation.id, reservation.qty
+                    - reservation.consumed_qty - reservation.released_qty,
+                       reservation.goods_id, reservation.color_id,
+                       reservation.warehouse_id, reservation.supply_id,
+                       reservation.source_doc_id
+                FROM stock_reservations reservation
+                WHERE reservation.owner_type = 'SUBCONTRACT_PREPARE_TASK'
+                  AND reservation.owner_id = :taskId
+                  AND reservation.status = 0 AND reservation.is_deleted = FALSE
+                  AND reservation.consumed_qty = 0
+                ORDER BY reservation.created_at, reservation.id
+                FOR UPDATE
+                """).setParameter("taskId", taskId));
+        BigDecimal remaining = plannedQty;
+        for (Object[] row : held) {
+            if (remaining.signum() <= 0) break;
+            UUID reservationId = (UUID) row[0];
+            BigDecimal slice = decimal(row[1]).min(remaining);
+            if (slice.signum() <= 0) continue;
+            em.createNativeQuery("""
+                    UPDATE stock_reservations
+                    SET released_qty = released_qty + :slice, status = 1,
+                        release_reason = 'SUBCONTRACT_PREPARED_ORDER_CONVERTED',
+                        lock_version = lock_version + 1,
+                        updated_at = now(), updated_by = :actorId
+                    WHERE id = :id AND consumed_qty = 0
+                      AND released_qty + :slice <= qty
+                    """).setParameter("slice", slice)
+                    .setParameter("actorId", actorUser)
+                    .setParameter("id", reservationId).executeUpdate();
+            em.createNativeQuery("""
+                    INSERT INTO stock_reservations(
+                        id, order_item_id, goods_id, color_id, warehouse_id,
+                        qty, consumed_qty, released_qty, status, source,
+                        source_doc_type, source_doc_id,
+                        owner_type, owner_id, purpose, demand_id,
+                        supply_type, supply_id, idempotency_key,
+                        created_by, updated_by)
+                    VALUES (
+                        :id, NULL, :goodsId, :colorId, :warehouseId,
+                        :qty, 0, 0, 0, 1,
+                        'PRODUCTION_INBOUND', :sourceDocId,
+                        'SUBCONTRACT_OUTBOUND', :planItemId,
+                        'SUBCONTRACT_OUTBOUND', NULL,
+                        'PRODUCTION_FINISHED_IN', :supplyId, :key,
+                        :actorId, :actorId)
+                    """)
+                    .setParameter("id", UUID.randomUUID())
+                    .setParameter("goodsId", row[2])
+                    .setParameter("colorId", row[3])
+                    .setParameter("warehouseId", row[4])
+                    .setParameter("qty", slice)
+                    .setParameter("sourceDocId", row[6])
+                    .setParameter("planItemId", planItemId)
+                    .setParameter("supplyId", row[5])
+                    .setParameter("key", "SC-PREPARED-OUT:" + planItemId + ':' + reservationId)
+                    .setParameter("actorId", actorUser)
+                    .executeUpdate();
+            remaining = remaining.subtract(slice);
+        }
+        if (remaining.signum() != 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "委外前置自制专属库存不足以覆盖订货量，请核对账本后重试");
         }
     }
 
@@ -237,7 +443,7 @@ public class SubcontractMaterialPlanService
                     SELECT DISTINCT plan_item_id
                     FROM subcontract_material_issue_items
                     WHERE issue_id = ? AND plan_item_id IS NOT NULL)
-                  AND flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                  AND flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                   AND issued_qty = planned_qty
                   AND preparation_status = 'READY_OUTBOUND'
                 """, issueId);
@@ -253,7 +459,7 @@ public class SubcontractMaterialPlanService
                 JOIN subcontract_material_plan_items plan_item
                   ON plan_item.id = issue_item.plan_item_id
                  AND plan_item.flow_mode IN (
-                     'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                     'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                  AND plan_item.is_deleted = FALSE
                 WHERE issue_item.issue_id = ?
                   AND issue_item.plan_item_id IS NOT NULL
@@ -296,17 +502,18 @@ public class SubcontractMaterialPlanService
         for (Object[] line : lines) {
             BigDecimal qty = decimal(line[1]);
             reversedNewFlow = reversedNewFlow
-                    || List.of("DIRECT_OUTBOUND", "MAKE_THEN_OUTBOUND")
+                    || List.of("DIRECT_OUTBOUND", "MAKE_THEN_OUTBOUND",
+                            "PREPARED_OUTBOUND")
                     .contains(Objects.toString(line[2], ""));
             int updated = jdbc.update("""
                     UPDATE subcontract_material_plan_items
                     SET preparation_status = CASE
-                            WHEN flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                            WHEN flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                              AND preparation_status = 'OUTBOUND_COMPLETE'
                              AND GREATEST(issued_qty - ?, 0) < planned_qty
                             THEN 'READY_OUTBOUND' ELSE preparation_status END,
                         preparation_version = CASE
-                            WHEN flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                            WHEN flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                             THEN preparation_version + 1 ELSE preparation_version END,
                         issued_qty = GREATEST(issued_qty - ?, 0), updated_at = now()
                     WHERE id = ? AND is_deleted = FALSE
@@ -344,11 +551,15 @@ public class SubcontractMaterialPlanService
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void cancelForOrderReversal(UUID orderId) {
+        UUID actorUser = currentUser.requireId();
         List<UUID> planIds = jdbc.queryForList("""
                 SELECT id FROM subcontract_material_plans
                 WHERE order_id = ? AND is_deleted = FALSE AND status = 'OPEN'
                 """, UUID.class, orderId);
         for (UUID planId : planIds) {
+            // V458：PREPARED_OUTBOUND 行的未消费预留先转回任务持有（申请仍有效，
+            // 可再次分解订货），避免释放回公共池后被其它需求抢走。
+            restorePrepareTaskReservations(planId, actorUser);
             releasePlanReservations(planId, "SUBCONTRACT_ORDER_REVERSED");
             jdbc.update("""
                     UPDATE subcontract_material_issues SET is_deleted = TRUE, deleted_at = now()
@@ -367,7 +578,7 @@ public class SubcontractMaterialPlanService
                         preparation_version = preparation_version + 1,
                         updated_at = now()
                     WHERE plan_id = ? AND flow_mode IN (
-                        'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                        'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                     """, planId);
         }
     }
@@ -506,7 +717,7 @@ public class SubcontractMaterialPlanService
                     UPDATE subcontract_material_plan_items
                     SET prepared_qty = prepared_qty + :qty,
                         preparation_status = CASE
-                            WHEN prepared_qty + :qty = planned_qty
+                            WHEN prepared_qty + :qty > 0
                             THEN 'READY_OUTBOUND' ELSE 'WAITING_INBOUND' END,
                         preparation_version = preparation_version + 1,
                         updated_at = now(), updated_by = :actorId
@@ -528,13 +739,22 @@ public class SubcontractMaterialPlanService
                     .getOrDefault(planItemId, decimal(row[8]))
                     .add(baseQty);
             preparedByPlanItem.put(planItemId, preparedAfter);
-            if (preparedAfter.compareTo(decimal(row[7])) == 0) {
+            // V458 分批出仓：首片实收即释放可出仓（可出仓量=LEAST(planned,prepared)-issued）。
+            // 通知只在「首次可得」与「整批完成」两个节点发出，避免每片打扰仓库；
+            // 中途追加的可出仓量由任务投影与续生草稿体现。
+            boolean firstAvailability = decimal(row[8]).signum() == 0
+                    && preparedAfter.signum() > 0;
+            boolean completed = preparedAfter.compareTo(decimal(row[7])) >= 0;
+            if (firstAvailability || completed) {
                 readyPlans.add(planId);
                 planHeads.put(planId, new Object[]{row[9], row[10], row[11], planItemId});
             }
         }
         for (UUID planId : readyPlans) {
             Object[] head = planHeads.get(planId);
+            if (hasPendingDraft(planId)) {
+                continue;
+            }
             createDraftForPlan(planId, Objects.toString(head[0]), (UUID) head[1],
                     toLocalDate(head[2]), actorId);
             chainNotice.notifySubcontractOutboundReady((UUID) head[3]);
@@ -625,7 +845,7 @@ public class SubcontractMaterialPlanService
                  AND issue.status = 0 AND issue.is_deleted = FALSE
                 JOIN subcontract_material_plan_items plan_item
                   ON plan_item.id = issue_item.plan_item_id
-                 AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                 AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                  AND plan_item.is_deleted = FALSE
                 WHERE issue_item.issue_id = :issueId
                 ORDER BY plan_item.id, issue_item.id
@@ -655,11 +875,12 @@ public class SubcontractMaterialPlanService
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
                         "委外目标件出仓数量必须大于零");
             }
-            if ("MAKE_THEN_OUTBOUND".equals(flowMode)) {
+            if ("MAKE_THEN_OUTBOUND".equals(flowMode)
+                    || "PREPARED_OUTBOUND".equals(flowMode)) {
                 if (!"READY_OUTBOUND".equals(row[6])
                         || !Objects.equals(row[7], warehouseId)) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "前置自制尚未整批实收入冻结仓，禁止保存委外出仓草稿");
+                            "前置自制尚未实收入冻结仓，禁止保存委外出仓草稿");
                 }
                 Number reserved = (Number) em.createNativeQuery("""
                         SELECT COALESCE(SUM(qty-consumed_qty-released_qty),0)
@@ -773,7 +994,7 @@ public class SubcontractMaterialPlanService
                 FROM subcontract_material_issue_items issue_item
                 JOIN subcontract_material_plan_items plan_item
                   ON plan_item.id = issue_item.plan_item_id
-                 AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                 AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                 WHERE issue_item.issue_id = :issueId
                 ORDER BY plan_item.id, issue_item.id
                 """).setParameter("issueId", issueId).getResultList();
@@ -908,7 +1129,7 @@ public class SubcontractMaterialPlanService
                                WHERE pi.preparation_status = 'CANCELLED'
                                   OR pi.flow_mode NOT IN (
                                       'LEGACY_BOM_COMPONENT','DIRECT_OUTBOUND',
-                                      'MAKE_THEN_OUTBOUND')
+                                      'MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                                   OR pi.preparation_status NOT IN (
                                       'LEGACY_READY','ACTION_REQUIRED',
                                       'IN_PREPARATION','WAITING_FQC',
@@ -1156,7 +1377,7 @@ public class SubcontractMaterialPlanService
                     preparation_version = preparation_version + 1,
                     updated_at = now(), updated_by = ?
                 WHERE plan_id = ? AND flow_mode IN (
-                    'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                    'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                   AND preparation_status <> 'OUTBOUND_COMPLETE'
                 """, currentUser.requireId(), planId);
     }

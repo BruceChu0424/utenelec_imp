@@ -960,6 +960,38 @@ class NoticeServiceTest {
                 new CelebrationBatchRequest("birthday", List.of())));
     }
 
+    @Test
+    void markReadByRoutesDedupesBlankFiltersAndCapsAtFifty() {
+        when(stateRepository.markVisibleReadByRoutes(eq(userId), any())).thenReturn(3);
+        String repeated = "/purchase/orders/" + UUID.randomUUID();
+        List<String> routes = new java.util.ArrayList<>(List.of(
+                repeated, repeated, " ", "",
+                "/purchase/requests/" + UUID.randomUUID()));
+        for (int i = 0; i < 60; i++) {
+            routes.add("/purchase/orders/extra-" + i);
+        }
+
+        assertEquals(3, service.markReadByRoutes(routes));
+
+        ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+        verify(stateRepository).markVisibleReadByRoutes(eq(userId), captor.capture());
+        List<String> passed = captor.getValue();
+        assertEquals(50, passed.size());
+        assertFalse(passed.contains(" "));
+        assertFalse(passed.contains(""));
+        assertEquals(1, java.util.Collections.frequency(passed, repeated));
+        // 保持首次出现顺序：去重后的前两项是业务路由，其余为追加项。
+        assertEquals(repeated, passed.getFirst());
+    }
+
+    @Test
+    void markReadByRoutesSkipsEmptyInputWithoutTouchingState() {
+        assertEquals(0, service.markReadByRoutes(List.of()));
+        assertEquals(0, service.markReadByRoutes(null));
+        assertEquals(0, service.markReadByRoutes(List.of(" ", "")));
+        verify(stateRepository, never()).markVisibleReadByRoutes(any(), any());
+    }
+
     // ---------- 测试夹具 ----------
 
     private Notice arrivalNotice(Instant publishedAt, String title) {

@@ -11,12 +11,8 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
-import '../../../core/utils/idempotency_key.dart';
-import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
@@ -26,14 +22,7 @@ import '../repositories/production_repository.dart';
 /// The API owns visibility and every readiness quantity. Rows only navigate
 /// back to the persisted aggregate by [MaterialAnalysisListItem.analysisId].
 class ProductionMaterialAnalysisHistoryPage extends ConsumerStatefulWidget {
-  const ProductionMaterialAnalysisHistoryPage({
-    super.key,
-    this.initialSection = 'analysis-history',
-    this.planItemId,
-  });
-
-  final String initialSection;
-  final String? planItemId;
+  const ProductionMaterialAnalysisHistoryPage({super.key});
 
   @override
   ConsumerState<ProductionMaterialAnalysisHistoryPage> createState() =>
@@ -42,19 +31,6 @@ class ProductionMaterialAnalysisHistoryPage extends ConsumerStatefulWidget {
 
 class _ProductionMaterialAnalysisHistoryPageState
     extends ConsumerState<ProductionMaterialAnalysisHistoryPage> {
-  static const _preparationWorkspace = 'subcontract-preparations';
-  static const _analysisWorkspace = 'analysis-history';
-
-  static const _preparationStatuses = <String, String>{
-    'ACTION_REQUIRED': '待开始物料分析',
-    'IN_PREPARATION': '前置自制中',
-    'WAITING_FQC': '等待品质检查',
-    'WAITING_INBOUND': '等待自制件入仓',
-    'READY_OUTBOUND': '已备齐，等待仓库出仓',
-    'OUTBOUND_COMPLETE': '目标件已出仓',
-    'CANCELLED': '已取消',
-  };
-
   static const _statuses = <String, String>{
     'ACTIVE': '进行中',
     'PARTIALLY_PLANNED': '部分已下达，剩余待料',
@@ -75,24 +51,14 @@ class _ProductionMaterialAnalysisHistoryPageState
 
   final _search = TextEditingController();
   PagedResult<MaterialAnalysisListItem>? _page;
-  PagedResult<SubcontractPreparationTask>? _preparationPage;
-  late String _workspace;
-  String? _focusedPlanItemId;
   String _status = '';
   String _sourceType = '';
   bool _loading = false;
   String? _error;
-  String? _startingPlanItemId;
 
   @override
   void initState() {
     super.initState();
-    _workspace = widget.initialSection == _analysisWorkspace
-        ? _analysisWorkspace
-        : _preparationWorkspace;
-    _focusedPlanItemId = widget.planItemId?.trim().isNotEmpty == true
-        ? widget.planItemId!.trim()
-        : null;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -109,32 +75,19 @@ class _ProductionMaterialAnalysisHistoryPageState
       _error = null;
     });
     try {
-      final repository = ref.read(productionPlanRepositoryProvider);
-      if (_workspace == _preparationWorkspace) {
-        final result = await repository.subcontractPreparationTasks(
-          page: page,
-          keyword: _search.text,
-          status: _status.isEmpty ? null : _status,
-          planItemId: _focusedPlanItemId,
-        );
-        if (!mounted) return;
-        setState(() {
-          _preparationPage = result;
-          _loading = false;
-        });
-      } else {
-        final result = await repository.materialAnalysisList(
-          page: page,
-          keyword: _search.text,
-          status: _status.isEmpty ? null : _status,
-          sourceType: _sourceType.isEmpty ? null : _sourceType,
-        );
-        if (!mounted) return;
-        setState(() {
-          _page = result;
-          _loading = false;
-        });
-      }
+      final result = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialAnalysisList(
+            page: page,
+            keyword: _search.text,
+            status: _status.isEmpty ? null : _status,
+            sourceType: _sourceType.isEmpty ? null : _sourceType,
+          );
+      if (!mounted) return;
+      setState(() {
+        _page = result;
+        _loading = false;
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -142,18 +95,6 @@ class _ProductionMaterialAnalysisHistoryPageState
         _error = productionErrorMessage(error, fallback: '物料分析记录加载失败，请稍后重试');
       });
     }
-  }
-
-  void _switchWorkspace(String value) {
-    if (value == _workspace || _loading) return;
-    _search.clear();
-    setState(() {
-      _workspace = value;
-      _status = '';
-      _sourceType = '';
-      _error = null;
-    });
-    _load();
   }
 
   Future<void> _open(MaterialAnalysisListItem item) async {
@@ -168,146 +109,13 @@ class _ProductionMaterialAnalysisHistoryPageState
     if (mounted) await _load(page: _page?.page ?? 1);
   }
 
-  Future<void> _openPreparationAnalysis(
-    SubcontractPreparationTask task, {
-    String? analysisId,
-    String? warehouseId,
-  }) async {
-    final stableAnalysisId = (analysisId ?? task.analysisId)?.trim();
-    if (stableAnalysisId == null || stableAnalysisId.isEmpty) {
-      context.appInfo(task.blocker ?? '服务端尚未返回可打开的物料分析，请刷新任务');
-      return;
-    }
-    await context.push(
-      RouteName.productionMaterialAnalysis,
-      extra: ProductionMaterialAnalysisSeed(
-        analysisId: stableAnalysisId,
-        warehouseId: warehouseId ?? task.preparationWarehouseId,
-      ),
-    );
-    if (mounted) {
-      await _load(page: _preparationPage?.page ?? 1);
-    }
-  }
-
-  Future<String?> _selectPreparationWarehouse(
-    SubcontractPreparationTask task,
-  ) async {
-    if (!task.warehouseSelectionRequired) {
-      return task.preparationWarehouseId;
-    }
-    await ref.read(mn.masterNameServiceProvider).ensureLoaded();
-    if (!mounted) return null;
-    final entries = ref.read(mn.masterNameServiceProvider).warehouseEntries;
-    if (entries.isEmpty) {
-      context.appError('没有可选择的分析仓库，请先维护仓库主数据或联系管理员');
-      return null;
-    }
-    String? selected;
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('选择前置自制分析仓库'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('前置自制必须冻结一个目标仓。后续领料、报工、FQC、成品入仓和委外出仓都沿用该仓库。'),
-                const SizedBox(height: UtenSpacing.s12),
-                DropdownButtonFormField<String>(
-                  key: const Key('subcontract-preparation-warehouse'),
-                  initialValue: selected,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '目标仓库(必选)'),
-                  items: [
-                    for (final entry in entries.entries)
-                      DropdownMenuItem(
-                        value: entry.key,
-                        child: Text(entry.value),
-                      ),
-                  ],
-                  onChanged: (value) => setDialogState(() => selected = value),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              key: const Key('subcontract-preparation-warehouse-confirm'),
-              onPressed: selected == null
-                  ? null
-                  : () => Navigator.pop(dialogContext, selected),
-              child: const Text('确认并开始'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _startPreparation(SubcontractPreparationTask task) async {
-    if (_startingPlanItemId != null) return;
-    final permissions = ref.read(currentPermissionsProvider);
-    if (!permissions.contains(Perm.productionMaterialAnalysisCreate) ||
-        !task.allows('START_PREPARATION')) {
-      context.appInfo(task.blocker ?? '当前账号或任务状态不允许开始前置自制分析');
-      return;
-    }
-    final warehouseId = await _selectPreparationWarehouse(task);
-    if (!mounted || (task.warehouseSelectionRequired && warehouseId == null)) {
-      return;
-    }
-    setState(() => _startingPlanItemId = task.planItemId);
-    try {
-      final result = await ref
-          .read(productionPlanRepositoryProvider)
-          .startSubcontractPreparation(
-            planItemId: task.planItemId,
-            expectedVersion: task.version,
-            warehouseId: warehouseId,
-            idempotencyKey: businessIdempotencyKey(
-              'subcontract-preparation-start',
-              '${task.planItemId}|${task.version}|${warehouseId ?? ''}',
-            ),
-          );
-      if (!mounted) return;
-      final analysisId = result.analysisId?.trim();
-      if (analysisId == null || analysisId.isEmpty) {
-        context.appWarning('服务端已受理前置自制任务，但未返回分析编号；请刷新任务后继续');
-        await _load(page: _preparationPage?.page ?? 1);
-        return;
-      }
-      context.appSuccess('前置自制物料分析已创建，请按领料、生产、FQC、成品入仓顺序执行');
-      await _openPreparationAnalysis(
-        task,
-        analysisId: analysisId,
-        warehouseId: warehouseId,
-      );
-    } catch (error) {
-      if (!mounted) return;
-      context.appError(
-        productionErrorMessage(error, fallback: '开始前置自制分析失败，请刷新后重试'),
-      );
-      await _load(page: _preparationPage?.page ?? 1);
-    } finally {
-      if (mounted) setState(() => _startingPlanItemId = null);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final compact = context.breakpoint.isCompact;
     return Scaffold(
       appBar: UtenAppBar(
-        title: _workspace == _preparationWorkspace ? '委外前置自制待办' : '物料分析记录',
+        title: '物料分析记录',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(
             context,
@@ -342,8 +150,6 @@ class _ProductionMaterialAnalysisHistoryPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _workspaceSelector(compact),
-                const SizedBox(height: UtenSpacing.s8),
                 _intro(theme),
                 const SizedBox(height: UtenSpacing.s8),
                 _filters(compact),
@@ -357,30 +163,6 @@ class _ProductionMaterialAnalysisHistoryPageState
     );
   }
 
-  Widget _workspaceSelector(bool compact) => Align(
-    alignment: compact ? Alignment.center : Alignment.centerLeft,
-    child: SegmentedButton<String>(
-      key: const Key('analysis-task-workspace-selector'),
-      showSelectedIcon: false,
-      segments: const [
-        ButtonSegment(
-          value: _preparationWorkspace,
-          icon: Icon(Icons.precision_manufacturing_outlined),
-          label: Text('委外前置自制'),
-        ),
-        ButtonSegment(
-          value: _analysisWorkspace,
-          icon: Icon(Icons.history_rounded),
-          label: Text('分析记录'),
-        ),
-      ],
-      selected: {_workspace},
-      onSelectionChanged: _loading
-          ? null
-          : (values) => _switchWorkspace(values.first),
-    ),
-  );
-
   Widget _intro(ThemeData theme) => Container(
     padding: const EdgeInsets.all(UtenSpacing.s12),
     decoration: BoxDecoration(
@@ -393,14 +175,10 @@ class _ProductionMaterialAnalysisHistoryPageState
       children: [
         Icon(Icons.fact_check_outlined, color: theme.colorScheme.primary),
         const SizedBox(width: UtenSpacing.s8),
-        Expanded(
+        const Expanded(
           child: Text(
-            _workspace == _preparationWorkspace
-                ? '这里处理有子层级委外件的前置自制。必须先完成物料分析、领料、'
-                      '生产报工、FQC 和成品入仓，服务端确认可出仓后才会交给仓库；'
-                      '仓库不会看到尚未备齐的目标件。'
-                : '这里用于找回销售、返工、试制、样品、备库和自制子需求的物料分析。'
-                      '记录范围由服务端按负责人和部门权限控制。',
+            '这里用于找回销售、返工、试制、样品、备库和自制子需求的物料分析。'
+                '记录范围由服务端按负责人和部门权限控制。',
           ),
         ),
       ],
@@ -408,8 +186,6 @@ class _ProductionMaterialAnalysisHistoryPageState
   );
 
   Widget _filters(bool compact) {
-    final preparation = _workspace == _preparationWorkspace;
-    final statuses = preparation ? _preparationStatuses : _statuses;
     return Wrap(
       spacing: UtenSpacing.s8,
       runSpacing: UtenSpacing.s8,
@@ -420,7 +196,7 @@ class _ProductionMaterialAnalysisHistoryPageState
           child: UtenSearchBar(
             key: const Key('analysis-history-search'),
             controller: _search,
-            hint: preparation ? '搜索委外订货单或目标件' : '搜索需求编号、销售单号或产品',
+            hint: '搜索需求编号、销售单号或产品',
             onSubmitted: (_) => _load(),
             // 服务端检索：防抖由 UtenSearchBar 内置（300ms），停止输入后再加载。
             onChanged: (_) => _load(),
@@ -429,13 +205,13 @@ class _ProductionMaterialAnalysisHistoryPageState
         SizedBox(
           width: compact ? double.infinity : 190,
           child: DropdownButtonFormField<String>(
-            key: ValueKey('analysis-history-status-$_workspace-$_status'),
+            key: ValueKey('analysis-history-status-$_status'),
             initialValue: _status,
             isExpanded: true,
             decoration: const InputDecoration(labelText: '状态'),
             items: [
               const DropdownMenuItem(value: '', child: Text('全部状态')),
-              for (final entry in statuses.entries)
+              for (final entry in _statuses.entries)
                 DropdownMenuItem(value: entry.key, child: Text(entry.value)),
             ],
             onChanged: _loading
@@ -446,52 +222,33 @@ class _ProductionMaterialAnalysisHistoryPageState
                   },
           ),
         ),
-        if (!preparation)
-          SizedBox(
-            width: compact ? double.infinity : 190,
-            child: DropdownButtonFormField<String>(
-              key: ValueKey('analysis-history-source-$_sourceType'),
-              initialValue: _sourceType,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: '需求来源'),
-              items: [
-                const DropdownMenuItem(value: '', child: Text('全部来源')),
-                for (final entry in _sourceTypes.entries)
-                  DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-              ],
-              onChanged: _loading
-                  ? null
-                  : (value) {
-                      setState(() => _sourceType = value ?? '');
-                      _load();
-                    },
-            ),
-          ),
-        if (preparation && _focusedPlanItemId != null)
-          InputChip(
-            key: const Key('subcontract-preparation-focus-chip'),
-            avatar: const Icon(Icons.notifications_active_outlined, size: 18),
-            label: const Text('已定位通知任务'),
-            onDeleted: _loading
+        SizedBox(
+          width: compact ? double.infinity : 190,
+          child: DropdownButtonFormField<String>(
+            key: ValueKey('analysis-history-source-$_sourceType'),
+            initialValue: _sourceType,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: '需求来源'),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('全部来源')),
+              for (final entry in _sourceTypes.entries)
+                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+            ],
+            onChanged: _loading
                 ? null
-                : () {
-                    setState(() => _focusedPlanItemId = null);
+                : (value) {
+                    setState(() => _sourceType = value ?? '');
                     _load();
                   },
           ),
+        ),
         UtenButton(
           key: const Key('analysis-history-refresh'),
           type: UtenButtonType.tonal,
           size: UtenButtonSize.large,
           icon: Icons.refresh_rounded,
           isLoading: _loading,
-          onPressed: _loading
-              ? null
-              : () => _load(
-                  page: preparation
-                      ? _preparationPage?.page ?? 1
-                      : _page?.page ?? 1,
-                ),
+          onPressed: _loading ? null : () => _load(page: _page?.page ?? 1),
           child: const Text('刷新'),
         ),
       ],
@@ -499,9 +256,6 @@ class _ProductionMaterialAnalysisHistoryPageState
   }
 
   Widget _content(ThemeData theme, bool compact) {
-    if (_workspace == _preparationWorkspace) {
-      return _preparationContent(theme);
-    }
     final page = _page;
     if (_loading && page == null) {
       return const Center(child: CircularProgressIndicator());
@@ -549,297 +303,6 @@ class _ProductionMaterialAnalysisHistoryPageState
       onPageChange: (value) => _load(page: value),
     );
   }
-
-  Widget _preparationContent(ThemeData theme) {
-    final page = _preparationPage;
-    if (_loading && page == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null && page == null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 40,
-              color: theme.colorScheme.error,
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text(_error!, textAlign: TextAlign.center),
-            const SizedBox(height: UtenSpacing.s8),
-            UtenButton(
-              type: UtenButtonType.tonal,
-              icon: Icons.refresh_rounded,
-              onPressed: _loading ? null : _load,
-              child: const Text('重试'),
-            ),
-          ],
-        ),
-      );
-    }
-    final items = page?.items ?? const <SubcontractPreparationTask>[];
-    if (items.isEmpty) {
-      return Center(
-        child: Text(
-          '没有符合条件的委外前置自制任务',
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      );
-    }
-    return Column(
-      children: [
-        Expanded(
-          child: ListView.separated(
-            key: const Key('subcontract-preparation-task-list'),
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s8),
-            itemBuilder: (_, index) => _preparationCard(theme, items[index]),
-          ),
-        ),
-        if ((page?.totalPages ?? 0) > 1) _preparationPager(page!),
-      ],
-    );
-  }
-
-  Widget _preparationCard(ThemeData theme, SubcontractPreparationTask task) {
-    final permissions = ref.watch(currentPermissionsProvider);
-    final canStart =
-        permissions.contains(Perm.productionMaterialAnalysisCreate) &&
-        task.allows('START_PREPARATION');
-    final analysisId = task.analysisId?.trim();
-    final canOpen =
-        task.allows('OPEN_ANALYSIS') &&
-        analysisId != null &&
-        analysisId.isNotEmpty;
-    final starting = _startingPlanItemId == task.planItemId;
-    final target = [
-      task.targetGoodsCode,
-      task.targetGoodsName,
-      task.colorName,
-    ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' ');
-    final unit = task.unitName?.trim();
-    final blocker = task.blocker?.trim();
-    final warehouse = task.warehouseSelectionRequired
-        ? '启动时必须选择目标仓'
-        : task.preparationWarehouseName?.trim().isNotEmpty == true
-        ? task.preparationWarehouseName!.trim()
-        : '目标仓由服务端冻结';
-    return Semantics(
-      container: true,
-      label:
-          '委外前置自制任务，${target.isEmpty ? '未命名目标件' : target}，'
-          '${_preparationStatusLabel(task.status)}',
-      child: Card(
-        key: Key('subcontract-preparation-task-${task.planItemId}'),
-        margin: EdgeInsets.zero,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: UtenRadius.mdAll,
-          side: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      target.isEmpty ? '未命名委外目标件' : target,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  _preparationStatusChip(theme, task.status),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              _infoLine(
-                Icons.receipt_long_outlined,
-                '委外订货 ${task.orderBillNo ?? '—'}',
-              ),
-              _infoLine(
-                Icons.inventory_2_outlined,
-                '需备 ${_qty(task.requiredQty)}'
-                '${unit?.isNotEmpty == true ? ' $unit' : ''} · '
-                '已完成前置自制 ${_qty(task.preparedQty)} · '
-                '目标件已出仓 ${_qty(task.issuedQty)}',
-              ),
-              _infoLine(
-                Icons.warehouse_outlined,
-                '分析仓库 $warehouse'
-                '${task.needDate?.trim().isNotEmpty == true ? ' · 需求日期 ${task.needDate}' : ''}',
-              ),
-              if (blocker != null && blocker.isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                Container(
-                  padding: const EdgeInsets.all(UtenSpacing.s8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer.withValues(
-                      alpha: 0.55,
-                    ),
-                    borderRadius: UtenRadius.smAll,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.info_outline_rounded,
-                        size: 18,
-                        color: theme.colorScheme.onErrorContainer,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Expanded(
-                        child: Text(
-                          blocker,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onErrorContainer,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: UtenSpacing.s8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _preparationNextHint(task.status),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  if (canStart)
-                    UtenButton(
-                      key: Key(
-                        'subcontract-preparation-start-${task.planItemId}',
-                      ),
-                      icon: Icons.play_arrow_rounded,
-                      isLoading: starting,
-                      onPressed: starting
-                          ? null
-                          : () => _startPreparation(task),
-                      child: const Text('开始物料分析'),
-                    )
-                  else if (canOpen)
-                    UtenButton(
-                      key: Key(
-                        'subcontract-preparation-open-${task.planItemId}',
-                      ),
-                      type: UtenButtonType.tonal,
-                      icon: Icons.open_in_new_rounded,
-                      onPressed: starting
-                          ? null
-                          : () => _openPreparationAnalysis(task),
-                      child: const Text('打开物料分析'),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _preparationStatusChip(ThemeData theme, String status) {
-    final color = switch (status) {
-      'ACTION_REQUIRED' => theme.colorScheme.tertiary,
-      'IN_PREPARATION' => theme.colorScheme.primary,
-      'WAITING_FQC' || 'WAITING_INBOUND' => theme.colorScheme.secondary,
-      'READY_OUTBOUND' || 'OUTBOUND_COMPLETE' => theme.colorScheme.primary,
-      'CANCELLED' => theme.colorScheme.error,
-      _ => theme.colorScheme.onSurfaceVariant,
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: UtenRadius.pillAll,
-        border: Border.all(color: color.withValues(alpha: 0.55)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(_preparationStatusIcon(status), size: 16, color: color),
-          const SizedBox(width: UtenSpacing.s4),
-          Text(
-            _preparationStatusLabel(status),
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _preparationPager(PagedResult<SubcontractPreparationTask> page) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      IconButton(
-        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-        tooltip: '上一页',
-        onPressed: !_loading && page.page > 1
-            ? () => _load(page: page.page - 1)
-            : null,
-        icon: const Icon(Icons.chevron_left_rounded),
-      ),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
-        child: Text('${page.page} / ${page.totalPages} · 共 ${page.total} 条'),
-      ),
-      IconButton(
-        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-        tooltip: '下一页',
-        onPressed: !_loading && page.page < page.totalPages
-            ? () => _load(page: page.page + 1)
-            : null,
-        icon: const Icon(Icons.chevron_right_rounded),
-      ),
-    ],
-  );
-
-  static String _preparationStatusLabel(String status) =>
-      _preparationStatuses[status] ?? '状态待确认';
-
-  static IconData _preparationStatusIcon(String status) => switch (status) {
-    'ACTION_REQUIRED' => Icons.play_circle_outline_rounded,
-    'IN_PREPARATION' => Icons.precision_manufacturing_outlined,
-    'WAITING_FQC' => Icons.fact_check_outlined,
-    'WAITING_INBOUND' => Icons.warehouse_outlined,
-    'READY_OUTBOUND' => Icons.outbound_outlined,
-    'OUTBOUND_COMPLETE' => Icons.check_circle_outline_rounded,
-    'CANCELLED' => Icons.cancel_outlined,
-    _ => Icons.help_outline_rounded,
-  };
-
-  static String _preparationNextHint(String status) => switch (status) {
-    'ACTION_REQUIRED' => '下一步：选择目标仓并开始物料分析',
-    'IN_PREPARATION' => '按分析结果完成领料、生产和报工',
-    'WAITING_FQC' => '生产已完成，等待品质检查',
-    'WAITING_INBOUND' => '品质已放行，等待成品入仓',
-    'READY_OUTBOUND' => '目标件已备齐，仓库会收到委外出仓任务',
-    'OUTBOUND_COMPLETE' => '目标件已完成委外出仓',
-    'CANCELLED' => '任务已取消，仅保留历史追溯',
-    _ => '请刷新后查看服务端最新状态',
-  };
 
   List<MasterColumnDef<MaterialAnalysisListItem>> get _columns => [
     MasterColumnDef(

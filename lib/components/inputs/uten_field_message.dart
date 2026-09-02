@@ -120,7 +120,10 @@ class _UtenOverflowMessageState extends State<UtenOverflowMessage> {
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(child: _messageText(style, ellipsize: true)),
+            // Flexible（loose）：正文按最长渲染行收缩。历史 bug：这里曾是 Expanded
+            // （tight），一旦文字触发省略号就把宿主容器顶满整个可用宽——通知卡片
+            // 因此变成整条 720 宽的淡色横条，露出下层通知时观感是「突然全屏宽灰条」。
+            Flexible(child: _messageText(style, ellipsize: true)),
             const SizedBox(width: 4),
             Tooltip(
               key: _tooltipKey,

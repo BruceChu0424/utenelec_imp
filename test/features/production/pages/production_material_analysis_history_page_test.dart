@@ -8,7 +8,6 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_history_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
-import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
   test(
@@ -21,6 +20,9 @@ void main() {
     },
   );
 
+  // V458：委外前置自制工作区已并入委外准备中心（/subcontract/preparations），
+  // 本页只保留物料分析记录；旧 section=subcontract-preparations 深链由路由改写。
+
   testWidgets(
     'desktop history exposes server facts and resumes by analysis id',
     (tester) async {
@@ -31,9 +33,7 @@ void main() {
         routes: [
           GoRoute(
             path: RouteName.productionMaterialAnalysisHistory,
-            builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(
-              initialSection: 'subcontract-preparations',
-            ),
+            builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(),
           ),
           GoRoute(
             path: RouteName.productionMaterialAnalysis,
@@ -66,12 +66,6 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('subcontract-preparation-task-list')),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('分析记录'));
-      await tester.pumpAndSettle();
       expect(find.byKey(const Key('analysis-history-table')), findsOneWidget);
       expect(find.text('部分已下达，剩余待料'), findsWidgets);
       expect(find.textContaining('返工、委外前置自制'), findsOneWidget);
@@ -81,10 +75,7 @@ void main() {
       expect(find.text('继续处理 →'), findsOneWidget);
       expect(
         requests.map((request) => request.path),
-        containsAllInOrder([
-          '/production/material-analyses/subcontract-preparations',
-          '/production/material-analyses',
-        ]),
+        contains('/production/material-analyses'),
       );
 
       // 新交互契约：单击只选中，双击才打开（resume）。
@@ -95,119 +86,6 @@ void main() {
       expect(find.text('resume-analysis-1'), findsOneWidget);
     },
   );
-
-  testWidgets('375dp preparation queue shows state, blocker and 48dp action', (
-    tester,
-  ) async {
-    final requests = <RequestOptions>[];
-    final api = _api(requests);
-    tester.view.physicalSize = const Size(375, 812);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.productionMaterialAnalysisView,
-            Perm.productionMaterialAnalysisCreate,
-          }),
-          productionPlanRepositoryProvider.overrideWithValue(
-            ProductionPlanRepository(api),
-          ),
-        ],
-        child: const MaterialApp(
-          home: ProductionMaterialAnalysisHistoryPage(
-            initialSection: 'subcontract-preparations',
-            planItemId: 'plan-item-1',
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const Key('subcontract-preparation-task-list')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const Key('analysis-history-table')), findsNothing);
-    expect(find.text('待开始物料分析'), findsOneWidget);
-    expect(find.text('开始物料分析'), findsOneWidget);
-    expect(find.textContaining('分析仓库 主仓'), findsOneWidget);
-    expect(
-      tester
-          .getSize(
-            find.byKey(const Key('subcontract-preparation-task-plan-item-1')),
-          )
-          .height,
-      greaterThanOrEqualTo(48),
-    );
-    expect(tester.takeException(), isNull);
-    expect(requests.single.queryParameters['planItemId'], 'plan-item-1');
-  });
-
-  testWidgets(
-    'starts preparation with server CAS and opens returned analysis',
-    (tester) async {
-      final requests = <RequestOptions>[];
-      final api = _api(requests);
-      final router = GoRouter(
-        initialLocation: RouteName.productionMaterialAnalysisHistory,
-        routes: [
-          GoRoute(
-            path: RouteName.productionMaterialAnalysisHistory,
-            builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(
-              initialSection: 'subcontract-preparations',
-            ),
-          ),
-          GoRoute(
-            path: RouteName.productionMaterialAnalysis,
-            builder: (_, state) {
-              final seed = state.extra! as ProductionMaterialAnalysisSeed;
-              return Scaffold(body: Text('resume-${seed.analysisId}'));
-            },
-          ),
-          GoRoute(
-            path: RouteName.productionPlanList,
-            builder: (_, _) => const Scaffold(body: Text('plan-history')),
-          ),
-        ],
-      );
-      addTearDown(router.dispose);
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.productionMaterialAnalysisView,
-              Perm.productionMaterialAnalysisCreate,
-            }),
-            productionPlanRepositoryProvider.overrideWithValue(
-              ProductionPlanRepository(api),
-            ),
-          ],
-          child: MaterialApp.router(routerConfig: router),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(
-        find.byKey(const Key('subcontract-preparation-start-plan-item-1')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('resume-analysis-started'), findsOneWidget);
-      final start = requests.singleWhere(
-        (request) => request.path.endsWith('/plan-item-1/start'),
-      );
-      final body = (start.data as Map).cast<String, dynamic>();
-      expect(body['expectedVersion'], 3);
-      expect(body['warehouseId'], 'warehouse-1');
-      expect(
-        body['idempotencyKey'],
-        startsWith('subcontract-preparation-start-'),
-      );
-    },
-  );
 }
 
 ApiClient _api(List<RequestOptions> requests) {
@@ -216,32 +94,6 @@ ApiClient _api(List<RequestOptions> requests) {
     InterceptorsWrapper(
       onRequest: (request, handler) {
         requests.add(request);
-        if (request.path.endsWith('/subcontract-preparations')) {
-          handler.resolve(
-            Response<dynamic>(
-              requestOptions: request,
-              statusCode: 200,
-              data: _preparationPage(),
-            ),
-          );
-          return;
-        }
-        if (request.path.endsWith('/plan-item-1/start')) {
-          handler.resolve(
-            Response<dynamic>(
-              requestOptions: request,
-              statusCode: 200,
-              data: {
-                'planItemId': 'plan-item-1',
-                'status': 'IN_PREPARATION',
-                'analysisId': 'analysis-started',
-                'analysisItemId': 'analysis-item-started',
-                'version': 4,
-              },
-            ),
-          );
-          return;
-        }
         handler.resolve(
           Response<dynamic>(
             requestOptions: request,
@@ -254,37 +106,6 @@ ApiClient _api(List<RequestOptions> requests) {
   );
   return ApiClient(dio);
 }
-
-Map<String, dynamic> _preparationPage() => {
-  'items': [
-    {
-      'planItemId': 'plan-item-1',
-      'orderId': 'order-1',
-      'orderItemId': 'order-item-1',
-      'orderBillNo': 'WW-2026-001',
-      'targetGoodsId': 'goods-1',
-      'targetGoodsCode': 'WIP-001',
-      'targetGoodsName': '待电镀装配件',
-      'unitId': 'unit-1',
-      'unitName': '件',
-      'requiredQty': 100,
-      'preparedQty': 0,
-      'issuedQty': 0,
-      'needDate': '2026-09-05',
-      'status': 'ACTION_REQUIRED',
-      'preparationWarehouseId': 'warehouse-1',
-      'preparationWarehouseName': '主仓',
-      'warehouseSelectionRequired': false,
-      'allowedActions': ['START_PREPARATION'],
-      'version': 3,
-      'updatedAt': '2026-08-30T03:00:00Z',
-    },
-  ],
-  'page': 1,
-  'size': 20,
-  'total': 1,
-  'totalPages': 1,
-};
 
 Map<String, dynamic> _analysisPage() => {
   'items': [

@@ -754,6 +754,13 @@ public class MaterialAnalysisCommandService {
             return;
         }
         if ("SUBCONTRACT".equals(action.group().route())) {
+            // V458：有子层级的委外件不在此刻生成委外申请（不通知委外部）。
+            // 先在原分析内创建前置自制任务，待自制成品入库后按账本
+            // 满批自动/手动分批生成委外申请。
+            if (hasActiveBomChildren(action.group().dimension().goodsId())) {
+                createSubcontractMakeTask(analysisId, action);
+                return;
+            }
             ProductionSubcontractRequestPort.DraftResult result =
                     subcontractRequests.createProductionDraft(
                     sourceLabel, analysisId, action.group().needDate(),
@@ -775,8 +782,7 @@ public class MaterialAnalysisCommandService {
                 makeDemandSourceRef(childItemId), childItemId, null);
     }
 
-    /** 自制备料需求行的可读来源编号（自制备料 日期 尾码）：面向展示，禁止 UUID。 */
-    private String makeDemandSourceRef(UUID itemId) {
+    /** 自制备料需求行的可读来源编号（自制备料 日期 尾码）：面向展示，禁止 UUID。 */    private String makeDemandSourceRef(UUID itemId) {
         // 单列原生查询返回标量（String）而非 Object[]，不能走 oneRow 的
         // objectArrayRows 路径（会 CCE）；getResultList 空表时转业务 notFound。
         List<?> rows = em.createNativeQuery("""
@@ -845,6 +851,173 @@ public class MaterialAnalysisCommandService {
                 .setParameter("actorId", currentUser.requireId())
                 .executeUpdate();
         return itemId;
+    }
+
+    /**
+     * V458：有子层级的委外件在下达时改为「先自制、后通知委外」。
+     * 在原分析内创建 SUBCONTRACT_MAKE 前置自制任务行（子树需求委托给该行），
+     * 同步维护 preplan_subcontract_make_tasks 账本；不生成委外申请、不通知委外部。
+     */
+    private void createSubcontractMakeTask(UUID analysisId, ActionDraft action) {
+        UUID itemId = createOrIncrementSubcontractMakeDemand(analysisId, action);
+        String sourceRef = makeDemandSourceRef(itemId);
+        markCreated(action.actionId(), "SUBCONTRACT_MAKE_TASK",
+                itemId, sourceRef, itemId, null);
+        UUID representative = action.group().materials().getFirst().materialLineId();
+        UUID warehouseId = selectedWarehouse(analysisId);
+        UUID actorId = currentUser.requireId();
+        List<Object[]> existing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id FROM preplan_subcontract_make_tasks
+                WHERE analysis_id = :analysisId
+                  AND analysis_material_id = :materialId
+                  AND status = 'ACTIVE'
+                FOR UPDATE
+                """).setParameter("analysisId", analysisId)
+                .setParameter("materialId", representative));
+        BigDecimal requiredQty = action.demandQty();
+        UUID taskId;
+        if (existing.isEmpty()) {
+            taskId = UUID.randomUUID();
+            em.createNativeQuery("""
+                    INSERT INTO preplan_subcontract_make_tasks (
+                        id, analysis_id, analysis_material_id, supply_action_id,
+                        preparation_item_id, goods_id, color_id, unit_id,
+                        warehouse_id, required_qty, created_by, updated_by)
+                    VALUES (
+                        :id, :analysisId, :materialId, :actionId,
+                        :itemId, :goodsId, :colorId, :unitId,
+                        :warehouseId, :requiredQty, :actorId, :actorId)
+                    """)
+                    .setParameter("id", taskId)
+                    .setParameter("analysisId", analysisId)
+                    .setParameter("materialId", representative)
+                    .setParameter("actionId", action.actionId())
+                    .setParameter("itemId", itemId)
+                    .setParameter("goodsId", action.group().dimension().goodsId())
+                    .setParameter("colorId", action.group().dimension().colorId())
+                    .setParameter("unitId", action.group().dimension().unitId())
+                    .setParameter("warehouseId", warehouseId)
+                    .setParameter("requiredQty", requiredQty)
+                    .setParameter("actorId", actorId)
+                    .executeUpdate();
+        } else {
+            taskId = (UUID) existing.getFirst()[0];
+            // 任务需求量始终与任务行的 requested_qty 同步（重下达只增不减）。
+            em.createNativeQuery("""
+                    UPDATE preplan_subcontract_make_tasks task
+                    SET required_qty = item.requested_qty,
+                        version = task.version + 1,
+                        updated_by = :actorId, updated_at = now()
+                    FROM production_material_analysis_items item
+                    WHERE task.id = :taskId
+                      AND item.id = task.preparation_item_id
+                    """)
+                    .setParameter("taskId", taskId)
+                    .setParameter("actorId", actorId)
+                    .executeUpdate();
+        }
+        chainNotice.notifySubcontractMakeTaskCreated(taskId);
+    }
+
+    /** 委外前置自制任务行：与自制备料同构，但来源类型独立、可读编号前缀为「委外自制」。 */
+    private UUID createOrIncrementSubcontractMakeDemand(UUID analysisId, ActionDraft action) {
+        UUID representative = action.group().materials().getFirst().materialLineId();
+        List<Object[]> existing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, source_type
+                FROM production_material_analysis_items
+                WHERE analysis_id = :analysisId
+                  AND source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE')
+                  AND parent_analysis_material_id = :parentId
+                  AND is_deleted = FALSE
+                FOR UPDATE
+                """).setParameter("analysisId", analysisId)
+                .setParameter("parentId", representative));
+        if (!existing.isEmpty()) {
+            String type = Objects.toString(existing.getFirst()[1], "");
+            if (!"SUBCONTRACT_MAKE".equals(type)) {
+                throw conflict("该节点已存在自制备料任务，路线互斥，请先刷新物料分析");
+            }
+            UUID itemId = (UUID) existing.getFirst()[0];
+            em.createNativeQuery("""
+                    UPDATE production_material_analysis_items
+                    SET requested_qty = requested_qty + :qty,
+                        delivery_date = COALESCE(:needDate, delivery_date),
+                        updated_at = now(), updated_by = :actorId
+                    WHERE id = :id
+                    """)
+                    .setParameter("qty", action.demandQty())
+                    .setParameter("needDate", action.group().needDate())
+                    .setParameter("actorId", currentUser.requireId())
+                    .setParameter("id", itemId).executeUpdate();
+            return itemId;
+        }
+        UUID itemId = UUID.randomUUID();
+        // 可读来源编号「委外自制 <日期> <4位尾码>」；(source_type, source_ref)
+        // 有全局唯一索引，插入前查重避免碰撞（PG 唯一冲突会中止整个事务）。
+        String sourceRef = nextSubcontractMakeSourceRef(itemId);
+        int linePriority = nextLinePriority(analysisId);
+        em.createNativeQuery("""
+                INSERT INTO production_material_analysis_items (
+                    id, analysis_id, source_type, goods_id, color_id, unit_id,
+                    source_ref, source_reason, requested_qty, delivery_date,
+                    line_priority, parent_analysis_material_id,
+                    created_by, updated_by
+                ) VALUES (
+                    :id, :analysisId, 'SUBCONTRACT_MAKE', :goodsId, :colorId, :unitId,
+                    :sourceRef, :sourceReason, :qty, :needDate,
+                    :linePriority, :parentId, :actorId, :actorId
+                )
+                """)
+                .setParameter("id", itemId)
+                .setParameter("analysisId", analysisId)
+                .setParameter("goodsId", action.group().dimension().goodsId())
+                .setParameter("colorId", action.group().dimension().colorId())
+                .setParameter("unitId", action.group().dimension().unitId())
+                .setParameter("sourceRef", sourceRef)
+                .setParameter("sourceReason", "父级委外件缺口确认前置自制")
+                .setParameter("qty", action.demandQty())
+                .setParameter("needDate", action.group().needDate())
+                .setParameter("linePriority", linePriority)
+                .setParameter("parentId", representative)
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+        return itemId;
+    }
+
+    /** 生成未占用的委外前置自制来源编号；尾码碰撞时换码重试。 */
+    private String nextSubcontractMakeSourceRef(UUID itemId) {
+        String candidate = "委外自制 " + BusinessTime.today()
+                + " " + itemId.toString().substring(0, 4);
+        if (subcontractMakeSourceRefAvailable(candidate)) return candidate;
+        for (int attempt = 0; attempt < 8; attempt++) {
+            candidate = "委外自制 " + BusinessTime.today()
+                    + " " + UUID.randomUUID().toString().substring(0, 4);
+            if (subcontractMakeSourceRefAvailable(candidate)) return candidate;
+        }
+        throw conflict("委外自制来源编号生成冲突，请重试");
+    }
+
+    private boolean subcontractMakeSourceRefAvailable(String ref) {
+        return em.createNativeQuery("""
+                SELECT 1
+                FROM production_material_analysis_items
+                WHERE source_type = 'SUBCONTRACT_MAKE'
+                  AND is_deleted = FALSE
+                  AND lower(btrim(source_ref)) = lower(btrim(:ref))
+                """).setParameter("ref", ref).getResultList().isEmpty();
+    }
+
+    /** 目标件当前是否存在活动直接 BOM 子件（与 V436 订货批准分流同口径）。 */
+    private boolean hasActiveBomChildren(UUID goodsId) {
+        Number count = (Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM goods_bom_items bom
+                JOIN goods child ON child.id = bom.component_goods_id
+                 AND child.is_deleted = FALSE
+                 AND COALESCE(child.auto_created, FALSE) = FALSE
+                WHERE bom.goods_id = :goodsId AND bom.is_deleted = FALSE
+                """).setParameter("goodsId", goodsId).getSingleResult();
+        return count.longValue() > 0;
     }
 
     /** 分析内下一行序（与既有 line_priority 递增口径一致；行锁由调用方 lockHeader 保证串行）。 */
@@ -1160,6 +1333,9 @@ public class MaterialAnalysisCommandService {
                     ProductionSubcontractRequestPort.LifecycleAction.REVERSE);
         } else if ("PREPLAN_MAKE_TASK".equals(type)) {
             cancelMakeDemand(analysisId, actionId, documentId, decimal(row[3]));
+        } else if ("SUBCONTRACT_MAKE_TASK".equals(type)) {
+            cancelSubcontractMakeDemand(analysisId, actionId,
+                    documentId, decimal(row[3]));
         } else if (!"OPEN".equals(status)) {
             throw conflict("备料任务缺少可撤回的真实下游单据引用");
         }
@@ -1186,16 +1362,71 @@ public class MaterialAnalysisCommandService {
         analysisPeg.releaseForSupplyItems(analysisId, externalItemIds, null);
     }
 
+    /**
+     * V458：撤回委外前置自制任务。已有自制成品入库或已通知委外的量一律失败关闭；
+     * 纯任务按自制备料同构口径回退任务行数量并作废账本行。
+     */
+    private void cancelSubcontractMakeDemand(
+            UUID analysisId, UUID actionId, UUID itemId, BigDecimal qty) {
+        List<Object[]> taskRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, required_qty, produced_qty, notified_qty
+                FROM preplan_subcontract_make_tasks
+                WHERE analysis_id = :analysisId
+                  AND preparation_item_id = :itemId
+                  AND status = 'ACTIVE'
+                FOR UPDATE
+                """).setParameter("analysisId", analysisId)
+                .setParameter("itemId", itemId));
+        if (!taskRows.isEmpty()) {
+            Object[] taskRow = taskRows.getFirst();
+            if (decimal(taskRow[2]).signum() > 0
+                    || decimal(taskRow[3]).signum() > 0) {
+                throw conflict("委外前置自制已有成品入库或已通知委外，不能撤回");
+            }
+            BigDecimal nextRequired = decimal(taskRow[1]).subtract(qty);
+            if (nextRequired.signum() > 0) {
+                em.createNativeQuery("""
+                        UPDATE preplan_subcontract_make_tasks
+                        SET required_qty = :requiredQty,
+                            version = version + 1,
+                            updated_by = :actorId, updated_at = now()
+                        WHERE id = :id
+                        """)
+                        .setParameter("requiredQty", nextRequired)
+                        .setParameter("actorId", currentUser.requireId())
+                        .setParameter("id", taskRow[0]).executeUpdate();
+            } else {
+                em.createNativeQuery("""
+                        UPDATE preplan_subcontract_make_tasks
+                        SET status = 'CANCELLED', version = version + 1,
+                            updated_by = :actorId, updated_at = now()
+                        WHERE id = :id
+                        """)
+                        .setParameter("actorId", currentUser.requireId())
+                        .setParameter("id", taskRow[0]).executeUpdate();
+            }
+        }
+        cancelMakeDemandRow(analysisId, actionId, itemId, qty,
+                "委外前置自制备料需求不存在");
+    }
+
     private void cancelMakeDemand(
             UUID analysisId, UUID actionId, UUID itemId, BigDecimal qty) {
+        cancelMakeDemandRow(analysisId, actionId, itemId, qty, "自制备料需求不存在");
+    }
+
+    private void cancelMakeDemandRow(
+            UUID analysisId, UUID actionId, UUID itemId, BigDecimal qty,
+            String notFoundMessage) {
         Object[] item = one(em.createNativeQuery("""
                 SELECT requested_qty, submitted_qty, approved_qty
                 FROM production_material_analysis_items
                 WHERE id = :id AND analysis_id = :analysisId
-                  AND source_type = 'MAKE_COMPONENT' AND is_deleted = FALSE
+                  AND source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+                  AND is_deleted = FALSE
                 FOR UPDATE
                 """).setParameter("id", itemId).setParameter("analysisId", analysisId),
-                "自制备料需求不存在");
+                notFoundMessage);
         BigDecimal minimum = decimal(item[1]).add(decimal(item[2]));
         BigDecimal next = decimal(item[0]).subtract(qty);
         if (next.compareTo(minimum) < 0) {
@@ -1206,7 +1437,8 @@ public class MaterialAnalysisCommandService {
         Number other = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM preplan_supply_actions
                 WHERE analysis_id = :analysisId AND id <> :actionId
-                  AND external_document_type = 'PREPLAN_MAKE_TASK'
+                  AND external_document_type IN (
+                      'PREPLAN_MAKE_TASK','SUBCONTRACT_MAKE_TASK')
                   AND external_document_id = :itemId AND status <> 'CANCELLED'
                 """).setParameter("analysisId", analysisId)
                 .setParameter("actionId", actionId).setParameter("itemId", itemId)
@@ -1269,6 +1501,18 @@ public class MaterialAnalysisCommandService {
         if ("MAKE".equals(route)) {
             return activeOpenMakeActionQty(analysisId, groupKey);
         }
+        BigDecimal generic = genericExternalOpenActionQty(analysisId, groupKey, route);
+        if ("SUBCONTRACT".equals(route)) {
+            // V458：有子层级委外件的任务走子件进度口径（与自制同构），
+            // 与旧流 SUBCONTRACT_APPLICATION 的通用口径相加。
+            return generic.add(activeOpenSubcontractMakeActionQty(
+                    analysisId, groupKey));
+        }
+        return generic;
+    }
+
+    private BigDecimal genericExternalOpenActionQty(
+            UUID analysisId, String groupKey, String route) {
         if ("BUY".equals(route)) {
             return decimal(em.createNativeQuery("""
                     SELECT COALESCE(SUM(LEAST(
@@ -1406,8 +1650,7 @@ public class MaterialAnalysisCommandService {
     }
 
     /** MAKE coverage follows the child demand and unfinished approved child plans. */
-    private BigDecimal activeOpenMakeActionQty(UUID analysisId, String groupKey) {
-        return decimal(em.createNativeQuery("""
+    private BigDecimal activeOpenMakeActionQty(UUID analysisId, String groupKey) {        return decimal(em.createNativeQuery("""
                 WITH active_actions AS (
                     SELECT action.external_document_id AS child_item_id,
                            SUM(action.requested_qty) AS requested_qty
@@ -1443,6 +1686,57 @@ public class MaterialAnalysisCommandService {
                       ON child.id = active.child_item_id
                      AND child.analysis_id = :analysisId
                      AND child.source_type = 'MAKE_COMPONENT'
+                     AND child.is_deleted = FALSE
+                )
+                SELECT COALESCE(SUM(LEAST(requested_qty, open_qty)),0)
+                FROM child_open
+                """).setParameter("analysisId", analysisId)
+                .setParameter("groupKey", groupKey)
+                .getSingleResult());
+    }
+
+    /**
+     * V458：有子层级委外件的前置自制任务覆盖量。口径与自制一致——
+     * 任务行剩余需求 + 已批未完工计划；产出已通知委外的部分不再计入在途。
+     */
+    private BigDecimal activeOpenSubcontractMakeActionQty(
+            UUID analysisId, String groupKey) {
+        return decimal(em.createNativeQuery("""
+                WITH active_actions AS (
+                    SELECT action.external_document_id AS child_item_id,
+                           SUM(action.requested_qty) AS requested_qty
+                    FROM preplan_supply_actions action
+                    WHERE action.analysis_id = :analysisId
+                      AND action.action_group_key = :groupKey
+                      AND action.route = 'SUBCONTRACT'
+                      AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                      AND action.external_document_type = 'SUBCONTRACT_MAKE_TASK'
+                      AND action.external_document_id IS NOT NULL
+                    GROUP BY action.external_document_id
+                ), child_open AS (
+                    SELECT active.child_item_id, active.requested_qty,
+                           GREATEST(
+                               child.requested_qty - child.approved_qty
+                               + COALESCE((
+                                   SELECT SUM(GREATEST(
+                                       plan_item.qty - COALESCE(plan_item.iqty,0), 0))
+                                   FROM production_material_analysis_plan_links analysis_link
+                                   JOIN production_plans plan
+                                     ON plan.id = analysis_link.plan_id
+                                    AND plan.status = 1
+                                    AND plan.is_deleted = FALSE
+                                    AND plan.is_canceled = FALSE
+                                   JOIN production_plan_items plan_item
+                                     ON plan_item.plan_id = plan.id
+                                    AND plan_item.is_deleted = FALSE
+                                   WHERE analysis_link.analysis_item_id = child.id
+                                     AND analysis_link.allocation_status = 'APPROVED'
+                               ),0), 0) AS open_qty
+                    FROM active_actions active
+                    JOIN production_material_analysis_items child
+                      ON child.id = active.child_item_id
+                     AND child.analysis_id = :analysisId
+                     AND child.source_type = 'SUBCONTRACT_MAKE'
                      AND child.is_deleted = FALSE
                 )
                 SELECT COALESCE(SUM(LEAST(requested_qty, open_qty)),0)

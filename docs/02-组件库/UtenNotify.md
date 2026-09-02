@@ -238,7 +238,7 @@ flowchart TD
    if (!context.mounted) return;
    UtenNotify.success(context, '完成');
    ```
-4. **业务通知不要直接操作 Overlay/弹窗**：统一落库后由到达 feed 和 `dispatchNoticeArrival` 分派；批量到达一次进入顶部叠放层，每条关闭、已读和业务完成仍是独立事实。
+4. **业务通知不要直接操作 Overlay/弹窗**：统一落库后由到达 feed 和 `dispatchNoticeArrival` 分派；批量到达一次进入顶部叠放层，每条关闭、已读和业务完成仍是独立事实。业务动作完成后可用 `markNoticesReadByRoute(container, routes)`（`POST /api/notices/read-by-route`，action_route 精确匹配）把指向对应单据的通知自动置已读——只是已读，不冒充业务完成。
 
 ---
 

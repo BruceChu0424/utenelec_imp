@@ -281,6 +281,108 @@ class MaterialAnalysisListItem {
 ///
 /// The server owns the state, blocker, allowed actions, target warehouse and
 /// all quantities. Flutter must not inspect the BOM or infer readiness locally.
+class SubcontractMakeTask {
+  const SubcontractMakeTask({
+    required this.taskId,
+    required this.analysisId,
+    required this.status,
+    this.analysisStatus,
+    this.itemSourceRef,
+    this.goodsId,
+    this.goodsCode,
+    this.goodsName,
+    this.colorName,
+    this.unitName,
+    this.warehouseName,
+    this.requiredQty = 0,
+    this.producedQty = 0,
+    this.notifiedQty = 0,
+    this.availableQty = 0,
+    this.plannedQty = 0,
+    this.needDate,
+    this.allowedActions = const {},
+    this.updatedAt,
+  });
+
+  final String taskId;
+  final String analysisId;
+  final String status;
+  final String? analysisStatus;
+  final String? itemSourceRef;
+  final String? goodsId;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? colorName;
+  final String? unitName;
+  final String? warehouseName;
+
+  /// 需求量 / 已产未通知口径（服务端账本权威）。
+  final double requiredQty;
+  final double producedQty;
+  final double notifiedQty;
+  final double availableQty;
+  final double plannedQty;
+  final String? needDate;
+  final Set<String> allowedActions;
+  final String? updatedAt;
+
+  bool allows(String action) => allowedActions.contains(action);
+
+  String get goodsLabel {
+    final code = goodsCode ?? '';
+    final name = goodsName ?? '';
+    return '$code $name'.trim();
+  }
+
+  factory SubcontractMakeTask.fromJson(Map<String, dynamic> json) =>
+      SubcontractMakeTask(
+        taskId: _string(json['taskId']) ?? '',
+        analysisId: _string(json['analysisId']) ?? '',
+        analysisStatus: _string(json['analysisStatus']),
+        itemSourceRef: _string(json['itemSourceRef']),
+        goodsId: _string(json['goodsId']),
+        goodsCode: _string(json['goodsCode']),
+        goodsName: _string(json['goodsName']),
+        colorName: _string(json['colorName']),
+        unitName: _string(json['unitName']),
+        warehouseName: _string(json['warehouseName']),
+        requiredQty: _double(json['requiredQty']) ?? 0,
+        producedQty: _double(json['producedQty']) ?? 0,
+        notifiedQty: _double(json['notifiedQty']) ?? 0,
+        availableQty: _double(json['availableQty']) ?? 0,
+        plannedQty: _double(json['plannedQty']) ?? 0,
+        needDate: _string(json['needDate']),
+        status: (_string(json['status']) ?? 'UNKNOWN').toUpperCase(),
+        allowedActions: _stringList(json['allowedActions']).toSet(),
+        updatedAt: _string(json['updatedAt']),
+      );
+}
+
+class SubcontractMakeNotifyResult {
+  const SubcontractMakeNotifyResult({
+    required this.taskId,
+    required this.applicationId,
+    required this.applicationBillNo,
+    required this.notifiedQty,
+    required this.availableQty,
+  });
+
+  final String taskId;
+  final String applicationId;
+  final String applicationBillNo;
+  final double notifiedQty;
+  final double availableQty;
+
+  factory SubcontractMakeNotifyResult.fromJson(Map<String, dynamic> json) =>
+      SubcontractMakeNotifyResult(
+        taskId: _string(json['taskId']) ?? '',
+        applicationId: _string(json['applicationId']) ?? '',
+        applicationBillNo: _string(json['applicationBillNo']) ?? '',
+        notifiedQty: _double(json['notifiedQty']) ?? 0,
+        availableQty: _double(json['availableQty']) ?? 0,
+      );
+}
+
 class SubcontractPreparationTask {
   const SubcontractPreparationTask({
     required this.planItemId,

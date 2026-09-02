@@ -82,4 +82,27 @@ class NoticeControllerContractTest {
 
         verify(service).acknowledgePopup(noticeId);
     }
+
+    @Test
+    void readByRouteRequiresNoticeReadAndReturnsCount() throws Exception {
+        Method endpoint = NoticeController.class.getMethod(
+                "markReadByRoute", List.class);
+        assertArrayEquals(
+                new String[]{"/read-by-route"},
+                endpoint.getAnnotation(PostMapping.class).value());
+        assertEquals(
+                "hasAuthority('notice:read')",
+                endpoint.getAnnotation(PreAuthorize.class).value());
+
+        NoticeService service = mock(NoticeService.class);
+        List<String> routes = List.of("/purchase/orders/" + UUID.randomUUID());
+        when(service.markReadByRoutes(routes)).thenReturn(2);
+        NoticeController controller = new NoticeController(
+                service,
+                mock(NoticeAudienceService.class),
+                mock(com.uten.imp.security.SecurityContextCurrentUser.class));
+
+        assertEquals(2, controller.markReadByRoute(routes).get("read"));
+        verify(service).markReadByRoutes(routes);
+    }
 }

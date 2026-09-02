@@ -514,6 +514,46 @@ class ProductionPlanRepository {
     );
   }
 
+  /// V458 有子层级委外件的前置自制任务进度（先自制、后通知委外账本投影）。
+  Future<PagedResult<SubcontractMakeTask>> subcontractMakeTasks({
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+    String? status,
+    String? analysisId,
+  }) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/subcontract-make-tasks',
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (status?.trim().isNotEmpty == true) 'status': status!.trim(),
+        if (analysisId?.trim().isNotEmpty == true)
+          'analysisId': analysisId!.trim(),
+      },
+    ); // ENDPOINT
+    return PagedResult.fromJson(json, SubcontractMakeTask.fromJson);
+  }
+
+  /// V458 按已产未通知量分批通知委外（服务端生成只读委外申请并通知委外部）。
+  Future<SubcontractMakeNotifyResult> notifySubcontractMakeBatch({
+    required String taskId,
+    required double qty,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/subcontract-make-tasks/$taskId/notify',
+      body: {
+        'qty': qty,
+        'idempotencyKey': idempotencyKey,
+      },
+    ); // ENDPOINT
+    return SubcontractMakeNotifyResult.fromJson(
+      (json as Map).cast<String, dynamic>(),
+    );
+  }
+
   /// Production-scoped approved sales-order candidates. This endpoint omits
   /// price data and does not require broad sales module visibility.
   Future<MaterialAnalysisSalesCandidatePage> materialAnalysisSalesCandidates({

@@ -219,6 +219,51 @@ void main() {
     expect(flutterErrors, isEmpty, reason: '长文案换行不应触发 RenderFlex 溢出等布局异常');
   });
 
+  // 回归：带跳转动作（onTap）的长文案正文走 UtenOverflowMessage 溢出分支，
+  // 该分支历史上的 Row 用 Expanded（tight fit），一旦文字触发省略号就把卡片顶满
+  // 整个可用宽——移开上层通知露出这条时，看到的是一块全屏宽的淡色横条
+  // （半透明滑入叠在灰色轮廓层上更像「灰条」）。修复：Expanded→Flexible，
+  // 溢出分支同样按最长渲染行收缩。
+  testWidgets('overflowing actionable banner shrinks to content width', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1200, 1000);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Align(
+            alignment: Alignment.topCenter,
+            child: AppNotificationHost(),
+          ),
+        ),
+      ),
+    );
+
+    container
+        .read(appNotificationProvider.notifier)
+        .showMessage(
+          '第一行很短\n第二行也很短\n第三行依旧短\n第四行开始溢出\n第五行被截断',
+          duration: const Duration(hours: 1),
+          onTap: () {},
+          force: true,
+        );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // 溢出分支生效：出现「查看完整通知」问号按钮。
+    expect(find.byIcon(Icons.help_outline_rounded), findsOneWidget);
+    final cardRect = tester.getRect(find.byType(UtenTopBannerCard));
+    // 每行都很短：卡片必须按内容收缩，而不是被顶满 720。
+    expect(cardRect.width, lessThan(400));
+    expect(cardRect.width, lessThanOrEqualTo(720));
+  });
+
   testWidgets('notifications stack newest first, expand, and keep overflow', (
     tester,
   ) async {
@@ -257,7 +302,11 @@ void main() {
     expect(find.byType(UtenTopBannerCard), findsOneWidget);
     expect(find.text('通知 4'), findsOneWidget);
     expect(find.text('通知 1'), findsNothing);
-    expect(find.text('展开最近 3 条通知，共 4 条'), findsOneWidget);
+    // 展开控制是紧凑计数胶囊：不再渲染整行「展开最近 X 条通知」文字，
+    // 只显示方向箭头 + 队列总数；完整说明在 tooltip / Semantics 标签里。
+    expect(find.byIcon(Icons.expand_more_rounded), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.textContaining('展开最近'), findsNothing);
 
     await tester.tap(
       find.byKey(const ValueKey('app-notification-stack-toggle')),
@@ -305,6 +354,60 @@ void main() {
     expect(dismissed, <int>[4, 3, 2, 1]);
     await tester.pump(const Duration(seconds: 1));
     expect(dismissed, <int>[4, 3, 2, 1]);
+  });
+
+  // 2026-09-02 口径：每条通知从到达时刻独立计时——未挂载（收拢细边 / 排队）
+  // 的到点自行消失，最早的先走；批量叠堆不再逐条串行拖延。
+  testWidgets('queued notifications expire independently, oldest first', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Align(
+            alignment: Alignment.topCenter,
+            child: AppNotificationHost(),
+          ),
+        ),
+      ),
+    );
+
+    final dismissed = <int>[];
+    final notifications = container.read(appNotificationProvider.notifier);
+    for (var index = 1; index <= 3; index++) {
+      notifications.showMessage(
+        '通知 $index',
+        duration: Duration(milliseconds: 1200 * index),
+        onDismissed: () => dismissed.add(index),
+        force: true,
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+
+    // 三条几乎同时到达，时限 1.2s / 2.4s / 3.6s：最旧的先消失，
+    // 最新那条挂载展示并由自己的倒计时收尾。
+    await tester.pump(const Duration(milliseconds: 1000));
+    expect(dismissed, isEmpty);
+
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(dismissed, <int>[1]);
+    expect(find.text('通知 3'), findsOneWidget);
+    expect(find.byType(UtenTopBannerCard), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 1200));
+    expect(dismissed, <int>[1, 2]);
+    // 最新一条（3.6s）自己的时限未到，挂载中不受前序到期影响。
+    expect(find.text('通知 3'), findsOneWidget);
+
+    // 挂载项的关闭路径（点击关闭 + 淡出）由其他测试覆盖，这里手动收尾。
+    await tester.tap(find.byTooltip('关闭通知'));
+    await tester.pumpAndSettle();
+    expect(container.read(appNotificationProvider), isEmpty);
+    expect(dismissed, <int>[1, 2, 3]);
+    expect(find.byType(UtenTopBannerCard), findsNothing);
   });
 
   testWidgets(

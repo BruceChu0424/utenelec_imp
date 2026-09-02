@@ -6,6 +6,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupService;
+import com.uten.imp.features.production.analysis.SubcontractMakeTaskService;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService;
@@ -44,6 +45,7 @@ public class ProductionCompletionReverseService
     private final ProductionExecutionReadinessService readiness;
     private final MaterialAnalysisSupplyWakeupService materialAnalysisWakeup;
     private final SubcontractPreparationInventoryPort subcontractPreparation;
+    private final SubcontractMakeTaskService subcontractMakeTasks;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -67,6 +69,10 @@ public class ProductionCompletionReverseService
         readiness.onFinishedInboundApproved(
                 stockDocumentId, warehouseId);
         subcontractPreparation.afterFinishedInboundApproved(
+                stockDocumentId, warehouseId);
+        // V458：有子层级委外件的前置自制产出先转 SUBCONTRACT_PREPARE_TASK
+        // 专属预留并触发满批自动通知，再让分析刷新读 v_stock_available。
+        subcontractMakeTasks.afterFinishedInboundApproved(
                 stockDocumentId, warehouseId);
         // The dedicated outbound reservation must exist before any analysis
         // refresh reads v_stock_available, otherwise the new target item can
@@ -94,6 +100,7 @@ public class ProductionCompletionReverseService
         }
         lockAndRequireApprovedFinishedIn(stockDocumentId);
         subcontractPreparation.beforeFinishedInboundReversed(stockDocumentId);
+        subcontractMakeTasks.beforeFinishedInboundReversed(stockDocumentId);
         readiness.beforeFinishedInboundReversed(stockDocumentId);
         List<UUID> segmentIds = exactSegmentIds(stockDocumentId);
         if (segmentIds.isEmpty()) {

@@ -391,8 +391,10 @@ void main() {
 
     test('subcontract preparation route is exact and fail-closed', () {
       const location = '/subcontract/preparations';
+      // V458 委外准备中心双视角：分析来源账本归生产域，订货来源归委外域。
       expect(requiredAnyPermFor(location), const [
         Perm.subcontractPreparationView,
+        Perm.productionMaterialAnalysisView,
       ]);
       expect(
         employeePermissionRedirect(
@@ -404,6 +406,13 @@ void main() {
       expect(
         employeePermissionRedirect(
           _userWith([Perm.subcontractPreparationView]),
+          location,
+        ),
+        isNull,
+      );
+      expect(
+        employeePermissionRedirect(
+          _userWith([Perm.productionMaterialAnalysisView]),
           location,
         ),
         isNull,

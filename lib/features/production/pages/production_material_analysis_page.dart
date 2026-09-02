@@ -23,6 +23,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -37,12 +38,14 @@ import '../widgets/material_borrow_dialog.dart';
 import '../widgets/material_required_reason_dialog.dart';
 import '../widgets/material_supply_progress_dialog.dart';
 import '../widgets/material_supply_quantity_dialog.dart';
+import '../widgets/subcontract_make_task_tile.dart';
 
 part 'material_analysis_bom_tree.dart';
 part 'material_analysis_borrow.dart';
 part 'material_analysis_candidates.dart';
 part 'material_analysis_plan_actions.dart';
 part 'material_analysis_product_tasks.dart';
+part 'material_analysis_subcontract_make.dart';
 part 'material_analysis_supply_actions.dart';
 part 'material_analysis_view_models.dart';
 
@@ -1135,7 +1138,7 @@ abstract class _MaterialAnalysisPageBase
 
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。
 class _ProductionMaterialAnalysisPageState
-    extends _MaterialAnalysisBorrowState {
+    extends _MaterialAnalysisSubcontractMakeState {
   @override
   Widget build(BuildContext context) {
     // 返回即刷新（须与 ref.listen 同位置=build 内注册）：采购/委外到货、IQC 合格放行
@@ -1440,6 +1443,13 @@ class _ProductionMaterialAnalysisPageState
         SliverPadding(
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           sliver: SliverToBoxAdapter(child: _productSection(theme, analysis)),
+        ),
+        // V458：有子层级委外件的前置自制进度与分批通知入口。
+        SliverPadding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s8),
+          sliver: SliverToBoxAdapter(
+            child: _subcontractMakeSection(theme, analysis),
+          ),
         ),
         if (_error != null)
           SliverPadding(

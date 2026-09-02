@@ -533,6 +533,17 @@ FROM (VALUES
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
+-- V458 subcontract make-before-order ledgers: the in-analysis preparation task
+-- and its application batches are business transaction facts; clear both
+-- together before their parent analyses/subcontract applications.
+INSERT INTO reset_business_table_policy(table_name, disposition)
+SELECT optional.table_name, optional.disposition
+FROM (VALUES
+('preplan_subcontract_make_task_batches', 'CLEAR'),
+('preplan_subcontract_make_tasks', 'CLEAR')
+) AS optional(table_name, disposition)
+WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
+
 -- V442 measurement learning adds four business-derived projections/events and
 -- four governed migration/unit-evidence tables. Keep the script usable before
 -- and after V442, but reject a partially applied catalog.
@@ -719,10 +730,12 @@ BEGIN
         (453, 415),
         (454, 416),
         (455, 417),
-        (456, 418)
+        (456, 418),
+        (457, 419),
+        (458, 420)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417 或 V456/418 目录，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419 或 V458/420 目录，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -822,6 +835,10 @@ BEGIN
            OR (v446_business_table_count = 2
                 AND v447_business_table_count = 5
                 AND clear_count - v454_celebration_table_count = 219)
+           -- V458 adds two CLEAR ledger tables on top of the V447 catalog.
+           OR (v446_business_table_count = 2
+                AND v447_business_table_count = 5
+                AND clear_count - v454_celebration_table_count = 221)
        ) THEN
         RAISE EXCEPTION
             'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V442表 %/8，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5，V454表 %/1',

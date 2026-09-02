@@ -42,7 +42,9 @@ void main() {
         find.byKey(const Key('subcontract-decomposition-status')),
       );
       expect(stage.initialValue, '');
-      expect(find.textContaining('直接委外不走本页'), findsOneWidget);
+      // V458 清理后页面不再有流程说教横幅，保留 KPI 指标条。
+      expect(find.textContaining('这里分解物料分析下达'), findsNothing);
+      expect(find.text('待分解'), findsOneWidget);
       var button = tester.widget<UtenButton>(
         find.byKey(const Key('subcontract-decomposition-create-order')),
       );

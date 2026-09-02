@@ -131,7 +131,11 @@ void main() {
     expect(find.text('计划委外申请(只读)'), findsNothing);
     expect(find.text('委外前置自制'), findsNothing);
     expect(find.text('仓库目标件出仓'), findsNothing);
-    expect(find.text('委外订货与全链路'), findsOneWidget);
+    // V458：Hub 分组为 任务中心/单据/报表/历史兼容，卡片标题精简。
+    expect(find.text('委外订货'), findsOneWidget);
+    expect(find.text('计划委外申请'), findsOneWidget);
+    // 历史发料卡按 materialIssue:view 单独显隐，本账号未授权故不渲染。
+    expect(find.text('历史 BOM 子件发料'), findsNothing);
     await tester.tap(find.text('委外任务中心'));
     await tester.pumpAndSettle();
 

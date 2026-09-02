@@ -91,6 +91,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             "PREPLAN_SUPPLY_ACTION_CREATED";
     static final String EVENT_SUBCONTRACT_PREPARATION_REQUIRED =
             "SUBCONTRACT_PREPARATION_REQUIRED";
+    static final String EVENT_SUBCONTRACT_MAKE_TASK_CREATED =
+            "SUBCONTRACT_MAKE_TASK_CREATED";
+    static final String EVENT_SUBCONTRACT_MAKE_NOTIFIED =
+            "SUBCONTRACT_MAKE_NOTIFIED";
     static final String EVENT_SUBCONTRACT_OUTBOUND_READY =
             "SUBCONTRACT_OUTBOUND_READY";
     static final String EVENT_SUBCONTRACT_OUTBOUND_COMPLETED =
@@ -271,6 +275,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         notifyPreplanSupplyActionCreated(aggregateId);
                 case EVENT_SUBCONTRACT_PREPARATION_REQUIRED ->
                         notifySubcontractPreparationRequired(aggregateId);
+                case EVENT_SUBCONTRACT_MAKE_TASK_CREATED ->
+                        notifySubcontractMakeTaskCreated(aggregateId);
+                case EVENT_SUBCONTRACT_MAKE_NOTIFIED ->
+                        notifySubcontractMakeNotified(aggregateId);
                 case EVENT_SUBCONTRACT_OUTBOUND_READY ->
                         notifySubcontractOutboundReady(aggregateId);
                 case EVENT_SUBCONTRACT_OUTBOUND_COMPLETED ->
@@ -1686,6 +1694,110 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     }
 
     /**
+     * V458：物料分析对有子层级的委外件下达了前置自制任务。
+     * 委外部此时不参与；提醒计划/生产按正常自制链完成齐套、领料、报工、
+     * FQC 与成品实收入库。账本行仍是权威，本通知只是提醒。
+     */
+    public void notifySubcontractMakeTaskCreated(UUID taskId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SUBCONTRACT_MAKE_TASK_CREATED,
+                    "PREPLAN_SUBCONTRACT_MAKE_TASK",
+                    taskId,
+                    Map.of(),
+                    EVENT_SUBCONTRACT_MAKE_TASK_CREATED + ':' + taskId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> task = one("""
+                    SELECT make_task.analysis_id,
+                           make_task.required_qty,
+                           goods.code AS goods_code, goods.name AS goods_name
+                    FROM preplan_subcontract_make_tasks make_task
+                    JOIN goods ON goods.id = make_task.goods_id
+                    WHERE make_task.id = ?
+                      AND make_task.status = 'ACTIVE'
+                    """, taskId);
+            if (task == null) return;
+            UUID analysisId = (UUID) task.get("analysis_id");
+            String goodsLabel = subcontractGoodsLabel(task);
+            String quantity = qty(bd(task.get("required_qty")));
+            Set<UUID> recipients = new LinkedHashSet<>();
+            recipients.addAll(departmentUserIdsWithAuthorities(
+                    "SUB_PLAN",
+                    NOTICE_READ_AUTHORITY,
+                    "production_material_analysis:view"));
+            recipients.addAll(departmentUserIdsWithAuthorities(
+                    "DEPT_PROD",
+                    NOTICE_READ_AUTHORITY,
+                    "production_material_analysis:view"));
+            for (UUID recipient : recipients) {
+                sendToUser(
+                        recipient,
+                        TYPE_TASK,
+                        "委外件前置自制待安排：" + goodsLabel,
+                        "有子层级的委外件 " + goodsLabel + "，需求量 " + quantity
+                                + " 已转为前置自制任务。请按正常自制流程检查子层级、"
+                                + "安排生产并完成领料、报工、FQC 和成品实收入库；"
+                                + "自制成品入库并通知委外前，委外部不会收到任何申请。"
+                                + "可执行操作以物料分析实时状态为准。",
+                        "/production/material-analyses/" + analysisId + "/summary",
+                        EVENT_SUBCONTRACT_MAKE_TASK_CREATED);
+            }
+        });
+    }
+
+    /**
+     * V458：前置自制成品入库后按账本生成了委外申请（满批自动或手动分批）。
+     * 委外部自此开始参与：到委外任务中心分解订货。
+     */
+    public void notifySubcontractMakeNotified(UUID batchId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SUBCONTRACT_MAKE_NOTIFIED,
+                    "PREPLAN_SUBCONTRACT_MAKE_TASK_BATCH",
+                    batchId,
+                    Map.of(),
+                    EVENT_SUBCONTRACT_MAKE_NOTIFIED + ':' + batchId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> batch = one("""
+                    SELECT batch.application_id, batch.notify_qty,
+                           application.bill_no,
+                           make_task.analysis_id,
+                           make_task.required_qty, make_task.produced_qty,
+                           make_task.notified_qty,
+                           goods.code AS goods_code, goods.name AS goods_name
+                    FROM preplan_subcontract_make_task_batches batch
+                    JOIN preplan_subcontract_make_tasks make_task
+                      ON make_task.id = batch.task_id
+                    JOIN subcontract_applications application
+                      ON application.id = batch.application_id
+                     AND application.is_deleted = FALSE
+                    JOIN goods ON goods.id = make_task.goods_id
+                    WHERE batch.id = ?
+                    """, batchId);
+            if (batch == null) return;
+            UUID applicationId = (UUID) batch.get("application_id");
+            String billNo = str(batch.get("bill_no"));
+            String goodsLabel = subcontractGoodsLabel(batch);
+            String quantity = qty(bd(batch.get("notify_qty")));
+            String produced = qty(bd(batch.get("produced_qty")));
+            String required = qty(bd(batch.get("required_qty")));
+            notifyPreplanSupplyRecipients(
+                    TYPE_TASK,
+                    "新委外需求（前置自制已入库）：" + billNo,
+                    "委外件 " + goodsLabel + " 的前置自制成品已入库（累计 " + produced
+                            + " / 需求 " + required + "），计划部已通知委外 "
+                            + quantity + "。请到委外申请详情核对，并从委外任务中心"
+                            + "分解订货；本通知不代表已订货或已出仓。",
+                    "/subcontract/applications/" + applicationId,
+                    SUBCONTRACT_APPLICATION_VIEW_AUTHORITY);
+        });
+    }
+
+    /**
      * A target item with active BOM children must complete the normal MAKE
      * chain before warehouse outbound. The database task remains authoritative;
      * this event only points eligible planning/production users to that task.
@@ -1833,7 +1945,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                       ON plan_item.id = issue_item.plan_item_id
                      AND plan_item.is_deleted = FALSE
                      AND plan_item.flow_mode IN (
-                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND')
+                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
                     JOIN subcontract_material_plans plan
                       ON plan.id = plan_item.plan_id
                      AND plan.is_deleted = FALSE
@@ -1897,7 +2009,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                       ON plan_item.id = issue_item.plan_item_id
                      AND plan_item.is_deleted = FALSE
                      AND plan_item.flow_mode IN (
-                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND')
+                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
                     JOIN subcontract_order_items order_item
                       ON order_item.id = issue_item.order_item_id
                      AND COALESCE(order_item.is_deleted, FALSE) = FALSE
@@ -1966,7 +2078,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                       ON plan_item.id = issue_item.plan_item_id
                      AND plan_item.is_deleted = FALSE
                      AND plan_item.flow_mode IN (
-                         'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                         'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                     JOIN subcontract_material_plans plan
                       ON plan.id = plan_item.plan_id
                      AND plan.is_deleted = FALSE
@@ -2133,7 +2245,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 JOIN goods ON goods.id = item.goods_id
                 WHERE item.id = ?
                   AND item.is_deleted = FALSE
-                  AND item.flow_mode IN ('DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND')
+                  AND item.flow_mode IN ('DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
                   AND item.preparation_status = 'READY_OUTBOUND'
                   AND LEAST(item.planned_qty, item.prepared_qty) > item.issued_qty
                 """, planItemId);

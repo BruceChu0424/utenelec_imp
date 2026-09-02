@@ -250,7 +250,7 @@ class SubcontractMaterialPlanStateMachineTest {
     }
 
     @Test
-    void makePreparationCreatesNoDraftUntilAllPartialFinishedInsAreAccepted() {
+    void makePreparationReleasesOutboundOnFirstSliceAndDraftsFullBatchAtCompletion() {
         UUID planId = UUID.randomUUID();
         UUID planItemId = UUID.randomUUID();
         UUID orderItemId = UUID.randomUUID();
@@ -282,6 +282,8 @@ class SubcontractMaterialPlanStateMachineTest {
 
         service.afterFinishedInboundApproved(UUID.randomUUID(), warehouseId);
 
+        // V458：首片实收即释放可出仓并通知仓库一次；中间追加片不再打扰。
+        verify(chainNotice, times(1)).notifySubcontractOutboundReady(planItemId);
         verify(issueRepo, never()).save(any());
         inboundRows.clear();
         inboundRows.add(finishedInboundRow(
@@ -300,7 +302,7 @@ class SubcontractMaterialPlanStateMachineTest {
         verify(issueItemRepo, times(1)).save(ArgumentMatchers.argThat(item ->
                 planItemId.equals(item.getPlanItemId())
                         && item.getQty().compareTo(new BigDecimal("10")) == 0));
-        verify(chainNotice).notifySubcontractOutboundReady(planItemId);
+        verify(chainNotice, times(2)).notifySubcontractOutboundReady(planItemId);
         assertThat(callsContaining("insert into stock_reservations"))
                 .hasSize(3)
                 .allSatisfy(call -> {

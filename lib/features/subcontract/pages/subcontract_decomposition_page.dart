@@ -263,8 +263,6 @@ class _SubcontractDecompositionPageState
         final header = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildResponsibilityPanel(),
-            const SizedBox(height: UtenSpacing.s12),
             _buildMetrics(data),
             const SizedBox(height: UtenSpacing.s12),
             _buildFilters(data, desktop: desktop),
@@ -326,50 +324,6 @@ class _SubcontractDecompositionPageState
           ],
         );
       },
-    );
-  }
-
-  Widget _buildResponsibilityPanel() {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: '委外申请由物料分析下达，本页只负责选择尚未分解明细并生成商业订货单',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.42),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.account_tree_outlined, color: theme.colorScheme.primary),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '这里分解物料分析下达的委外申请',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '申请数量、需求日和来源计划不可在委外端修改。可跨申请选择明细、按本次数量下单；'
-                    '每张订货单只归一个委外商，保存后进入财务审核。直接委外不走本页，可从委外首页新建订货。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

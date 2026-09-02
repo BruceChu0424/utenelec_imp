@@ -2529,7 +2529,8 @@ void main() {
       );
       await tester.tap(subcontractCheckbox);
       await tester.pump();
-      expect(find.text('下达委外准备(1)'), findsOneWidget);
+      // V458：按钮统一为「下达委外」；有子层由服务端转前置自制。
+      expect(find.text('下达委外(1)'), findsOneWidget);
     },
   );
 

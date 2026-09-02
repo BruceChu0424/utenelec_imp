@@ -53,6 +53,7 @@ import java.util.UUID;
  *   POST /api/notices/{id}/complete                          完成待办
  *   POST /api/notices/read-all                               全部已读
  *   POST /api/notices/read-by-source?events=                 按事件来源标记已读
+ *   POST /api/notices/read-by-route?routes=                  按办理路由标记已读（业务动作完成）
  *   POST /api/notices/batch-delete                           批量删除
  *   GET  /api/notices/audience/employees                     接收范围员工搜索
  *   POST /api/notices/audience/preview                       接收范围预览
@@ -171,6 +172,13 @@ public class NoticeController {
     @PreAuthorize("hasAuthority('notice:read')")
     public void markReadBySource(@RequestParam List<String> events) {
         service.markReadBySourceEvents(events);
+    }
+
+    /** 按站内办理路由批量标记已读（业务动作完成/打开单据后清对应通知）。 */
+    @PostMapping("/read-by-route")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public Map<String, Object> markReadByRoute(@RequestParam List<String> routes) {
+        return Map.of("read", service.markReadByRoutes(routes));
     }
 
     @PostMapping("/batch-delete")

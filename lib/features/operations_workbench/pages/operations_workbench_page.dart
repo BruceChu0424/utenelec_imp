@@ -56,10 +56,9 @@ class _OperationsWorkbenchPageState
   @override
   void initState() {
     super.initState();
-    // 委外人员需要先看到所有业务阶段；采购/仓库继续先看仍待处理任务。
-    _status = widget.department == OperationsWorkbenchDepartment.subcontract
-        ? null
-        : kOperationsWorkbenchOpenStatus;
+    // 采购/仓库先看仍待处理任务（委外任务中心是独立的
+    // SubcontractDecompositionPage，默认全部业务阶段）。
+    _status = kOperationsWorkbenchOpenStatus;
     Future<void>.microtask(_load);
   }
 
@@ -152,18 +151,9 @@ class _OperationsWorkbenchPageState
           route: issue == null ? _purchaseOrderRoute(selected) : null,
         );
       case OperationsWorkbenchDepartment.subcontract:
-        if (!data.capabilities.canCreateSubcontractOrder) return null;
-        final issue = _loading
-            ? '正在刷新委外任务，请稍候'
-            : _subcontractSelectionIssue(selected);
-        return _SelectionPrimaryAction(
-          buttonKey: const Key('operations-workbench-subcontract-batch'),
-          label: selected.isEmpty ? '生成委外订货单' : '生成委外订货单(${selected.length})',
-          icon: Icons.precision_manufacturing_outlined,
-          readyTooltip: '把已选计划委外申请明细带入委外订货单',
-          unavailableReason: issue,
-          route: issue == null ? _subcontractOrderRoute(selected) : null,
-        );
+        // 委外批量分解在专属 SubcontractDecompositionPage（含四权限门禁），
+        // 本页不再维护第二份委外选择逻辑。
+        return null;
       case OperationsWorkbenchDepartment.warehouse:
         // 仓库任务没有安全批量业务命令：保留表格单选 + 双击打开，不显示复选框。
         return null;
@@ -189,41 +179,11 @@ class _OperationsWorkbenchPageState
     return null;
   }
 
-  String? _subcontractSelectionIssue(List<OperationsWorkbenchTask> selected) {
-    if (selected.isEmpty) return '请先选择委外申请任务';
-    final hasUnlinked = selected.any(
-      (task) =>
-          (task.actionDocItemId?.trim().isEmpty ?? true) ||
-          task.actionDocument == null,
-    );
-    if (hasUnlinked) return '所选任务缺少委外申请来源，请刷新后重试';
-    final hasWrongStage = selected.any(
-      (task) => task.taskStatus.toUpperCase() != 'WAITING_ORDER',
-    );
-    if (hasWrongStage) return '只能选择“申请待分解”的任务';
-    final hasLaterDocument = selected.any(
-      (task) => !_isSubcontractApplication(task.actionDocument!),
-    );
-    if (hasLaterDocument) return '所选任务已进入委外订货或回厂阶段';
-    final hasUnissued = selected.any(
-      (task) => !task.actionDocument!.isIssuedSubcontractApplication,
-    );
-    if (hasUnissued) return '计划申请尚未下达，请刷新后重试';
-    return null;
-  }
-
   String _purchaseOrderRoute(List<OperationsWorkbenchTask> selected) {
     final ids = selected
         .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
         .join(',');
     return '/purchase/orders/new?requestItemIds=$ids';
-  }
-
-  String _subcontractOrderRoute(List<OperationsWorkbenchTask> selected) {
-    final ids = selected
-        .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
-        .join(',');
-    return '/subcontract/orders/new?applicationItemIds=$ids';
   }
 
   void _openAction(OperationsWorkbenchTask task) {
@@ -933,10 +893,9 @@ class _DesktopTaskTable extends StatelessWidget {
       },
       rowColor: (item) {
         // 选中行由组件统一高亮接管；这里只保留未选行的状态/异常着色。
-        // 采购/委外任务台：行按状态着色（全部视图下绿/蓝/黄/红一眼可辨）；
+        // 采购任务台：行按状态着色（全部视图下绿/蓝/黄/红一眼可辨）；
         // 仓库履约部门保留异常行高亮。
-        if (data.department == OperationsWorkbenchDepartment.purchase ||
-            data.department == OperationsWorkbenchDepartment.subcontract) {
+        if (data.department == OperationsWorkbenchDepartment.purchase) {
           return metricToneColor(
             _statusTone(item.taskStatus),
             Theme.of(context),
@@ -1246,9 +1205,4 @@ String _quantity(num value, String unitName) {
 bool _isPurchaseRequest(OperationsActionDocument document) {
   final type = document.docType.toUpperCase();
   return type == 'PURCHASE_REQUEST' || type == 'REQUEST';
-}
-
-bool _isSubcontractApplication(OperationsActionDocument document) {
-  final type = document.docType.toUpperCase();
-  return type == 'SUBCONTRACT_APPLICATION' || type == 'APPLICATION';
 }

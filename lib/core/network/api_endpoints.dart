@@ -546,6 +546,9 @@ abstract final class ApiEndpoints {
   static const noticesReadAll = '/notices/read-all';
   static const noticesUnreadCountBySource = '/notices/unread-count-by-source';
   static const noticesReadBySource = '/notices/read-by-source';
+
+  /// 按站内办理路由批量已读（业务动作完成/打开单据后清对应通知）。
+  static const noticesReadByRoute = '/notices/read-by-route';
   static const noticesBatchDelete = '/notices/batch-delete';
   static const noticesAudiencePreview = '/notices/audience/preview';
   static const noticesAudienceEmployees = '/notices/audience/employees';

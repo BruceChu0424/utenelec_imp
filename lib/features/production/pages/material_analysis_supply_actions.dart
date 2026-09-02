@@ -393,7 +393,8 @@ abstract class _MaterialAnalysisSupplyActionsState
     final count = _selectedExecutableCount(route);
     return switch (route) {
       MaterialSupplyRoute.buy => '提交采购需求($count)',
-      MaterialSupplyRoute.subcontract => '下达委外准备($count)',
+      // V458：无子层立即通知委外部；有子层由服务端转前置自制，不惊动委外。
+      MaterialSupplyRoute.subcontract => '下达委外($count)',
       // 两段式第一步：创建任务后留在本页填数量，不直接进计划向导。
       MaterialSupplyRoute.make =>
         _canGenerate ? '创建子件并填写生产数量($count)' : '创建自制子件任务($count)',
@@ -1194,7 +1195,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       _notifyingRoute = route;
       _bulkOperationLabel = switch (route) {
         MaterialSupplyRoute.buy => '正在提交采购需求',
-        MaterialSupplyRoute.subcontract => '正在下达委外准备需求',
+        MaterialSupplyRoute.subcontract => '正在下达委外任务',
         MaterialSupplyRoute.make => '正在创建自制备料任务',
       };
       _bulkOperationCompleted = 0;
@@ -1252,7 +1253,8 @@ abstract class _MaterialAnalysisSupplyActionsState
       });
       final message = switch (route) {
         MaterialSupplyRoute.buy => '采购需求已提交并通知采购',
-        MaterialSupplyRoute.subcontract => '委外准备需求已下达并通知委外',
+        // V458：有子层级的委外件由服务端转前置自制，成品入库后才通知委外部。
+        MaterialSupplyRoute.subcontract => '委外任务已下达：无子层已通知委外部；有子层已转前置自制，入库后自动通知',
         MaterialSupplyRoute.make => '自制备料任务已创建',
       };
       context.appSuccess(

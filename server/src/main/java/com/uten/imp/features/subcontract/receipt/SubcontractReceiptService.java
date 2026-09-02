@@ -596,7 +596,7 @@ public class SubcontractReceiptService {
                     SELECT plan_item.id
                     FROM subcontract_material_plan_items plan_item
                     WHERE plan_item.order_item_id = :orderItemId
-                      AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                      AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                       AND plan_item.is_deleted = FALSE
                     ORDER BY plan_item.id FOR UPDATE
                     """).setParameter("orderItemId", orderItemId).getResultList();
@@ -609,7 +609,7 @@ public class SubcontractReceiptService {
                      AND issue.status = 1 AND issue.is_deleted = FALSE
                     JOIN subcontract_material_plan_items plan_item
                       ON plan_item.id = issue_item.plan_item_id
-                     AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                     AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                     WHERE issue_item.order_item_id = :orderItemId
                       AND issue_item.is_deleted = FALSE
                     """).setParameter("orderItemId", orderItemId).getSingleResult());
@@ -674,7 +674,7 @@ public class SubcontractReceiptService {
                            FROM subcontract_material_plan_items plan_item
                            WHERE plan_item.order_item_id = order_item.id
                              AND plan_item.flow_mode IN (
-                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                              AND plan_item.is_deleted = FALSE
                        ) AS new_flow,
                        COALESCE((
@@ -687,7 +687,7 @@ public class SubcontractReceiptService {
                            JOIN subcontract_material_plan_items plan_item
                              ON plan_item.id = issue_item.plan_item_id
                             AND plan_item.flow_mode IN (
-                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                             AND plan_item.is_deleted = FALSE
                            WHERE issue_item.order_item_id = order_item.id
                              AND issue_item.is_deleted = FALSE

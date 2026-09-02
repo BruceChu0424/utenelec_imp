@@ -39,8 +39,9 @@ abstract final class UtenNotify {
   /// - [kind] 语义级别，决定配色与默认图标。
   /// - [icon] 自定义左侧图标（如来消息的业务图标），null 用 kind 语义图标。
   /// - [onTap] 点击弹条后的动作（如跳转详情页），执行后弹条自动关闭。
-  /// - [onDismissed] 仅在该条实际显示后完成关闭时调用；排队未显示或 clear 不调用。
-  /// - [duration] 自动消失时长，默认 3.2s（error 建议 5s，用 [error] 快捷方法）。
+  /// - [onDismissed] 该条被真正移除时调用（含排队项到点独立消失）；clear 或宿主销毁不调用。
+  /// - [duration] 自动消失时长，默认按 kind 定档（info/success 1.5s、warning 2s、
+  ///   error 2.5s，超长文案与字段错误有加成）；每条从到达时刻独立计时。
   static void banner(
     BuildContext context, {
     required String message,

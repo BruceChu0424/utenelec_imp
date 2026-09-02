@@ -152,7 +152,8 @@ void main() {
 
       expect(find.text('直接委外下单'), findsNothing);
       expect(find.text('从申请分解下单'), findsNothing);
-      expect(find.textContaining('订货不是采购收货'), findsOneWidget);
+      // V458 清理后责任头教学区已移除；列表本体仍应正常渲染。
+      expect(find.byType(SubcontractOrderWorkspacePage), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

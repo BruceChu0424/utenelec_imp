@@ -889,6 +889,26 @@ public class NoticeService {
         stateRepo.markVisibleReadBySourceEvents(userId, events);
     }
 
+    /**
+     * 按站内办理路由批量标记已读（action_route 精确匹配，去重后最多 50 条）：
+     * 业务动作完成（如采购下单成功）或打开对应单据后，指向这些路由的通知对
+     * 当前用户变已读。TODO 通知只置已读，业务完成（task_completed_at）仍是
+     * 独立事实，由用户显式「标记完成」。返回本次实际置读的通知条数。
+     */
+    @Transactional
+    public int markReadByRoutes(List<String> routes) {
+        if (routes == null || routes.isEmpty()) return 0;
+        List<String> distinct = routes.stream()
+                .filter(r -> r != null && !r.isBlank())
+                .distinct()
+                .limit(50)
+                .toList();
+        if (distinct.isEmpty()) return 0;
+        UUID userId = requireStaffId();
+        tx.bind();
+        return stateRepo.markVisibleReadByRoutes(userId, distinct);
+    }
+
     /** 批量删除（从当前用户列表移除；他人不受影响）。返回实际删除条数。 */
     @Transactional
     public int deleteForCurrentUser(List<UUID> ids) {

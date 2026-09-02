@@ -35,6 +35,7 @@ class MaterialAnalysisControllerTest {
                 mock(MaterialStockReallocationService.class),
                 preferences,
                 mock(MaterialAnalysisSupplyProgressService.class),
+                mock(SubcontractMakeTaskService.class),
                 mock(com.uten.imp.audit.AuditDetailViewRecorder.class));
         UUID goodsId = UUID.randomUUID();
         UUID workshopId = UUID.randomUUID();
@@ -66,6 +67,7 @@ class MaterialAnalysisControllerTest {
                 mock(MaterialStockReallocationService.class),
                 preferences,
                 mock(MaterialAnalysisSupplyProgressService.class),
+                mock(SubcontractMakeTaskService.class),
                 mock(com.uten.imp.audit.AuditDetailViewRecorder.class));
         Set<UUID> oversized = IntStream.range(0, 201)
                 .mapToObj(ignored -> UUID.randomUUID())

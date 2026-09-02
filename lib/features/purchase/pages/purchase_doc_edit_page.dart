@@ -34,6 +34,7 @@ import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../notice/providers/notice_providers.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -859,6 +860,26 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         }
         if (!mounted) return;
         bumpListRefresh(ref, _cfg.refreshKey);
+        // 业务动作完成 → 对应通知自动已读：指向来源采购申请或本次新建订货单
+        // 的通知（action_route 精确匹配）随保存一并清理；失败静默不打断业务。
+        unawaited(
+          markNoticesReadByRoute(
+            ProviderScope.containerOf(context, listen: false),
+            [
+              for (final row in _grid.rows)
+                if (row.sourceRequestId != null)
+                  RoutePath.purchaseDocDetail(
+                    PurchaseDocType.request.pathSegment,
+                    row.sourceRequestId!,
+                  ),
+              for (final createdDoc in created)
+                RoutePath.purchaseDocDetail(
+                  _cfg.type.pathSegment,
+                  createdDoc.id,
+                ),
+            ],
+          ),
+        );
         if (financeError != null) {
           context.appWarning(
             '已生成 ${created.length} 张订货单，部分未提交财务审核组：$financeError。'
@@ -921,6 +942,13 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         PurchaseDocType.request => widget.id == null ? '已创建' : '已保存',
       });
       bumpListRefresh(ref, _cfg.refreshKey);
+      // 同上：保存/更新成功后，指向本单据的通知对当前用户自动已读。
+      unawaited(
+        markNoticesReadByRoute(
+          ProviderScope.containerOf(context, listen: false),
+          [RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id)],
+        ),
+      );
       context.replace(RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id));
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

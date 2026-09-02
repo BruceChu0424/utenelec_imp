@@ -33,11 +33,6 @@ class SubcontractApplicationRegisterPage extends StatelessWidget {
       title: '计划委外申请',
       subtitle: '物料分析下达 · 委外端只读 · 未分解数量去任务中心处理',
       icon: Icons.assignment_outlined,
-      responsibilityTitle: '申请事实归计划与物料分析',
-      responsibilityDescription:
-          '本页只核对需求货品、数量、需求日、来源计划和申请状态。委外人员不能修改申请；'
-          '要下单请进入“申请分解”，选择仍有未下单量的申请明细。',
-      stages: ['物料分析', '申请已下达', '委外分解', '商业订货'],
       primaryAction: _PageAction(
         label: '进入申请分解',
         icon: Icons.call_split_rounded,
@@ -66,11 +61,6 @@ class SubcontractOrderWorkspacePage extends StatelessWidget {
       title: '委外订货与全链路',
       subtitle: '直接委外 / 物料分析委外 · 财务批准 · 目标件出仓 · 回厂 IQC · 结算',
       icon: Icons.precision_manufacturing_outlined,
-      responsibilityTitle: '订货不是采购收货：先交付目标件，再加工回厂',
-      responsibilityDescription:
-          '直接委外可新建订货；物料分析委外必须从申请分解进入。财务批准后由服务端逐行判断：'
-          '无子层级核对目标件合格库存后通知仓库出仓；有子层级先完整自制、FQC、仓库实收入仓，再出目标件。',
-      stages: ['财务审核', '前置自制(按需)', '目标件出仓', '加工回厂', 'IQC 合格入仓', '结案/应付'],
       primaryAction: _PageAction(
         label: '直接委外下单',
         icon: Icons.add_rounded,
@@ -109,20 +99,6 @@ class SubcontractReceiptQualityTrackingPage extends StatelessWidget {
       title: '委外回厂与品质跟踪',
       subtitle: '仓库登记回厂 · 先出后进校验 · IQC 隔离 · 仓库确认入仓',
       icon: Icons.fact_check_outlined,
-      responsibilityTitle: '回厂登记与品质放行是两件事',
-      responsibilityDescription:
-          '仓库按预计到货登记委外目标件回厂，未审核出仓或超出剩余可回数量会被服务端阻断。'
-          '回厂审核进入 IQC 待检隔离，并按财务批准的加工费快照形成应付；'
-          '品质 PASS 只形成仓库待入库切片；仓库确认实物和库位后才增加库存并推进生产。'
-          '不重复立账，FAIL 须走正式退回/贷项反向。',
-      stages: [
-        '目标件已出仓',
-        '加工商回厂',
-        '仓库登记+加工费应付',
-        'IQC 隔离',
-        'PASS 放行 / FAIL 退回处置',
-        '仓库确认入仓',
-      ],
       primaryAction: _PageAction(
         label: '去仓库预计到货',
         icon: Icons.warehouse_outlined,
@@ -146,11 +122,6 @@ class SubcontractLegacyMaterialIssueHistoryPage extends StatelessWidget {
       title: '历史委外发料记录',
       subtitle: '历史 BOM 子件发料兼容 · 新单请去仓库“委外出仓”',
       icon: Icons.history_rounded,
-      responsibilityTitle: '这里不是新委外出仓入口',
-      responsibilityDescription:
-          'V436 新流始终出仓订货目标件；本页保留历史 BOM 子件发料和既有单据反向证据。'
-          '新委外出仓由财务批准/前置自制完成后自动释放到仓库专属任务中心。',
-      stages: ['历史单据', '冻结子件单耗', '供应商处台账', '退回 / 损耗反向'],
       primaryAction: _PageAction(
         label: '去仓库委外出仓',
         icon: Icons.outbound_outlined,
@@ -174,11 +145,6 @@ class SubcontractFinishedReturnHistoryPage extends StatelessWidget {
       title: '委外成品退回记录',
       subtitle: '绑定回厂 / IQC 处置 · 反向加工费应付 · 不允许空白新建',
       icon: Icons.undo_outlined,
-      responsibilityTitle: '成品退回必须有真实回厂或品质处置来源',
-      responsibilityDescription:
-          '退回数量、货品、仓库和应付反向必须绑定已发生的回厂明细。'
-          '本页用于查历史与审计；没有来源单据时系统失败关闭。',
-      stages: ['回厂 / IQC 来源', '退回草稿', '仓库审核出库', '应付反向'],
       primaryAction: _PageAction(
         label: '从回厂来源登记退回',
         icon: Icons.undo_rounded,
@@ -205,11 +171,6 @@ class SubcontractMaterialReturnHistoryPage extends StatelessWidget {
       title: '委外余料退回记录',
       subtitle: '绑定委外商处台账 · 仓库实收入库 · 对称减少供应商结存',
       icon: Icons.assignment_return_outlined,
-      responsibilityTitle: '余料退回必须来自尚未核销的供应商结存',
-      responsibilityDescription:
-          '历史 BOM 子件单与 V436 目标件单按各自冻结语义核对可退量。'
-          '没有可退结存、仓库实收或来源明细时不得创建或审核。',
-      stages: ['供应商净结存', '退回来源选择', '仓库实收', '台账对称核减'],
       primaryAction: _PageAction(
         label: '从在外结存登记余料',
         icon: Icons.assignment_return_outlined,
@@ -236,11 +197,6 @@ class SubcontractWasteResponsibilityPage extends StatelessWidget {
       title: '委外损耗与责任',
       subtitle: '实物损耗确认 · 超耗责任另审 · 索赔/抵销/赔偿不得混写',
       icon: Icons.gavel_outlined,
-      responsibilityTitle: '仓库确认实物，财务决定责任与履约方式',
-      responsibilityDescription:
-          '损耗单只核减委外商处实物结存。建议索赔金额不是扣款、负应付或会计凭证；'
-          '有超耗时由财务责任单选择公司承担、豁免、索赔应收、合法抵销、现金赔偿或实物补偿。',
-      stages: ['实物损耗', '允许量 / 超耗量', '财务责任决定', '履约证据', '索赔/总账'],
       primaryAction: _PageAction(
         label: '从在外结存登记损耗',
         icon: Icons.playlist_add_rounded,
@@ -267,11 +223,6 @@ class SubcontractInquiryArchivePage extends StatelessWidget {
       title: '委外询价历史',
       subtitle: '当前业务未启用 · 仅保留兼容查询',
       icon: Icons.archive_outlined,
-      responsibilityTitle: '询价不是当前委外下单入口',
-      responsibilityDescription:
-          '当前委外商业放行从订货单开始：直接委外或物料分析申请分解。'
-          '询价表仅保留历史兼容，不提供新建、编辑或审核主动作。',
-      stages: ['历史兼容', '只读查询'],
       emptyMessage: '暂无委外询价历史',
       columns: _inquiryColumns,
     ),
@@ -290,9 +241,6 @@ class _ListPresentation {
     required this.title,
     required this.subtitle,
     required this.icon,
-    required this.responsibilityTitle,
-    required this.responsibilityDescription,
-    required this.stages,
     required this.emptyMessage,
     required this.columns,
     this.primaryAction,
@@ -304,9 +252,6 @@ class _ListPresentation {
   final String title;
   final String subtitle;
   final IconData icon;
-  final String responsibilityTitle;
-  final String responsibilityDescription;
-  final List<String> stages;
   final String emptyMessage;
   final _ColumnsBuilder columns;
   final _PageAction? primaryAction;
@@ -421,15 +366,20 @@ class _SubcontractBusinessListPageState
             builder: (context, _) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _ResponsibilityHeader(
-                  presentation: _p,
-                  showPrimary:
-                      _p.primaryAction != null && _canUse(_p.primaryAction!),
-                  showSecondary:
-                      _p.secondaryAction != null &&
-                      _canUse(_p.secondaryAction!),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
+                if ((_p.primaryAction != null && _canUse(_p.primaryAction!)) ||
+                    (_p.secondaryAction != null &&
+                        _canUse(_p.secondaryAction!))) ...[
+                  _HeaderActions(
+                    primary: _p.primaryAction,
+                    secondary: _p.secondaryAction,
+                    showPrimary:
+                        _p.primaryAction != null && _canUse(_p.primaryAction!),
+                    showSecondary:
+                        _p.secondaryAction != null &&
+                        _canUse(_p.secondaryAction!),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
                 _buildFilters(),
                 const SizedBox(height: UtenSpacing.s12),
                 Expanded(
@@ -554,111 +504,6 @@ class _SubcontractBusinessListPageState
   }
 }
 
-class _ResponsibilityHeader extends StatelessWidget {
-  const _ResponsibilityHeader({
-    required this.presentation,
-    required this.showPrimary,
-    required this.showSecondary,
-  });
-
-  final _ListPresentation presentation;
-  final bool showPrimary;
-  final bool showSecondary;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label:
-          '${presentation.responsibilityTitle}。${presentation.responsibilityDescription}',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxWidth < 760;
-            final content = Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(presentation.icon, color: theme.colorScheme.primary),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        presentation.responsibilityTitle,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  presentation.responsibilityDescription,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Wrap(
-                  spacing: UtenSpacing.s4,
-                  runSpacing: UtenSpacing.s4,
-                  children: [
-                    for (
-                      var index = 0;
-                      index < presentation.stages.length;
-                      index++
-                    )
-                      _StageChip(
-                        index: index + 1,
-                        label: presentation.stages[index],
-                      ),
-                  ],
-                ),
-              ],
-            );
-            final actions = _HeaderActions(
-              primary: presentation.primaryAction,
-              secondary: presentation.secondaryAction,
-              showPrimary: showPrimary,
-              showSecondary: showSecondary,
-            );
-            if (compact) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  content,
-                  if (actions.hasActions) ...[
-                    const SizedBox(height: UtenSpacing.s12),
-                    actions,
-                  ],
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: content),
-                if (actions.hasActions) ...[
-                  const SizedBox(width: UtenSpacing.s16),
-                  actions,
-                ],
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
 class _HeaderActions extends StatelessWidget {
   const _HeaderActions({
     required this.primary,
@@ -696,32 +541,6 @@ class _HeaderActions extends StatelessWidget {
         ),
     ],
   );
-}
-
-class _StageChip extends StatelessWidget {
-  const _StageChip({required this.index, required this.label});
-
-  final int index;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      constraints: const BoxConstraints(minHeight: 36),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.62),
-        borderRadius: UtenRadius.pillAll,
-      ),
-      child: Text(
-        '$index  $label',
-        style: theme.textTheme.labelSmall?.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
 }
 
 class _BusinessPagedController extends ChangeNotifier {

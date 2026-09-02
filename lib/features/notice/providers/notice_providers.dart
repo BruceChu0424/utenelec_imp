@@ -8,6 +8,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/router/route_names.dart';
 import '../models/notice.dart';
 import '../repositories/notice_repository.dart';
+import 'notice_route_read_bridge.dart';
 
 final noticeRepositoryProvider = Provider<NoticeRepository>((ref) {
   return DioNoticeRepository(ref.watch(apiClientProvider));
@@ -37,7 +38,13 @@ class NoticeListNotifier extends AutoDisposeAsyncNotifier<List<Notice>> {
   Future<List<Notice>> build() async {
     final filter = ref.watch(noticeFilterProvider);
     final repo = ref.watch(noticeRepositoryProvider);
-    return repo.list(onlyUnread: filter == NoticeFilter.unread);
+    final items = await repo.list(onlyUnread: filter == NoticeFilter.unread);
+    // 全局路由桥留档：未读通知的 action_route——用户导航到该路由即自动已读
+    //（见 notice_route_read_bridge.dart）。
+    ref
+        .read(noticeTargetRoutesProvider.notifier)
+        .recordRoutes(items.where((n) => !n.isRead).map((n) => n.actionRoute));
+    return items;
   }
 
   Future<void> refresh() async {
@@ -148,6 +155,28 @@ Future<void> markAllNoticeRead(WidgetRef ref) async {
   await ref.read(noticeRepositoryProvider).markAllRead();
   ref.invalidate(noticeListProvider);
   ref.read(unreadNoticeCountProvider.notifier).refresh();
+}
+
+/// 按站内办理路由批量标记已读：业务动作完成（如采购下单成功）或打开对应
+/// 单据后，指向这些路由（action_route 精确匹配）的通知对当前用户变已读；
+/// TODO 通知只置已读，业务完成仍是独立事实。
+///
+/// 取 `ProviderContainer` 而非 `WidgetRef`：业务保存成功后页面常立即跳转
+/// 销毁，跨异步的 WidgetRef 再 read 会抛 StateError（同
+/// [markNoticeReadContainer] 的场景）。失败静默放行——已读清理是增强行为，
+/// 不打断业务操作，徽标随后台轮询自然对齐。
+Future<void> markNoticesReadByRoute(
+  ProviderContainer container,
+  List<String> routes,
+) async {
+  if (routes.isEmpty) return;
+  try {
+    await container.read(noticeRepositoryProvider).markReadByRoute(routes);
+  } catch (_) {
+    return;
+  }
+  container.invalidate(noticeListProvider);
+  container.read(unreadNoticeCountProvider.notifier).refresh();
 }
 
 /// 批量删除（从当前用户列表移除），返回实际删除条数

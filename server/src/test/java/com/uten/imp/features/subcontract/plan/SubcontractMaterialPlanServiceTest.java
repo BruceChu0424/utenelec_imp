@@ -130,7 +130,9 @@ class SubcontractMaterialPlanServiceTest {
                 eq(DIRECT_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
                 eq(DIRECT_BASE_UNIT_ID), eq(unitRate), eq(plannedBaseQty),
                 eq("DIRECT_OUTBOUND"), eq("READY_OUTBOUND"), eq(plannedBaseQty),
-                eq(WAREHOUSE_ID), eq(false), fingerprint(), eq(ACTOR_ID), eq(ACTOR_ID));
+                eq(WAREHOUSE_ID), eq(false), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
         verify(issueRepo).save(ArgumentMatchers.argThat(draft ->
                 draft.getStatus() == 0
                         && SUPPLIER_ID.equals(draft.getSupplierId())
@@ -171,7 +173,9 @@ class SubcontractMaterialPlanServiceTest {
                 eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
                 eq(MAKE_BASE_UNIT_ID), eq(new BigDecimal("2")), eq(plannedBaseQty),
                 eq("MAKE_THEN_OUTBOUND"), eq("ACTION_REQUIRED"), eq(BigDecimal.ZERO),
-                eq(WAREHOUSE_ID), eq(true), fingerprint(), eq(ACTOR_ID), eq(ACTOR_ID));
+                eq(WAREHOUSE_ID), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
         verify(issueRepo, never()).save(any());
         verify(issueItemRepo, never()).save(any());
         verify(chainNotice).notifySubcontractPreparationRequired(insertedPlanItemId.getValue());
@@ -211,7 +215,9 @@ class SubcontractMaterialPlanServiceTest {
                 eq(DIRECT_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
                 eq(DIRECT_BASE_UNIT_ID), eq(BigDecimal.ONE), eq(new BigDecimal("3.0000")),
                 eq("DIRECT_OUTBOUND"), eq("READY_OUTBOUND"), eq(new BigDecimal("3.0000")),
-                eq(WAREHOUSE_ID), eq(false), fingerprint(), eq(ACTOR_ID), eq(ACTOR_ID));
+                eq(WAREHOUSE_ID), eq(false), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
         verify(jdbc).update(
                 planItemInsertSql(),
                 any(UUID.class), any(UUID.class), eq(MAKE_ITEM_ID), eq(2),
@@ -219,7 +225,9 @@ class SubcontractMaterialPlanServiceTest {
                 eq(MAKE_GOODS_ID), ArgumentMatchers.<UUID>isNull(),
                 eq(MAKE_BASE_UNIT_ID), eq(BigDecimal.ONE), eq(new BigDecimal("4.0000")),
                 eq("MAKE_THEN_OUTBOUND"), eq("ACTION_REQUIRED"), eq(BigDecimal.ZERO),
-                eq(WAREHOUSE_ID), eq(true), fingerprint(), eq(ACTOR_ID), eq(ACTOR_ID));
+                eq(WAREHOUSE_ID), eq(true), fingerprint(),
+                ArgumentMatchers.<UUID>isNull(), ArgumentMatchers.<UUID>isNull(),
+                eq(ACTOR_ID), eq(ACTOR_ID));
         verify(issueItemRepo).save(ArgumentMatchers.argThat(item ->
                 directPlanItemId.equals(item.getPlanItemId())
                         && DIRECT_GOODS_ID.equals(item.getGoodsId())
@@ -268,6 +276,10 @@ class SubcontractMaterialPlanServiceTest {
     private List<Object[]> nativeRows(String sql, Map<String, Object> parameters) {
         if (sql.contains("FROM subcontract_orders WHERE id")) {
             return orderRows;
+        }
+        if (sql.contains("preplan_subcontract_make_task_batches")) {
+            // V458：本用例订货行不来自前置自制账本，谱系查询应返回空。
+            return List.of();
         }
         if (sql.contains("FROM subcontract_order_items item")) {
             return orderItemRows;

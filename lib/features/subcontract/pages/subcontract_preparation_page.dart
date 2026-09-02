@@ -22,11 +22,14 @@ import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../production/models/production_material_analysis.dart';
 import '../../production/repositories/production_repository.dart';
+import '../../production/widgets/subcontract_make_task_tile.dart';
 
-/// 委外目标件前置自制独立待办。
+/// 委外准备中心：有子层级委外件的「先自制、后通知委外」双视角。
 ///
-/// 服务端拥有 BOM 判断、状态、数量、阻断原因和 allowedActions。Flutter 只展示任务并在
-/// `subcontract_preparation:start` 与 `START_PREPARATION` 同时成立时发送启动命令。
+/// 「分析来源」页签展示物料分析下达的前置自制账本（produced/notified/available
+/// 权威数量），支持按可通知量分批通知委外；「订货来源」页签是直接委外订货
+/// 财务批准后的前置自制待办。服务端拥有 BOM 判断、状态、数量、阻断原因和
+/// allowedActions；Flutter 只展示任务并转发显式命令。
 class SubcontractPreparationPage extends ConsumerStatefulWidget {
   const SubcontractPreparationPage({
     super.key,
@@ -65,6 +68,14 @@ class _SubcontractPreparationPageState
   int _requestId = 0;
   String? _startingPlanItemId;
 
+  // V458 分析来源页签：先自制、后通知委外的账本投影。
+  // 默认停留在「订货来源」经典队列；分析来源页签承载新账本视角。
+  int _sourceTab = 1;
+  PagedResult<SubcontractMakeTask>? _makePage;
+  bool _makeLoading = false;
+  String? _makeError;
+  int _makeRequestId = 0;
+
   String? get _focusedPlanItemId => widget.planItemId?.trim().isNotEmpty == true
       ? widget.planItemId!.trim()
       : null;
@@ -85,7 +96,43 @@ class _SubcontractPreparationPageState
   @override
   void initState() {
     super.initState();
-    Future<void>.microtask(_load);
+    Future<void>.microtask(() {
+      _loadMake();
+      _load();
+    });
+  }
+
+  Future<void> _loadMake({int page = 1}) async {
+    final requestId = ++_makeRequestId;
+    if (mounted) {
+      setState(() {
+        _makeLoading = true;
+        _makeError = null;
+      });
+    }
+    try {
+      final next = await ref
+          .read(productionPlanRepositoryProvider)
+          .subcontractMakeTasks(
+            page: page,
+            keyword: _search.text,
+            status: _status.isEmpty ? null : _status,
+          );
+      if (!mounted || requestId != _makeRequestId) return;
+      setState(() {
+        _makePage = next;
+        _makeLoading = false;
+      });
+    } catch (error) {
+      if (!mounted || requestId != _makeRequestId) return;
+      setState(() {
+        _makeLoading = false;
+        _makeError = productionErrorMessage(
+          error,
+          fallback: '委外前置自制进度加载失败，请稍后重试',
+        );
+      });
+    }
   }
 
   @override
@@ -131,7 +178,12 @@ class _SubcontractPreparationPageState
   void _searchChanged(String _) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
-      if (mounted) _load();
+      if (!mounted) return;
+      if (_sourceTab == 0) {
+        _loadMake();
+      } else {
+        _load();
+      }
     });
   }
 
@@ -302,8 +354,8 @@ class _SubcontractPreparationPageState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: UtenAppBar(
-        title: '委外前置自制',
-        subtitle: '整批备齐目标件后，才释放仓库委外出仓',
+        title: '委外准备中心',
+        subtitle: '有子层级的委外件先自制，成品入库后通知委外；满批自动，可分批',
         leading: UtenBackButton(
           onPressed: () =>
               popOrBackTo(context, defaultPath: RouteName.subcontract),
@@ -330,145 +382,216 @@ class _SubcontractPreparationPageState
   }
 
   Widget _buildBody() {
-    if (_page == null && _loading) {
-      return Center(
-        child: Semantics(
-          label: '正在加载委外前置自制任务',
-          child: const CircularProgressIndicator(),
-        ),
-      );
-    }
-    if (_error != null && _page == null) {
-      return UtenEmpty.error(
-        message: '无法加载委外前置自制',
-        description: _error,
-        actionLabel: '重试',
-        onAction: _load,
-      );
-    }
-    final page = _page;
-    if (page == null) {
-      return UtenEmpty.error(actionLabel: '重试', onAction: _load);
-    }
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final desktop = constraints.maxWidth >= 840;
         final header = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildPolicyHeader(),
+            SegmentedButton<int>(
+              key: const Key('subcontract-preparation-source-tab'),
+              segments: const [
+                ButtonSegment(
+                  value: 0,
+                  icon: Icon(Icons.science_outlined),
+                  label: Text('分析来源·前置自制'),
+                ),
+                ButtonSegment(
+                  value: 1,
+                  icon: Icon(Icons.receipt_long_outlined),
+                  label: Text('订货来源·前置自制'),
+                ),
+              ],
+              selected: {_sourceTab},
+              onSelectionChanged: _loading || _makeLoading
+                  ? null
+                  : (selection) => setState(() => _sourceTab = selection.first),
+            ),
             const SizedBox(height: UtenSpacing.s12),
             _buildFilters(desktop: desktop),
             const SizedBox(height: UtenSpacing.s12),
           ],
         );
-        if (desktop) {
+        if (_sourceTab == 0) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               header,
-              Expanded(child: _buildTable(page)),
+              Expanded(child: _buildMakeList(desktop: desktop)),
             ],
           );
         }
-        return ListView(
-          key: const Key('subcontract-preparation-compact-list'),
-          children: [
-            header,
-            if (page.items.isEmpty)
-              SizedBox(
-                height: 300,
-                child: UtenEmpty(
-                  icon: Icons.precision_manufacturing_outlined,
-                  message: _sourceScoped ? '该委外节点尚未形成前置自制待办' : '当前没有前置自制任务',
-                  description: _sourceScoped
-                      ? '请先在委外任务中心完成订货并通过财务审批；有 BOM 的目标件随后会在这里开放前置自制。'
-                      : '有 BOM 子层级的委外订货经财务批准后，会在这里出现。',
-                ),
-              )
-            else
-              for (final task in page.items) ...[
-                _PreparationCard(
-                  task: task,
-                  starting: _startingPlanItemId == task.planItemId,
-                  canStart:
-                      _canStartByPermission && task.allows('START_PREPARATION'),
-                  onStart: () => _start(task),
-                  onOpenAnalysis:
-                      task.analysisId?.trim().isNotEmpty == true &&
-                          task.allows('OPEN_ANALYSIS') &&
-                          _canViewProductionAnalysis
-                      ? () => _openAnalysis(task)
-                      : null,
-                  onOpenOrder: task.orderId.isEmpty || !_canViewOrder
-                      ? null
-                      : () =>
-                            context.push('/subcontract/orders/${task.orderId}'),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-              ],
-            _PreparationPager(
-              page: page.page,
-              totalPages: page.totalPages,
-              loading: _loading,
-              onPageChanged: (next) => _load(page: next),
-            ),
-          ],
-        );
+        return _buildOrderSourcedBody(header: header, desktop: desktop);
       },
     );
   }
 
-  Widget _buildPolicyHeader() {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: '有子层级的委外目标件必须先完成完整自制、品质检查和仓库实收入仓，整批备齐后才可委外出仓',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.42),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
+  /// V458 分析来源页签：先自制、后通知委外的账本进度 + 分批通知入口。
+  Widget _buildMakeList({required bool desktop}) {
+    if (_makeLoading && _makePage == null) {
+      return Center(
+        child: Semantics(
+          label: '正在加载委外前置自制进度',
+          child: const CircularProgressIndicator(),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '前置自制只为这条委外订货准备目标件',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+      );
+    }
+    if (_makeError != null && _makePage == null) {
+      return UtenEmpty.error(
+        message: '无法加载委外前置自制进度',
+        description: _makeError,
+        actionLabel: '重试',
+        onAction: _loadMake,
+      );
+    }
+    final page = _makePage;
+    if (page == null) {
+      return UtenEmpty.error(actionLabel: '重试', onAction: _loadMake);
+    }
+    if (page.items.isEmpty) {
+      return const UtenEmpty(
+        icon: Icons.precision_manufacturing_outlined,
+        message: '当前没有委外件前置自制任务',
+        description: '物料分析准备对有子层级的委外件「下达委外」后，会在这里形成前置自制进度；'
+            '自制成品入库并通知委外前，委外部不会参与。',
+      );
+    }
+    final canNotify = _permissionsLikeAnalysisNotify;
+    return ListView(
+      key: const Key('subcontract-preparation-make-list'),
+      children: [
+        for (final task in page.items)
+          Card(
+            margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              child: SubcontractMakeTaskTile(
+                task: task,
+                canNotify: canNotify,
+                compact: true,
+                onOpenAnalysis: _canViewProductionAnalysis
+                    ? () => context.push(
+                        RouteName.productionMaterialAnalysis,
+                        extra: ProductionMaterialAnalysisSeed(
+                          analysisId: task.analysisId,
+                        ),
+                      )
+                    : null,
+                onNotified: _loadMake,
               ),
             ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '系统冻结 BOM 指纹与目标仓，按完整自制链执行：物料分析 → 仓库 DRAW 发料 → 生产/报工 → '
-              'FQC → 仓库实收入仓。前置成品不会提前满足原生产需求，整批转为本委外行专属出仓准备。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+          ),
+        _PreparationPager(
+          page: page.page,
+          totalPages: page.totalPages,
+          loading: _makeLoading,
+          onPageChanged: (next) => _loadMake(page: next),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOrderSourcedBody({
+    required Widget header,
+    required bool desktop,
+  }) {
+    if (_page == null && _loading) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          const Expanded(
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      );
+    }
+    if (_error != null && _page == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          Expanded(
+            child: UtenEmpty.error(
+              message: '无法加载订货来源前置自制任务',
+              description: _error,
+              actionLabel: '重试',
+              onAction: _load,
+            ),
+          ),
+        ],
+      );
+    }
+    final page = _page;
+    if (page == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          Expanded(child: UtenEmpty.error(actionLabel: '重试', onAction: _load)),
+        ],
+      );
+    }
+    if (desktop) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          Expanded(child: _buildTable(page)),
+        ],
+      );
+    }
+    return ListView(
+      key: const Key('subcontract-preparation-compact-list'),
+      children: [
+        header,
+        if (page.items.isEmpty)
+          SizedBox(
+            height: 300,
+            child: UtenEmpty(
+              icon: Icons.precision_manufacturing_outlined,
+              message: _sourceScoped ? '该委外节点尚未形成前置自制待办' : '当前没有订货来源前置自制任务',
+              description: _sourceScoped
+                  ? '请先在委外任务中心完成订货并通过财务审批；有 BOM 的目标件随后会在这里开放前置自制。'
+                  : '直接委外下单且有 BOM 子层级的目标件，经财务批准后会在这里出现。',
+            ),
+          )
+        else
+          for (final task in page.items) ...[
+            _PreparationCard(
+              task: task,
+              starting: _startingPlanItemId == task.planItemId,
+              canStart:
+                  _canStartByPermission && task.allows('START_PREPARATION'),
+              onStart: () => _start(task),
+              onOpenAnalysis:
+                  task.analysisId?.trim().isNotEmpty == true &&
+                      task.allows('OPEN_ANALYSIS') &&
+                      _canViewProductionAnalysis
+                  ? () => _openAnalysis(task)
+                  : null,
+              onOpenOrder: task.orderId.isEmpty || !_canViewOrder
+                  ? null
+                  : () =>
+                        context.push('/subcontract/orders/${task.orderId}'),
             ),
             const SizedBox(height: UtenSpacing.s8),
-            Wrap(
-              spacing: UtenSpacing.s4,
-              runSpacing: UtenSpacing.s4,
-              children: [
-                for (final step in const [
-                  '1 物料分析',
-                  '2 领料',
-                  '3 生产报工',
-                  '4 FQC',
-                  '5 成品实收入仓',
-                  '6 目标件出仓',
-                ])
-                  Chip(label: Text(step)),
-              ],
-            ),
           ],
+        _PreparationPager(
+          page: page.page,
+          totalPages: page.totalPages,
+          loading: _loading,
+          onPageChanged: (next) => _load(page: next),
         ),
-      ),
+      ],
     );
+  }
+
+  bool get _permissionsLikeAnalysisNotify {
+    if (ref.read(isSuperAdminProvider)) return true;
+    return ref
+        .read(currentPermissionsProvider)
+        .contains(Perm.productionMaterialAnalysisNotify);
   }
 
   Widget _buildFilters({required bool desktop}) {
@@ -477,10 +600,17 @@ class _SubcontractPreparationPageState
       child: UtenSearchBar(
         key: const Key('subcontract-preparation-search'),
         controller: _search,
-        hint: '搜索订货单号、目标件编码或名称',
+        hint: _sourceTab == 0
+            ? '搜索目标件编码、名称或任务号'
+            : '搜索订货单号、目标件编码或名称',
         onChanged: _searchChanged,
       ),
     );
+    if (_sourceTab == 0) {
+      return desktop
+          ? Wrap(spacing: UtenSpacing.s12, children: [search])
+          : Column(children: [search]);
+    }
     final status = SizedBox(
       width: desktop ? 260 : double.infinity,
       child: DropdownButtonFormField<String>(

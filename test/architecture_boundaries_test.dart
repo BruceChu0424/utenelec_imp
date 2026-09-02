@@ -56,6 +56,7 @@ void main() {
     'purchase->basic_data',
     'purchase->department',
     'purchase->employee',
+    'purchase->notice',
     'purchase->operations_workbench',
     'purchase->report',
     'purchase->warehouse',

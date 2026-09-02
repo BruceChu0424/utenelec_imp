@@ -486,7 +486,11 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.subcontractReportView];
   }
   if (routePath == RouteName.subcontractPreparations) {
-    return const [Perm.subcontractPreparationView];
+    // V458 委外准备中心双视角：分析来源账本归生产域，订货来源归委外域。
+    return const [
+      Perm.subcontractPreparationView,
+      Perm.productionMaterialAnalysisView,
+    ];
   }
   if (location.startsWith('/subcontract/')) {
     // V436 新出仓流不允许从历史发料页空白新建。

@@ -463,7 +463,7 @@ public class SubcontractMaterialIssueService {
                            FROM subcontract_material_plan_items plan_item
                            WHERE plan_item.order_item_id = order_item.id
                              AND plan_item.flow_mode IN (
-                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                              AND plan_item.is_deleted = FALSE
                        ) AS new_flow,
                        COALESCE((
@@ -476,7 +476,7 @@ public class SubcontractMaterialIssueService {
                            JOIN subcontract_material_plan_items plan_item
                              ON plan_item.id = issue_item.plan_item_id
                             AND plan_item.flow_mode IN (
-                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND')
+                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND')
                             AND plan_item.is_deleted = FALSE
                            WHERE issue_item.order_item_id = order_item.id
                              AND issue_item.issue_id <> :issueId

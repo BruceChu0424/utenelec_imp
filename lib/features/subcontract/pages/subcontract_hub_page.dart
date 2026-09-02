@@ -1,8 +1,6 @@
-// 委外全链路入口页：两条下单来源汇入同一执行链。
-//  ① 直接委外：直接新建订货；物料分析委外：先在申请分解页选择只读申请明细。
-//  ② 财务通过后，无子层级目标件直接进入仓库出仓；有子层级先走前置自制。
-//  ③ 目标件出仓、加工回厂、IQC、余料/损耗责任和应付结算各有独立岗位页面。
-// 点卡片进对应列表/报表页。卡片统一用 UtenHubCard（徽章恒在右上角）。
+// 委外管理入口页：与采购 hub 同构——任务中心 / 单据 / 报表 三组权限过滤卡片。
+// 有子层级委外件的「先自制、后通知委外」由计划部在物料分析准备完成并通知后，
+// 委外部才在任务中心看到申请；本页不放流程教学区。
 //
 // V53 仅是历史默认授权；现行入口按每个页面权限与个人/部门显式配置逐卡显隐。
 import 'package:flutter/material.dart';
@@ -70,39 +68,39 @@ class SubcontractHubPage extends ConsumerWidget {
           ),
         ),
     ];
-    final trackingEntries = <_Entry>[
+    final docEntries = <_Entry>[
       if (can(Perm.subcontractOrderView))
         _Entry(
-          icon: Icons.precision_manufacturing_outlined,
-          label: '委外订货与全链路',
-          description: '财务、准备、目标件出仓、回厂 IQC、结案与应付',
+          icon: Icons.shopping_bag_outlined,
+          label: '委外订货',
+          description: '订货、财务审批与全链路进度',
           location: SubcontractRoute.list(
             SubcontractDocConfig.order.pathSegment,
+          ),
+        ),
+      if (can(Perm.subcontractApplicationView))
+        _Entry(
+          icon: Icons.description_outlined,
+          label: '计划委外申请',
+          description: '计划部通知委外的只读申请',
+          location: SubcontractRoute.list(
+            SubcontractDocConfig.application.pathSegment,
           ),
         ),
       if (can(Perm.subcontractReceiptView))
         _Entry(
           icon: Icons.fact_check_outlined,
-          label: '回厂与品质跟踪',
-          description: '仓库登记回厂、IQC 隔离、PASS 放行或 FAIL 处置',
+          label: '回厂与品质',
+          description: '回厂登记、IQC 与待入库',
           location: SubcontractRoute.list(
             SubcontractDocConfig.receipt.pathSegment,
-          ),
-        ),
-      if (can(Perm.subcontractMaterialIssueView))
-        _Entry(
-          icon: Icons.history_rounded,
-          label: '历史 BOM 子件发料',
-          description: '历史 BOM 子件发料兼容；不是新委外出仓入口',
-          location: SubcontractRoute.list(
-            SubcontractDocConfig.materialIssue.pathSegment,
           ),
         ),
       if (can(Perm.subcontractReturnView))
         _Entry(
           icon: Icons.undo_outlined,
           label: '成品退回',
-          description: '绑定回厂 / IQC 来源，仓库退回并反向加工费应付',
+          description: '退回委外成品并反向应付',
           location: SubcontractRoute.list(
             SubcontractDocConfig.returnDoc.pathSegment,
           ),
@@ -111,7 +109,7 @@ class SubcontractHubPage extends ConsumerWidget {
         _Entry(
           icon: Icons.assignment_return_outlined,
           label: '余料退回',
-          description: '按委外商处净结存登记仓库实收并对称核减台账',
+          description: '委外商处余料登记入库',
           location: SubcontractRoute.list(
             SubcontractDocConfig.materialReturn.pathSegment,
           ),
@@ -120,9 +118,20 @@ class SubcontractHubPage extends ConsumerWidget {
         _Entry(
           icon: Icons.gavel_outlined,
           label: '损耗与责任',
-          description: '实物损耗、超耗责任、索赔履约和会计事实分层处理',
+          description: '损耗、索赔与责任处理',
           location: SubcontractRoute.list(
             SubcontractDocConfig.waste.pathSegment,
+          ),
+        ),
+    ];
+    final legacyEntries = <_Entry>[
+      if (can(Perm.subcontractMaterialIssueView))
+        _Entry(
+          icon: Icons.history_rounded,
+          label: '历史 BOM 子件发料',
+          description: 'V304 历史单据查看与红冲',
+          location: SubcontractRoute.list(
+            SubcontractDocConfig.materialIssue.pathSegment,
           ),
         ),
     ];
@@ -153,11 +162,9 @@ class SubcontractHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              const _SubcontractFlowOverview(),
-              const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, l10n.hubSectionTaskCenter, taskEntries),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, '履约、异常与责任', trackingEntries),
+              _section(context, theme, l10n.subcontractHubTitle, docEntries),
               const SizedBox(height: UtenSpacing.s16),
               _section(
                 context,
@@ -165,6 +172,8 @@ class SubcontractHubPage extends ConsumerWidget {
                 l10n.subcontractHubSectionReports,
                 reportEntries,
               ),
+              const SizedBox(height: UtenSpacing.s16),
+              _section(context, theme, '历史兼容', legacyEntries),
             ],
           ),
         ),
@@ -202,103 +211,10 @@ class SubcontractHubPage extends ConsumerWidget {
           UtenResponsiveGrid(
             itemCount: entries.length,
             spacing: UtenSpacing.s12,
-            // 8 单据：桌面 4 列 ×2 行；窄屏 2 列。
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),
             itemBuilder: (context, i, _) => _EntryTile(entry: entries[i]),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SubcontractFlowOverview extends StatelessWidget {
-  const _SubcontractFlowOverview();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    const steps = [
-      ('1', '订货来源', '直接委外 / 物料分析申请分解'),
-      ('2', '财务放行', '冻结委外商、价格、税率与结算'),
-      ('3', '准备目标件', '无子层直接；有子层先完整自制'),
-      ('4', '仓库出仓', '专属预留、拣货、审核交付加工商'),
-      ('5', '回厂品质', '先出后进、IQC 隔离、PASS 放行'),
-      ('6', '对账与责任', '应付对账、退回、余料/损耗责任'),
-    ];
-    return Semantics(
-      container: true,
-      label: '委外全链路：订货来源、财务放行、准备目标件、仓库出仓、回厂品质、对账与责任',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '委外不是采购：公司先交付目标件，加工完成回厂后再经品质放行',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              children: [
-                for (final step in steps)
-                  Container(
-                    constraints: const BoxConstraints(
-                      minWidth: 176,
-                      minHeight: 68,
-                    ),
-                    padding: const EdgeInsets.all(UtenSpacing.s8),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
-                      borderRadius: UtenRadius.mdAll,
-                      border: Border.all(
-                        color: theme.colorScheme.outlineVariant,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          radius: 14,
-                          backgroundColor: theme.colorScheme.primaryContainer,
-                          foregroundColor: theme.colorScheme.onPrimaryContainer,
-                          child: Text(
-                            step.$1,
-                            style: theme.textTheme.labelSmall,
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Flexible(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(step.$2, style: theme.textTheme.labelLarge),
-                              Text(
-                                step.$3,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }

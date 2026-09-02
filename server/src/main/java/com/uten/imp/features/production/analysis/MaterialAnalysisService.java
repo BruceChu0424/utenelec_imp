@@ -55,6 +55,7 @@ public class MaterialAnalysisService {
     static final String SOURCE_MAKE_COMPONENT = "MAKE_COMPONENT";
     static final String SOURCE_SUBCONTRACT_PREPARATION =
             "SUBCONTRACT_PREPARATION";
+    static final String SOURCE_SUBCONTRACT_MAKE = "SUBCONTRACT_MAKE";
     static final String STAGE_START = "START";
     static final String STAGE_ASSEMBLY = "ASSEMBLY";
     static final String STAGE_FINISH = "FINISH";
@@ -218,7 +219,8 @@ public class MaterialAnalysisService {
         if (!normalizedSource.isEmpty()
                 && !Set.of(SOURCE_SALES, "REWORK", "TRIAL", "SAMPLE", "STOCK",
                         "OTHER", SOURCE_MAKE_COMPONENT,
-                        SOURCE_SUBCONTRACT_PREPARATION).contains(normalizedSource)) {
+                        SOURCE_SUBCONTRACT_PREPARATION,
+                        SOURCE_SUBCONTRACT_MAKE).contains(normalizedSource)) {
             throw validation("生产需求来源筛选值无效");
         }
         var ownerScope = access.nativeReadScope(
@@ -1428,7 +1430,14 @@ public class MaterialAnalysisService {
                         SELECT 1 FROM production_material_analysis_items child
                         WHERE child.id = action.external_document_id
                           AND child.analysis_id = action.analysis_id
-                          AND child.source_type = 'MAKE_COMPONENT'
+                          AND child.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+                          AND child.is_deleted = FALSE))
+                    OR
+                    (action.external_document_type = 'SUBCONTRACT_MAKE_TASK' AND NOT EXISTS (
+                        SELECT 1 FROM production_material_analysis_items child
+                        WHERE child.id = action.external_document_id
+                          AND child.analysis_id = action.analysis_id
+                          AND child.source_type = 'SUBCONTRACT_MAKE'
                           AND child.is_deleted = FALSE))
                   )
                 """).setParameter("actorId", actorId)
@@ -1843,13 +1852,14 @@ public class MaterialAnalysisService {
                 SET status = 'IN_PROGRESS', updated_at = now()
                 WHERE action.analysis_id = :analysisId
                   AND action.status IN ('CREATED','DONE')
-                  AND action.external_document_type = 'PREPLAN_MAKE_TASK'
+                  AND action.external_document_type IN (
+                      'PREPLAN_MAKE_TASK','SUBCONTRACT_MAKE_TASK')
                   AND EXISTS (
                       SELECT 1
                       FROM production_material_analysis_items child
                       WHERE child.id = action.external_document_id
                         AND child.analysis_id = action.analysis_id
-                        AND child.source_type = 'MAKE_COMPONENT'
+                        AND child.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
                         AND child.is_deleted = FALSE
                         AND (action.status = 'DONE'
                              OR child.submitted_qty + child.approved_qty > 0)
@@ -1980,13 +1990,14 @@ public class MaterialAnalysisService {
                 SET status = 'DONE', updated_at = now()
                 WHERE action.analysis_id = :analysisId
                   AND action.status IN ('CREATED','IN_PROGRESS')
-                  AND action.external_document_type = 'PREPLAN_MAKE_TASK'
+                  AND action.external_document_type IN (
+                      'PREPLAN_MAKE_TASK','SUBCONTRACT_MAKE_TASK')
                   AND EXISTS (
                       SELECT 1
                       FROM production_material_analysis_items child
                       WHERE child.id = action.external_document_id
                         AND child.analysis_id = action.analysis_id
-                        AND child.source_type = 'MAKE_COMPONENT'
+                        AND child.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
                         AND child.is_deleted = FALSE
                         AND GREATEST(
                             child.requested_qty-child.approved_qty
@@ -2393,7 +2404,7 @@ public class MaterialAnalysisService {
                   ON parent_material.id = child.parent_analysis_material_id
                  AND parent_material.analysis_id = child.analysis_id
                 WHERE child.analysis_id = :analysisId
-                  AND child.source_type = 'MAKE_COMPONENT'
+                  AND child.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
                   AND child.is_deleted = FALSE
                   AND parent_material.active = TRUE
                 ORDER BY parent_material.analysis_item_id,
@@ -2981,7 +2992,8 @@ public class MaterialAnalysisService {
                 BomNode parentNode = adjustedByKey.get(parentKey);
                 String parentRoute = effectiveRoutes.getOrDefault(
                         parentKey, parentNode.suggestion());
-                boolean suppliedSubcontract = "SUBCONTRACT".equals(parentRoute);
+                boolean suppliedSubcontract = "SUBCONTRACT".equals(parentRoute)
+                        && !delegatedMakeNodes.contains(parentKey);
                 boolean undelegatedMake = "MAKE".equals(parentRoute)
                         && !delegatedMakeNodes.contains(parentKey);
                 BigDecimal parentOutput = parent.shortageQty();
@@ -3762,6 +3774,10 @@ public class MaterialAnalysisService {
                 throw new ApiException(ErrorCode.FORBIDDEN,
                         "MAKE_COMPONENT 只能由系统备料任务生成");
             }
+            if (SOURCE_SUBCONTRACT_MAKE.equals(source)) {
+                throw new ApiException(ErrorCode.FORBIDDEN,
+                        "SUBCONTRACT_MAKE 只能由有子层级委外件的备料任务生成");
+            }
             if (SOURCE_SUBCONTRACT_PREPARATION.equals(source)
                     && !allowSubcontractPreparation
                     && requestedAnalysisId == null) {
@@ -3863,7 +3879,7 @@ public class MaterialAnalysisService {
                        unit_id, source_ref
                 FROM production_material_analysis_items
                 WHERE analysis_id = :id AND is_deleted = FALSE
-                  AND source_type <> 'MAKE_COMPONENT'
+                  AND source_type NOT IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
                 """).setParameter("id", analysisId)).stream()
                 .map(row -> new SourceIdentity(
                         string(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
@@ -3888,7 +3904,7 @@ public class MaterialAnalysisService {
                        unit_id, source_ref, requested_qty, delivery_date, source_reason
                 FROM production_material_analysis_items
                 WHERE analysis_id = :analysisId AND is_deleted = FALSE
-                  AND source_type <> 'MAKE_COMPONENT'
+                  AND source_type NOT IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
                 """).setParameter("analysisId", analysisId));
         if (rows.size() != requestedItems.size()) throw reusablePayloadConflict();
         Map<SourceIdentity, Object[]> existingBySource = rows.stream()
@@ -3974,7 +3990,7 @@ public class MaterialAnalysisService {
                        unit_id, source_ref, submitted_qty, approved_qty, requested_qty
                 FROM production_material_analysis_items
                 WHERE analysis_id = :id AND is_deleted = FALSE
-                  AND source_type <> 'MAKE_COMPONENT'
+                  AND source_type NOT IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
                 ORDER BY id FOR UPDATE
                 """).setParameter("id", analysisId));
         if (rows.size() != requestedByIdentity.size()) throw conflict("分析来源集合已变化");
@@ -4026,7 +4042,7 @@ public class MaterialAnalysisService {
                        unit_id, source_ref
                 FROM production_material_analysis_items
                 WHERE analysis_id = :id AND is_deleted = FALSE
-                  AND source_type <> 'MAKE_COMPONENT'
+                  AND source_type NOT IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')
                 ORDER BY source_type, sales_order_item_id NULLS FIRST,
                          goods_id, color_id NULLS FIRST, unit_id, source_ref NULLS FIRST
                 """).setParameter("id", analysisId)).stream()

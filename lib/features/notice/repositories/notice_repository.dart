@@ -59,6 +59,10 @@ abstract interface class NoticeRepository {
   /// 按业务事件来源批量标记已读（如打开进度页清空完工徽章）。
   Future<void> markReadBySource(List<String> events);
 
+  /// 按站内办理路由（action_route 精确匹配）批量标记已读：业务动作完成或
+  /// 打开对应单据后，指向这些路由的通知对当前用户变已读。返回实际置读条数。
+  Future<int> markReadByRoute(List<String> routes);
+
   /// 发布新通知（需 notice:publish 权限），返回入库后的实体
   Future<Notice> publish({
     required String title,
@@ -221,6 +225,16 @@ class DioNoticeRepository implements NoticeRepository {
       ApiEndpoints.noticesReadBySource,
       query: {'events': events.join(',')},
     );
+  }
+
+  @override
+  Future<int> markReadByRoute(List<String> routes) async {
+    if (routes.isEmpty) return 0;
+    final json = await _api.post(
+      ApiEndpoints.noticesReadByRoute,
+      query: {'routes': routes.join(',')},
+    );
+    return (json['read'] as num?)?.toInt() ?? 0;
   }
 
   @override

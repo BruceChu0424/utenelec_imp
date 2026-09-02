@@ -20,6 +20,7 @@ import '../../../core/ui/uten_notify.dart';
 import '../../../shared/providers/shared_providers.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
+import '../providers/notice_route_read_bridge.dart';
 import '../repositories/notice_repository.dart';
 import '../widgets/notice_detail_dialog.dart';
 
@@ -507,6 +508,12 @@ void dispatchNoticeArrival(
   final container = ProviderScope.containerOf(context, listen: false);
   final router = onOpenDetail == null ? GoRouter.of(context) : null;
   final detailContext = Navigator.of(context, rootNavigator: true).context;
+
+  // 全局路由桥留档：本条通知的 action_route——用户稍后导航到该路由时由
+  // NoticeRouteReadBridge 自动触发已读（含未点开横幅直接去业务页的场景）。
+  container.read(noticeTargetRoutesProvider.notifier).recordRoutes([
+    notice.actionRoute,
+  ]);
 
   void markRead() {
     // fire-and-forget：标注已读失败可容忍，角标/列表在下次轮询（60s）自愈。

@@ -15,6 +15,7 @@ import 'core/ui/connection_recovery_banner.dart';
 import 'features/admin/widgets/impersonation_banner.dart';
 import 'features/auth/services/pending_refresh_revocation_drainer.dart';
 import 'features/notice/providers/notice_arrival.dart';
+import 'features/notice/providers/notice_route_read_bridge.dart';
 import 'shared/auth/permissions.dart';
 import 'shared/providers/font_scale_provider.dart';
 import 'shared/providers/locale_provider.dart';
@@ -99,6 +100,8 @@ class UtenApp extends ConsumerWidget {
           data: mediaQuery.copyWith(textScaler: scaledTextScaler),
           child: Column(
             children: [
+              // 通知目标路由桥（不渲染）：导航到有通知指向的路由时自动已读。
+              const NoticeRouteReadBridge(),
               // 模拟身份横幅：占顶「固定」、把页面整体下推，不再覆盖 AppBar/返回键。
               // 非模拟时返回 SizedBox.shrink，自动收起不占空间。
               const ImpersonationBanner(),

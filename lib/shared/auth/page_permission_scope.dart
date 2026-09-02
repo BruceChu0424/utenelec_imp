@@ -99,6 +99,9 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   if (segments.first == 'stock') return _stockScopeFor(segments);
   if (segments.first == 'warehouse') return _warehouseScopeFor(path, segments);
   if (path == '/quality/task-center') return _qualityInspectionScope;
+  if (path == '/quality/production-inspections') {
+    return _productionFqcInspectionsScope;
+  }
   if (segments.first == 'sales') return _salesScopeFor(segments);
   if (segments.first == 'subcontract') return _subcontractScopeFor(segments);
   if (segments.first == 'production') return _productionScopeFor(segments);
@@ -165,6 +168,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _warehouseHubScope,
   _inspectionScope,
   _qualityInspectionScope,
+  _productionFqcInspectionsScope,
   _warehouseInboundScope,
   _warehousePurchaseReceiptHistoryScope,
   _warehouseSubcontractReceiptHistoryScope,
@@ -174,6 +178,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _warehouseSubcontractWasteHistoryScope,
   _warehouseIqcReturnScope,
   _warehouseIqcStockInScope,
+  _warehouseQualityResultsScope,
   _warehouseReportScope,
   _shelfLabelScope,
   _subcontractOutboundScope,
@@ -207,6 +212,8 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _subcontractWasteScope,
   _productionHubScope,
   _productionPlanScope,
+  _productionScheduleScope,
+  _productionProgressScope,
   _materialAnalysisScope,
   _materialAnalysisHistoryScope,
   _productionDailyReportScope,
@@ -261,9 +268,9 @@ PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
   }
   if (path == '/warehouse/quality-results' ||
       _isDescendant(path, '/warehouse/quality-results')) {
-    // 合并页主动作是 IQC 入库确认：权限设置展示 stock-in 面（查看+确认）；
-    // 退回登记权限在 warehouse.iqc-return 面（旧退回深链仍可达）。
-    return _warehouseIqcStockInScope;
+    // 合并页专属面：IQC 入库查看+确认与退回登记查看都在本页；旧深链
+    // /warehouse/iqc-stock-ins、/warehouse/iqc-returns 仍各挂原面（重定向可达）。
+    return _warehouseQualityResultsScope;
   }
   if (path == '/warehouse/iqc-returns' ||
       _isDescendant(path, '/warehouse/iqc-returns')) {
@@ -344,8 +351,9 @@ PagePermissionScope? _productionScopeFor(List<String> segments) {
   if (segments.length == 1) return _productionHubScope;
   switch (segments[1]) {
     case 'schedule':
+      return segments.length == 2 ? _productionScheduleScope : null;
     case 'progress':
-      return segments.length == 2 ? _productionPlanScope : null;
+      return segments.length == 2 ? _productionProgressScope : null;
     case 'material-analysis':
       return segments.length == 2 ? _materialAnalysisScope : null;
     case 'material-analyses':
@@ -586,8 +594,13 @@ const _inspectionScope = PagePermissionScope(
   title: '待检处置',
 );
 const _qualityInspectionScope = PagePermissionScope(
-  surfaceKey: 'quality.inspection',
-  title: '品质待检任务',
+  // V456：改挂品质任务中心专属面（IQC/FQC 两域 view + 本页两个决定动作）。
+  surfaceKey: 'quality.task-center',
+  title: '品质任务中心',
+);
+const _productionFqcInspectionsScope = PagePermissionScope(
+  surfaceKey: 'quality.production-fqc',
+  title: '生产成品质检',
 );
 const _warehouseInboundScope = PagePermissionScope(
   surfaceKey: 'warehouse.inbound',
@@ -623,8 +636,12 @@ const _warehouseIqcReturnScope = PagePermissionScope(
 );
 const _warehouseIqcStockInScope = PagePermissionScope(
   surfaceKey: 'warehouse.iqc-stock-in',
-  // 2026-09-01 合并页：列表入口变为「品质部检查结果」，动作权限（查看+确认）不变。
-  title: '品质部检查结果 · IQC 入库',
+  // 旧「IQC 合格待入库」深链重定向进合并页；合并页本体 V456 起挂专属面。
+  title: 'IQC 入库',
+);
+const _warehouseQualityResultsScope = PagePermissionScope(
+  surfaceKey: 'warehouse.quality-results',
+  title: '品质部检查结果',
 );
 const _warehouseHistoryScopes = <String, PagePermissionScope>{
   'purchase-receipts': _warehousePurchaseReceiptHistoryScope,
@@ -796,6 +813,16 @@ const _productionHubScope = PagePermissionScope(
 const _productionPlanScope = PagePermissionScope(
   surfaceKey: 'production.plan',
   title: '生产计划',
+);
+// V456：调度看板/进度页挂 view-only 专属面；完整生产动作仍在 /production/plans
+// 的 production.plan 面授予（安全收紧：不再随看板委派全套生产权限）。
+const _productionScheduleScope = PagePermissionScope(
+  surfaceKey: 'production.schedule',
+  title: '生产调度',
+);
+const _productionProgressScope = PagePermissionScope(
+  surfaceKey: 'production.progress',
+  title: '生产进度',
 );
 const _materialAnalysisScope = PagePermissionScope(
   surfaceKey: 'production.material-analysis',

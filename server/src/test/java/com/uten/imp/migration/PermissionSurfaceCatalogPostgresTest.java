@@ -256,16 +256,33 @@ class PermissionSurfaceCatalogPostgresTest {
 
         // V455: quality.lab-test 面随 lab:test 码整体退役；守卫页守卫同源面开始可装载。
         assertFalse(registry.isKnown("quality.lab-test"));
+        // V456: quality.inspection 旧面退役，能力并入 task-center 专属面（严格超集）。
+        assertFalse(registry.isKnown("quality.inspection"));
         assertEquals(Set.of("account:support", "authorization:manage"),
                 registry.permissionsFor("admin.permission-console"));
         assertEquals(Set.of("audit_log:view"),
                 registry.permissionsFor("admin.audit-center"));
         assertEquals(Set.of(
                         "procurement_inspection:view",
-                        "production_quality_inspection:view"),
+                        "procurement_inspection:handle",
+                        "production_quality_inspection:view",
+                        "production_quality_inspection:approve"),
                 registry.permissionsFor("quality.task-center"));
+        assertEquals(Set.of(
+                        "production_quality_inspection:view",
+                        "production_quality_inspection:approve",
+                        "production_fqc_replenishment:view",
+                        "production_fqc_replenishment:confirm"),
+                registry.permissionsFor("quality.production-fqc"));
+        assertEquals(Set.of(
+                        "warehouse_iqc_stock_in:view",
+                        "warehouse_iqc_stock_in:confirm",
+                        "warehouse_iqc_return:view"),
+                registry.permissionsFor("warehouse.quality-results"));
         assertEquals(Set.of("production_plan:view"),
                 registry.permissionsFor("production.schedule"));
+        assertEquals(Set.of("production_plan:view"),
+                registry.permissionsFor("production.progress"));
         assertEquals(Set.of("production_material_analysis:view"),
                 registry.permissionsFor("production.chain-health"));
     }

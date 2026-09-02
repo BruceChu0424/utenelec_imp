@@ -78,12 +78,17 @@ void main() {
         'server/src/main/resources/db/migration/'
         'V450__warehouse_task_centers_and_stock_item_read_indexes.sql',
       );
+      final v455 = File(
+        'server/src/main/resources/db/migration/'
+        'V455__permission_surface_closure_and_orphan_code_retirement.sql',
+      );
       expect(v328.existsSync(), isTrue);
       expect(v437.existsSync(), isTrue);
       expect(v440.existsSync(), isTrue);
       expect(v443.existsSync(), isTrue);
       expect(v446.existsSync(), isTrue);
       expect(v450.existsSync(), isTrue);
+      expect(v455.existsSync(), isTrue);
       final source = v328.readAsStringSync();
       final seedStart = source.indexOf('INSERT INTO permission_surfaces');
       final seedEnd = source.indexOf(
@@ -98,7 +103,8 @@ void main() {
           '${v440.readAsStringSync()}\n'
           '${v443.readAsStringSync()}\n'
           '${v446.readAsStringSync()}\n'
-          '${v450.readAsStringSync()}';
+          '${v450.readAsStringSync()}\n'
+          '${v455.readAsStringSync()}';
       final surfaceKeys = {
         for (final path in _businessPaths())
           pagePermissionScopeFor(path)!.surfaceKey,
@@ -232,7 +238,9 @@ Iterable<String> _businessPaths() sync* {
     '/warehouse/inspections',
     '/warehouse/iqc-stock-ins',
     '/warehouse/iqc-stock-ins/PURCHASE/receipt-1',
+    '/warehouse/quality-results',
     '/quality/task-center',
+    '/quality/production-inspections',
     '/warehouse/inbound/expectations',
     '/warehouse/inbound/arrival-exceptions',
     '/warehouse/inbound/receipts/new',

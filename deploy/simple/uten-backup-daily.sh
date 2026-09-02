@@ -2,7 +2,7 @@
 # Uten IMP 每日数据备份（ADR-060 简化链配套）
 # - PostgreSQL 自定义格式全量 dump → /data/uten-imp-backups/pg/（RAID1，与系统盘分离）
 # - 附件目录（本地存储启用时）rsync 快照 → /data/uten-imp-backups/attachments/
-# - 保留策略：日备 14 份；周日的转存 weekly/ 保 8 份
+# - 保留策略：只保留最新 1 份（新备份成功后删除旧的）
 # - 附带 RAID/磁盘健康巡检，异常写入日志并输出非零关键行（不中断备份）
 set -euo pipefail
 
@@ -10,14 +10,12 @@ BACKUP_ROOT=/data/uten-imp-backups
 PG_DIR="$BACKUP_ROOT/pg"
 ATT_SRC=/data/uten-imp/attachments
 ATT_DIR="$BACKUP_ROOT/attachments"
-WEEKLY="$PG_DIR/weekly"
-DAILY_KEEP=14
-WEEKLY_KEEP=8
+KEEP=1
 LOG_TAG=uten-backup
 
-mkdir -p "$PG_DIR" "$WEEKLY" "$ATT_DIR"
+mkdir -p "$PG_DIR" "$ATT_DIR"
 # pg_dump 以 postgres 身份执行，pg 目录需归其所有
-chown postgres:postgres "$PG_DIR" "$WEEKLY"
+chown postgres:postgres "$PG_DIR"
 
 stamp=$(date +%Y%m%d-%H%M%S)
 dump="$PG_DIR/uten_imp-$stamp.dump"
@@ -37,16 +35,10 @@ if [ -d "$ATT_SRC" ]; then
     || echo "[$LOG_TAG] WARN attachments rsync failed"
 fi
 
-# 3) 周日留周备
-if [ "$(date +%u)" = "7" ]; then
-  cp -p "$dump" "$WEEKLY/"
-fi
+# 3) 轮转：只留最新 KEEP 份（先确保本轮 dump 成功，再删旧）
+ls -1t "$PG_DIR"/uten_imp-*.dump 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
 
-# 4) 轮转
-ls -1t "$PG_DIR"/uten_imp-*.dump 2>/dev/null | tail -n +$((DAILY_KEEP + 1)) | xargs -r rm -f
-ls -1t "$WEEKLY"/uten_imp-*.dump 2>/dev/null | tail -n +$((WEEKLY_KEEP + 1)) | xargs -r rm -f
-
-# 5) 健康/水位巡检（只告警不失败）
+# 4) 健康/水位巡检（只告警不失败）
 raid=$(cat /proc/mdstat | grep -A1 md0 | grep -oE "\[U+\]" | head -1)
 [ "$raid" = "[UU]" ] || echo "[$LOG_TAG] WARN RAID1 非双UP: $raid"
 usage=$(df --output=pcent /data | tail -1 | tr -dc '0-9')

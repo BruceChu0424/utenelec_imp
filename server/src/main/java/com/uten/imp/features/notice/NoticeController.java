@@ -162,6 +162,29 @@ public class NoticeController {
         service.completeTodo(id);
     }
 
+    /**
+     * V459「稍后再看」：snoozed_until 前弹卡流不再弹出（通知中心仍可见），
+     * 同时置已读；minutes 默认 15，上限 24 小时。
+     */
+    @PostMapping("/{id}/snooze")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public java.time.Instant snooze(
+            @PathVariable UUID id,
+            @RequestParam(required = false, defaultValue = "15") int minutes) {
+        return service.snoozeNotice(id, minutes);
+    }
+
+    /**
+     * V459 弹卡真态校验（弹前+停留心跳共用）：按通知 id 批量返回办结与认领
+     * 状态（"XX 正在审核"/已办结收卡）。仅本人可见通知参与。
+     */
+    @GetMapping("/pending-review-status")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public java.util.Map<String, Object> pendingReviewStatus(
+            @RequestParam List<UUID> ids) {
+        return java.util.Map.of("items", service.pendingReviewStatus(ids));
+    }
+
     @PostMapping("/read-all")
     @PreAuthorize("hasAuthority('notice:read')")
     public void markAllRead() {

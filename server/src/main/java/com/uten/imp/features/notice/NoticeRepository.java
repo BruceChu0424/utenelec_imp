@@ -46,6 +46,8 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                     s.readAt IS NULL
                     AND s.popupAcknowledgedAt IS NULL
                   ))
+              AND (n.resolvedAt IS NULL)
+              AND (s IS NULL OR s.snoozedUntil IS NULL OR s.snoozedUntil <= CURRENT_TIMESTAMP)
               AND (
                     n.publishedAt > :afterPublishedAt
                     OR (n.publishedAt = :afterPublishedAt AND n.id > :afterId)
@@ -57,6 +59,24 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             @Param("afterPublishedAt") Instant afterPublishedAt,
             @Param("afterId") UUID afterId,
             Pageable pageable);
+
+    /**
+     * V459 办结撤回：按 (aggregateKind, aggregateId) 批量置办结时间与原因，
+     * 一次 UPDATE 撤回该聚合全部接收人的待审通知；仅未办结行，幂等。
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("""
+            UPDATE Notice n
+               SET n.resolvedAt = CURRENT_TIMESTAMP,
+                   n.resolvedReason = :reason
+             WHERE n.aggregateKind = :aggregateKind
+               AND n.aggregateId = :aggregateId
+               AND n.resolvedAt IS NULL
+            """)
+    int resolveReviewPendingByAggregate(
+            @Param("aggregateKind") String aggregateKind,
+            @Param("aggregateId") UUID aggregateId,
+            @Param("reason") String reason);
 
     @Query("""
             SELECT COUNT(n)

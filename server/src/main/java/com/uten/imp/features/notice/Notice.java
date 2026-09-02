@@ -120,4 +120,20 @@ public class Notice extends BaseEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "target_employee_ids", nullable = false, columnDefinition = "jsonb")
     private String targetEmployeeIds = "[]";
+
+    /** V459：待办聚合类型（如 SALES_ORDER / PROCUREMENT_APPROVAL_CASE）；非空时办结撤回按 (kind,id) 定位。 */
+    @Column(name = "aggregate_kind", length = 40)
+    private String aggregateKind;
+
+    /** V459：待办聚合主键；历史行为 NULL=不参与撤回。 */
+    @Column(name = "aggregate_id")
+    private java.util.UUID aggregateId;
+
+    /** V459：业务办结时间；非空=全部接收人弹卡停止展示、通知中心灰显「已办结」。 */
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
+
+    /** V459：办结原因短码（APPROVED/REJECTED/CANCELED/COMPLETED/OUTBOUND_CREATED 等）。 */
+    @Column(name = "resolved_reason", length = 40)
+    private String resolvedReason;
 }

@@ -40,4 +40,11 @@ public class NoticeUserState {
 
     @Column(name = "task_completed_at")
     private Instant taskCompletedAt;
+
+    /**
+     * V459「稍后再看」到期时刻：未到期不出弹卡流（通知中心仍可见），
+     * 到点未办结则下次到达重弹；跨设备一致（服务端语义）。
+     */
+    @Column(name = "snoozed_until")
+    private Instant snoozedUntil;
 }

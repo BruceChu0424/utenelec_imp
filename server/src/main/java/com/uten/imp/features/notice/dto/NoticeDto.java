@@ -48,5 +48,11 @@ public record NoticeDto(
         List<String> blessingTemplates,
         String sourceEvent,
         // ---- V454：主角名单（聚合卡逐人姓名+标签；单人卡一行；非庆典类空列表）----
-        List<NoticeCelebrationSubjectDto> subjects) {
+        List<NoticeCelebrationSubjectDto> subjects,
+        // ---- V459：审核待办弹卡（interactive=注册的审核卡事件；办结撤回后灰显「已办结」）----
+        boolean interactive,
+        String aggregateKind,
+        String aggregateId,
+        Instant resolvedAt,
+        String resolvedReason) {
 }

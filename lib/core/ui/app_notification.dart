@@ -20,6 +20,24 @@ import 'uten_top_banner_card.dart';
 /// 通知类型。
 enum AppNotificationKind { success, error, warning, info }
 
+/// 弹条上的操作按钮（V459 审核待办卡：「去审核」主按钮 +「稍后再看」次按钮）。
+///
+/// 点击按钮执行 [onPressed] 后卡片自动关闭；与整卡 onTap 互不冲突（按钮命中
+/// 优先于卡片的 InkWell）。
+class AppNotificationAction {
+  const AppNotificationAction({
+    required this.label,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+
+  /// 主按钮（filled）；false 渲染为文本按钮。
+  final bool filled;
+}
+
 /// 通知值对象。
 class AppNotification {
   AppNotification({
@@ -33,6 +51,8 @@ class AppNotification {
     this.onTap,
     this.onDismissed,
     this.createdAtMs = 0,
+    this.actions,
+    this.statusLine,
   });
 
   final String id;
@@ -57,6 +77,13 @@ class AppNotification {
   /// 关闭按钮或滑动关闭。宿主销毁或服务调用 [AppNotificationService.clear]
   /// 时不触发。
   final VoidCallback? onDismissed;
+
+  /// V459：操作按钮区（可空=普通弹条，行为零变化）。点击后卡片关闭。
+  final List<AppNotificationAction>? actions;
+
+  /// V459：动态状态行载体（如「张三 正在审核 · 2 分钟前」）。审核卡停留期间由
+  /// 分派层心跳更新；普通弹条为 null。
+  final ValueNotifier<String?>? statusLine;
 }
 
 /// 通知服务：Notifier 持有内存队列；所有页面通过 `context.appSuccess/Error/...` 调用。
@@ -129,6 +156,8 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       icon: n.icon,
       onTap: n.onTap,
       onDismissed: n.onDismissed,
+      actions: n.actions,
+      statusLine: n.statusLine,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     );
     // state 同时承担「当前可见 + 等待显示」队列。宿主按新到旧叠放最近 3 条；
@@ -234,7 +263,10 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
   ///
   /// 支持自定义 [icon] 与点击动作 [onTap]，用于「微信式消息弹条」场景：
   /// 顶部滑入一条新消息，点击跳转详情，不阻塞当前操作。
-  void showMessage(
+  ///
+  /// V459：[actions]（操作按钮区）与 [statusLine]（动态状态行）供审核待办卡
+  /// 使用；返回入队后的卡片 id，供外部（办结心跳）精确 dismiss。
+  String showMessage(
     String message, {
     String? title,
     AppNotificationKind kind = AppNotificationKind.info,
@@ -242,20 +274,28 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     IconData? icon,
     VoidCallback? onTap,
     VoidCallback? onDismissed,
+    List<AppNotificationAction>? actions,
+    ValueNotifier<String?>? statusLine,
     bool force = false,
-  }) => _show(
-    AppNotification(
-      id: '',
-      kind: kind,
-      title: title,
-      message: message,
-      durationMs: duration?.inMilliseconds ?? _readMs(kind, message),
-      icon: icon,
-      onTap: onTap,
-      onDismissed: onDismissed,
-    ),
-    force: force,
-  );
+  }) {
+    final id = _newId();
+    _show(
+      AppNotification(
+        id: id,
+        kind: kind,
+        title: title,
+        message: message,
+        durationMs: duration?.inMilliseconds ?? _readMs(kind, message),
+        icon: icon,
+        onTap: onTap,
+        onDismissed: onDismissed,
+        actions: actions,
+        statusLine: statusLine,
+      ),
+      force: force,
+    );
+    return id;
+  }
 }
 
 /// 全局 Provider。
@@ -590,6 +630,50 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     );
   }
 
+  /// V459 操作按钮：主按钮 filled 紧凑款（高 36），次按钮文本款；动作执行后
+  /// 卡片自动关闭（复用整卡关闭路径，保证 onDismissed 恰好一次）。
+  Widget _actionButton(
+    ThemeData theme,
+    AppNotificationAction action,
+    Color foreground,
+  ) {
+    void handle() {
+      if (_actionTriggered || _dismissing) return;
+      _actionTriggered = true;
+      try {
+        action.onPressed();
+      } finally {
+        _dismiss();
+      }
+    }
+
+    if (action.filled) {
+      return FilledButton(
+        onPressed: handle,
+        style: FilledButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          minimumSize: const Size(72, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          textStyle: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        child: Text(action.label),
+      );
+    }
+    return TextButton(
+      onPressed: handle,
+      style: TextButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        minimumSize: const Size(56, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        foregroundColor: foreground,
+        textStyle: theme.textTheme.labelLarge,
+      ),
+      child: Text(action.label),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -700,6 +784,55 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: fg.withValues(alpha: 0.85),
                           ),
+                        ),
+                      ),
+                    // V459 审核卡动态状态行：「张三 正在审核」——由分派层心跳更新。
+                    if (n.statusLine != null)
+                      ValueListenableBuilder<String?>(
+                        valueListenable: n.statusLine!,
+                        builder: (context, status, _) {
+                          if (status == null || status.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.person_pin_circle_outlined,
+                                  color: fg.withValues(alpha: 0.9),
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    status,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: fg.withValues(alpha: 0.9),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    // V459 操作按钮区：主按钮（filled）+ 次按钮（text）。
+                    // 点击执行动作后卡片自动关闭；按钮命中优先于整卡 onTap。
+                    if (n.actions != null && n.actions!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (var i = 0; i < n.actions!.length; i++) ...[
+                              if (i > 0) const SizedBox(width: 8),
+                              _actionButton(theme, n.actions![i], fg),
+                            ],
+                          ],
                         ),
                       ),
                   ],

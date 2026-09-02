@@ -125,6 +125,9 @@ public class SubcontractMaterialPlanService
                            UUID prepareTaskId) {
         }
         List<PendingLine> pendingLines = new ArrayList<>();
+        // 直下单销售式供货：同单同货多行共享一个递减的可用量池，防止重复占用
+        // （与销售 reserveOnApprove 同款口径）。
+        Map<String, BigDecimal> stockPool = new HashMap<>();
         for (Object[] item : items) {
             UUID orderItemId = (UUID) item[0];
             UUID goodsId = (UUID) item[1];
@@ -144,15 +147,45 @@ public class SubcontractMaterialPlanService
             PreparedLineage prepared = preparedLineage(orderItemId);
             boolean makeFirst = bom.hasChildren() && prepared == null;
             boolean preparedOutbound = prepared != null;
+            if (makeFirst) {
+                // 直下单销售式供货：先按全局可用量（账面−安全库存−生效预留）拆出
+                // 现货直发行（DIRECT 行走既有「无仓草稿→仓库选仓原子占用→实发」链，
+                // 建议仓来自订单/申请，仓库可换仓），仅缺口部分保留前置自制行；
+                // 建分析的量取计划行量，拆行后即缺口量。仓库现货充足时不再生产。
+                String poolKey = goodsId + "|" + Objects.toString(colorId, "");
+                BigDecimal avail = stockPool.computeIfAbsent(poolKey,
+                        k -> globalAvailableBase(goodsId, colorId));
+                BigDecimal stockTake = planned.min(avail.max(BigDecimal.ZERO));
+                if (stockTake.signum() > 0) {
+                    stockPool.put(poolKey, avail.subtract(stockTake));
+                }
+                BigDecimal makeQty = planned.subtract(stockTake);
+                if (stockTake.signum() > 0) {
+                    pendingLines.add(new PendingLine(
+                            UUID.randomUUID(), orderItemId, goodsId, colorId,
+                            baseUnitId, orderUnitRate, stockTake,
+                            "DIRECT_OUTBOUND", "READY_OUTBOUND", stockTake,
+                            (UUID) item[7], false, bom.fingerprint(),
+                            null, null, null));
+                }
+                if (makeQty.signum() > 0) {
+                    pendingLines.add(new PendingLine(
+                            UUID.randomUUID(), orderItemId, goodsId, colorId,
+                            baseUnitId, orderUnitRate, makeQty,
+                            "MAKE_THEN_OUTBOUND", "ACTION_REQUIRED",
+                            BigDecimal.ZERO, (UUID) item[7],
+                            true, bom.fingerprint(),
+                            null, null, null));
+                }
+                continue;
+            }
             pendingLines.add(new PendingLine(
                     UUID.randomUUID(), orderItemId, goodsId, colorId,
                     baseUnitId, orderUnitRate, planned,
-                    preparedOutbound ? "PREPARED_OUTBOUND"
-                            : makeFirst ? "MAKE_THEN_OUTBOUND" : "DIRECT_OUTBOUND",
-                    makeFirst ? "ACTION_REQUIRED" : "READY_OUTBOUND",
-                    makeFirst ? BigDecimal.ZERO : planned,
+                    preparedOutbound ? "PREPARED_OUTBOUND" : "DIRECT_OUTBOUND",
+                    "READY_OUTBOUND", planned,
                     preparedOutbound ? prepared.warehouseId() : (UUID) item[7],
-                    makeFirst || preparedOutbound, bom.fingerprint(),
+                    preparedOutbound, bom.fingerprint(),
                     preparedOutbound ? prepared.analysisId() : null,
                     preparedOutbound ? prepared.analysisItemId() : null,
                     preparedOutbound ? prepared.taskId() : null));
@@ -207,11 +240,41 @@ public class SubcontractMaterialPlanService
         createDraftForPlan(planId, orderBillNo, supplierId, deliverDate, actorUser);
         for (PendingLine line : pendingLines) {
             if ("MAKE_THEN_OUTBOUND".equals(line.flowMode())) {
-                chainNotice.notifySubcontractPreparationRequired(line.id());
+                // 直下单销售式供货：MAKE 行量=缺口，通知计划部补产；
+                // 现货直发行走下方 OUTBOUND_READY 通知仓库发货。
+                chainNotice.notifySubcontractPrepareShortage(line.id());
             } else {
                 chainNotice.notifySubcontractOutboundReady(line.id());
             }
         }
+    }
+
+    /**
+     * 全局可用量（基本单位，销售 reserveOnApprove 同款口径）：
+     * 全仓账面−安全库存−全部生效预留，GREATEST(…,0) 兜底；带货色锁防并发超占。
+     * colorId 可能为 NULL，比较与 CAST 对齐 StockReservationRepository 的写法。
+     */
+    private BigDecimal globalAvailableBase(UUID goodsId, UUID colorId) {
+        inventoryLock.lock(new InventoryKey(goodsId, colorId));
+        BigDecimal value = jdbc.queryForObject("""
+                SELECT GREATEST(
+                  (SELECT COALESCE(SUM(GREATEST(
+                              COALESCE(b.qty, 0)
+                              - GREATEST(
+                                  COALESCE(CAST(g.min_qty AS NUMERIC), 0), 0),
+                              0)), 0)
+                     FROM stock_balances b
+                     JOIN goods g ON g.id = b.goods_id
+                     WHERE b.goods_id = ?
+                       AND (b.color_id IS NOT DISTINCT FROM CAST(? AS uuid)))
+                  - (SELECT COALESCE(SUM(r.qty - r.consumed_qty - r.released_qty), 0)
+                       FROM stock_reservations r
+                       WHERE r.is_deleted = FALSE AND r.status = 0
+                         AND r.goods_id = ?
+                         AND (r.color_id IS NOT DISTINCT FROM CAST(? AS uuid)))
+                , 0)
+                """, BigDecimal.class, goodsId, colorId, goodsId, colorId);
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     /** V458 订货红冲：PREPARED 行未消费的计划专属预留对称转回任务持有。 */

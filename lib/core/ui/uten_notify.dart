@@ -42,7 +42,9 @@ abstract final class UtenNotify {
   /// - [onDismissed] 该条被真正移除时调用（含排队项到点独立消失）；clear 或宿主销毁不调用。
   /// - [duration] 自动消失时长，默认按 kind 定档（info/success 1.5s、warning 2s、
   ///   error 2.5s，超长文案与字段错误有加成）；每条从到达时刻独立计时。
-  static void banner(
+  /// - V459 [actions]/[statusLine]：审核待办卡的操作按钮区与动态状态行
+  ///   （「去审核/稍后再看」+「XX 正在审核」）；返回卡片 id 供办结心跳收卡。
+  static String banner(
     BuildContext context, {
     required String message,
     String? title,
@@ -51,9 +53,11 @@ abstract final class UtenNotify {
     VoidCallback? onTap,
     VoidCallback? onDismissed,
     Duration? duration,
+    List<AppNotificationAction>? actions,
+    ValueNotifier<String?>? statusLine,
     bool force = false,
   }) {
-    _notifierOf(context).showMessage(
+    return _notifierOf(context).showMessage(
       message,
       title: title,
       kind: kind,
@@ -61,6 +65,8 @@ abstract final class UtenNotify {
       icon: icon,
       onTap: onTap,
       onDismissed: onDismissed,
+      actions: actions,
+      statusLine: statusLine,
       force: force,
     );
   }

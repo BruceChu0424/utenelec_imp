@@ -62,6 +62,8 @@ class NoticeServiceTest {
     private NoticeService service;
     private UUID userId;
     private AuthUser authUser;
+    // V459：认领人姓名解析（pending-review-status 用）
+    private com.uten.imp.application.port.EmployeeNameLookupPort nameLookup;
 
     @BeforeEach
     void setUp() {
@@ -74,6 +76,8 @@ class NoticeServiceTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         audienceService = mock(NoticeAudienceService.class);
         systemSettings = mock(SystemSettingsService.class);
+        nameLookup = mock(com.uten.imp.application.port.EmployeeNameLookupPort.class);
+        when(nameLookup.findName(any())).thenReturn(Optional.of("张三"));
         authUser = mock(AuthUser.class);
         userId = UUID.randomUUID();
 
@@ -98,7 +102,9 @@ class NoticeServiceTest {
                 audienceService,
                 mock(TxSessionVars.class),
                 systemSettings,
-                mock(com.uten.imp.audit.AuditService.class));
+                mock(com.uten.imp.audit.AuditService.class),
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimRepository.class),
+                nameLookup);
     }
 
     @Test
@@ -355,6 +361,79 @@ class NoticeServiceTest {
         verify(stateRepository).save(argThat(saved ->
                 saved.getReadAt() != null
                         && saved.getPopupAcknowledgedAt() != null));
+    }
+
+    @Test
+    void snoozeSetsUntilAndMarksReadButRejectsResolvedNotices() {
+        // 已办结的审核通知无重弹意义 → 拒绝
+        UUID resolvedId = UUID.randomUUID();
+        Notice resolved = new Notice();
+        resolved.setId(resolvedId);
+        resolved.setAudienceUserId(userId);
+        resolved.setResolvedAt(Instant.now());
+        when(noticeRepository.findById(resolvedId)).thenReturn(Optional.of(resolved));
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> service.snoozeNotice(resolvedId, 15))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+
+        // 未办结 → snoozed_until + 同时置已读（R6：稍后再看也算已处理提醒）
+        UUID pendingId = UUID.randomUUID();
+        Notice pending = new Notice();
+        pending.setId(pendingId);
+        pending.setAudienceUserId(userId);
+        NoticeUserState state = new NoticeUserState();
+        state.setId(new NoticeUserStateId(pendingId, userId));
+        when(noticeRepository.findById(pendingId)).thenReturn(Optional.of(pending));
+        when(stateRepository.findById(new NoticeUserStateId(pendingId, userId)))
+                .thenReturn(Optional.of(state));
+
+        Instant until = service.snoozeNotice(pendingId, 15);
+
+        org.junit.jupiter.api.Assertions.assertNotNull(until);
+        verify(stateRepository).save(argThat(saved ->
+                saved.getSnoozedUntil() != null && saved.getReadAt() != null));
+    }
+
+    @Test
+    void publishForUserBindsAggregateOnlyForRegisteredReviewEvents() {
+        when(noticeRepository.saveAndFlush(any(Notice.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        UUID aggregateId = UUID.randomUUID();
+        UUID audienceUserId = UUID.randomUUID();
+
+        // 注册事件：绑定 (kind,id)
+        Notice review = service.publishForUser(
+                audienceUserId, "待财务确认", "正文", "approval", "系统",
+                "/finance/sales-order-confirmations",
+                "ORDER_PENDING_FINANCE_CONFIRMATION", null, aggregateId);
+        org.junit.jupiter.api.Assertions.assertEquals("SALES_ORDER", review.getAggregateKind());
+        org.junit.jupiter.api.Assertions.assertEquals(aggregateId, review.getAggregateId());
+
+        // 未注册事件：aggregateId 忽略，保持普通通知（历史行为不变）
+        Notice plain = service.publishForUser(
+                audienceUserId, "普通通知", "正文", "task", "系统",
+                null, "SOME_PLAIN_EVENT", null, aggregateId);
+        org.junit.jupiter.api.Assertions.assertNull(plain.getAggregateKind());
+        org.junit.jupiter.api.Assertions.assertNull(plain.getAggregateId());
+    }
+
+    @Test
+    void resolveReviewNoticesDelegatesBoundedUpdateAndValidatesShape() {
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> service.resolveReviewNotices(" ", null, null))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+
+        UUID aggregateId = UUID.randomUUID();
+        when(noticeRepository.resolveReviewPendingByAggregate(
+                "SALES_ORDER", aggregateId, "APPROVED")).thenReturn(3);
+
+        int affected = service.resolveReviewNotices("SALES_ORDER", aggregateId, "APPROVED");
+
+        org.junit.jupiter.api.Assertions.assertEquals(3, affected);
+        // reason 缺省归一为 COMPLETED
+        service.resolveReviewNotices("SALES_ORDER", aggregateId, null);
+        verify(noticeRepository).resolveReviewPendingByAggregate(
+                "SALES_ORDER", aggregateId, "COMPLETED");
     }
 
     @Test

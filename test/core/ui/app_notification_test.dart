@@ -748,4 +748,133 @@ void main() {
     notifications.clear();
     expect(dismissed, isEmpty);
   });
+
+  group('V459 review action card', () {
+    testWidgets('action buttons render, run onPressed, and close the card', (
+      tester,
+    ) async {
+      var reviewPressed = 0;
+      var snoozePressed = 0;
+      var dismissed = 0;
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Stack(
+              children: [
+                Builder(
+                  builder: (context) => Center(
+                    child: ElevatedButton(
+                      onPressed: () => context.appInfo(
+                        '待财务确认：SO20260902-001',
+                        title: '待办 · 审批',
+                      ),
+                      child: const Text('触发待办'),
+                    ),
+                  ),
+                ),
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: AppNotificationHost(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      // 先通过门面拿到服务，再注入带 actions 的审核卡（模拟 dispatchReviewCard）。
+      await tester.tap(find.text('触发待办'));
+      await tester.pump();
+      final container = ProviderScope.containerOf(
+        tester.element(find.text('触发待办')),
+        listen: false,
+      );
+      final service = container.read(appNotificationProvider.notifier);
+      service.showMessage(
+        '待财务确认：SO20260902-001',
+        title: '待办 · 审批',
+        duration: const Duration(seconds: 20),
+        actions: [
+          AppNotificationAction(
+            label: '去审核',
+            filled: true,
+            onPressed: () => reviewPressed++,
+          ),
+          AppNotificationAction(
+            label: '稍后再看',
+            onPressed: () => snoozePressed++,
+          ),
+        ],
+        onDismissed: () => dismissed++,
+        force: true,
+      );
+      await tester.pump();
+
+      expect(find.text('去审核'), findsOneWidget);
+      expect(find.text('稍后再看'), findsOneWidget);
+      final filled = tester.widget<FilledButton>(find.byType(FilledButton));
+      expect(filled.child, isA<Text>());
+
+      await tester.tap(find.text('稍后再看'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(snoozePressed, 1);
+      expect(reviewPressed, 0);
+      expect(dismissed, 1);
+      expect(find.text('稍后再看'), findsNothing);
+    });
+
+    testWidgets('statusLine value notifier updates the status row', (
+      tester,
+    ) async {
+      final statusLine = ValueNotifier<String?>(null);
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Stack(
+              children: [
+                Builder(
+                  builder: (context) => Center(
+                    child: ElevatedButton(
+                      onPressed: () => context.appInfo(
+                        '待财务确认：SO20260902-002',
+                        title: '待办 · 审批',
+                      ),
+                      child: const Text('触发待办2'),
+                    ),
+                  ),
+                ),
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: AppNotificationHost(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.text('触发待办2')),
+        listen: false,
+      );
+      container
+          .read(appNotificationProvider.notifier)
+          .showMessage(
+            '待财务确认：SO20260902-002',
+            title: '待办 · 审批',
+            duration: const Duration(seconds: 20),
+            statusLine: statusLine,
+            force: true,
+          );
+      await tester.pump();
+
+      // 初始无状态行；心跳写入「XX 正在审核」后立即出现。
+      expect(find.text('张三 正在审核'), findsNothing);
+      statusLine.value = '张三 正在审核';
+      await tester.pump();
+      expect(find.text('张三 正在审核'), findsOneWidget);
+      statusLine.value = null;
+      await tester.pump();
+      expect(find.text('张三 正在审核'), findsNothing);
+    });
+  });
 }

@@ -551,6 +551,12 @@ abstract final class ApiEndpoints {
 
   /// 按站内办理路由批量已读（业务动作完成/打开单据后清对应通知）。
   static const noticesReadByRoute = '/notices/read-by-route';
+
+  /// V459「稍后再看」（query: minutes，默认 15）。
+  static String noticeSnooze(String id) => '/notices/$id/snooze';
+
+  /// V459 弹卡真态校验（query: ids 逗号分隔）。
+  static const noticesPendingReviewStatus = '/notices/pending-review-status';
   static const noticesBatchDelete = '/notices/batch-delete';
   static const noticesAudiencePreview = '/notices/audience/preview';
   static const noticesAudienceEmployees = '/notices/audience/employees';

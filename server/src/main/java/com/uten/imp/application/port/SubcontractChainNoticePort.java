@@ -6,6 +6,8 @@ import java.util.UUID;
 public interface SubcontractChainNoticePort {
     void notifySubcontractPreparationRequired(UUID planItemId);
 
+    void notifySubcontractPrepareShortage(UUID planItemId);
+
     void notifySubcontractOutboundReady(UUID planItemId);
 
     void notifySubcontractOutboundCompleted(UUID issueId);

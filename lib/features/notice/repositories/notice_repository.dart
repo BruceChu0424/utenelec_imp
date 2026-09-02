@@ -63,6 +63,13 @@ abstract interface class NoticeRepository {
   /// 打开对应单据后，指向这些路由的通知对当前用户变已读。返回实际置读条数。
   Future<int> markReadByRoute(List<String> routes);
 
+  /// V459「稍后再看」：snoozed_until 前弹卡流不再弹出（通知中心仍可见），
+  /// 同时置已读；minutes 默认 15。
+  Future<void> snooze(String id, {int minutes = 15});
+
+  /// V459 弹卡真态校验：按通知 id 批量返回办结与认领状态（弹前 + 停留心跳）。
+  Future<List<PendingReviewStatus>> pendingReviewStatus(List<String> ids);
+
   /// 发布新通知（需 notice:publish 权限），返回入库后的实体
   Future<Notice> publish({
     required String title,
@@ -235,6 +242,30 @@ class DioNoticeRepository implements NoticeRepository {
       query: {'routes': routes.join(',')},
     );
     return (json['read'] as num?)?.toInt() ?? 0;
+  }
+
+  @override
+  Future<void> snooze(String id, {int minutes = 15}) {
+    return _api
+        .post(ApiEndpoints.noticeSnooze(id), query: {'minutes': minutes})
+        .then((_) {});
+  }
+
+  @override
+  Future<List<PendingReviewStatus>> pendingReviewStatus(
+    List<String> ids,
+  ) async {
+    if (ids.isEmpty) return const [];
+    final json = await _api.get(
+      ApiEndpoints.noticesPendingReviewStatus,
+      query: {'ids': ids.join(',')},
+    );
+    final rows = json['items'];
+    if (rows is! List) return const [];
+    return rows
+        .whereType<Map<String, dynamic>>()
+        .map(PendingReviewStatus.fromJson)
+        .toList();
   }
 
   @override
@@ -447,6 +478,14 @@ class DioNoticeRepository implements NoticeRepository {
             (e) => NoticeCelebrationSubject.fromJson(e as Map<String, dynamic>),
           )
           .toList(),
+      // V459 审核待办弹卡字段
+      interactive: json['interactive'] as bool? ?? false,
+      aggregateKind: json['aggregateKind'] as String?,
+      aggregateId: json['aggregateId'] as String?,
+      resolvedAt: json['resolvedAt'] == null
+          ? null
+          : ChinaDateTime.tryParse(json['resolvedAt'] as String?),
+      resolvedReason: json['resolvedReason'] as String?,
     );
   }
 
@@ -470,4 +509,37 @@ class DioNoticeRepository implements NoticeRepository {
     'urgent' => NoticePriority.urgent,
     _ => NoticePriority.normal,
   };
+}
+
+/// V459 弹卡真态出参：resolved=true 即收卡；claimedByName 非空显示「XX 正在审核」。
+class PendingReviewStatus {
+  const PendingReviewStatus({
+    required this.noticeId,
+    required this.resolved,
+    this.resolvedAt,
+    this.claimedByName,
+    this.claimedAt,
+  });
+
+  factory PendingReviewStatus.fromJson(Map<String, dynamic> json) {
+    return PendingReviewStatus(
+      noticeId: json['noticeId'] as String,
+      resolved: json['resolved'] as bool? ?? false,
+      resolvedAt: json['resolvedAt'] == null
+          ? null
+          : ChinaDateTime.tryParse(json['resolvedAt'] as String?),
+      claimedByName: json['claimedByName'] as String?,
+      claimedAt: json['claimedAt'] == null
+          ? null
+          : ChinaDateTime.tryParse(json['claimedAt'] as String?),
+    );
+  }
+
+  final String noticeId;
+  final bool resolved;
+  final DateTime? resolvedAt;
+
+  /// 当前认领人姓名（无人处理为 null）。
+  final String? claimedByName;
+  final DateTime? claimedAt;
 }

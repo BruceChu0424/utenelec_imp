@@ -157,6 +157,8 @@ public class NoticeService {
     private final TxSessionVars tx;
     private final SystemSettingsService systemSettings;
     private final com.uten.imp.audit.AuditService audit;
+    private final com.uten.imp.features.common.taskclaim.TaskClaimRepository taskClaimRepo;
+    private final com.uten.imp.application.port.EmployeeNameLookupPort employeeNameLookup;
 
     // =========================== 互动模式派生 ===========================
 
@@ -1052,6 +1054,140 @@ public class NoticeService {
         return saved;
     }
 
+    /**
+     * V459 审核待办入口：显式携带 aggregateId。sourceEvent 在
+     * {@link ReviewNoticeCatalog} 注册时自动绑定 aggregateKind（办结撤回按
+     * (kind,id) 批量定位、弹卡可查认领状态）；未注册事件传 aggregateId 无效
+     * （忽略，保持普通通知，历史行为不变）。
+     */
+    @Transactional
+    public Notice publishForUser(UUID audienceUserId, String title, String content,
+                                 String type, String publisher, String actionRoute,
+                                 String sourceEvent, String explicitPriority,
+                                 UUID aggregateId) {
+        Notice n = publishForUser(
+                audienceUserId, title, content, type, publisher, actionRoute,
+                sourceEvent, explicitPriority);
+        var entry = ReviewNoticeCatalog.of(sourceEvent);
+        if (aggregateId != null && entry.isPresent()) {
+            n.setAggregateKind(entry.get().aggregateKind());
+            n.setAggregateId(aggregateId);
+            noticeRepo.saveAndFlush(n);
+        }
+        return n;
+    }
+
+    // =========================== V459 审核待办弹卡 ===========================
+
+    /**
+     * 「稍后再看」：置 snoozed_until（弹卡流到期前不再弹出，通知中心仍可见），
+     * 同时按产品口径置已读——去审核与稍后再看都算「已处理过这条提醒」。
+     * 已办结的审核通知无重弹意义，拒绝再 snooze。
+     */
+    @Transactional
+    public Instant snoozeNotice(UUID noticeId, int minutes) {
+        UUID userId = requireStaffId();
+        int safeMinutes = Math.min(Math.max(minutes, 1), MAX_SNOOZE_MINUTES);
+        Notice n = loadVisibleOrThrow(noticeId, userId);
+        if (n.getResolvedAt() != null) {
+            throw new ApiException(ErrorCode.CONFLICT, "该待办已办结，无需再稍后");
+        }
+        Instant until = Instant.now().plusSeconds(safeMinutes * 60L);
+        NoticeUserState st = stateRepo
+                .findById(new NoticeUserStateId(noticeId, userId))
+                .orElseGet(() -> newState(noticeId, userId));
+        st.setSnoozedUntil(until);
+        if (st.getReadAt() == null) {
+            st.setReadAt(Instant.now());
+        }
+        stateRepo.save(st);
+        return until;
+    }
+
+    /**
+     * 办结撤回：审核通过/驳回/取消等业务落点按 (aggregateKind, aggregateId)
+     * 批量 resolve 全部接收人的待审通知（幂等，仅未办结行）。返回受影响行数。
+     */
+    @Transactional
+    public int resolveReviewNotices(
+            String aggregateKind, UUID aggregateId, String reason) {
+        if (aggregateKind == null || aggregateKind.isBlank()
+                || aggregateId == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED, "办结撤回必须提供聚合类型与主键");
+        }
+        String safeReason = reason == null || reason.isBlank()
+                ? "COMPLETED"
+                : reason.strip();
+        return noticeRepo.resolveReviewPendingByAggregate(
+                aggregateKind.strip(), aggregateId, safeReason);
+    }
+
+    /**
+     * 弹卡真态校验（弹前+停留心跳共用）：按通知 id 批量返回办结与认领状态。
+     * claim 的 targetType 取自 {@link ReviewNoticeCatalog}（targetKey=aggregateId）；
+     * 认领人为空表示无人处理。仅本人可见的通知参与（跨用户不可探测）。
+     */
+    @Transactional(readOnly = true)
+    public List<PendingReviewStatusDto> pendingReviewStatus(List<UUID> noticeIds) {
+        UUID userId = requireStaffId();
+        if (noticeIds == null || noticeIds.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> safeIds = noticeIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .limit(MAX_PENDING_STATUS_ITEMS)
+                .toList();
+        List<PendingReviewStatusDto> result = new ArrayList<>();
+        for (Notice n : noticeRepo.findAllById(safeIds)) {
+            NoticeUserState st = stateRepo
+                    .findById(new NoticeUserStateId(n.getId(), userId))
+                    .orElse(null);
+            if (!visibleTo(n, userId, st) || (st != null && st.getDeletedAt() != null)) {
+                continue;
+            }
+            String claimedByName = null;
+            java.time.OffsetDateTime claimedAt = null;
+            var entry = ReviewNoticeCatalog.of(n.getSourceEvent());
+            if (entry.isPresent() && entry.get().claimTargetType() != null
+                    && n.getAggregateId() != null && n.getResolvedAt() == null) {
+                var claim = taskClaimRepo
+                        .findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(
+                                entry.get().claimTargetType(),
+                                n.getAggregateId().toString())
+                        .orElse(null);
+                if (claim != null) {
+                    claimedByName = employeeNameLookup.findName(claim.getClaimedBy())
+                            .orElse(null);
+                    claimedAt = claim.getClaimedAt();
+                }
+            }
+            result.add(new PendingReviewStatusDto(
+                    n.getId().toString(),
+                    n.getAggregateKind(),
+                    n.getAggregateId() == null ? null : n.getAggregateId().toString(),
+                    n.getResolvedAt() != null,
+                    n.getResolvedAt(),
+                    claimedByName,
+                    claimedAt == null ? null : claimedAt.toInstant()));
+        }
+        return result;
+    }
+
+    private static final int MAX_SNOOZE_MINUTES = 24 * 60;
+    private static final int MAX_PENDING_STATUS_ITEMS = 50;
+
+    /** 弹卡真态出参：resolved=true 即收卡；claimedByName 非空显示「XX 正在审核」。 */
+    public record PendingReviewStatusDto(
+            String noticeId,
+            String aggregateKind,
+            String aggregateId,
+            boolean resolved,
+            Instant resolvedAt,
+            String claimedByName,
+            Instant claimedAt) {
+    }
+
     private static String systemNoticePriority(
             String type, String sourceEvent, String explicitPriority) {
         if (explicitPriority != null && !explicitPriority.isBlank()) {
@@ -1279,7 +1415,13 @@ public class NoticeService {
                 recentBlessings,
                 readAttachments(n.getBlessingTemplates()),
                 n.getSourceEvent(),
-                subjectDtos(n, mode, subjects));
+                subjectDtos(n, mode, subjects),
+                // ---- V459：审核待办弹卡 ----
+                ReviewNoticeCatalog.isReviewEvent(n.getSourceEvent()),
+                n.getAggregateKind(),
+                n.getAggregateId() == null ? null : n.getAggregateId().toString(),
+                n.getResolvedAt(),
+                n.getResolvedReason());
     }
 
     /** 主角名单出参：列表路径批量传入；null 时对 bless 卡单查（详情/发布回执）。 */

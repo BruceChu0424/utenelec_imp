@@ -161,6 +161,11 @@ class Notice {
     this.recentBlessings = const [],
     this.blessingTemplates = const [],
     this.subjects = const [],
+    this.interactive = false,
+    this.aggregateKind,
+    this.aggregateId,
+    this.resolvedAt,
+    this.resolvedReason,
   });
 
   final String id;
@@ -255,6 +260,24 @@ class Notice {
 
   /// 庆典主角名单（V454 聚合卡逐人姓名+标签；单人卡一项；非庆典类为空）。
   final List<NoticeCelebrationSubject> subjects;
+
+  /// V459：是否审核待办弹卡（source_event 在服务端审核卡目录注册）。
+  final bool interactive;
+
+  /// V459：待办聚合类型（SALES_ORDER / PROCUREMENT_APPROVAL_CASE / IQC_INSPECTION…）。
+  final String? aggregateKind;
+
+  /// V459：待办聚合主键（单据/审批 case/批次 id）。
+  final String? aggregateId;
+
+  /// V459：办结时间；非空=已办结（弹卡不弹、通知中心灰显「已办结」）。
+  final DateTime? resolvedAt;
+
+  /// V459：办结原因短码（APPROVED/REJECTED/CANCELED…）。
+  final String? resolvedReason;
+
+  /// 是否已办结（V459 撤回语义）。
+  bool get isResolved => resolvedAt != null;
 
   /// 是否多主角聚合卡（一天一类型一张卡，多人同祝）。
   bool get isGroupCelebration => subjects.length > 1;

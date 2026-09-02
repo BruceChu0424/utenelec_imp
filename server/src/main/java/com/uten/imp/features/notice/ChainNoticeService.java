@@ -91,6 +91,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             "PREPLAN_SUPPLY_ACTION_CREATED";
     static final String EVENT_SUBCONTRACT_PREPARATION_REQUIRED =
             "SUBCONTRACT_PREPARATION_REQUIRED";
+    static final String EVENT_SUBCONTRACT_PREPARE_SHORTAGE =
+            "SUBCONTRACT_PREPARE_SHORTAGE";
     static final String EVENT_SUBCONTRACT_MAKE_TASK_CREATED =
             "SUBCONTRACT_MAKE_TASK_CREATED";
     static final String EVENT_SUBCONTRACT_MAKE_NOTIFIED =
@@ -275,6 +277,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         notifyPreplanSupplyActionCreated(aggregateId);
                 case EVENT_SUBCONTRACT_PREPARATION_REQUIRED ->
                         notifySubcontractPreparationRequired(aggregateId);
+                case EVENT_SUBCONTRACT_PREPARE_SHORTAGE ->
+                        notifySubcontractPrepareShortage(aggregateId);
                 case EVENT_SUBCONTRACT_MAKE_TASK_CREATED ->
                         notifySubcontractMakeTaskCreated(aggregateId);
                 case EVENT_SUBCONTRACT_MAKE_NOTIFIED ->
@@ -1860,6 +1864,73 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                             + "本通知仅作进度提醒，不代表已领料、已完工或已入库。",
                     "/subcontract/orders/" + orderId,
                     EVENT_SUBCONTRACT_PREPARATION_REQUIRED);
+        });
+    }
+
+    /**
+     * 直下单销售式供货：有子层目标件批准时按全局可用量拆行，仅缺口部分保留
+     * 前置自制（计划行量=缺口）；现货直发行另行触发 OUTBOUND_READY。本事件把
+     * 缺口指向计划/生产岗位，数据库任务仍是权威。
+     */
+    public void notifySubcontractPrepareShortage(UUID planItemId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SUBCONTRACT_PREPARE_SHORTAGE,
+                    "SUBCONTRACT_MATERIAL_PLAN_ITEM",
+                    planItemId,
+                    Map.of(),
+                    EVENT_SUBCONTRACT_PREPARE_SHORTAGE + ':' + planItemId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> item = subcontractPreparationRequiredSnapshot(
+                    planItemId);
+            if (item == null) return;
+            UUID orderId = (UUID) item.get("order_id");
+            String orderNo = str(item.get("order_bill_no"));
+            String goods = subcontractGoodsLabel(item);
+            String shortage = qty(bd(item.get("planned_qty")));
+            String taskRoute = "/subcontract/preparations?planItemId="
+                    + planItemId;
+            String taskContent = "委外订货单 " + orderNo + " 的目标件 "
+                    + goods + " 仓库现货不足，缺口 " + shortage
+                    + "(基本单位) 需按自制链补产（现货部分已另行通知仓库直接出仓）。"
+                    + "请在委外前置自制任务队列启动物料分析，并按正常自制链完成领料、"
+                    + "生产、报工、品质检验和仓库实收入库；可执行操作以任务实时"
+                    + " allowedActions 为准。";
+            Set<UUID> productionRecipients = new LinkedHashSet<>();
+            productionRecipients.addAll(departmentUserIdsWithAuthorities(
+                    "SUB_PLAN",
+                    NOTICE_READ_AUTHORITY,
+                    "subcontract_preparation:view",
+                    "subcontract_preparation:start"));
+            productionRecipients.addAll(departmentUserIdsWithAuthorities(
+                    "DEPT_PROD",
+                    NOTICE_READ_AUTHORITY,
+                    "subcontract_preparation:view",
+                    "subcontract_preparation:start"));
+            for (UUID recipient : productionRecipients) {
+                sendToUser(
+                        recipient,
+                        TYPE_TASK,
+                        "待补产委外缺口：" + orderNo,
+                        taskContent,
+                        taskRoute,
+                        EVENT_SUBCONTRACT_PREPARE_SHORTAGE);
+            }
+
+            UUID makerUserId = subcontractMakerUserId(
+                    (UUID) item.get("maker_id"));
+            notifyUser(
+                    makerUserId,
+                    TYPE_WORKFLOW,
+                    "委外目标件存在生产缺口：" + orderNo,
+                    "委外订货单 " + orderNo + " 的目标件 " + goods
+                            + " 仓库现货不足，缺口 " + shortage
+                            + " 已交计划/生产岗位补产；现货部分已直接安排委外出仓。"
+                            + "本通知仅作进度提醒，不代表已领料、已完工或已入库。",
+                    "/subcontract/orders/" + orderId,
+                    EVENT_SUBCONTRACT_PREPARE_SHORTAGE);
         });
     }
 

@@ -173,10 +173,24 @@ class AuditServiceTransactionContractTest {
         String source = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/attachment/AttachmentService.java"),
                 StandardCharsets.UTF_8);
+        // 0907bda8 起：两处下载审计 target_id 传可解析的附件 UUID（审计页据此解析对象名），
+        // 结果码固定 "success"；存储后端不得混入 target_id 或结果码任何位置。
+        String compact = source.replaceAll("\\s+", "");
         org.junit.jupiter.api.Assertions.assertTrue(
-                source.contains("\"附件=\" + id + \"；存储=\" + storage.backend()")
-                        && source.contains("storage.backend(), \"success\"")
-                        && source.contains("\"附件=\" + metadata.getId() + \"；存储=\"")
-                        && !source.contains("id.toString(), storage.backend()"));
+                compact.contains(
+                        "\"attachment_download_grant\",\"attachments\","
+                                + "id.toString(),\"success\""),
+                "download grant audit must keep the attachment UUID as target_id");
+        org.junit.jupiter.api.Assertions.assertTrue(
+                compact.contains(
+                        "\"attachment_download_raw\",\"attachments\","
+                                + "metadata.getId().toString(),\"success\""),
+                "raw download audit must keep the attachment UUID as target_id");
+        org.junit.jupiter.api.Assertions.assertFalse(
+                compact.contains("storage.backend(),\"success\""),
+                "storage backend must never be a result code");
+        org.junit.jupiter.api.Assertions.assertFalse(
+                compact.contains("；存储="),
+                "target_id must stay a resolvable UUID, not a detail string");
     }
 }

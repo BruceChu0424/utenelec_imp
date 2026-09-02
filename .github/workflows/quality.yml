@@ -41,7 +41,8 @@ jobs:
   backend:
     name: Backend / Java 21
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 2026-09-02：测试量增长后在免费 runner 上超 30 分钟被掐（非失败），放宽到 45
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:

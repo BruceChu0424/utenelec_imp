@@ -140,17 +140,33 @@ class ProcurementInspectionQuarantinePostgresTest {
     @Test
     void passReasonIsOptionalButFailReasonRemainsDatabaseRequired() throws Exception {
         Fixture fx = insertPendingInspection("8.0000");
+        UUID actorEmployeeId = insertActorEmployee();
         try (Connection c = connection()) {
+            // V446 之后新 PASS 事件必须显式走仓库确认队列（requires_warehouse_stock_in=TRUE），
+            // 带真实员工 actor 与按比例分摊的放行金额；本夹具金额基线为 0，放行金额即 0。
+            // 与服务端一致：先推进冻结行投影（延迟校验要求 PASS 事件总量 == passed_base_qty）。
+            try (PreparedStatement resolve = c.prepareStatement("""
+                    UPDATE procurement_inspection_items
+                    SET passed_base_qty = '8.0000', status = 'RESOLVED', passed_at = now()
+                    WHERE id = ?
+                    """)) {
+                resolve.setObject(1, fx.inspectionItemId());
+                assertEquals(1, resolve.executeUpdate());
+            }
             try (PreparedStatement pass = c.prepareStatement("""
                     INSERT INTO procurement_inspection_events (
-                        id, inspection_item_id, action, base_qty, reason, occurred_at)
-                    VALUES (?, ?, 'PASS', '4.0000', NULL, now()),
-                           (?, ?, 'PASS', '4.0000', '   ', now())
+                        id, inspection_item_id, action, base_qty, reason,
+                        actor_employee_id, occurred_at, requires_warehouse_stock_in,
+                        released_amount_local)
+                    VALUES (?, ?, 'PASS', '4.0000', NULL, ?, now(), TRUE, '0.0000'),
+                           (?, ?, 'PASS', '4.0000', '   ', ?, now(), TRUE, '0.0000')
                     """)) {
                 pass.setObject(1, UUID.randomUUID());
                 pass.setObject(2, fx.inspectionItemId());
-                pass.setObject(3, UUID.randomUUID());
-                pass.setObject(4, fx.inspectionItemId());
+                pass.setObject(3, actorEmployeeId);
+                pass.setObject(4, UUID.randomUUID());
+                pass.setObject(5, fx.inspectionItemId());
+                pass.setObject(6, actorEmployeeId);
                 assertEquals(2, pass.executeUpdate());
             }
 
@@ -167,6 +183,32 @@ class ProcurementInspectionQuarantinePostgresTest {
                     assertEquals("23514", ex.getSQLState());
                 }
             }
+        }
+    }
+
+    /** V446 触发器要求 PASS 事件的 actor 必须真实存在于 employees。 */
+    private static UUID insertActorEmployee() throws Exception {
+        try (Connection c = connection()) {
+            UUID employeeId = UUID.randomUUID();
+            try (PreparedStatement department = c.prepareStatement(
+                    "SELECT id FROM departments WHERE is_deleted = FALSE ORDER BY id LIMIT 1")) {
+                try (var rs = department.executeQuery()) {
+                    assertTrue(rs.next(), "迁移种子必须包含至少一个部门");
+                    try (PreparedStatement s = c.prepareStatement("""
+                            INSERT INTO employees(
+                                id, code, full_name, id_type, department_id,
+                                hire_date, status, employment_type)
+                            VALUES (?, ?, 'IQC PASS actor', '其他', ?,
+                                    DATE '2026-09-02', 'active', 'regular')
+                            """)) {
+                        s.setObject(1, employeeId);
+                        s.setString(2, "IQC-E-" + employeeId);
+                        s.setObject(3, rs.getObject(1, UUID.class));
+                        assertEquals(1, s.executeUpdate());
+                    }
+                }
+            }
+            return employeeId;
         }
     }
 

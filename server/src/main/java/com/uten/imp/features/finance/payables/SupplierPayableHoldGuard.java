@@ -140,7 +140,7 @@ public class SupplierPayableHoldGuard {
                          AND COALESCE(rejection.is_deleted,FALSE)=FALSE
                         WHERE ledger.id IN (:ledgerIds)
                           AND NOT (
-                              :allowedCaseId IS NOT NULL
+                              CAST(:allowedCaseId AS uuid) IS NOT NULL
                               AND EXISTS(
                                   SELECT 1
                                   FROM procurement_iqc_rejection_cases allowed_case
@@ -164,7 +164,7 @@ public class SupplierPayableHoldGuard {
                                   AND NOT (
                                       COALESCE(rejection.status,'') IN(
                                           'CREDIT_CONFIRMED','CLOSED_NO_CREDIT')
-                                      OR (:allowedCaseId IS NOT NULL
+                                      OR (CAST(:allowedCaseId AS uuid) IS NOT NULL
                                           AND rejection.id=:allowedCaseId
                                           AND rejection.status='RETURN_RECORDED'
                                           AND rejection.source_ap_ledger_id=ledger.id)

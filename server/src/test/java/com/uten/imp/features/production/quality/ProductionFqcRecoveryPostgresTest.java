@@ -213,9 +213,11 @@ class ProductionFqcRecoveryPostgresTest {
                 unitId, "U-" + unitId);
         update(connection, """
                 INSERT INTO goods(
-                    id, code, name, min_qty, code_sequence)
+                    id, code, name, min_qty, code_sequence,
+                    production_bom_policy)
                 VALUES (?, ?, 'V414 recovery product', 0,
-                    (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))
+                    (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods),
+                    'DIRECT_MAKE')
                 """, goodsId, "G-" + goodsId);
         update(connection, """
                 INSERT INTO warehouses(id, code, name, status)

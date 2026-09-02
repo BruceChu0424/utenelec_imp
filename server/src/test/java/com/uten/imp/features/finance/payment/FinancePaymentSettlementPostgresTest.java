@@ -143,7 +143,7 @@ class FinancePaymentSettlementPostgresTest {
                 WHERE source_doc_type = 'PAYMENT' AND source_doc_id = ?
                 """, BigDecimal.class, draft.getId()), "30.0000");
 
-        glPostingService.generate("2026-08");
+        glPostingService.generate(currentPeriod());
         var entries = jdbc.queryForList("""
                 SELECT entry.line_no, entry.direction, entry.amount
                 FROM gl_entries entry
@@ -566,7 +566,9 @@ class FinancePaymentSettlementPostgresTest {
         line.setExchangeDiff(new BigDecimal("-8888.0000"));
 
         FinancePaymentSaveRequest request = new FinancePaymentSaveRequest();
-        request.setBillDate(LocalDate.of(2026, 8, 9));
+        // 红冲守卫要求单据期间与当前会计期间一致，固定历史日期会在跨月后触发
+        // 「当前总账架构不支持跨会计期间红冲」；与 reverseAndPeriodRegeneration 用同口径。
+        request.setBillDate(BusinessTime.today());
         request.setSupplierId(supplierId);
         request.setAccountId(accountId);
         request.setCurrencyId(currencyId);

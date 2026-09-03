@@ -2,7 +2,7 @@
 # Uten IMP 单维护者简化发布链 —— 服务器端更新器（ADR-060）
 #
 # 用法（root 的 systemd oneshot / 手动）：
-#   uten-imp-updater check              # timer 每 5 分钟：拉 LATEST → 验签 → 暂存；
+#   uten-imp-updater check              # timer 每天 05:00（北京时间）：拉 LATEST → 验签 → 暂存；
 #                                       # 纯代码版本自动激活；含迁移版本仅暂存并提示
 #   uten-imp-updater activate <version> # 人工激活含迁移版本：先 pg_dump 全量备份再执行
 #   uten-imp-updater status             # 查看当前/最新/已暂存版本

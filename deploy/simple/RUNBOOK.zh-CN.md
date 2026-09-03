@@ -16,7 +16,7 @@
                                       │ 构建+签名+上传
                                       ▼
                               阿里云 OSS releases/<v>/** + LATEST.txt
-                                      │ 每 5 分钟拉取验签
+                                      │ 每天 05:00（北京时间）拉取验签
                                       ▼
 公司服务器 updater ──▶ /opt/uten-imp/releases/<v>
       ├─ 纯代码：自动激活（切 current + 重启 + 健康检查，失败自动回滚）
@@ -108,7 +108,12 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 git tag v2026.09.01-1 && git push origin v2026.09.01-1
 ```
 
-- 5 分钟内服务器自动拉取；**没动数据库**的版本直接自动激活（失败自动回滚上一版）；
+- 服务器每天 **05:00（北京时间）** 自动拉取（要立即上线可 SSH 执行
+  `sudo /usr/local/sbin/uten-imp-updater check`）；**没动数据库**的版本直接自动激活（失败自动回滚上一版）；
+- **OSS 只保留最新一版**：发布流水线在发布成功后自动删除 `releases/` 下旧版本
+  （含版本控制桶的历史版本与删除标记）。若发布 RAM 子账号缺 `DeleteObject` 权限，
+  发布作业的 Purge 步骤会告警（发布本身不受影响）——去 RAM 控制台给发布账号策略
+  追加 `DeleteObject`（资源限 `releases/*` 与 `LATEST.txt`）即可；
 - **动了数据库**（`server/src/main/resources/db/migration/` 有增改）的版本：等 CI 完成
   → `uten-imp-updater check` 暂存 → 在维护窗口 SSH：
 

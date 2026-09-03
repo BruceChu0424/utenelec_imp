@@ -3,6 +3,7 @@ name: Simple Release
 # ADR-060 单维护者简化发布链：打 tag 即发布。
 # 前置：对应提交的 Quality Gate 必须全绿（构建不重复跑测试）。
 # 产物：releases/<version>/{SHA256SUMS,SHA256SUMS.sig,server/*.jar,web/**} + LATEST.txt
+# 发布后自动清理 releases/ 下所有旧版本（含历史 object 版本），OSS 只保留最新一版。
 # 服务器端由 deploy/simple/uten-imp-updater.sh 拉取验签安装。
 
 on:
@@ -157,6 +158,70 @@ jobs:
           PY
           rm -rf dist
 
+      - name: Purge old releases from OSS (keep only this version)
+        shell: bash
+        # 发布账号 RAM 策略原只有 PutObject/GetObject；若未加 DeleteObject
+        # 此步会失败并告警，但不影响发布本身（continue-on-error）。
+        continue-on-error: true
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          pip install --quiet oss2==2.19.1
+          python3 - "$VERSION" <<'PY'
+          import os, sys
+          import oss2
+
+          version = sys.argv[1]
+          auth = oss2.Auth(os.environ["OSS_ACCESS_KEY_ID"],
+                           os.environ["OSS_ACCESS_KEY_SECRET"])
+          bucket = oss2.Bucket(auth, f"https://{os.environ['OSS_ENDPOINT']}",
+                               os.environ["OSS_BUCKET"])
+          keep = f"releases/{version}/"
+
+          try:
+              # 桶开了版本控制：普通删除只留删除标记、旧版本仍占存储，
+              # 必须列出全部版本（含删除标记）逐版本删除。
+              doomed = []  # (key, versionid)
+              key_marker, vid_marker = "", ""
+              while True:
+                  page = bucket.list_object_versions(
+                      prefix="releases/", key_marker=key_marker,
+                      versionid_marker=vid_marker, max_keys=200)
+                  for v in list(page.object_version_list) + list(page.delete_marker_list):
+                      if not v.key.startswith(keep):
+                          doomed.append((v.key, v.versionid))
+                  if not page.is_truncated:
+                      break
+                  key_marker = page.next_key_marker
+                  vid_marker = (getattr(page, "next_versionid_marker", None)
+                                or getattr(page, "next_version_id_marker", None) or "")
+                  if not key_marker:
+                      raise SystemExit("分页标记缺失，中止清理以防误删")
+
+              for key, vid in doomed:
+                  bucket.delete_object(key, params={"versionId": vid})
+              print(f"已删除旧版本对象 {len(doomed)} 个（保留 {keep}）")
+
+              # LATEST.txt 只保留当前版本
+              page = bucket.list_object_versions(prefix="LATEST.txt", max_keys=1000)
+              purged = 0
+              for v in list(page.object_version_list) + list(page.delete_marker_list):
+                  if getattr(v, "is_latest", False):
+                      continue
+                  bucket.delete_object("LATEST.txt", params={"versionId": v.versionid})
+                  purged += 1
+              print(f"已清理 LATEST.txt 历史版本 {purged} 个")
+          except oss2.exceptions.AccessDenied:
+              print("::error::OSS 清理被拒（AccessDenied）：请给发布 RAM 子账号的策略"
+                    "追加 DeleteObject 权限（资源：acs:oss:*:*:<bucket>/releases/* 与 LATEST.txt），"
+                    "下次发版生效。本次发布不受影响。")
+              raise
+          PY
+
       - name: Summary
         shell: bash
         env:
@@ -165,6 +230,6 @@ jobs:
         run: |
           {
             echo "## 发布完成：$VERSION"
-            echo "- OSS：$OSS_BUCKET@$OSS_ENDPOINT"
-            echo "- 服务器 5 分钟内自动检测；纯代码版本自动激活，含迁移的版本需手动 activate"
+            echo "- OSS：$OSS_BUCKET@$OSS_ENDPOINT（发布后自动清理旧版本，只保留本版）"
+            echo "- 服务器每天 05:00（北京时间）自动检测；纯代码版本自动激活，含迁移的版本需手动 activate；要立即拉取可 SSH：sudo /usr/local/sbin/uten-imp-updater check"
           } >> "$GITHUB_STEP_SUMMARY"

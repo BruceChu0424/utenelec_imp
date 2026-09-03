@@ -1,13 +1,13 @@
-# 每 5 分钟检查一次新版本
+# 每天早上 5 点（服务器本地时间=北京时间）检查一次新版本
 # 安装为 /etc/systemd/system/uten-imp-updater.timer
 [Unit]
-Description=Run Uten IMP updater every 5 minutes
+Description=Run Uten IMP updater daily at 05:00 (server local time = Asia/Shanghai)
 
 [Timer]
 OnBootSec=3min
-OnCalendar=*:0/5
-AccuracySec=30s
-RandomizedDelaySec=90s
+OnCalendar=*-*-* 05:00:00
+AccuracySec=1min
+RandomizedDelaySec=2min
 Persistent=true
 
 [Install]

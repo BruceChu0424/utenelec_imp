@@ -51,10 +51,13 @@ urlencode() {
 
 # OSS V1 签名 GET（只读 RAM 子账号；curl+openssl 零额外依赖）。
 # 签名放 Authorization 头：开启版本控制的桶不支持把 V1 签名放 URL 查询参数。
+# StringToSign 必须含真实换行：printf 只解释**格式串**里的 \n，参数里的
+# \n 是字面反斜杠文本——首装热修版曾因此 403 SignatureDoesNotMatch，务必
+# 把换行写在格式串里（2026-09-03 回带仓库时踩过，见 RUNBOOK 已知坑⑥）。
 oss_get() {
   local key=$1 date sig
   date=$(date -u "+%a, %d %b %Y %H:%M:%S GMT")
-  sig=$(printf '%s' "GET\n\n\n${date}\n/${UTEN_OSS_BUCKET}/${key}" \
+  sig=$(printf 'GET\n\n\n%s\n/%s/%s' "$date" "$UTEN_OSS_BUCKET" "$key" \
     | openssl dgst -sha1 -hmac "$UTEN_OSS_KEY_SECRET" -binary | base64 | tr -d '\n')
   curl -fsSL --retry 3 --retry-delay 2 \
     -H "Date: ${date}" \

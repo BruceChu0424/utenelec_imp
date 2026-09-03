@@ -102,9 +102,11 @@ class DocumentReversedDeleteProtectionContractTest {
                 .doesNotContain("ProductionPurchaseRequestFacade.LifecycleAction.CANCEL")
                 .doesNotContain("ProductionSubcontractRequestPort.LifecycleAction.CANCEL");
 
+        // ADR-065：撤回拆为编排（cancelActionLocked）+ 单任务执行（cancelSingleActionLocked），
+        // 生成单据的红冲只存在于执行方法且只用 REVERSE。
         String analysisCancel = method(source(
                         "features/production/analysis/MaterialAnalysisCommandService.java"),
-                "private void cancelActionLocked(");
+                "private void cancelSingleActionLocked(");
         assertThat(analysisCancel)
                 .contains("ProductionPurchaseRequestFacade.LifecycleAction.REVERSE")
                 .contains("ProductionSubcontractRequestPort.LifecycleAction.REVERSE")

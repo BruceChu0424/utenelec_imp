@@ -1252,17 +1252,19 @@ abstract class _MaterialAnalysisSupplyActionsState
         _restoreValidSupplySelections(preservedSelections);
       });
       final message = switch (route) {
-        MaterialSupplyRoute.buy => '采购需求已提交并通知采购',
+        // ADR-065：同批多货品在服务端合并为一张采购需求单（明细逐货品），
+        // 超大批次分批提交时每批一张；订货侧仍按供应商分组拆订货单。
+        MaterialSupplyRoute.buy =>
+          '采购需求已提交：${groups.length} 条货品合并为 '
+              '${batches.length} 张采购需求单，已通知采购',
         // V458：有子层级的委外件由服务端转前置自制，成品入库后才通知委外部。
+        // ADR-065：无子层委外同批合并为一张委外申请（分批提交时每批一张）。
         MaterialSupplyRoute.subcontract =>
-          '委外任务已下达：无子层已通知委外部；有子层已转前置自制，入库后自动通知',
-        MaterialSupplyRoute.make => '自制备料任务已创建',
+          '委外任务已下达：无子层合并为 '
+              '${batches.length} 张委外申请并通知委外部；有子层已转前置自制，入库后自动通知',
+        MaterialSupplyRoute.make => '自制备料任务已创建（${groups.length} 条）',
       };
-      context.appSuccess(
-        batches.length == 1
-            ? '$message(${groups.length} 条)'
-            : '$message(${groups.length} 条，分 ${batches.length} 批完成)',
-      );
+      context.appSuccess(message);
       return current;
     } catch (error) {
       if (!mounted) return null;

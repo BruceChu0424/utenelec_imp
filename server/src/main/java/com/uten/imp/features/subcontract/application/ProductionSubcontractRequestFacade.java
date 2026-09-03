@@ -154,6 +154,11 @@ public class ProductionSubcontractRequestFacade
                     ErrorCode.CONFLICT,
                     "计划包关联的委外申请不存在");
         }
+        // ADR-065：申请可由同批多个备料任务共享，整批撤回时红冲幂等。
+        if (action == LifecycleAction.REVERSE
+                && application.getStatus() == STATUS_REVERSED) {
+            return;
+        }
         List<Object[]> items = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT id, COALESCE(ordered_qty, 0)

@@ -357,6 +357,36 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(subcontractNotice).isGreaterThan(subcontractMark);
     }
 
+    @Test
+    void bulkNotifyMergesOneRequestPerRouteAndSharedDocumentCancelIsBatched()
+            throws Exception {
+        String commands = source(
+                "features/production/analysis/MaterialAnalysisCommandService.java");
+        String purchaseFacade = source(
+                "features/purchase/request/ProductionPurchaseRequestFacade.java");
+        String subcontractFacade = source(
+                "features/subcontract/application/ProductionSubcontractRequestFacade.java");
+
+        // ADR-065：一次通知先整批聚合（全部 BUY 一张采购申请 / 全部无子层委外一张
+        // 委外申请，表头日期取最早），再逐 action 挂接明细锚点。
+        assertThat(commands).contains("prepareExternalDocuments(analysisId, created)");
+        assertThat(commands).contains(
+                "createExternalDocument(analysisId, action, prepared)");
+        assertThat(commands).contains("earliest(purchaseNeedDate, needDate)");
+        assertThat(commands).contains("earliest(subcontractNeedDate, needDate)");
+        assertThat(commands).contains("purchaseNeedDate, warehouseId,");
+        assertThat(commands).contains("subcontractNeedDate, warehouseId,");
+        // 有子层委外仍走 V458 前置自制，聚合前先按活动 BOM 分类。
+        assertThat(commands).contains("prepared.subcontractLeafActionIds()");
+        // 共享单据撤回：整批一并撤回，单据只红冲一次（Facade REVERSE 幂等）。
+        assertThat(commands).contains(
+                "sharedDocumentActionIds(analysisId, documentId)");
+        assertThat(purchaseFacade).contains(
+                "action == LifecycleAction.REVERSE && request.getStatus() == STATUS_REVERSED");
+        assertThat(subcontractFacade).contains(
+                "application.getStatus() == STATUS_REVERSED");
+    }
+
     private static String source(String relative) throws Exception {
         return Files.readString(JAVA.resolve(relative), StandardCharsets.UTF_8);
     }

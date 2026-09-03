@@ -1453,6 +1453,184 @@ class FullChainEndToEndTest {
     }
 
     // ---------------------------------------------------------------------------------------------
+    // ADR-065 备料下达同批合并：一次通知里的多条 BUY 缺口必须合并为「一张」采购申请（多货品
+    // 明细），多条无子层 SUBCONTRACT 合并为一张委外申请；明细行仍逐 action 锚定。订货侧照旧
+    // 按供应商分组（同一张申请的两行在一张订货单）。撤回共享单据的任务时整批一并撤回、单据
+    // 只红冲一次，且不影响另一张（采购）申请。
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void materialAnalysis_bulkNotifyMergesOneRequestPerRouteAndBatchCancel() {
+        World w = seedWorld("sMA65");
+        // 产品 F(自制) 直接组件：两件采购(b1/b2) + 两件无子层委外(s1/s2)，均无库存。
+        UUID f = UUID.randomUUID(), b1 = UUID.randomUUID(), b2 = UUID.randomUUID(),
+                s1 = UUID.randomUUID(), s2 = UUID.randomUUID();
+        insertGoods(f, "F-sMA65", "成品F-sMA65", "自制", w.unitId(), w.unitLegacy());
+        insertGoods(b1, "B1-sMA65", "采购件B1-sMA65", "采购", w.unitId(), w.unitLegacy());
+        insertGoods(b2, "B2-sMA65", "采购件B2-sMA65", "采购", w.unitId(), w.unitLegacy());
+        insertGoods(s1, "S1-sMA65", "委外件S1-sMA65", "委外", w.unitId(), w.unitLegacy());
+        insertGoods(s2, "S2-sMA65", "委外件S2-sMA65", "委外", w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id in (?, ?, ?, ?)",
+                w.supplierId(), b1, b2, s1, s2);
+        insertBom(f, b1, "2");
+        insertBom(f, b2, "3");
+        insertBom(f, s1, "1");
+        insertBom(f, s2, "1");
+        UUID orderId = createApprovedOrder(w, f, "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        UUID planner = createUserWithPerms(w, "planner-ma65",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:route", "production_material_analysis:notify");
+        loginAs(planner);
+
+        AnalysisView view = analysisService.preview(new PreviewRequest(null, null, null,
+                w.warehouseId(), "idem-ma65-" + orderItemId, List.of(new PreviewItem(
+                        "SALES_ORDER_ITEM", orderItemId, null, null, null, null, null,
+                        LocalDate.of(2026, 9, 1), new BigDecimal("10")))));
+        UUID analysisId = view.analysisId();
+        List<MaterialView> buyRows = view.flatMaterials().stream()
+                .filter(m -> (m.goodsId().equals(b1) || m.goodsId().equals(b2)) && m.actionable())
+                .toList();
+        List<MaterialView> subRows = view.flatMaterials().stream()
+                .filter(m -> (m.goodsId().equals(s1) || m.goodsId().equals(s2)) && m.actionable())
+                .toList();
+        assertEquals(2, buyRows.size(), "两件采购均为 F 直接层可操作缺料");
+        assertEquals(2, subRows.size(), "两件无子层委外均为 F 直接层可操作缺料");
+
+        List<RouteDecision> routeDecisions = new java.util.ArrayList<>();
+        for (MaterialView row : buyRows) {
+            routeDecisions.add(new RouteDecision(
+                    row.materialLineId(), row.actionGroupKey(), row.sourceSuggestion(), null));
+        }
+        for (MaterialView row : subRows) {
+            routeDecisions.add(new RouteDecision(
+                    row.materialLineId(), row.actionGroupKey(), row.sourceSuggestion(), null));
+        }
+        analysisService.saveRoutes(analysisId, new RouteRequest(view.version(), view.fingerprint(),
+                "routes-ma65-" + analysisId, routeDecisions));
+        AnalysisView routed = analysisService.detail(analysisId);
+
+        // 一次通知同时下达两件采购 → 必须只有一张采购申请、两条明细、两条任务各自锚定。
+        analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
+                routed.fingerprint(), "notify-ma65-buy-" + analysisId, "BUY",
+                buyRows.stream().map(MaterialView::materialLineId).toList(), List.of(), null));
+        assertEquals(2, count("select count(*) from preplan_supply_actions "
+                        + "where analysis_id = ? and route = 'BUY' and status = 'CREATED'",
+                analysisId), "两条采购任务各自落 action（明细锚定粒度不变）");
+        assertEquals(1, count("""
+                        select count(distinct action.external_document_id)
+                        from preplan_supply_actions action
+                        where action.analysis_id = ?
+                          and action.route = 'BUY'
+                          and action.status = 'CREATED'
+                        """, analysisId), "ADR-065：两条 BUY 任务共享同一张采购申请");
+        Map<String, Object> purchaseDoc = jdbc.queryForMap("""
+                select request.id as request_id, count(distinct item.id) as item_count
+                from purchase_requests request
+                join purchase_request_items item on item.request_id = request.id
+                 and item.is_deleted = false
+                join preplan_supply_actions action
+                  on action.external_document_id = request.id
+                 and action.analysis_id = ?
+                where request.is_deleted = false
+                group by request.id
+                """, analysisId);
+        assertEquals(((Number) purchaseDoc.get("item_count")).intValue(), 2,
+                "合并后的采购申请包含两条货品明细");
+        UUID requestId = (UUID) purchaseDoc.get("request_id");
+
+        // 一次通知同时下达两件无子层委外 → 一张委外申请、两条明细。
+        AnalysisView afterBuy = analysisService.detail(analysisId);
+        analysisCommandService.notifySupply(analysisId, new NotifyRequest(afterBuy.version(),
+                afterBuy.fingerprint(), "notify-ma65-sub-" + analysisId, "SUBCONTRACT",
+                subRows.stream().map(MaterialView::materialLineId).toList(), List.of(), null));
+        assertEquals(1, count("""
+                        select count(distinct action.external_document_id)
+                        from preplan_supply_actions action
+                        where action.analysis_id = ?
+                          and action.route = 'SUBCONTRACT'
+                          and action.status = 'CREATED'
+                        """, analysisId), "ADR-065：两条无子层委外任务共享同一张委外申请");
+
+        // 采购侧照旧按供应商分解：同一张申请的两条明细可在一张订货单下单。
+        // 申请明细按维度稳定排序，行号顺序与货品插入顺序无关——按货品直查各自明细。
+        UUID itemForB1 = jdbc.queryForObject(
+                "select id from purchase_request_items where request_id = ? "
+                        + "and goods_id = ? and is_deleted = false",
+                UUID.class, requestId, b1);
+        UUID itemForB2 = jdbc.queryForObject(
+                "select id from purchase_request_items where request_id = ? "
+                        + "and goods_id = ? and is_deleted = false",
+                UUID.class, requestId, b2);
+        assertNotNull(itemForB1, "b1 在合并申请中有独立明细行");
+        assertNotNull(itemForB2, "b2 在合并申请中有独立明细行");
+        loginAs(w.superAdminUserId());
+        com.uten.imp.features.purchase.order.dto.OrderSaveRequest orderReq =
+                new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        orderReq.setSettlementMethodId(activeSettlementMethodId());
+        orderReq.setBillDate(LocalDate.of(2026, 9, 2));
+        orderReq.setSupplierId(w.supplierId());
+        orderReq.setWarehouseId(w.warehouseId());
+        orderReq.setCurrencyId(w.currencyId());
+        orderReq.setExchangeRate(BigDecimal.ONE);
+        orderReq.setTaxRate(BigDecimal.ZERO);
+        orderReq.setItems(List.of(
+                ma65OrderLine(w, itemForB1, b1, "20"),
+                ma65OrderLine(w, itemForB2, b2, "30")));
+        purchaseOrderService.createBatch(orderReq);
+        assertEquals(2, count("""
+                        select count(*) from purchase_order_items item
+                        join purchase_orders o on o.id = item.order_id
+                        where o.supplier_id = ?
+                          and o.is_deleted = false
+                          and item.is_deleted = false
+                          and item.goods_id in (?, ?)
+                        """, w.supplierId(), b1, b2),
+                "一张订货单（同一供应商）承载合并申请的两条明细");
+
+        // 撤回共享委外申请的一个任务 → 整批两条一并撤回、申请红冲一次；采购申请不受影响。
+        UUID subActionId = jdbc.queryForObject("""
+                select id from preplan_supply_actions
+                where analysis_id = ? and route = 'SUBCONTRACT' and status = 'CREATED'
+                order by created_at limit 1
+                """, UUID.class, analysisId);
+        UUID applicationId = jdbc.queryForObject(
+                "select external_document_id from preplan_supply_actions where id = ?",
+                UUID.class, subActionId);
+        loginAs(planner);
+        AnalysisView beforeCancel = analysisService.detail(analysisId);
+        analysisCommandService.cancelAction(analysisId, subActionId, new CancelRequest(
+                beforeCancel.version(), beforeCancel.fingerprint(),
+                "cancel-ma65-" + subActionId, "整批撤回共享委外申请"));
+        assertEquals(0, count("select count(*) from preplan_supply_actions "
+                        + "where analysis_id = ? and route = 'SUBCONTRACT' "
+                        + "and status in ('OPEN','CREATED','IN_PROGRESS')",
+                analysisId), "撤回一个共享任务 → 同批两条委外任务全部撤回");
+        assertEquals(-1, intFor("select status from subcontract_applications where id = ?",
+                applicationId), "共享委外申请整批红冲一次");
+        assertEquals(2, count("select count(*) from preplan_supply_actions "
+                        + "where analysis_id = ? and route = 'BUY' and status = 'CREATED'",
+                analysisId), "采购侧两条任务不受委外整批撤回影响");
+        assertEquals(1, intFor("select status from purchase_requests where id = ?",
+                requestId), "采购申请保持已审核，未被连带红冲");
+    }
+
+    /** ADR-065 用例的订货明细行：引用合并申请的明细 + 供应商价格。 */
+    private com.uten.imp.features.purchase.order.dto.OrderItemLine ma65OrderLine(
+            World w, UUID requestItemId, UUID goodsId, String qty) {
+        com.uten.imp.features.purchase.order.dto.OrderItemLine line =
+                new com.uten.imp.features.purchase.order.dto.OrderItemLine();
+        line.setGoodsId(goodsId);
+        line.setRequestItemId(requestItemId);
+        line.setUnitId(w.unitId());
+        line.setUnitRate(BigDecimal.ONE);
+        line.setQty(new BigDecimal(qty));
+        line.setPrice(new BigDecimal("50"));
+        line.setAmountOriginal(new BigDecimal(qty).multiply(new BigDecimal("50")));
+        line.setAmountLocal(new BigDecimal(qty).multiply(new BigDecimal("50")));
+        return line;
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // V234 material-analysis OBJECT-SCOPE (maker) isolation. @PreAuthorize lives on the Controller
     // (every endpoint has it), so direct service calls bypass it; the service-level guard here is the
     // object scope — a DIFFERENT account that DOES hold :manage cannot write to an analysis it does

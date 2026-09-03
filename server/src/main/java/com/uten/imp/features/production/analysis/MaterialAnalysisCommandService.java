@@ -248,8 +248,13 @@ public class MaterialAnalysisCommandService {
                     safetyQty.signum() > 0 ? UUID.randomUUID() : null));
         }
 
+        // ADR-065 同批合并：一次通知的全部 BUY 合并生成一张采购申请、全部无子层
+        // SUBCONTRACT 合并生成一张委外申请；明细行仍逐 action 锚定（撤回/绑定粒度不变），
+        // 订货侧照旧按供应商分组拆订货单。MAKE 与委外前置自制保持逐条任务。
+        PreparedExternalDocuments prepared =
+                prepareExternalDocuments(analysisId, created);
         for (ActionDraft action : created) {
-            createExternalDocument(analysisId, action);
+            createExternalDocument(analysisId, action, prepared);
         }
         if (!created.isEmpty()) {
             analysisService.refreshLocked(analysisId);
@@ -377,10 +382,10 @@ public class MaterialAnalysisCommandService {
             return analysisService.detailInternal(analysisId, false);
         }
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
-        cancelActionLocked(analysisId, actionId, request.reason());
+        List<UUID> cancelledActionIds = cancelActionLocked(analysisId, actionId, request.reason());
         analysisService.refreshLocked(analysisId);
         recordCommand(analysisId, OP_CANCEL_ACTION, request.idempotencyKey(), hash,
-                Map.of("actionIds", List.of(actionId)));
+                Map.of("actionIds", cancelledActionIds));
         return analysisService.detailInternal(analysisId, false);
     }
 
@@ -686,7 +691,14 @@ public class MaterialAnalysisCommandService {
         }
     }
 
-    private void createExternalDocument(UUID analysisId, ActionDraft action) {
+    /**
+     * ADR-065：一次通知的外部单据聚合预建。
+     * 全部 BUY 行合并为一张采购申请（每 action 一条需求明细，安全库存补库单独成行）；
+     * 全部无子层 SUBCONTRACT 行合并为一张委外申请。表头需求日期取各行最早日期，
+     * 明细交期仍逐行保留各自操作组的 need_date。
+     */
+    private PreparedExternalDocuments prepareExternalDocuments(
+            UUID analysisId, List<ActionDraft> created) {
         UUID employeeId = currentUser.requireEmployeeId();
         // 来源单据展示可读标签（计划前物料分析 + 分析日期），不再把分析 UUID 暴露给单据号/备注；
         // 谱系回溯改走 materialAnalysisId，与展示解耦。analyzed_at 实时查（refreshLocked 会推进）。
@@ -711,33 +723,68 @@ public class MaterialAnalysisCommandService {
         }
         String sourceLabel = "计划前物料分析 "
                 + analyzedInstant.atZone(BusinessTime.ZONE).toLocalDate();
-        if ("BUY".equals(action.group().route())) {
-            List<ProductionPurchaseRequestFacade.DraftLine> lines = new ArrayList<>();
-            if (action.demandQty().signum() > 0) {
-                lines.add(new ProductionPurchaseRequestFacade.DraftLine(
+
+        List<ProductionPurchaseRequestFacade.DraftLine> buyLines = new ArrayList<>();
+        LocalDate purchaseNeedDate = null;
+        List<ProductionSubcontractRequestPort.DraftLine> subcontractLines = new ArrayList<>();
+        LocalDate subcontractNeedDate = null;
+        Set<UUID> subcontractLeafActionIds = new LinkedHashSet<>();
+        for (ActionDraft action : created) {
+            LocalDate needDate = action.group().needDate();
+            if ("BUY".equals(action.group().route())) {
+                if (action.demandQty().signum() > 0) {
+                    buyLines.add(new ProductionPurchaseRequestFacade.DraftLine(
+                            action.actionId(), action.group().dimension().goodsId(),
+                            action.group().dimension().colorId(),
+                            action.group().dimension().unitId(), action.demandQty(),
+                            needDate, "生产需求精确备料"));
+                }
+                if (action.safetyQty().signum() > 0) {
+                    buyLines.add(new ProductionPurchaseRequestFacade.DraftLine(
+                            action.safetySliceId(), action.group().dimension().goodsId(),
+                            action.group().dimension().colorId(),
+                            action.group().dimension().unitId(), action.safetyQty(),
+                            needDate, "公共安全库存补库(不绑定单一物料分析)"));
+                }
+                purchaseNeedDate = earliest(purchaseNeedDate, needDate);
+            } else if ("SUBCONTRACT".equals(action.group().route())
+                    && !hasActiveBomChildren(action.group().dimension().goodsId())) {
+                subcontractLeafActionIds.add(action.actionId());
+                subcontractLines.add(new ProductionSubcontractRequestPort.DraftLine(
                         action.actionId(), action.group().dimension().goodsId(),
                         action.group().dimension().colorId(),
                         action.group().dimension().unitId(), action.demandQty(),
-                        action.group().needDate(), "生产需求精确备料"));
+                        needDate, "计划前物料分析委外备料"));
+                subcontractNeedDate = earliest(subcontractNeedDate, needDate);
             }
-            if (action.safetyQty().signum() > 0) {
-                lines.add(new ProductionPurchaseRequestFacade.DraftLine(
-                        action.safetySliceId(), action.group().dimension().goodsId(),
-                        action.group().dimension().colorId(),
-                        action.group().dimension().unitId(), action.safetyQty(),
-                        action.group().needDate(),
-                        "公共安全库存补库(不绑定单一物料分析)"));
-            }
-            ProductionPurchaseRequestFacade.DraftResult result =
-                    purchaseRequests.createProductionDraft(
-                            sourceLabel, analysisId, action.group().needDate(),
-                            selectedWarehouse(analysisId),
-                            List.copyOf(lines),
-                            employeeId, employeeId);
+        }
+        UUID warehouseId = selectedWarehouse(analysisId);
+        ProductionPurchaseRequestFacade.DraftResult purchase = buyLines.isEmpty() ? null
+                : purchaseRequests.createProductionDraft(
+                        sourceLabel, analysisId, purchaseNeedDate, warehouseId,
+                        List.copyOf(buyLines), employeeId, employeeId);
+        ProductionSubcontractRequestPort.DraftResult subcontract = subcontractLines.isEmpty() ? null
+                : subcontractRequests.createProductionDraft(
+                        sourceLabel, analysisId, subcontractNeedDate, warehouseId,
+                        List.copyOf(subcontractLines), employeeId, employeeId);
+        return new PreparedExternalDocuments(
+                purchase, subcontract, Set.copyOf(subcontractLeafActionIds));
+    }
+
+    private static LocalDate earliest(LocalDate current, LocalDate candidate) {
+        if (candidate == null) return current;
+        return current == null || candidate.isBefore(current) ? candidate : current;
+    }
+
+    private void createExternalDocument(
+            UUID analysisId, ActionDraft action, PreparedExternalDocuments prepared) {
+        if ("BUY".equals(action.group().route())) {
+            ProductionPurchaseRequestFacade.DraftResult result = prepared.purchaseRequest();
             Map<UUID, ProductionPurchaseRequestFacade.DraftLineResult> bySlice =
-                    result.lines().stream().collect(Collectors.toMap(
-                            ProductionPurchaseRequestFacade.DraftLineResult::demandId,
-                            value -> value));
+                    result == null ? Map.of() : result.lines().stream().collect(
+                            Collectors.toMap(
+                                    ProductionPurchaseRequestFacade.DraftLineResult::demandId,
+                                    value -> value));
             UUID demandItemId = action.demandQty().signum() > 0
                     ? Optional.ofNullable(bySlice.get(action.actionId()))
                             .map(ProductionPurchaseRequestFacade.DraftLineResult::requestItemId)
@@ -757,21 +804,16 @@ public class MaterialAnalysisCommandService {
             // V458：有子层级的委外件不在此刻生成委外申请（不通知委外部）。
             // 先在原分析内创建前置自制任务，待自制成品入库后按账本
             // 满批自动/手动分批生成委外申请。
-            if (hasActiveBomChildren(action.group().dimension().goodsId())) {
+            if (!prepared.subcontractLeafActionIds().contains(action.actionId())) {
                 createSubcontractMakeTask(analysisId, action);
                 return;
             }
             ProductionSubcontractRequestPort.DraftResult result =
-                    subcontractRequests.createProductionDraft(
-                    sourceLabel, analysisId, action.group().needDate(),
-                            selectedWarehouse(analysisId),
-                            List.of(new ProductionSubcontractRequestPort.DraftLine(
-                                    action.actionId(), action.group().dimension().goodsId(),
-                                    action.group().dimension().colorId(),
-                                    action.group().dimension().unitId(), action.demandQty(),
-                                    action.group().needDate(), "计划前物料分析委外备料")),
-                            employeeId, employeeId);
-            ProductionSubcontractRequestPort.DraftLineResult line = result.lines().getFirst();
+                    prepared.subcontractApplication();
+            ProductionSubcontractRequestPort.DraftLineResult line = result.lines().stream()
+                    .filter(candidate -> action.actionId().equals(candidate.demandId()))
+                    .findFirst()
+                    .orElseThrow(() -> conflict("委外申请缺少计划前物料分析备料明细"));
             markCreated(action.actionId(), "SUBCONTRACT_APPLICATION",
                     result.applicationId(), result.billNo(), line.applicationItemId(), null);
             chainNotice.notifyPreplanSupplyActionCreated(action.actionId());
@@ -1310,7 +1352,63 @@ public class MaterialAnalysisCommandService {
         return List.copyOf(result);
     }
 
-    private void cancelActionLocked(UUID analysisId, UUID actionId, String reason) {
+    /**
+     * 撤回一个备料任务。ADR-065 起采购/委外申请按整批合并生成：目标任务的
+     * 外部单据若仍被同分析内其他生效任务共享，则共享任务在同一事务内一并撤回、
+     * 单据只红冲一次；任何共享任务存在不可撤回依赖时整批失败（fail-closed）。
+     *
+     * @return 实际撤回的 action id 集合（目标 + 共享同单据的兄弟任务）
+     */
+    private List<UUID> cancelActionLocked(UUID analysisId, UUID actionId, String reason) {
+        subcontractPreparationHandoffs.requireSupplyActionCancellationSafe(
+                analysisId, actionId);
+        Object[] row = one(em.createNativeQuery("""
+                SELECT id, status, route, requested_qty, external_document_type,
+                       external_document_id
+                FROM preplan_supply_actions
+                WHERE id = :actionId AND analysis_id = :analysisId
+                FOR UPDATE
+                """).setParameter("actionId", actionId)
+                .setParameter("analysisId", analysisId), "备料任务不存在");
+        String status = Objects.toString(row[1], "");
+        if ("CANCELLED".equals(status)) return List.of();
+        String type = Objects.toString(row[4], null);
+        UUID documentId = (UUID) row[5];
+        List<UUID> batch = sharesExternalDocument(type, documentId)
+                ? sharedDocumentActionIds(analysisId, documentId)
+                : List.of(actionId);
+        for (UUID candidateId : batch) {
+            cancelSingleActionLocked(analysisId, candidateId, reason);
+        }
+        return batch;
+    }
+
+    private static boolean sharesExternalDocument(String type, UUID documentId) {
+        return documentId != null
+                && ("PURCHASE_REQUEST".equals(type)
+                || "SUBCONTRACT_APPLICATION".equals(type));
+    }
+
+    /** 同分析内共享同一张外部申请单据、且仍生效的全部任务（含目标，稳定顺序加锁）。 */
+    private List<UUID> sharedDocumentActionIds(UUID analysisId, UUID documentId) {
+        List<UUID> rows = NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT id
+                        FROM preplan_supply_actions
+                        WHERE analysis_id = :analysisId
+                          AND external_document_id = :documentId
+                          AND status IN ('OPEN','CREATED','IN_PROGRESS')
+                        ORDER BY created_at, id
+                        FOR UPDATE
+                        """)
+                .setParameter("analysisId", analysisId)
+                .setParameter("documentId", documentId), UUID.class);
+        // 目标行已被外层锁定；共享集合为空只可能来自并发撤回，此时退回目标本身。
+        if (rows.isEmpty()) return List.of();
+        return List.copyOf(rows);
+    }
+
+    /** 撤回单个任务行：外部单据（合并生成，可能已被同批兄弟先撤）红冲幂等。 */
+    private void cancelSingleActionLocked(UUID analysisId, UUID actionId, String reason) {
         subcontractPreparationHandoffs.requireSupplyActionCancellationSafe(
                 analysisId, actionId);
         Object[] row = one(em.createNativeQuery("""
@@ -1939,6 +2037,13 @@ public class MaterialAnalysisCommandService {
             BigDecimal demandQty,
             BigDecimal safetyQty,
             UUID safetySliceId) {
+    }
+
+    /** ADR-065 同批合并的外部单据结果：整批一张采购申请 + 整批无子层委外一张申请。 */
+    private record PreparedExternalDocuments(
+            ProductionPurchaseRequestFacade.DraftResult purchaseRequest,
+            ProductionSubcontractRequestPort.DraftResult subcontractApplication,
+            Set<UUID> subcontractLeafActionIds) {
     }
 
     private record ActionSequence(int generation, UUID predecessorId) {

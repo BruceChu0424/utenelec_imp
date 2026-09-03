@@ -3090,6 +3090,75 @@ class FullChainEndToEndTest {
                         List.of(subcontractRow.materialLineId()),
                         List.of(), null));
 
+        // V458/ADR-062 修订一：有子层级委外件通知后不再立即生成委外申请，而是在
+        // 原分析内建 SUBCONTRACT_MAKE 前置自制任务（先自制、入库满批后才通知委外部）。
+        assertEquals(1, count("""
+                        select count(*)
+                        from preplan_supply_actions action
+                        where action.analysis_id = ?
+                          and action.route = 'SUBCONTRACT'
+                          and action.status = 'CREATED'
+                          and action.external_document_type = 'SUBCONTRACT_MAKE_TASK'
+                        """, analysisA),
+                "有子层委外通知必须外部化为前置自制任务而非委外申请");
+        Map<String, Object> makeTask = jdbc.queryForMap("""
+                select item.id as make_item_id
+                from preplan_subcontract_make_tasks task
+                join production_material_analysis_items item
+                  on item.id = task.preparation_item_id
+                where task.analysis_id = ? and task.goods_id = ?
+                  and task.status = 'ACTIVE'
+                """, analysisA, subcontracted);
+        UUID makeItemId = (UUID) makeTask.get("make_item_id");
+
+        // 原分析内前置自制：对 SUBCONTRACT_MAKE 行排产 → DRAW 领料 → 报工 → 实收入仓。
+        loginAs(planner);
+        AnalysisView afterTask = analysisService.detail(analysisA);
+        ProductView makeProduct = afterTask.products().stream()
+                .filter(product -> "SUBCONTRACT_MAKE".equals(product.sourceType()))
+                .findFirst().orElseThrow();
+        PlanPreview makePreview = analysisService.planPreview(
+                analysisA,
+                new PlanPreviewRequest(
+                        afterTask.version(), afterTask.fingerprint(), w.warehouseId(),
+                        List.of(new PlanQuantity(makeProduct.analysisLineId(),
+                                new BigDecimal("10"))),
+                        null));
+        AnalysisView beforeMakeGenerate = analysisService.detail(analysisA);
+        // 与旧链一致：生成并自动审核正式计划需独立审核权限，由超管执行。
+        loginAs(w.superAdminUserId());
+        GeneratedPlan makeGenerated = analysisCommandService.generatePlan(
+                analysisA,
+                new GeneratePlanRequest(
+                        beforeMakeGenerate.version(), beforeMakeGenerate.fingerprint(),
+                        makePreview.previewFingerprint(),
+                        "gen-s23c-make-" + analysisA,
+                        w.warehouseId(), LocalDate.of(2026, 1, 16), null,
+                        null, null, null, true,
+                        List.of(new PlanQuantity(makeProduct.analysisLineId(),
+                                new BigDecimal("10"))),
+                        null)).plans().getFirst();
+        for (UUID drawId : makeGenerated.drawIds()) {
+            stockDocService.approve(drawId);
+            var drawLines = jdbc.queryForList(
+                    "select id, qty from stock_document_items where doc_id = ? and is_deleted = false",
+                    drawId);
+            var issueReq = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
+            issueReq.setIdempotencyKey("make-draw-issue-" + drawId);
+            issueReq.setLines(drawLines.stream().map(row -> {
+                var line = new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();
+                line.setItemId((UUID) row.get("id"));
+                line.setQty((BigDecimal) row.get("qty"));
+                return line;
+            }).toList());
+            stockDocService.issue(drawId, issueReq);
+        }
+        UUID makeProductionPlanItem = planItemOfPlan(makeGenerated.planId());
+        UUID makeReportId = reportAndApprove(
+                w, makeProductionPlanItem, null, subcontracted, "10");
+        confirmFinishedInboundFully(finishedInDocForReport(makeReportId));
+
+        // 满批实收入仓 → 账本 produced=10 → 入库事务内自动生成委外申请并通知委外部。
         Map<String, Object> applicationSource = jdbc.queryForMap("""
                 select application.id as application_id,
                        item.id as application_item_id,
@@ -3116,9 +3185,9 @@ class FullChainEndToEndTest {
                           and external_item_id = ?
                           and allocated_qty = 10
                         """, analysisA, applicationItemId),
-                "委外通知须把分析分摊精确锚定到 application_item_id");
+                "满批自动通知须把分析分摊精确锚定到 application_item_id");
 
-        // 委外部门据申请明细下单；财务批准后 V304 自动生成冻结 BOM 发料计划/草稿。
+        // 委外部据满批自动生成的申请明细下单；财务批准后按 V458 谱系即时待出仓。
         loginAs(w.superAdminUserId());
         com.uten.imp.features.subcontract.order.dto.OrderSaveRequest orderRequest =
                 new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
@@ -3158,66 +3227,21 @@ class FullChainEndToEndTest {
         loginAs(reviewer);
         approvePendingFinance("SUBCONTRACT", subcontractOrderId);
 
-        // V447 起 MAKE 行（目标件带 BOM）财务批准后停在 ACTION_REQUIRED：先由前置协调器
-        // 生成内部自制分析 → 下达正式计划 → 领料发放 → 分段报工 → 实收入库，前置 READY 后
-        // 自动生成发料草稿（SubcontractMaterialPlanService.afterFinishedInboundApproved）。
+        // V458 谱系：订货行能追溯到前置自制账本批次（produced ≥ notified ≥ planned），
+        // 批准即 PREPARED_OUTBOUND 待出仓——不再有 MAKE 行与二次前置链。
         loginAs(w.superAdminUserId());
-        Map<String, Object> prepTask = jdbc.queryForMap("""
-                SELECT plan_item.id, plan_item.preparation_version
-                FROM subcontract_material_plan_items plan_item
-                JOIN subcontract_material_plans plan ON plan.id = plan_item.plan_id
-                WHERE plan.order_id = ? AND plan_item.flow_mode = 'MAKE_THEN_OUTBOUND'
-                  AND plan_item.is_deleted = FALSE
-                """, subcontractOrderId);
-        UUID prepPlanItemId = (UUID) prepTask.get("id");
-        long prepVersion = ((Number) prepTask.get("preparation_version")).longValue();
-        var prepStarted = subcontractPreparationCoordinator.start(
-                prepPlanItemId,
-                new com.uten.imp.features.production.analysis
-                        .SubcontractPreparationContracts.StartRequest(
-                        prepVersion, "prep-s23c-" + prepPlanItemId, w.warehouseId()));
-        AnalysisView prepDetail = analysisService.detail(prepStarted.analysisId());
-        UUID prepProductLineId = prepDetail.products().getFirst().analysisLineId();
-        PlanPreview prepPreview = analysisService.planPreview(
-                prepStarted.analysisId(),
-                new PlanPreviewRequest(
-                        prepDetail.version(), prepDetail.fingerprint(), w.warehouseId(),
-                        List.of(new PlanQuantity(prepProductLineId, quantity)),
-                        null));
-        AnalysisView prepBeforeGenerate = analysisService.detail(prepStarted.analysisId());
-        GeneratedPlan prepGenerated = analysisCommandService.generatePlan(
-                prepStarted.analysisId(),
-                new GeneratePlanRequest(
-                        prepBeforeGenerate.version(), prepBeforeGenerate.fingerprint(),
-                        prepPreview.previewFingerprint(),
-                        "gen-s23c-prep-" + prepStarted.analysisId(),
-                        w.warehouseId(), LocalDate.of(2026, 1, 18), null,
-                        null, null, null, true,
-                        List.of(new PlanQuantity(prepProductLineId, quantity)),
-                        null)).plans().getFirst();
-        // 领料发放：DRAW 确认 + 全额分轮出库 → 物料需求 FULFILLED → 执行段可开工
-        for (UUID drawId : prepGenerated.drawIds()) {
-            stockDocService.approve(drawId);
-            var drawLines = jdbc.queryForList(
-                    "select id, qty from stock_document_items where doc_id = ? and is_deleted = false",
-                    drawId);
-            var issueReq = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
-            issueReq.setIdempotencyKey("prep-draw-issue-" + drawId);
-            issueReq.setLines(drawLines.stream().map(row -> {
-                var line = new com.uten.imp.features.stock.dto.StockDocIssueRequest.Line();
-                line.setItemId((UUID) row.get("id"));
-                line.setQty((BigDecimal) row.get("qty"));
-                return line;
-            }).toList());
-            stockDocService.issue(drawId, issueReq);
-        }
-        // 目标件分段报工 + 实收确认 → 前置 READY → 发料草稿自动生成
-        UUID prepProductionPlanItem = planItemOfPlan(prepGenerated.planId());
-        UUID prepReportId = reportAndApprove(
-                w, prepProductionPlanItem, null, subcontracted, quantity.toPlainString());
-        confirmFinishedInboundFully(finishedInDocForReport(prepReportId));
+        assertEquals(1, count("""
+                        select count(*)
+                        from subcontract_material_plan_items plan_item
+                        join subcontract_material_plans plan on plan.id = plan_item.plan_id
+                        where plan.order_id = ?
+                          and plan_item.flow_mode = 'PREPARED_OUTBOUND'
+                          and plan_item.preparation_status = 'READY_OUTBOUND'
+                          and plan_item.prepared_qty = 10
+                          and plan_item.is_deleted = false
+                        """, subcontractOrderId),
+                "满批前置自制的订货行批准后必须即时待出仓");
 
-        loginAs(w.superAdminUserId());
         UUID materialIssueId = jdbc.queryForObject("""
                 select issue.id
                 from subcontract_material_issues issue
@@ -3256,9 +3280,9 @@ class FullChainEndToEndTest {
         }).toList());
         subcontractMaterialIssueService.update(materialIssueId, issueRequest);
         subcontractMaterialIssueService.approve(materialIssueId);
-        assertEquals(0, stockBalance(w.warehouseId(), suppliedMaterial)
+        assertEquals(0, stockBalance(w.warehouseId(), subcontracted)
                         .compareTo(BigDecimal.ZERO),
-                "仓库按冻结 BOM 发出 R×20 后，委外回厂门禁前置完成");
+                "前置自制产出 10 出仓发给委外部后，目标件库存归零，回厂门禁前置完成");
 
         // 委外商回厂：仓库登记进仓，IQC PASS 只放行；仓库确认后才形成库存与分析归属。
         com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest receiptRequest =
@@ -3410,20 +3434,21 @@ class FullChainEndToEndTest {
     }
 
     @Test
-    void subcontractPreparationStartAtomicallyTakesOverOnlyTheOriginalSubtree() {
+    // V458/ADR-064 后「有子层级委外=先自制」由两条入口承担：分析链（SUBCONTRACT_MAKE
+    // 任务，见 preplanPegging_subcontractWarehouseStockInRefreshesOnlyOriginAnalysis）与
+    // 直下单缺口行。V447 的跨分析权益接管只存在于历史在途单，新数据不可达；本用例改为
+    // 验证直下单缺口行的前置启动语义：手工订货（不经申请）批准 → 目标件无库存全缺口 →
+    // MAKE 行 ACTION_REQUIRED → start 原子建独立 SUBCONTRACT_PREPARATION 分析（绑订货行）。
+    void subcontractPreparationStartCreatesIndependentDirectOrderAnalysis() {
         World w = seedWorld("v447-start");
-        UUID finished = UUID.randomUUID();
         UUID subcontracted = UUID.randomUUID();
         UUID childMaterial = UUID.randomUUID();
-        insertGoods(finished, "V447-F", "V447 finished", "自制",
-                w.unitId(), w.unitLegacy());
         insertGoods(subcontracted, "V447-S", "V447 subcontract target", "委外",
                 w.unitId(), w.unitLegacy());
         insertGoods(childMaterial, "V447-C", "V447 internal child", "采购",
                 w.unitId(), w.unitLegacy());
         jdbc.update("update goods set default_supplier_id=? where id=?",
                 w.supplierId(), subcontracted);
-        insertBom(finished, subcontracted, "1");
         insertBom(subcontracted, childMaterial, "2");
 
         UUID planner = createUserWithPerms(w, "planner-v447-start",
@@ -3433,71 +3458,7 @@ class FullChainEndToEndTest {
                 "production_material_analysis:notify",
                 "subcontract_preparation:view",
                 "subcontract_preparation:start");
-        UUID salesOrder = createApprovedOrder(w, finished, "10", "100");
-        loginAs(planner);
-        AnalysisView initial = analysisService.preview(new PreviewRequest(
-                null, null, null, w.warehouseId(),
-                "v447-analysis-" + salesOrder,
-                List.of(new PreviewItem(
-                        "SALES_ORDER_ITEM", orderItemId(salesOrder),
-                        null, null, null, null, null,
-                        LocalDate.of(2026, 9, 5), new BigDecimal("10")))));
-        MaterialView subcontractNode = initial.flatMaterials().stream()
-                .filter(material -> material.goodsId().equals(subcontracted)
-                        && material.actionable())
-                .findFirst().orElseThrow();
-        AnalysisView routed = analysisService.saveRoutes(
-                initial.analysisId(),
-                new RouteRequest(initial.version(), initial.fingerprint(),
-                        "v447-route-" + initial.analysisId(),
-                        List.of(new RouteDecision(
-                                subcontractNode.materialLineId(),
-                                subcontractNode.actionGroupKey(),
-                                "SUBCONTRACT", null))));
-        AnalysisView afterSubcontractNotify = analysisCommandService.notifySupply(
-                initial.analysisId(),
-                new NotifyRequest(
-                        routed.version(), routed.fingerprint(),
-                        "v447-notify-" + initial.analysisId(),
-                        "SUBCONTRACT",
-                        List.of(subcontractNode.materialLineId()),
-                        List.of(), null));
-        MaterialView childNode = afterSubcontractNotify.flatMaterials().stream()
-                .filter(material -> material.goodsId().equals(childMaterial)
-                        && material.actionable())
-                .findFirst().orElseThrow();
-        AnalysisView childRouted = analysisService.saveRoutes(
-                initial.analysisId(),
-                new RouteRequest(
-                        afterSubcontractNotify.version(),
-                        afterSubcontractNotify.fingerprint(),
-                        "v447-child-route-" + initial.analysisId(),
-                        List.of(new RouteDecision(
-                                childNode.materialLineId(),
-                                childNode.actionGroupKey(), "BUY", null))));
-        analysisCommandService.notifySupply(
-                initial.analysisId(),
-                new NotifyRequest(
-                        childRouted.version(), childRouted.fingerprint(),
-                        "v447-child-buy-" + initial.analysisId(),
-                        "BUY", List.of(childNode.materialLineId()),
-                        List.of(), null));
-
-        Map<String, Object> application = jdbc.queryForMap("""
-                SELECT application.id AS application_id,
-                       item.id AS application_item_id, item.qty AS qty
-                FROM preplan_supply_actions action
-                JOIN subcontract_applications application
-                  ON application.id=action.external_document_id
-                JOIN subcontract_application_items item
-                  ON item.application_id=application.id
-                WHERE action.analysis_id=? AND action.route='SUBCONTRACT'
-                  AND action.status='CREATED' AND item.goods_id=?
-                  AND item.is_deleted=FALSE
-                """, initial.analysisId(), subcontracted);
-        UUID applicationItemId = (UUID) application.get("application_item_id");
-        BigDecimal quantity = (BigDecimal) application.get("qty");
-
+        // 直下单：手工新建委外订货单（不经物料分析与申请），目标件无库存。
         loginAs(w.superAdminUserId());
         com.uten.imp.features.subcontract.order.dto.OrderSaveRequest orderRequest =
                 new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
@@ -3512,14 +3473,13 @@ class FullChainEndToEndTest {
         com.uten.imp.features.subcontract.order.dto.OrderItemLine line =
                 new com.uten.imp.features.subcontract.order.dto.OrderItemLine();
         line.setGoodsId(subcontracted);
-        line.setApplicationItemId(applicationItemId);
         line.setUnitId(w.unitId());
         line.setUnitRate(BigDecimal.ONE);
-        line.setQty(quantity);
+        line.setQty(new BigDecimal("10"));
         line.setDeliverDate(LocalDate.of(2026, 9, 5));
         line.setPrice(BigDecimal.ONE);
-        line.setAmountOriginal(quantity);
-        line.setAmountLocal(quantity);
+        line.setAmountOriginal(new BigDecimal("10"));
+        line.setAmountLocal(new BigDecimal("10"));
         orderRequest.setItems(List.of(line));
         UUID subcontractOrderId = subcontractOrderService.create(orderRequest).getId();
         UUID reviewer = createApprover(w);
@@ -3527,14 +3487,24 @@ class FullChainEndToEndTest {
         loginAs(reviewer);
         approvePendingFinance("SUBCONTRACT", subcontractOrderId);
 
+        // ADR-064 拆行后：目标件全局可用量 0 → 仅缺口 MAKE 行，无现货 DIRECT 行。
         Map<String, Object> task = jdbc.queryForMap("""
                 SELECT plan_item.id, plan_item.preparation_version
                 FROM subcontract_material_plan_items plan_item
                 JOIN subcontract_material_plans plan ON plan.id=plan_item.plan_id
                 WHERE plan.order_id=? AND plan_item.flow_mode='MAKE_THEN_OUTBOUND'
+                  AND plan_item.preparation_status='ACTION_REQUIRED'
                 """, subcontractOrderId);
         UUID planItemId = (UUID) task.get("id");
         long taskVersion = ((Number) task.get("preparation_version")).longValue();
+        assertEquals(0, count("""
+                SELECT count(*)
+                FROM subcontract_material_plan_items plan_item
+                JOIN subcontract_material_plans plan ON plan.id=plan_item.plan_id
+                WHERE plan.order_id=? AND plan_item.flow_mode='DIRECT_OUTBOUND'
+                """, subcontractOrderId),
+                "无现货直下单不得拆出现货直发行");
+
         loginAs(planner);
         var started = subcontractPreparationCoordinator.start(
                 planItemId,
@@ -3542,46 +3512,25 @@ class FullChainEndToEndTest {
                         .SubcontractPreparationContracts.StartRequest(
                         taskVersion, "v447-start-" + planItemId,
                         w.warehouseId()));
-
-        assertEquals("ACTIVE", started.handoffStatus());
-        assertEquals(0, started.takeoverQty().compareTo(new BigDecimal("10")));
-        assertEquals(initial.analysisId(), started.sourceAnalysisId());
-        assertEquals(subcontractNode.materialLineId(), started.sourceMaterialLineId());
-        assertNotNull(started.analysisId());
-        assertEquals(0, started.handedOffEntitlementQty()
-                .compareTo(BigDecimal.ZERO));
+        assertNotNull(started.analysisId(),
+                "直下单前置启动必须建立独立物料分析");
+        assertEquals("IN_PREPARATION", jdbc.queryForObject("""
+                SELECT preparation_status
+                FROM subcontract_material_plan_items WHERE id=?
+                """, String.class, planItemId));
+        // 独立分析绑定订货行：来源 SUBCONTRACT_PREPARATION + SC-PREP 谱系
+        // （SC-PREP 锚定 order_item_id，见 V436 谱系守卫）。
         assertEquals(1, count("""
                 SELECT count(*)
-                FROM preplan_subcontract_requirement_handoffs handoff
-                JOIN preplan_subcontract_requirement_handoff_items mapped
-                  ON mapped.handoff_id=handoff.id
-                WHERE handoff.plan_item_id=?
-                  AND handoff.source_analysis_id=?
-                  AND handoff.source_parent_material_id=?
-                  AND handoff.target_analysis_id=?
-                  AND mapped.goods_id=?
-                  AND mapped.transfer_capacity_qty=20
-                """, planItemId, initial.analysisId(),
-                subcontractNode.materialLineId(), started.analysisId(), childMaterial),
-                "V447 must persist one exact UUID-path handoff mapping");
-        assertEquals(0, jdbc.queryForObject("""
-                SELECT SUM(claim.claimed_qty)
-                FROM preplan_subcontract_requirement_supply_claims claim
-                JOIN preplan_subcontract_requirement_handoff_items mapped
-                  ON mapped.id=claim.handoff_item_id
-                JOIN preplan_subcontract_requirement_handoffs handoff
-                  ON handoff.id=mapped.handoff_id
-                WHERE handoff.plan_item_id=? AND mapped.goods_id=?
-                """, BigDecimal.class, planItemId, childMaterial)
-                .compareTo(new BigDecimal("20")),
-                "the source BUY allocation must be claimed exactly once");
-        assertEquals(0, jdbc.queryForObject("""
-                SELECT required_qty
-                FROM production_material_analysis_materials
-                WHERE analysis_id=? AND goods_id=? AND active=TRUE
-                """, BigDecimal.class, initial.analysisId(), childMaterial)
-                .compareTo(BigDecimal.ZERO),
-                "the original subtree must no longer request the taken-over child");
+                FROM production_material_analysis_items item
+                JOIN subcontract_material_plan_items plan_item
+                  ON plan_item.id=?
+                 AND item.source_ref='SC-PREP:' || plan_item.order_item_id::text
+                WHERE item.analysis_id=? AND item.is_deleted=FALSE
+                  AND item.source_type='SUBCONTRACT_PREPARATION'
+                """, planItemId, started.analysisId()),
+                "前置分析必须以 SC-PREP 谱系绑定直下达订货行");
+        // 子件需求整体落在独立分析内（父件×10、单耗 2 → 子件 20）。
         assertEquals(0, jdbc.queryForObject("""
                 SELECT required_qty
                 FROM production_material_analysis_materials
@@ -3589,187 +3538,32 @@ class FullChainEndToEndTest {
                 """, BigDecimal.class, started.analysisId(), childMaterial)
                 .compareTo(new BigDecimal("20")),
                 "the independent preparation analysis owns the full child demand");
-        assertEquals(0, jdbc.queryForObject("""
-                SELECT required_qty
-                FROM production_material_analysis_materials
-                WHERE analysis_id=? AND id=? AND active=TRUE
-                """, BigDecimal.class, initial.analysisId(),
-                subcontractNode.materialLineId()).compareTo(new BigDecimal("10")),
-                "the original parent demand must remain until subcontract return stock-in");
+        // 直下单没有源分析可接管：不得残留任何 V447 跨分析 handoff 记录。
+        assertEquals(0, count("""
+                SELECT count(*)
+                FROM preplan_subcontract_requirement_handoffs handoff
+                WHERE handoff.plan_item_id=?
+                """, planItemId),
+                "direct-order preparation must not fabricate cross-analysis handoffs");
 
+        // 取消未投产的前置分析必须把订货行恢复为可重新启动。
+        loginAs(planner);
         AnalysisView targetBeforeCancel = analysisService.detail(started.analysisId());
-        MaterialView targetChild = targetBeforeCancel.flatMaterials().stream()
-                .filter(material -> material.goodsId().equals(childMaterial))
-                .findFirst().orElseThrow();
-        assertEquals(0, targetChild.subcontractHandoffFutureQty()
-                .compareTo(new BigDecimal("20")));
-        assertEquals(0, targetChild.demandSupplyGapQty()
-                .compareTo(BigDecimal.ZERO),
-                "claimed source capacity must prevent a duplicate target task");
-        assertEquals(0, targetChild.inboundQty().compareTo(BigDecimal.ZERO),
-                "an unapproved purchase request must not be presented as confirmed inbound");
-
-        Map<String, Object> childRequest = jdbc.queryForMap("""
-                SELECT request_item.id, request_item.qty
-                FROM preplan_supply_actions action
-                JOIN preplan_supply_action_allocations allocation
-                  ON allocation.action_id=action.id
-                 AND allocation.analysis_id=action.analysis_id
-                JOIN purchase_request_items request_item
-                  ON request_item.id=allocation.external_item_id
-                WHERE action.analysis_id=? AND action.route='BUY'
-                  AND allocation.analysis_material_id=?
-                  AND action.status='CREATED'
-                """, initial.analysisId(), childNode.materialLineId());
-        UUID childRequestItemId = (UUID) childRequest.get("id");
-        BigDecimal childRequestQty = (BigDecimal) childRequest.get("qty");
-        loginAs(w.superAdminUserId());
-        com.uten.imp.features.purchase.order.dto.OrderSaveRequest purchaseOrder =
-                new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
-        purchaseOrder.setSettlementMethodId(activeSettlementMethodId());
-        purchaseOrder.setBillDate(LocalDate.of(2026, 8, 31));
-        purchaseOrder.setDeliverDate(LocalDate.of(2026, 9, 4));
-        purchaseOrder.setSupplierId(w.supplierId());
-        purchaseOrder.setWarehouseId(w.warehouseId());
-        purchaseOrder.setCurrencyId(w.currencyId());
-        purchaseOrder.setExchangeRate(BigDecimal.ONE);
-        purchaseOrder.setTaxRate(BigDecimal.ZERO);
-        com.uten.imp.features.purchase.order.dto.OrderItemLine purchaseLine =
-                new com.uten.imp.features.purchase.order.dto.OrderItemLine();
-        purchaseLine.setGoodsId(childMaterial);
-        purchaseLine.setRequestItemId(childRequestItemId);
-        purchaseLine.setUnitId(w.unitId());
-        purchaseLine.setUnitRate(BigDecimal.ONE);
-        purchaseLine.setQty(childRequestQty);
-        purchaseLine.setDeliverDate(LocalDate.of(2026, 9, 4));
-        purchaseLine.setPrice(BigDecimal.ONE);
-        purchaseLine.setAmountOriginal(childRequestQty);
-        purchaseLine.setAmountLocal(childRequestQty);
-        purchaseOrder.setItems(List.of(purchaseLine));
-        purchaseOrderService.createBatch(purchaseOrder);
-        UUID purchaseOrderId = jdbc.queryForObject("""
-                SELECT purchase_order.id
-                FROM purchase_orders purchase_order
-                JOIN purchase_order_items item ON item.order_id=purchase_order.id
-                WHERE item.request_item_id=? AND purchase_order.is_deleted=FALSE
-                """, UUID.class, childRequestItemId);
-        UUID purchaseReviewer = createApprover(w);
-        financeApproval.submit("PURCHASE", purchaseOrderId);
-        loginAs(purchaseReviewer);
-        approvePendingFinance("PURCHASE", purchaseOrderId);
-        UUID purchaseOrderItemId = jdbc.queryForObject("""
-                SELECT id FROM purchase_order_items
-                WHERE order_id=? AND request_item_id=?
-                """, UUID.class, purchaseOrderId, childRequestItemId);
-        List<Map<String, Object>> targetSupplyEvidence = jdbc.queryForList("""
-                SELECT claim.future_qty, source_action.status AS action_status,
-                       source_action.external_document_type,
-                       request_header.status AS request_status,
-                       request_header.is_closed AS request_closed,
-                       order_header.status AS order_status,
-                       order_header.is_closed AS order_closed,
-                       order_item.deliver_date AS item_deliver_date,
-                       order_header.deliver_date AS order_deliver_date,
-                       order_item.qty, order_item.received_qty,
-                       order_item.returned_qty, order_item.unit_rate
-                FROM v_preplan_subcontract_requirement_supply_claim_state claim
-                JOIN preplan_subcontract_requirement_handoff_items mapped
-                  ON mapped.id=claim.handoff_item_id
-                JOIN preplan_supply_action_allocations allocation
-                  ON allocation.id=claim.source_supply_action_allocation_id
-                 AND allocation.analysis_id=claim.source_analysis_id
-                JOIN preplan_supply_actions source_action
-                  ON source_action.id=claim.source_supply_action_id
-                 AND source_action.analysis_id=claim.source_analysis_id
-                LEFT JOIN purchase_request_items request_item
-                  ON request_item.id=allocation.external_item_id
-                LEFT JOIN purchase_requests request_header
-                  ON request_header.id=request_item.request_id
-                LEFT JOIN purchase_order_items order_item
-                  ON order_item.request_item_id=request_item.id
-                LEFT JOIN purchase_orders order_header
-                  ON order_header.id=order_item.order_id
-                WHERE mapped.target_analysis_id=?
-                  AND mapped.target_analysis_material_id=?
-                ORDER BY claim.id, order_item.id
-                """, started.analysisId(), targetChild.materialLineId());
-        assertEquals(1, targetSupplyEvidence.size(),
-                "V447 target claim must retain one canonical purchase lineage: "
-                        + targetSupplyEvidence);
-
-        loginAs(planner);
-        ProductView preparationProduct = targetBeforeCancel.products().getFirst();
-        AnalysisView refreshedAfterOrder = analysisService.preview(
-                new PreviewRequest(
-                        started.analysisId(), targetBeforeCancel.version(),
-                        targetBeforeCancel.fingerprint(), w.warehouseId(),
-                        "v447-refresh-order-" + planItemId,
-                        List.of(new PreviewItem(
-                                preparationProduct.sourceType(), null,
-                                preparationProduct.goodsId(),
-                                preparationProduct.colorId(),
-                                preparationProduct.unitId(),
-                                preparationProduct.sourceRef(),
-                                preparationProduct.sourceReason(),
-                                preparationProduct.deliveryDate(),
-                                preparationProduct.requestedQty()))));
-        MaterialView targetAfterOrder = refreshedAfterOrder
-                .flatMaterials().stream()
-                .filter(material -> material.goodsId().equals(childMaterial))
-                .findFirst().orElseThrow();
-        assertEquals(0, targetAfterOrder.inboundQty()
-                .compareTo(new BigDecimal("20")),
-                "only the approved purchase order is confirmed target inbound: "
-                        + targetSupplyEvidence);
-
-        UUID purchaseReceiptId = receiveAndPassPurchase(
-                w, purchaseOrderItemId, childMaterial,
-                new BigDecimal("20"), "v447-" + planItemId);
-        // V446 后 receiveAndPassPurchase 内部已完成 PASS + 仓库确认入库（peg 在确认事务写入），
-        // 不得再对同一收货单二次 confirm——余量已清零会拿不到放行事件。
-
-        loginAs(planner);
-        AnalysisView targetAfterStock = analysisService.detail(started.analysisId());
-        MaterialView stockedTargetChild = targetAfterStock.flatMaterials().stream()
-                .filter(material -> material.goodsId().equals(childMaterial))
-                .findFirst().orElseThrow();
-        assertEquals(0, stockedTargetChild.exactPeggedQty()
-                .compareTo(new BigDecimal("20")));
-        assertEquals(0, stockedTargetChild.subcontractHandoffFutureQty()
-                .compareTo(BigDecimal.ZERO));
-        assertEquals(0, jdbc.queryForObject("""
-                SELECT COALESCE(SUM(balance.effective_qty),0)
-                FROM v_preplan_stock_entitlement_beneficiary_balance balance
-                WHERE balance.beneficiary_analysis_id=?
-                  AND balance.beneficiary_analysis_material_id=?
-                """, BigDecimal.class, initial.analysisId(),
-                childNode.materialLineId()).compareTo(BigDecimal.ZERO),
-                "warehouse stock-in must automatically move the exact lot off the source node");
-
-        targetBeforeCancel = targetAfterStock;
         analysisCommandService.cancelAnalysis(
                 started.analysisId(),
                 new CancelRequest(
-                        targetBeforeCancel.version(), targetBeforeCancel.fingerprint(),
+                        targetBeforeCancel.version(),
+                        targetBeforeCancel.fingerprint(),
                         "v447-cancel-" + planItemId,
                         "test restores unused preparation ownership"));
-        assertEquals("RESTORED", jdbc.queryForObject("""
-                SELECT state
-                FROM v_preplan_subcontract_requirement_handoff_state
-                WHERE plan_item_id=?
-                """, String.class, planItemId));
         assertEquals("CANCELLED", jdbc.queryForObject("""
                 SELECT preparation_status
                 FROM subcontract_material_plan_items WHERE id=?
-                """, String.class, planItemId));
-        assertEquals(0, jdbc.queryForObject("""
-                SELECT required_qty
-                FROM production_material_analysis_materials
-                WHERE analysis_id=? AND goods_id=? AND active=TRUE
-                """, BigDecimal.class, initial.analysisId(), childMaterial)
-                .compareTo(new BigDecimal("20")),
-                "cancelling an unused preparation must restore the original subtree");
+                """, String.class, planItemId),
+                "cancelling an unused preparation must retire the line "
+                        + "(V447 语义：取消后行置 CANCELLED，由订货红冲/重新下达重建)");
     }
+
 
     /** v_stock_available 的公共可用量（无仓库行时按 0 处理）。 */
     private BigDecimal publicAvailable(UUID warehouseId, UUID goodsId) {

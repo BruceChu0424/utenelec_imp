@@ -233,10 +233,12 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         if (!List.of("ACTIVE", "PARTIALLY_PLANNED").contains(analysisStatus)) {
             return;
         }
-        if ("SUBCONTRACT_PREPARATION".equals(sourceType)) {
+        if ("SUBCONTRACT_PREPARATION".equals(sourceType)
+                || "SUBCONTRACT_MAKE".equals(sourceType)) {
             // ProductionCompletionReverseService invokes the neutral
-            // SubcontractPreparationInventoryPort later in this same
-            // FINISHED_IN transaction. That port creates the single dedicated
+            // SubcontractPreparationInventoryPort (V447) or
+            // SubcontractMakeTaskService (V458) later in this same
+            // FINISHED_IN transaction. Those ports create the single dedicated
             // reservation; PREPLAN_ANALYSIS must not reserve the same stock.
             return;
         }

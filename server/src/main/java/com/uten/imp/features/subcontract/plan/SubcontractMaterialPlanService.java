@@ -215,7 +215,7 @@ public class SubcontractMaterialPlanService
                         bom_has_children_snapshot, preparation_bom_fingerprint,
                         preparation_analysis_id, preparation_analysis_item_id,
                         created_by, updated_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0,
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0,
                             ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
                     """,
                     line.id(), planId, line.orderItemId(), lineNo++,

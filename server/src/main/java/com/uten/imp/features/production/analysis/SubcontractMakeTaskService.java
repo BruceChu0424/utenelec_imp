@@ -2,6 +2,7 @@ package com.uten.imp.features.production.analysis;
 
 import com.uten.imp.application.port.ProductionSubcontractRequestPort;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -257,6 +258,63 @@ public class SubcontractMakeTaskService {
                         employeeId, employeeId);
         ProductionSubcontractRequestPort.DraftLineResult line =
                 result.lines().getFirst();
+        // 每批通知建立独立的 SUBCONTRACT action 锚定申请：任务 action 的
+        // (action_id, analysis_material_id) 唯一 allocation 已在任务外部化时占用，
+        // 复用同一 action 会撞唯一键；新 action 以 CREATED+external 直接 INSERT
+        // （不经 UPDATE 外部化握手，V250/V460 守卫语义不变）。
+        List<Object[]> sourceAction = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT action_group_key, generation, request_hash
+                        FROM preplan_supply_actions
+                        WHERE id = :id
+                        """).setParameter("id", task.supplyActionId()));
+        if (sourceAction.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "委外前置自制任务的备料动作不存在，请刷新后重试");
+        }
+        Object[] source = sourceAction.getFirst();
+        String actionGroupKey = Objects.toString(source[0], "");
+        int generation = ((Number) source[1]).intValue() + 1;
+        UUID notifyActionId = UUID.randomUUID();
+        String businessKey = PlanningPackageFingerprint.sha256(List.of(
+                "PREPLAN-SUPPLY-ACTION-V1", task.analysisId().toString(),
+                actionGroupKey, "SUBCONTRACT", Integer.toString(generation)));
+        String actionIdempotency = "NOTIFY-" + PlanningPackageFingerprint.sha256(
+                List.of(idempotencyKey));
+        em.createNativeQuery("""
+                INSERT INTO preplan_supply_actions (
+                    id, analysis_id, warehouse_id, goods_id, color_id, unit_id,
+                    need_date, route, requested_qty, status,
+                    idempotency_key, action_group_key, request_business_key,
+                    generation, predecessor_action_id, request_hash,
+                    external_document_type, external_document_id,
+                    external_document_no, created_by)
+                VALUES (
+                    :id, :analysisId, :warehouseId, :goodsId, :colorId, :unitId,
+                    :needDate, 'SUBCONTRACT', :qty, 'CREATED',
+                    :idempotencyKey, :actionGroupKey, :businessKey,
+                    :generation, :predecessorId, :requestHash,
+                    'SUBCONTRACT_APPLICATION', :documentId,
+                    :documentNo, :actorId)
+                """)
+                .setParameter("id", notifyActionId)
+                .setParameter("analysisId", task.analysisId())
+                .setParameter("warehouseId", task.warehouseId())
+                .setParameter("goodsId", task.goodsId())
+                .setParameter("colorId", task.colorId())
+                .setParameter("unitId", task.unitId())
+                .setParameter("needDate", task.needDate())
+                .setParameter("qty", qty)
+                .setParameter("idempotencyKey", actionIdempotency)
+                .setParameter("actionGroupKey", actionGroupKey)
+                .setParameter("businessKey", businessKey)
+                .setParameter("generation", generation)
+                .setParameter("predecessorId", task.supplyActionId())
+                .setParameter("requestHash", Objects.toString(source[2], ""))
+                .setParameter("documentId", result.applicationId())
+                .setParameter("documentNo", result.billNo())
+                .setParameter("actorId", actorUserId)
+                .executeUpdate();
         UUID allocationId = UUID.randomUUID();
         em.createNativeQuery("""
                 INSERT INTO preplan_supply_action_allocations (
@@ -268,7 +326,7 @@ public class SubcontractMakeTaskService {
                 """)
                 .setParameter("id", allocationId)
                 .setParameter("analysisId", task.analysisId())
-                .setParameter("actionId", task.supplyActionId())
+                .setParameter("actionId", notifyActionId)
                 .setParameter("materialId", task.analysisMaterialId())
                 .setParameter("qty", qty)
                 .setParameter("externalItemId", line.applicationItemId())

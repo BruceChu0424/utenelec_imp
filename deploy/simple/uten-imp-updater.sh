@@ -69,12 +69,17 @@ verify_sums() {
     || die "SHA256SUMS 校验失败：$dir"
 }
 
-# 比较两个 JAR 的 Flyway 迁移集（文件名清单哈希）；判定"纯代码"还是"含迁移"
+# 比较两个 JAR 的 Flyway 迁移集（文件名清单哈希）；判定"纯代码"还是"含迁移"。
+# server JAR 是 Spring Boot fat jar，资源在 BOOT-INF/classes/db/migration/ 下，
+# 必须剥掉前缀再匹配——否则两边都匹配 0 条、哈希恒等，含迁移版本会被误判
+# 成纯代码而自动激活（2026-09-03 v2026.09.03-1 事故根因）。
 migration_digest() {
   python3 - "$1" <<'PY'
 import hashlib, sys, zipfile
+def entry_name(e):
+    return e[len("BOOT-INF/classes/"):] if e.startswith("BOOT-INF/classes/") else e
 names = sorted(
-    n for n in zipfile.ZipFile(sys.argv[1]).namelist()
+    n for n in (entry_name(e) for e in zipfile.ZipFile(sys.argv[1]).namelist())
     if n.startswith("db/migration/")
 )
 print(hashlib.sha256("\n".join(names).encode()).hexdigest())

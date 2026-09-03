@@ -208,6 +208,32 @@ REMOTE
 3. **版本不匹配**：库**可以**高于后端（新迁移纯新增时透明）；库**低于**发布版本时恢复后必须补跑
    `java -jar /opt/uten-imp/current/server/uten-imp-migrator.jar`（加载 `/etc/uten-imp/migrator.env`）。
 
+4. **刷新库后 migrator 全挂（validate 阶段 UTEN_MIGRATION_FAILED 且无细节）**：第五节刷新流程
+   `pg_restore --no-owner --no-privileges` 会把所有 GRANT 剥掉、对象全归恢复角色 `uten` 所有，
+   `uten_migrator` 连 `flyway_schema_history` 都读不了。刷新后必须补一段（2026-09-03 实战）：
+
+   ```sql
+   REASSIGN OWNED BY uten TO uten_migrator;
+   ALTER DATABASE uten_imp OWNER TO uten_migrator;
+   ALTER SCHEMA public OWNER TO uten_migrator;
+   GRANT USAGE ON SCHEMA public TO uten;
+   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO uten;
+   GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO uten;
+   GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO uten;
+   ALTER DEFAULT PRIVILEGES FOR ROLE uten_migrator IN SCHEMA public
+     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO uten;
+   ALTER DEFAULT PRIVILEGES FOR ROLE uten_migrator IN SCHEMA public
+     GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO uten;
+   ```
+
+5. **含迁移版本被误判纯代码自动激活（2026-09-03 v2026.09.03-1 事故，已修复）**：
+   `migration_digest` 原只匹配 jar 根路径 `db/migration/`，而 server JAR 是 Spring Boot
+   fat jar（资源在 `BOOT-INF/classes/db/migration/`），两边各匹配 0 条、哈希恒等 →
+   永远判纯代码 → 带迁移版本自动激活 → Hibernate 校验炸缺表 → 反复回滚/重试循环停机。
+   修复：digest 前先剥 `BOOT-INF/classes/` 前缀（已入仓库并部署服务器）。此形态下
+   timer 不会自动回滚成功时也停机超过 2 个周期，处置照第六节故障速查。
+
+
 ### 正式数据切换（老系统 → 服务器，未来做）
 
 同一流程，但顺序必须是：**源头先在本地演练并逐项对账**（客户/供应商/库存数量/关键金额）

@@ -1111,29 +1111,52 @@ abstract class _MaterialAnalysisPageBase
     return null;
   }
 
-  /// 解析自制通知对应的 MAKE_COMPONENT 子产品（用于待生产/生产中/已完工）。
-  /// 只接受服务端显式 delegated child ID 或 PREPLAN_MAKE_TASK.documentId；
-  /// 同货可能出现在多条 MAKE 路径，禁止按 parentAnalysisLineId + goodsId 猜测。
-  ProductionMaterialAnalysisProduct? _makeChildProductOf(
-    ProductionMaterialAnalysisMaterial material,
-  ) {
+  /// 解析已确认路线的「先自制」委托子产品（MAKE 与有子层委外共用一套：
+  /// 只认服务端显式 delegated child ID 或对应 MAKE_TASK.documentId；
+  /// 同货可能出现在多条路径，禁止按 parentAnalysisLineId + goodsId 猜测）。
+  ProductionMaterialAnalysisProduct? _delegatedChildProductOf(
+    ProductionMaterialAnalysisMaterial material, {
+    required MaterialSupplyRoute route,
+    required String documentType,
+    required String sourceType,
+  }) {
     final analysis = _analysis;
     if (analysis == null) return null;
     String? childId = material.delegatedToAnalysisLineId;
     for (final target in material.notifiedTargets) {
-      if (target.target == MaterialSupplyRoute.make &&
-          target.documentType == 'PREPLAN_MAKE_TASK') {
+      if (target.target == route && target.documentType == documentType) {
         childId ??= target.documentId;
         break;
       }
     }
     if (childId == null) return null;
     for (final product in analysis.products) {
-      if (product.sourceType != 'MAKE_COMPONENT') continue;
+      if (product.sourceType != sourceType) continue;
       if (product.analysisLineId == childId) return product;
     }
     return null;
   }
+
+  /// 解析自制通知对应的 MAKE_COMPONENT 子产品（用于待生产/生产中/已完工）。
+  ProductionMaterialAnalysisProduct? _makeChildProductOf(
+    ProductionMaterialAnalysisMaterial material,
+  ) => _delegatedChildProductOf(
+    material,
+    route: MaterialSupplyRoute.make,
+    documentType: 'PREPLAN_MAKE_TASK',
+    sourceType: 'MAKE_COMPONENT',
+  );
+
+  /// 解析有子层级委外件「先自制」对应的 SUBCONTRACT_MAKE 子产品——与
+  /// MAKE 同一条委托链，入库满批/分批后由服务端通知委外部（V458）。
+  ProductionMaterialAnalysisProduct? _subcontractMakeChildProductOf(
+    ProductionMaterialAnalysisMaterial material,
+  ) => _delegatedChildProductOf(
+    material,
+    route: MaterialSupplyRoute.subcontract,
+    documentType: 'SUBCONTRACT_MAKE_TASK',
+    sourceType: 'SUBCONTRACT_MAKE',
+  );
 }
 
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。

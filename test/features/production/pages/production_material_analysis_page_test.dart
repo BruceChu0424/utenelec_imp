@@ -1746,6 +1746,112 @@ void main() {
   );
 
   testWidgets(
+    'confirmed SUBCONTRACT with BOM children stays a blocked candidate like MAKE',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(375, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: _pendingMakeCandidateAnalysisJson(
+          parentRoute: 'SUBCONTRACT',
+        ),
+      );
+
+      // V458/ADR-064 两段式：有子层委外件确认「采用委外」后与自制同构——
+      // 下层未齐时同样进入暂不可安排候选区，而不是要求立即下达建任务。
+      final candidate = find.byKey(
+        const ValueKey('material-analysis-pending-make-pending-make-1'),
+      );
+      expect(candidate, findsOneWidget);
+      final waitingSection = find.byKey(
+        const Key('material-analysis-waiting-section'),
+      );
+      expect(find.text('暂不可安排 · 1'), findsOneWidget);
+      expect(
+        find.descendant(of: waitingSection, matching: candidate),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: candidate,
+          matching: find.text(
+            '直接子层级已经齐套，可创建委外前置自制任务并填写生产数量',
+          ),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const ValueKey(
+            'material-analysis-pending-make-select-pending-make-1',
+          ),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'ready SUBCONTRACT candidate offers checkbox and bottom subcontract action',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: _pendingMakeCandidateAnalysisJson(
+          parentRoute: 'SUBCONTRACT',
+          lowerLevelPending: false,
+        ),
+      );
+
+      final candidate = find.byKey(
+        const ValueKey('material-analysis-pending-make-pending-make-1'),
+      );
+      expect(candidate, findsOneWidget);
+      final readySection = find.byKey(
+        const Key('material-analysis-ready-section'),
+      );
+      expect(
+        find.descendant(of: readySection, matching: candidate),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp('已经齐套，可创建委外前置自制任务并填写生产数量'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: candidate,
+          matching: find.text('委外自制件 · 用于 测试产品'),
+        ),
+        findsOneWidget,
+      );
+      final checkbox = find.byKey(
+        const ValueKey(
+          'material-analysis-pending-make-select-pending-make-1',
+        ),
+      );
+      expect(checkbox, findsOneWidget);
+      await tester.tap(checkbox);
+      await tester.pump();
+      // 勾选后底部出现委外路线的批量下达按钮（服务端分流建前置自制任务）。
+      expect(find.text('下达委外(1)'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'ready pending MAKE card offers batch create checkbox and bottom action',
     (tester) async {
       final theme = ThemeData(
@@ -6678,6 +6784,7 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
   bool includeRealChild = false,
   bool actionable = true,
   bool includeMixedReadyCandidate = false,
+  String parentRoute = 'MAKE',
 }) {
   final json = _analysisJson(const ['NOTIFY_SUPPLY', 'GENERATE_PLAN']);
   final childShortage = lowerLevelPending ? 4 : 0;
@@ -6688,7 +6795,7 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
       actionGroupKey: 'pending-make-action-1',
       goodsCode: 'MAKE-PENDING',
       goodsName: '待自制壳体',
-      route: 'MAKE',
+      route: parentRoute,
       controlStage: 'ASSEMBLY',
     ),
     'lowerLevelPending': lowerLevelPending,
@@ -6696,8 +6803,10 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
     if (includeRealChild)
       'notifiedTargets': [
         {
-          'target': 'MAKE',
-          'documentType': 'PREPLAN_MAKE_TASK',
+          'target': parentRoute,
+          'documentType': parentRoute == 'SUBCONTRACT'
+              ? 'SUBCONTRACT_MAKE_TASK'
+              : 'PREPLAN_MAKE_TASK',
           'documentId': 'pending-make-child-1',
           'status': 'CREATED',
         },

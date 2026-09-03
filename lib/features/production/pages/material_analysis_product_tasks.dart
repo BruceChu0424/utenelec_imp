@@ -174,22 +174,34 @@ abstract class _MaterialAnalysisProductTasksState
   /// 待办卡（只读，继续处理下方 BOM）；下层齐套 → 可安排区可勾选，批量
   /// 「创建子件任务」后留在本页填数量。已创建（存在活动 MAKE 通知或真实
   /// child）的节点不再出现在这里，由真实 MAKE_COMPONENT 产品卡接管。
+  ///
+  /// V458/ADR-064 两段式：**有子层级的委外件确认「采用委外」后与自制完全
+  /// 同构**——同样进入候选卡（下层未齐=暂不可安排、齐套=可安排勾选提交，
+  /// 服务端分流建 SUBCONTRACT_MAKE 任务行），不再要求下达瞬间立即建任务。
   List<_PendingMakeCandidate> _pendingMakeCandidates(
     ProductionMaterialAnalysisView analysis,
   ) {
     final indexes = _analysisIndexes(analysis);
     final result = <_PendingMakeCandidate>[];
     for (final material in analysis.materials) {
-      if (material.confirmedRoute != MaterialSupplyRoute.make ||
-          material.shortageQty <= 0) {
+      if (material.shortageQty <= 0) continue;
+      final route = material.confirmedRoute;
+      final isMakeCandidate = route == MaterialSupplyRoute.make;
+      final isSubcontractCandidate =
+          route == MaterialSupplyRoute.subcontract &&
+          _hasProductionBomChildren(material, analysis);
+      if (!isMakeCandidate && !isSubcontractCandidate) {
         continue;
       }
-      final hasActiveMakeTask = material.notifiedTargets.any(
+      final hasActiveTask = material.notifiedTargets.any(
         (target) =>
-            target.target == MaterialSupplyRoute.make &&
+            target.target == route &&
             target.status?.toUpperCase() != 'CANCELLED',
       );
-      if (hasActiveMakeTask || _makeChildProductOf(material) != null) continue;
+      final existingChild = isMakeCandidate
+          ? _makeChildProductOf(material)
+          : _subcontractMakeChildProductOf(material);
+      if (hasActiveTask || existingChild != null) continue;
 
       final nodeKey = material.nodeKey;
       final directShortages = nodeKey == null
@@ -226,6 +238,7 @@ abstract class _MaterialAnalysisProductTasksState
         _PendingMakeCandidate(
           material: material,
           group: indexes.groupsByLine[material.materialLineId],
+          route: route!,
           parentLabel: parentLabel,
           shortageKindCount: kindCount,
           shortagePathCount: directShortages.length,
@@ -242,6 +255,23 @@ abstract class _MaterialAnalysisProductTasksState
       );
     });
     return result;
+  }
+
+  /// 有子层级委外件判定：分析树中该节点存在生产性 BOM 子件
+  /// （排除 SHIP/REFERENCE 非生产阶段）。只有这类委外件走「先自制」
+  /// 候选两段式；无子层纯外发件确认后仍直接走申请链。
+  bool _hasProductionBomChildren(
+    ProductionMaterialAnalysisMaterial material,
+    ProductionMaterialAnalysisView analysis,
+  ) {
+    final nodeKey = material.nodeKey;
+    if (nodeKey == null) return false;
+    return analysis.materials.any(
+      (child) =>
+          child.analysisLineId == material.analysisLineId &&
+          child.parentNodeKey == nodeKey &&
+          !_isNonProductionStage(child.controlStage),
+    );
   }
 
   bool _isNonProductionStage(String? stage) {
@@ -266,7 +296,7 @@ abstract class _MaterialAnalysisProductTasksState
     final group = candidate.group;
     return !candidate.material.lowerLevelPending &&
         group != null &&
-        _isExecutableSupplyGroup(group, MaterialSupplyRoute.make);
+        _isExecutableSupplyGroup(group, candidate.route);
   }
 
   Widget _productSection(
@@ -797,11 +827,15 @@ abstract class _MaterialAnalysisProductTasksState
     final material = candidate.material;
     final waiting = material.lowerLevelPending;
     final group = candidate.group;
+    final route = candidate.route;
+    final isSubcontract = route == MaterialSupplyRoute.subcontract;
+    final taskLabel = isSubcontract ? '委外前置自制任务' : '自制子件任务';
+    final goodsFallback = isSubcontract ? '待委外自制子件' : '待自制子件';
     final canArrange = _canArrangePendingMakeCandidate(candidate);
     final blocked = !canArrange;
     final selected =
         group != null &&
-        _selectedSupplyGroups[MaterialSupplyRoute.make]!.contains(group.key);
+        _selectedSupplyGroups[route]!.contains(group.key);
     final accent = blocked
         ? theme.colorScheme.error
         : theme.colorScheme.primary;
@@ -811,7 +845,7 @@ abstract class _MaterialAnalysisProductTasksState
     final onStatusSurface = blocked
         ? theme.colorScheme.onErrorContainer
         : theme.colorScheme.onPrimaryContainer;
-    final goodsName = material.goodsName ?? material.goodsCode ?? '待自制子件';
+    final goodsName = material.goodsName ?? material.goodsCode ?? goodsFallback;
     final description = waiting
         ? candidate.shortageKindCount > 0
               ? '下层还缺 ${candidate.shortageKindCount} 种物料'
@@ -819,8 +853,8 @@ abstract class _MaterialAnalysisProductTasksState
                     '${candidate.unconfirmedPathCount > 0 ? ' · 其中 ${candidate.unconfirmedPathCount} 条路线待确认' : ''}'
               : '下层物料尚未齐套，请继续处理下方 BOM 缺口'
         : canArrange
-        ? '直接子层级已经齐套，可创建自制子件任务并填写生产数量'
-        : '当前快照尚未满足自制任务执行门槛，请刷新后再试';
+        ? '直接子层级已经齐套，可创建$taskLabel并填写生产数量'
+        : '当前快照尚未满足${isSubcontract ? '委外前置自制' : '自制'}任务执行门槛，请刷新后再试';
     final statusSemantics = canArrange
         ? '下层已齐套，可安排生产'
         : waiting
@@ -837,7 +871,7 @@ abstract class _MaterialAnalysisProductTasksState
     ].whereType<String>().join(' · ');
     return Semantics(
       container: true,
-      label: '待自制子件 $goodsName，$description',
+      label: '$goodsFallback $goodsName，$description',
       child: _productionTaskCardFrame(
         theme,
         key: ValueKey(
@@ -862,7 +896,7 @@ abstract class _MaterialAnalysisProductTasksState
                       onChanged: !_canNotify || _busy
                           ? null
                           : (value) => _toggleSupplyGroup(
-                              MaterialSupplyRoute.make,
+                              route,
                               group,
                               value == true,
                             ),
@@ -870,7 +904,7 @@ abstract class _MaterialAnalysisProductTasksState
                           ? const WidgetStatePropertyAll(Colors.white)
                           : null,
                       checkColor: selected ? UtenColors.deepGreen : null,
-                      semanticLabel: '选择$goodsName 创建自制子件任务',
+                      semanticLabel: '选择$goodsName 创建$taskLabel',
                     ),
                   )
                 else
@@ -898,8 +932,8 @@ abstract class _MaterialAnalysisProductTasksState
                       ),
                       Text(
                         candidate.parentLabel == null
-                            ? '已确认自制件'
-                            : '自制件 · 用于 ${candidate.parentLabel}',
+                            ? '已确认${isSubcontract ? '委外自制件' : '自制件'}'
+                            : '${isSubcontract ? '委外自制件' : '自制件'} · 用于 ${candidate.parentLabel}',
                         style: theme.textTheme.labelMedium?.copyWith(
                           color: accent,
                           fontWeight: FontWeight.w700,
@@ -941,7 +975,7 @@ abstract class _MaterialAnalysisProductTasksState
                 key: ValueKey(
                   'material-analysis-pending-make-status-${material.materialLineId}',
                 ),
-                title: '勾选后创建自制子件任务',
+                title: '勾选后创建$taskLabel',
                 trailing: fullMakeQuantityLabel,
                 detail: _canGenerate ? '创建后留在本页填写本批生产数量' : '创建后由有计划权限的员工填写生产数量',
                 accent: theme.colorScheme.primary,

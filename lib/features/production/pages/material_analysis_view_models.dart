@@ -4,6 +4,7 @@ final class _PendingMakeCandidate {
   const _PendingMakeCandidate({
     required this.material,
     required this.group,
+    required this.route,
     required this.parentLabel,
     required this.shortageKindCount,
     required this.shortagePathCount,
@@ -12,6 +13,10 @@ final class _PendingMakeCandidate {
 
   final ProductionMaterialAnalysisMaterial material;
   final _MaterialGroup? group;
+
+  /// 候选路线：make=自制备料；subcontract=有子层级委外件「先自制」
+  /// （V458/ADR-064 两段式，与自制候选同区同门槛）。
+  final MaterialSupplyRoute route;
   final String? parentLabel;
   final int shortageKindCount;
   final int shortagePathCount;

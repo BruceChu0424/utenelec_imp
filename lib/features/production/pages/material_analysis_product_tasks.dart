@@ -834,8 +834,7 @@ abstract class _MaterialAnalysisProductTasksState
     final canArrange = _canArrangePendingMakeCandidate(candidate);
     final blocked = !canArrange;
     final selected =
-        group != null &&
-        _selectedSupplyGroups[route]!.contains(group.key);
+        group != null && _selectedSupplyGroups[route]!.contains(group.key);
     final accent = blocked
         ? theme.colorScheme.error
         : theme.colorScheme.primary;
@@ -895,11 +894,8 @@ abstract class _MaterialAnalysisProductTasksState
                       value: selected,
                       onChanged: !_canNotify || _busy
                           ? null
-                          : (value) => _toggleSupplyGroup(
-                              route,
-                              group,
-                              value == true,
-                            ),
+                          : (value) =>
+                                _toggleSupplyGroup(route, group, value == true),
                       fillColor: selected
                           ? const WidgetStatePropertyAll(Colors.white)
                           : null,

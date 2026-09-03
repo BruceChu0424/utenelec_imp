@@ -1778,9 +1778,7 @@ void main() {
       expect(
         find.descendant(
           of: candidate,
-          matching: find.text(
-            '直接子层级已经齐套，可创建委外前置自制任务并填写生产数量',
-          ),
+          matching: find.text('直接子层级已经齐套，可创建委外前置自制任务并填写生产数量'),
         ),
         findsNothing,
       );
@@ -1825,22 +1823,15 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.bySemanticsLabel(
-          RegExp('已经齐套，可创建委外前置自制任务并填写生产数量'),
-        ),
+        find.bySemanticsLabel(RegExp('已经齐套，可创建委外前置自制任务并填写生产数量')),
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: candidate,
-          matching: find.text('委外自制件 · 用于 测试产品'),
-        ),
+        find.descendant(of: candidate, matching: find.text('委外自制件 · 用于 测试产品')),
         findsOneWidget,
       );
       final checkbox = find.byKey(
-        const ValueKey(
-          'material-analysis-pending-make-select-pending-make-1',
-        ),
+        const ValueKey('material-analysis-pending-make-select-pending-make-1'),
       );
       expect(checkbox, findsOneWidget);
       await tester.tap(checkbox);

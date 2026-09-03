@@ -100,6 +100,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 2026-09-03 分类范式：来源/状态两行默认不选（不发请求），
+      // 先选来源「采购收货」解锁状态行，再选「全部合格」才加载列表。
+      await tester.tap(find.text('采购收货'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('全部合格'));
+      await tester.pumpAndSettle();
+
       final table = tester
           .widget<MasterDataTableView<WarehouseQualityResultTask>>(
             find.byKey(const Key('warehouse-quality-result-table')),
@@ -142,6 +149,12 @@ void main() {
     await tester.pumpWidget(
       _app(const WarehouseQualityResultsPage(), gateway, preferences),
     );
+    await tester.pumpAndSettle();
+
+    // 分类范式：先选来源再选状态，列表才加载（默认不选、不发请求）。
+    await tester.tap(find.text('采购收货'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('全部合格'));
     await tester.pumpAndSettle();
 
     // 勾选行（表头三态全选 + 行勾选框；单行场景取最后一个）。
@@ -225,6 +238,8 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
+    String? dateFrom,
+    String? dateTo,
   }) async => PagedResult(
     items: tasks,
     page: page,

@@ -294,51 +294,54 @@ class _MyBatchDetailDialog extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final async = ref.watch(myProfileChangeDetailProvider(batchId));
-    return Dialog(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                l10n.profileChangeDiffTitle,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Flexible(
-                child: async.when(
-                  data: (batch) => SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        for (final item in batch.items)
-                          ProfileChangeDiffRow(
-                            item: item,
-                            showStatusBadge: true,
-                          ),
-                      ],
-                    ),
+    // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region）。
+    return SelectionArea(
+      child: Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  l10n.profileChangeDiffTitle,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) =>
-                      Text(e is ApiException ? e.message : l10n.commonError),
                 ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: UtenButton(
-                  type: UtenButtonType.ghost,
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(l10n.profileChangeCancel2),
+                const SizedBox(height: UtenSpacing.s12),
+                Flexible(
+                  child: async.when(
+                    data: (batch) => SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          for (final item in batch.items)
+                            ProfileChangeDiffRow(
+                              item: item,
+                              showStatusBadge: true,
+                            ),
+                        ],
+                      ),
+                    ),
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator()),
+                    error: (e, _) =>
+                        Text(e is ApiException ? e.message : l10n.commonError),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: UtenSpacing.s12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: UtenButton(
+                    type: UtenButtonType.ghost,
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(l10n.profileChangeCancel2),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

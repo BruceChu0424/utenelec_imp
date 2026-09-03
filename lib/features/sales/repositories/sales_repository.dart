@@ -103,14 +103,26 @@ class SalesRepository {
 
   /// 订单进度看板（仅订货单）：已审订单生产/发货进度聚合 + 派生阶段。
   /// [stage]：'' = 全部；'OPEN' = 待完成（未发完）；PENDING/PRODUCING/SHIPPABLE/SHIPPED。
+  /// [keyword]（单号/客户）与 [dateFrom]/[dateTo]（业务日期）为可选过滤（2026-09-03
+  /// 历史记录时间门控引入）。
   Future<PagedResult<SalesOrderProgressRow>> progress({
     int page = 1,
     int size = 20,
     String stage = '',
+    String keyword = '',
+    String? dateFrom,
+    String? dateTo,
   }) async {
     final json = await api.get(
       '/sales/orders/progress',
-      query: {'page': page, 'size': size, if (stage.isNotEmpty) 'stage': stage},
+      query: {
+        'page': page,
+        'size': size,
+        if (stage.isNotEmpty) 'stage': stage,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+      },
     );
     return PagedResult.fromJson(json, SalesOrderProgressRow.fromJson);
   }

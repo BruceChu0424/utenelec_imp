@@ -624,6 +624,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                           isCheck: _isCheck,
                           sourceLocked: _isWdraw,
                         ),
+                        cloneRow: (r) => r.clone(),
                         showAddRow: !_isWdraw,
                       ),
                     ],

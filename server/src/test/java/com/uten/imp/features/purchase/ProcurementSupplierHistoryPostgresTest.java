@@ -60,7 +60,8 @@ class ProcurementSupplierHistoryPostgresTest {
     @Autowired
     private SubcontractOrderItemRepository subcontractItems;
 
-    private int supplierCodeSequence = 990000;
+    /** 类级共享：同一容器库内多测试方法的供应商编码不重复（code 唯一键+保留号段触发器）。 */
+    private static int supplierCodeSequence = 990000;
 
     @Test
     void learningQueriesSkipDisabledInternalDeletedAndDeletedOrderSuppliers() {
@@ -97,6 +98,60 @@ class ProcurementSupplierHistoryPostgresTest {
         subcontract(goods, deleted, false, base.plusMinutes(4), 4);
         subcontract(goods, activeOnDeletedOrder, true, base.plusMinutes(5), 5);
 
+        assertThat(toMap(purchaseItems.findLastSupplierPerGoods(java.util.List.of(goods))))
+                .containsExactly(Map.entry(goods, active));
+        assertThat(toMap(subcontractItems.findLastSupplierPerGoods(java.util.List.of(goods))))
+                .containsExactly(Map.entry(goods, active));
+    }
+
+    /**
+     * 2026-09 行级条款「学习预填」(/last-terms)：与供应商版查询的差异——
+     * 停用供应商的条款仍可参考（返回），内部车间/已删供应商/已删单仍排除；
+     * 取最新一张未删订货单的头条款（本用例条款列为空单头 → null 透传）。
+     */
+    @Test
+    void lastTermsKeepDisabledSupplierTermsButSkipInternalDeletedAndDeletedOrders() {
+        UUID supplierCategory = jdbc.queryForObject(
+                "SELECT id FROM supplier_categories WHERE is_deleted=false ORDER BY id LIMIT 1",
+                UUID.class);
+        UUID materialCategory = jdbc.queryForObject(
+                "SELECT id FROM material_categories WHERE is_deleted=false ORDER BY id LIMIT 1",
+                UUID.class);
+        UUID goods = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO goods(id,category_id,code,name,status,code_sequence)
+                VALUES (?,?,?,?,'使用',(SELECT COALESCE(max(code_sequence),0)+1 FROM goods))
+                """, goods, materialCategory, "TRM-HIST-" + shortId(goods), "Terms history goods");
+
+        UUID active = supplier(supplierCategory, "使用", false, false, "terms-active");
+        UUID internal = supplier(supplierCategory, "使用", true, false, "terms-internal");
+        UUID deletedSupplier = supplier(supplierCategory, "使用", false, true, "terms-deleted");
+        UUID disabled = supplier(supplierCategory, "禁用", false, false, "terms-disabled");
+        UUID activeOnDeletedOrder = supplier(
+                supplierCategory, "使用", false, false, "terms-deleted-order");
+
+        OffsetDateTime base = OffsetDateTime.of(
+                2026, 9, 3, 8, 0, 0, 0, ZoneOffset.UTC);
+        purchase(goods, active, false, base.plusMinutes(1), 21);
+        purchase(goods, internal, false, base.plusMinutes(2), 22);
+        purchase(goods, deletedSupplier, false, base.plusMinutes(3), 23);
+        purchase(goods, activeOnDeletedOrder, true, base.plusMinutes(4), 24);
+        // 最新一张未删单是「停用」供应商：条款查询保留（供应商是否回填由前端判断）。
+        purchase(goods, disabled, false, base.plusMinutes(5), 25);
+
+        subcontract(goods, active, false, base.plusMinutes(1), 21);
+        subcontract(goods, internal, false, base.plusMinutes(2), 22);
+        subcontract(goods, deletedSupplier, false, base.plusMinutes(3), 23);
+        subcontract(goods, activeOnDeletedOrder, true, base.plusMinutes(4), 24);
+        subcontract(goods, disabled, false, base.plusMinutes(5), 25);
+
+        var purchaseTerms = purchaseItems.findLastTermsPerGoods(java.util.List.of(goods));
+        assertThat(purchaseTerms).hasSize(1);
+        assertThat(purchaseTerms.getFirst()[1]).isEqualTo(disabled);
+        var subcontractTerms = subcontractItems.findLastTermsPerGoods(java.util.List.of(goods));
+        assertThat(subcontractTerms).hasSize(1);
+        assertThat(subcontractTerms.getFirst()[1]).isEqualTo(disabled);
+        // 供应商版（旧契约）对同一货品仍只回启用商：停用商不可作为回填建议。
         assertThat(toMap(purchaseItems.findLastSupplierPerGoods(java.util.List.of(goods))))
                 .containsExactly(Map.entry(goods, active));
         assertThat(toMap(subcontractItems.findLastSupplierPerGoods(java.util.List.of(goods))))

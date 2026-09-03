@@ -234,7 +234,14 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
               ],
             ),
           );
-          if (isCompact) content = UtenContentContainer.narrow(child: content);
+          // compact 自套窄收敛；selectable:false——访客待办计数轮询与拖选并发有
+          // CME 风险（准则 §3.4，用户口径：轮询页不包）。
+          if (isCompact) {
+            content = UtenContentContainer.narrow(
+              selectable: false,
+              child: content,
+            );
+          }
           return Column(
             children: [
               Expanded(child: content),

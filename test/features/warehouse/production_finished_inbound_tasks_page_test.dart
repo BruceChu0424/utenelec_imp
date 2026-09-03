@@ -70,8 +70,17 @@ void main() {
     table = tester.widget<MasterDataTableView<ProductionFinishedInboundTask>>(
       tableFinder,
     );
-    expect(table.idOf!(table.items.first), isNull);
-    expect(table.selectedIds, isEmpty);
+    // 2026-09-03 起待登记任务也可多选（键 reg:<reportId>），进入汇总登记页。
+    // 单击行即选中：点步骤单元格会把该登记任务选进 reg: 键。
+    expect(
+      table.idOf!(table.items.first),
+      'reg:20000000-0000-0000-0000-000000000001',
+    );
+    expect(
+      find.byKey(const Key('production-finished-inbound-batch-register')),
+      findsOneWidget,
+    );
+    expect(table.selectedIds, {'reg:20000000-0000-0000-0000-000000000001'});
     await tester.tap(find.text('短收余量待点收'));
     await tester.pump();
     table = tester.widget<MasterDataTableView<ProductionFinishedInboundTask>>(
@@ -79,9 +88,12 @@ void main() {
     );
     expect(
       table.idOf!(table.items.last),
-      '10000000-0000-0000-0000-000000000001',
+      'doc:10000000-0000-0000-0000-000000000001',
     );
-    expect(table.selectedIds, {'10000000-0000-0000-0000-000000000001'});
+    expect(table.selectedIds, {
+      'reg:20000000-0000-0000-0000-000000000001',
+      'doc:10000000-0000-0000-0000-000000000001',
+    });
     final batchButton = find.byKey(
       const Key('production-finished-inbound-batch-confirm'),
     );

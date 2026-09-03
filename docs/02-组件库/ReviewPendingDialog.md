@@ -11,7 +11,7 @@
 | 形态 | 载体 | 时机 | 交互 |
 |---|---|---|---|
 | 通知中心条目 | `/notice` 列表 | 落库即有 | 点开详情；已办结灰显 |
-| 顶部通知条 | `AppNotification`（actions/statusLine） | 在线到达 | 20s 自然收起，按钮可操作 |
+| 顶部通知条 | `AppNotification`（纯显示，无按钮/状态行） | 在线到达 | 20s 自然收起 |
 | **居中审核弹窗（本组件）** | `showReviewPendingDialog` | 在线到达 + **每次登录检查** | 主交互（下述） |
 
 ## 二、API
@@ -34,17 +34,27 @@ resetReviewPendingDialogForTest();
   无人处理 →「待处理」+schedule 图标（primary 容器色）。30s 心跳刷新。
 - **办结自动退出**：心跳发现条目 `resolved` → 移除该条目；全部办结 → 弹窗自关
   （不打扰已无需处理的人）。
-- **【去审核】（主按钮）**：标已读 → 跳 `action_route`（域专属审核页）→ 关弹窗；
-  多条时处理第一条（点任意条目=处理该条）。
+- **【去工作台处理】（主按钮，2026-09-03 第四轮口径）**：不再直达单据详情——
+  全部待办同域 → 该域任务工作台（`workbenchRouteFor`：销售财务确认→
+  `/finance/sales-order-confirmations`、采购财务审批→`/finance/procurement-approvals`、
+  IQC 待检→`/quality/task-center`、完工可发货→`/sales/progress`）；跨域混合 →
+  待审收件台 `/reviews/inbox`。**单条也去工作台**（行为统一）；弹窗内全部条目
+  标已读（提醒已响应；已读不吞待办——未办结下次登录仍会弹）。
+- **点列表行/大卡**：跳该条所属域的工作台（混合列表的精确快捷通道），仅该条标已读。
+  单据详情直达仍可从通知中心条目走 actionRoute。
 - **【稍后再看】（次按钮）**：全部条目标已读 + 服务端 snooze 15 分钟（跨设备一致）→
   关弹窗。**snooze 是唯一静默途径**：到点未办结下次登录/到达再提醒。
 - **右上 X**：仅本次关闭，**不 snooze**——「每次登录检查、有待办就弹」的产品口径；
   下次登录仍会提醒（未办结就还该提醒）。
-- 弹窗不可点遮罩关闭（待办必须被显式处理：去审核/稍后/X 三选一）。
+- 弹窗不可点遮罩关闭（待办必须被显式处理：去工作台/稍后/X 三选一）。
 
 ## 四、视觉规范
 
 - `Dialog` 圆角 24 / elevation 12 / maxWidth 480；UtenTokens 间距体系。
+- **高度完全随内容自适应，封顶 min(60% 屏高, 560px)**（2026-09-03 修订）：
+  1 条≈300、多条随行数增长，列表内部滚动，弹窗保持正常卡片比例不再接近全屏。
+  （坑：大卡内部 Column 忘写 `mainAxisSize.min` 会在 Flexible 的 loose 约束下
+  占满剩余高度——单条曾被顶到 560 上限、下方一片空白，测试已锁定。）
 - 头部：52×52 圆角图标容器（primaryContainer + `fact_check_rounded`）+「待办审核」
   titleLarge w700 + 条数副标题。
 - 单条大卡：secondaryContainer 35% 底 + outlineVariant 描边 + 圆角 16；
@@ -60,7 +70,9 @@ resetReviewPendingDialogForTest();
 
 ## 六、边界与守卫
 
-- 弹窗单例（`_reviewPendingDialogOpen`）：多事件同到/登录与到达竞争只保一层。
+- 弹窗单例（`_reviewPendingDialogOpen`）：已打开时**新待办并入当前弹窗**
+  （`addPendingItems` 按 id 去重，副标题计数随之更新）——在线多事件同到合成
+  「一共有 N 项」一个弹窗；登录检查与到达链竞争只保一层。
 - 跨 async gap 的 context：到达链用根 Navigator context（提前捕获+mounted 检查）。
 - 心跳失败可容忍（条目保持上次状态）；`resetReviewPendingDialogForTest` 供测试隔离。
 

@@ -3,6 +3,7 @@ package com.uten.imp.features.operations.workbench;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record FulfillmentTaskRow(
@@ -39,5 +40,13 @@ public record FulfillmentTaskRow(
         String actionDocStatus,
         boolean actionDocCanView,
         boolean actionDocCanEdit,
-        boolean actionDocRestricted) {
+        boolean actionDocRestricted,
+        long goodsCount,
+        long openLineCount,
+        List<String> actionItemIds) {
+
+    /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */
+    public boolean isDocumentGrouped() {
+        return goodsCount > 1 || openLineCount > 1 || actionItemIds.size() > 1;
+    }
 }

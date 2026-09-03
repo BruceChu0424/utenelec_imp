@@ -646,7 +646,10 @@ abstract class _MaterialAnalysisPageBase
     ProductionMaterialAnalysisView view,
   ) => [
     for (final product in view.products)
-      if (product.sourceType != 'MAKE_COMPONENT')
+      // MAKE_COMPONENT / SUBCONTRACT_MAKE 都是系统生成的子件任务行，
+      // 与服务端 requireSameSources 排除口径一致，不能回填为用户来源。
+      if (product.sourceType != 'MAKE_COMPONENT' &&
+          product.sourceType != 'SUBCONTRACT_MAKE')
         (product.salesOrderItemId?.isNotEmpty ?? false)
             ? MaterialAnalysisSourceInput(
                 salesOrderItemId: product.salesOrderItemId,
@@ -1157,6 +1160,17 @@ abstract class _MaterialAnalysisPageBase
     documentType: 'SUBCONTRACT_MAKE_TASK',
     sourceType: 'SUBCONTRACT_MAKE',
   );
+
+  /// 已建子件任务节点（MAKE 或有子层 SUBCONTRACT）→ 真实子件产品。
+  /// 两类任务完全同构，BOM 原节点内联进度/计划入口统一走这里解析。
+  ProductionMaterialAnalysisProduct? _taskChildProductOf(
+    ProductionMaterialAnalysisMaterial material,
+  ) {
+    final notified = _notifiedTargetOf(material);
+    return notified?.target == MaterialSupplyRoute.subcontract
+        ? _subcontractMakeChildProductOf(material)
+        : _makeChildProductOf(material);
+  }
 }
 
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。
@@ -1284,6 +1298,9 @@ class _ProductionMaterialAnalysisPageState
                   }
                 },
                 child: UtenContentContainer.wide(
+                  // 本页有分析结果轮询（_analysisPollTimer 周期性结构重建内容），
+                  // 拖选与轮询重建并发会触发框架 CME（准则 §3.4），故退出选择区。
+                  selectable: false,
                   child: _booting
                       ? const Center(child: CircularProgressIndicator())
                       : _analysis == null
@@ -1467,13 +1484,8 @@ class _ProductionMaterialAnalysisPageState
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
           sliver: SliverToBoxAdapter(child: _productSection(theme, analysis)),
         ),
-        // V458：有子层级委外件的前置自制进度与分批通知入口。
-        SliverPadding(
-          padding: const EdgeInsets.only(top: UtenSpacing.s8),
-          sliver: SliverToBoxAdapter(
-            child: _subcontractMakeSection(theme, analysis),
-          ),
-        ),
+        // 2026-09-03：独立「委外件前置自制」区块下线——委外子件与自制同构，
+        // 账本数量与「通知委外」入口内嵌在产品卡（见 _subcontractMakeTaskPanel）。
         if (_error != null)
           SliverPadding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),

@@ -12,13 +12,18 @@ import 'package:flutter/material.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
+import '../../../shared/widgets/procurement_commercial_grid.dart';
 import '../../../shared/widgets/procurement_supplier_cell.dart';
 import '../config/subcontract_doc_config.dart';
+import '../models/subcontract_doc.dart' show SubcontractSourceApplicationRef;
 import 'subcontract_link_picker.dart' show LinkedItem;
 
 /// 委外明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier，仅 itemHasPrice 时有意义）。
-class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
+/// 2026-09 起：币种/汇率/税率/结算方式与备注为行级（订货单），见
+/// [CommercialTermsRowMixin]/[RemarkRowMixin]。
+class SubcontractGridRow extends EditableGridRow
+    with AmountRowMixin, CommercialTermsRowMixin, RemarkRowMixin {
   SubcontractGridRow({this.sourceLocked = false}) {
     qty.addListener(_recalc);
     price.addListener(_recalc);
@@ -50,6 +55,13 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   /// applicationItemId/orderItemId/receiptItemId/materialIssueItemId）。
   String? upstreamItemId;
 
+  /// 全部来源申请明细 id（V463 同货品合并行，含 [upstreamItemId] 首来源）；
+  /// 保存时 >1 条随行提交 applicationItemIds。空列表 = 无来源/手工行。
+  List<String> upstreamItemIds = [];
+
+  /// 来源申请引用（合并行多来源展示与跳详情）：与 [upstreamItemIds] 对齐。
+  List<SubcontractSourceApplicationRef> sourceDocs = [];
+
   /// 发料计划行 id（V304；计划生成的出仓草稿行回传，保存时原样带上不断链）。
   String? planItemId;
   final bool sourceLocked;
@@ -80,6 +92,10 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
       ..colorId = li.colorId
       ..unitId = li.unitId
       ..unitRate = li.unitRate;
+    r.upstreamItemIds = [
+      if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
+        li.upstreamItemId!,
+    ];
     r.qty.text = li.qty.toString();
     if (li.price != null) r.price.text = li.price.toString();
     return r;
@@ -88,6 +104,31 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   void _recalc() => recalcAmount(
     () => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
   );
+
+  /// 深拷贝（明细复制/粘贴用）：语义同 PurchaseGridRow.clone——拷用户录入（数量/
+  /// 单价/重量/围数/胶箱数/行委外商/行级商业条款/备注/损耗单四列）与主档透传；
+  /// 不拷上游 id、planItemId、来源谱系、到货门控（maxQty/approvedQty）与 sourceLocked。
+  SubcontractGridRow clone() {
+    final c = SubcontractGridRow()
+      ..goods = goods
+      ..stockPlaceNotifier.value = stockPlaceNotifier.value
+      ..colorId = colorId
+      ..unitId = unitId
+      ..unitRate = unitRate
+      ..supplierId = supplierId;
+    c.qty.text = qty.text;
+    c.price.text = price.text;
+    c.weight.text = weight.text;
+    c.girth.text = girth.text;
+    c.boxQty.text = boxQty.text;
+    c.endingQty.text = endingQty.text;
+    c.standardQty.text = standardQty.text;
+    c.wasteRate.text = wasteRate.text;
+    c.cause.text = cause.text;
+    c.copyCommercialFrom(this);
+    c.remark.text = remark.text;
+    return c;
+  }
 
   @override
   void dispose() {
@@ -112,15 +153,27 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 /// [arrivalMode]=true（预计到货「登记实际到货」预填场景）：列改为
 /// 货品 / 单位 / 批准剩余（只读对照）/ 实到数量 / 实际重量——价格列隐藏。
+/// [showCommercial]+[currencyEntries]/[settlementEntries]/[onPickCurrency]/[onPickSettlement]
+/// （订货单）：金额列后加「币种/汇率/税率/结算方式」四列（行级商业条款，保存按组合拆单）。
+/// [showRemark]：明细末尾加「备注」列（随行提交 remark）。
+/// [unitAfterWeight]（订货单，2026-09-03 用户口径）：单位列放在「实际重量」之后；
+/// 默认 false 时单位在委外商前（其余单据原布局不变）。
 List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   Future<void> Function(SubcontractGridRow row) onPickGoods,
   SubcontractDocConfig cfg, {
   bool arrivalMode = false,
+  bool unitAfterWeight = false,
   Map<String, String> unitEntries = const {},
   Map<String, String> supplierEntries = const {},
   bool supplierRequired = false,
   String? headerSupplierId,
   Future<void> Function(SubcontractGridRow row)? onPickSupplier,
+  bool showCommercial = false,
+  Map<String, String> currencyEntries = const {},
+  Map<String, String> settlementEntries = const {},
+  ValueChanged<String?> Function(SubcontractGridRow row)? onPickCurrency,
+  ValueChanged<String?> Function(SubcontractGridRow row)? onPickSettlement,
+  bool showRemark = false,
 }) {
   final showSupplier =
       !arrivalMode && supplierEntries.isNotEmpty && cfg.hasSupplier;
@@ -184,20 +237,21 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           ),
         ),
       ),
-    EditableGridColumn<SubcontractGridRow>(
-      key: 'unit',
-      label: '单位',
-      width: 84,
-      textOf: (r) => unitEntries[r.unitId] ?? '',
-      cellBuilder: (context, row) => Text(
-        unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
-        style: TextStyle(
-          color: row.unitId == null
-              ? Theme.of(context).colorScheme.error
-              : Theme.of(context).colorScheme.onSurfaceVariant,
+    if (!unitAfterWeight)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'unit',
+        label: '单位',
+        width: 84,
+        textOf: (r) => unitEntries[r.unitId] ?? '',
+        cellBuilder: (context, row) => Text(
+          unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
+          style: TextStyle(
+            color: row.unitId == null
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
-    ),
     if (showSupplier)
       EditableGridColumn<SubcontractGridRow>(
         key: 'supplier',
@@ -289,6 +343,22 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
       ),
+    // 订货单口径（2026-09-03）：单位列紧跟「实际重量」之后。
+    if (unitAfterWeight)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'unit',
+        label: '单位',
+        width: 84,
+        textOf: (r) => unitEntries[r.unitId] ?? '',
+        cellBuilder: (context, row) => Text(
+          unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
+          style: TextStyle(
+            color: row.unitId == null
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
     if (!arrivalMode && cfg.itemHasGirth)
       EditableGridColumn<SubcontractGridRow>(
         key: 'girth',
@@ -363,5 +433,16 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ],
+    // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
+    if (showCommercial && !arrivalMode)
+      ...procurementCommercialColumns<SubcontractGridRow>(
+        currencyEntries: currencyEntries,
+        settlementEntries: settlementEntries,
+        settlementLabel: '结算方式',
+        onPickCurrency: onPickCurrency ?? (row) => (value) {},
+        onPickSettlement: onPickSettlement ?? (row) => (value) {},
+      ),
+    // 每行末尾备注列：随行提交 remark。
+    if (showRemark) procurementRemarkColumn<SubcontractGridRow>(),
   ];
 }

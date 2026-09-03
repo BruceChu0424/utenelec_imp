@@ -318,6 +318,11 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
               // 超宽屏内容居中收敛（maxWidth 1600 + 响应式 gutter）；
               // 主 Tab 页与业务子页面统一收敛，无胶囊因此不再需要底部预留
               child: UtenContentContainer(
+                // ⚠️ selectable:false 必须保留：此容器包住所有 medium+ 路由页（含常驻
+                // 保活的工作台/通知 Tab），若包 SelectionArea 等于变相全局包裹——
+                // 徽章/通知轮询的动态重建与拖选并发会触发框架 CME（准则 §3.4、
+                // 2026-07-30 事故）。页面级选择由各页面自己的容器/局部包裹承担。
+                selectable: false,
                 // PageView 常驻保活（同 compact 分支理由）：进业务子页面时仅 Offstage
                 // 隐藏 PageView、子页面叠上层，切回 Tab 时滚动位置不丢
                 child: Stack(

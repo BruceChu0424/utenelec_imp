@@ -89,6 +89,39 @@ public final class ProcurementArrivalContracts {
     }
 
     /**
+     * 预计到货「批量继续送检」：一次事务逐张草稿收货单完成中断的送检步骤。
+     * 单张超量隔离不回滚其他单（与单册「继续送检」一致，隔离单走财务异常流程）。
+     */
+    public record WarehouseArrivalBatchCompleteRequest(
+            @NotBlank
+            @Size(min = 8, max = 128)
+            @Pattern(regexp = "[A-Za-z0-9._:-]+")
+            String idempotencyKey,
+            @NotEmpty @Size(max = 100)
+            List<@NotNull UUID> receiptIds) {
+    }
+
+    /**
+     * 逐张送检结果；{@code alreadyCompleted} = 重试时该收货单已不是草稿
+     * （先前同键请求已处理），按既有事实安全重放，不重复审核。
+     */
+    public record WarehouseArrivalBatchCompleteResult(
+            int processedCount,
+            List<WarehouseArrivalBatchCompleteItemResult> items) {
+        public WarehouseArrivalBatchCompleteResult {
+            items = List.copyOf(items);
+        }
+    }
+
+    public record WarehouseArrivalBatchCompleteItemResult(
+            UUID receiptId,
+            String receiptBillNo,
+            String outcome,
+            UUID exceptionId,
+            boolean alreadyCompleted) {
+    }
+
+    /**
      * Atomic warehouse submission of finance-adjusted arrival exceptions.
      *
      * <p>Each item binds the immutable exception UUID to the version observed by

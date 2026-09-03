@@ -38,6 +38,9 @@ logging:
     org.flywaydb.core.internal.command.DbValidate: WARN
 
 uten:
+  features:
+    # 本地开发库启用工作台「清空业务数据」测试工具（生产默认关闭）。
+    business-data-reset-enabled: true
   jwt:
     issuer: ${UTEN_JWT_ISSUER:uten-imp-dev}
   security:

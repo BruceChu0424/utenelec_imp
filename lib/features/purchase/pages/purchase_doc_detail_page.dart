@@ -319,7 +319,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                           ),
                         ),
                       ),
-                    SelectionArea(child: _headerCard(theme, names)),
+                    // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
+                    // SelectionArea（准则 §3.4），无需再单独包。
+                    _headerCard(theme, names),
                     if (widget.docType == PurchaseDocType.order &&
                         (_detail!.financeApproval?.isPending == true ||
                             _detail!.financeApproval?.isRejected == true)) ...[
@@ -550,6 +552,18 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                 width: 150,
                 value: (it) => it.salesOrderNo ?? '',
               ),
+              // V463：合并订货行的来源申请单号（多来源顿号连接，单来源一条）。
+              if (widget.docType == PurchaseDocType.order)
+                MasterColumnDef(
+                  key: 'sourceRequests',
+                  label: '来源申请',
+                  width: 170,
+                  value: (it) => it.sourceRequests
+                      .map((source) => source.billNo)
+                      .whereType<String>()
+                      .where((no) => no.isNotEmpty)
+                      .join('、'),
+                ),
             ],
             if (_cfg.showReceived)
               MasterColumnDef(
@@ -596,7 +610,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
             Expanded(
               child: Text(
                 widget.docType == PurchaseDocType.request
-                    ? '$reason\n此申请由计划部下达，采购只能查看并在任务中心生成订货单。'
+                    ? '$reason\n此申请由计划部下达，采购只能查看；可在本页或任务中心生成订货单。'
                     : '$reason\n仍可查看；后续调整请从生产计划专用流程发起。',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onTertiaryContainer,
@@ -696,6 +710,30 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     }
 
     if (widget.docType == PurchaseDocType.request) {
+      // 与任务中心同一条链路：详情页直达订货编辑页（预填时后端
+      // decompositionPreview 自动过滤已分解完的明细；全部分解完会提示）。
+      final canDecompose =
+          s == kPurchaseStatusApproved &&
+          _hasPermission(Perm.purchaseOrderCreate) &&
+          _hasPermission(Perm.purchaseOrderDecompose);
+      final requestItemIds = d.items
+          .map((it) => it.id)
+          .whereType<String>()
+          .map((id) => id.trim())
+          .where((id) => id.isNotEmpty)
+          .toList();
+      if (canDecompose && requestItemIds.isNotEmpty) {
+        addAction(
+          UtenButton(
+            key: const Key('purchase-request-generate-order'),
+            icon: Icons.add_shopping_cart_rounded,
+            onPressed: () => context.push(
+              '/purchase/orders/new?requestItemIds=${requestItemIds.join(',')}',
+            ),
+            child: const Text('生成采购订货单'),
+          ),
+        );
+      }
       addAction(
         UtenButton(
           type: UtenButtonType.secondary,

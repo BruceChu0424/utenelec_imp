@@ -17,26 +17,30 @@ abstract final class UtenDialog {
   }) {
     return showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: content,
-        // 按钮整体居中（全仓弹窗统一规范）
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(cancelLabel ?? '取消'),
-          ),
-          UtenButton(
-            type: danger ? UtenButtonType.danger : UtenButtonType.primary,
-            onPressed: () {
-              Navigator.pop(ctx, true);
-              onConfirm?.call();
-            },
-            child: Text(confirmLabel ?? '确认'),
-          ),
-        ],
+      builder: (ctx) => SelectionArea(
+        // 弹窗文字可框选复制（准则 §3.4 局部包裹：弹窗是独立路由，自带 region，
+        // 不与页面 region 嵌套；TextField 不受影响，自带原生选择）。
+        child: AlertDialog(
+          title: Text(title),
+          content: content,
+          // 按钮整体居中（全仓弹窗统一规范）
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(cancelLabel ?? '取消'),
+            ),
+            UtenButton(
+              type: danger ? UtenButtonType.danger : UtenButtonType.primary,
+              onPressed: () {
+                Navigator.pop(ctx, true);
+                onConfirm?.call();
+              },
+              child: Text(confirmLabel ?? '确认'),
+            ),
+          ],
+        ),
       ),
     );
   }

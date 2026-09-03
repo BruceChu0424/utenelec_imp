@@ -262,6 +262,10 @@ abstract final class RouteName {
   static const String warehouseProductionFinishedArrivalRegistration =
       '$warehouseProductionFinishedArrivalRegistrationBase/:reportId';
 
+  /// 多报工单汇总登记页（多选后一次提交逐单 FQC）；须先于 :reportId 声明。
+  static const String warehouseProductionFinishedArrivalBatchRegistration =
+      '$warehouseProductionFinishedArrivalRegistrationBase/batch';
+
   /// 品质管理部任务中心（待检处置等品质任务的统一入口）。
   static const String qualityTaskCenter = '/quality/task-center';
   static const String qualityInspectionRecords = '/quality/inspection-records';
@@ -479,6 +483,31 @@ abstract final class RoutePath {
         : Uri.parse(
             path,
           ).replace(queryParameters: {'returnTo': safeReturnTo}).toString();
+  }
+
+  /// 多报工单汇总登记深链：reportIds 逗号拼接进 query（正式导航也走 URL，可恢复）。
+  static String warehouseProductionFinishedArrivalBatchRegistration(
+    List<String> reportIds, {
+    String? returnTo,
+  }) {
+    final ids = reportIds
+        .map((id) => Uri.encodeComponent(id.trim()))
+        .where((id) => id.isNotEmpty)
+        .join(',');
+    final path =
+        '${RouteName.warehouseProductionFinishedArrivalBatchRegistration}'
+        '?reportIds=$ids';
+    final safeReturnTo = sanitizeReturnTo(
+      returnTo,
+      scope: ReturnToScope.employee,
+    );
+    return safeReturnTo == null
+        ? path
+        : Uri.parse(path)
+              .replace(
+                queryParameters: {'reportIds': ids, 'returnTo': safeReturnTo},
+              )
+              .toString();
   }
 
   static String procurementArrivalException(String id) =>

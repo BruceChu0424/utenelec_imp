@@ -784,6 +784,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
                       ),
                       body: isExpanded
                           ? UtenListTwoPane(
+                              splitPersistenceKey: 'finance.payables',
                               siderWidth: 280,
                               filterPane: _buildFilters(),
                               tablePane: _buildPayablesTablePane(

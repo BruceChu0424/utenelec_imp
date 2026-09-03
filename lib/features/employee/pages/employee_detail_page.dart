@@ -265,14 +265,12 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   Widget _scrollTab(List<Widget> children) {
     return RefreshIndicator(
       onRefresh: _load,
-      // 包局部 SelectionArea：员工档案各 Tab 正文（身份/任职记录等）可框选复制。
-      // 局部而非全局，规避 SelectableRegion 在轮询/动态重建并发时崩溃（见 docs 02 §3.4）。
-      child: SelectionArea(
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-          children: children,
-        ),
+      // 正文可框选复制：外层 UtenContentContainer.narrow 已默认包局部 SelectionArea
+      // （准则 §3.4），此处无需再包。
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        children: children,
       ),
     );
   }

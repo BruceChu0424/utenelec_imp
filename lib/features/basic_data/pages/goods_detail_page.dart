@@ -194,33 +194,36 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
       }
     }
     return Scaffold(
-      body: GoodsDetailBody(
-        // 详情拉到后再挂主体；新增态直接进 create。
-        key: ValueKey(
-          'goods-detail-${_detail?.id ?? 'new-${widget.categoryId}'}',
-        ),
-        initialDetail: _detail,
-        initialCategoryId: widget.categoryId,
-        initialTab: widget.initialTab,
-        canCreate: _canCreate,
-        canEdit: _canEdit,
-        canStatus: _canStatus,
-        canBomCreate: _canBomCreate,
-        canBomEdit: _canBomEdit,
-        canBomDelete: _canBomDelete,
-        onToggleStatus: _canStatus && !_isCreate ? _toggleStatus : null,
-        onDelete: _canDelete && !_isCreate ? _delete : null,
-        onViewMovements: _canViewStock && !_isCreate
-            ? () {
-                final id = _detail?.id;
-                if (id != null && id.isNotEmpty) {
-                  context.push('${RouteName.stockMovement}?goodsId=$id');
+      // 局部 SelectionArea：货品详情文字可框选复制（准则 §3.4）。
+      body: SelectionArea(
+        child: GoodsDetailBody(
+          // 详情拉到后再挂主体；新增态直接进 create。
+          key: ValueKey(
+            'goods-detail-${_detail?.id ?? 'new-${widget.categoryId}'}',
+          ),
+          initialDetail: _detail,
+          initialCategoryId: widget.categoryId,
+          initialTab: widget.initialTab,
+          canCreate: _canCreate,
+          canEdit: _canEdit,
+          canStatus: _canStatus,
+          canBomCreate: _canBomCreate,
+          canBomEdit: _canBomEdit,
+          canBomDelete: _canBomDelete,
+          onToggleStatus: _canStatus && !_isCreate ? _toggleStatus : null,
+          onDelete: _canDelete && !_isCreate ? _delete : null,
+          onViewMovements: _canViewStock && !_isCreate
+              ? () {
+                  final id = _detail?.id;
+                  if (id != null && id.isNotEmpty) {
+                    context.push('${RouteName.stockMovement}?goodsId=$id');
+                  }
                 }
-              }
-            : null,
-        // 整页语义下来源页刷新由「返回时重载」统一承担（各入口 push 后
-        // await 恢复即刷新），此处无需回调。
-        onDataChanged: null,
+              : null,
+          // 整页语义下来源页刷新由「返回时重载」统一承担（各入口 push 后
+          // await 恢复即刷新），此处无需回调。
+          onDataChanged: null,
+        ),
       ),
     );
   }

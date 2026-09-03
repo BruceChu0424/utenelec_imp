@@ -101,6 +101,8 @@ public class ProductionSubcontractSupplyTransitionService
     /**
      * 委外订单审核时把供给从申请挂接迁移到订单挂接：按需求交期 FIFO 消耗申请挂接的可用余量，
      * 新建订单挂接并记一条精确迁移记录（供后续按单红冲）；仅迁移扣除已迁移量后的剩余数量。
+     * V463：合并订货行按来源分配行（order_item × application_item，预算 = alloc_qty）
+     * 逐来源转移，回放按来源过滤；幂等键含来源申请行避免同需求键冲突。
      */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -110,15 +112,16 @@ public class ProductionSubcontractSupplyTransitionService
         List<Object[]> items = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT item.id,
-                                       item.application_item_id,
-                                       item.qty *
+                                       src.application_item_id,
+                                       src.alloc_qty *
                                            COALESCE(item.unit_rate, 1),
                                        item.deliver_date
                                 FROM subcontract_order_items item
+                                JOIN subcontract_order_item_sources src
+                                  ON src.order_item_id = item.id
                                 WHERE item.order_id = :orderId
                                   AND item.is_deleted = FALSE
-                                  AND item.application_item_id IS NOT NULL
-                                ORDER BY item.application_item_id, item.id
+                                ORDER BY src.application_item_id, item.id, src.line_no
                                 FOR UPDATE
                                 """)
                         .setParameter("orderId", orderId));
@@ -132,10 +135,13 @@ public class ProductionSubcontractSupplyTransitionService
                                     FROM
                                       production_material_subcontract_peg_transfers
                                     WHERE order_item_id = :orderItemId
+                                      AND application_item_id = :applicationItemId
                                       AND status = 'EFFECTIVE'
                                     """)
                             .setParameter(
                                     "orderItemId", orderItemId)
+                            .setParameter(
+                                    "applicationItemId", applicationItemId)
                             .getSingleResult()));
             if (remaining.signum() <= 0) {
                 continue;
@@ -235,7 +241,9 @@ public class ProductionSubcontractSupplyTransitionService
                                 "key",
                                 demandId
                                         + ":SUBCONTRACT_ORDER_ITEM:"
-                                        + orderItemId)
+                                        + orderItemId
+                                        + ":"
+                                        + applicationItemId)
                         .setParameter("actorId", actorId)
                         .executeUpdate();
                 em.createNativeQuery("""

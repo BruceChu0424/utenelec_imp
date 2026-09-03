@@ -55,9 +55,24 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   };
 
   @override
+  Future<FinanceProcurementApprovalReview> review(String caseId) async {
+    return FinanceProcurementApprovalReview.fromJson({
+      'caseId': caseId,
+      'orderId': 'order-1',
+      'orderType': 'PURCHASE',
+      'billNo': 'PO-2026-001',
+      'status': 'PENDING',
+      'attempt': 1,
+      'version': 3,
+      'allowedActions': const ['APPROVE', 'REJECT'],
+    });
+  }
+
+  @override
   Future<void> approveOrdersBatch(
-    List<FinanceProcurementDecisionItem> items,
-  ) async {
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+  }) async {
     approvedBatches.add(List.of(items));
   }
 
@@ -121,6 +136,11 @@ Future<GoRouter> _pumpPage(
       GoRoute(
         path: '/finance/procurement-approvals',
         builder: (_, _) => const FinanceProcurementApprovalTasksPage(),
+      ),
+      GoRoute(
+        path: '/finance/procurement-approvals/:caseId',
+        builder: (_, state) =>
+            Scaffold(body: Text('审核详情 ${state.pathParameters['caseId']}')),
       ),
       GoRoute(
         path: '/purchase/orders/:id',
@@ -267,7 +287,7 @@ void main() {
     },
   );
 
-  testWidgets('single click selects and same-row double click opens detail', (
+  testWidgets('single click selects and same-row double click opens review', (
     tester,
   ) async {
     final repository = _FakeWorkflowRepo([
@@ -286,7 +306,8 @@ void main() {
     await tester.tap(find.text('PO-2026-001'));
     await tester.pumpAndSettle();
 
-    expect(find.text('采购详情 order-1'), findsOneWidget);
+    // 双击落点是财务专用审核详情页（按审批 case 定位），不再跳共享订单详情。
+    expect(find.text('审核详情 case-1'), findsOneWidget);
     router.pop();
     await tester.pumpAndSettle();
     expect(find.text('PO-2026-001'), findsOneWidget);
@@ -313,7 +334,7 @@ void main() {
     await tester.tap(find.text('PO-2026-001'));
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('已选 1 项'), findsOneWidget);
-    expect(find.text('单击选择，双击或长按查看订货详情'), findsOneWidget);
+    expect(find.text('单击选择，双击或长按打开审核详情'), findsOneWidget);
     final approve = find.byKey(const Key('finance-approval-batch-approve'));
     final reject = find.byKey(const Key('finance-approval-batch-reject'));
     expect(approve.hitTestable(), findsOneWidget);

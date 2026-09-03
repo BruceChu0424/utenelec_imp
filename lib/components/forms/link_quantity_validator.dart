@@ -2,13 +2,25 @@
 ///
 /// [remaining] must be calculated from the quantity and cumulative counters
 /// returned by the server for that upstream item.
-String? validateLinkQuantity(String raw, {required double remaining}) {
+///
+/// [allowOverRemaining] (2026-09 订货超采放开): skip the "at most remaining"
+/// cap while keeping the positive-number check — ordering more than the
+/// planned/approved remainder is a business-approved scenario for purchase
+/// and subcontract orders. Receipt/return links keep the cap.
+String? validateLinkQuantity(
+  String raw, {
+  required double remaining,
+  bool allowOverRemaining = false,
+}) {
   final value = double.tryParse(raw.trim());
   if (value == null || !value.isFinite || value <= 0) {
     return '请输入大于 0 的本次数量';
   }
   if (!remaining.isFinite || remaining <= 0) {
     return '该明细已无剩余可引入数量';
+  }
+  if (allowOverRemaining) {
+    return null;
   }
   final scale = value.abs() > remaining.abs() ? value.abs() : remaining.abs();
   final tolerance = scale * 1e-9;

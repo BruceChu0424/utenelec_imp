@@ -1074,9 +1074,15 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN subcontract_order_items subcontract_item
                   ON subcontract_item.id = item.order_item_id
                 LEFT JOIN preplan_supply_action_allocations allocation
-                  ON allocation.external_item_id = COALESCE(
-                       purchase_item.request_item_id,
-                       subcontract_item.application_item_id)
+                  ON allocation.external_item_id IN (
+                      -- V463：订货行多来源锚定——合并行的每个来源申请行都参与建议仓回溯。
+                      SELECT pis.request_item_id
+                      FROM purchase_order_item_sources pis
+                      WHERE pis.order_item_id = purchase_item.id
+                      UNION
+                      SELECT sis.application_item_id
+                      FROM subcontract_order_item_sources sis
+                      WHERE sis.order_item_id = subcontract_item.id)
                 LEFT JOIN preplan_supply_actions action
                   ON action.id = allocation.action_id
                  AND action.status <> 'CANCELLED'

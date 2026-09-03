@@ -53,7 +53,8 @@ void main() {
   testWidgets('warehouse sales list and detail expose physical work only', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 850));
+    // 1440 宽：状态分段（含「历史单据」段）+ 搜索框 + 尾部统计一行排开。
+    await tester.binding.setSurfaceSize(const Size(1440, 850));
     final gateway = _SalesGateway(summary, detail);
 
     await tester.pumpWidget(
@@ -66,6 +67,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('仓库销售出库'), findsOneWidget);
+    // 2026-09-03 分类范式：状态行默认不选（不发请求），先 tap「待拣货」才加载。
+    await tester.tap(find.text('待拣货'));
+    await tester.pumpAndSettle();
     expect(find.text('SO-OUT-001'), findsOneWidget);
     expect(find.textContaining('仓库作业视图'), findsOneWidget);
     expect(find.textContaining('金额'), findsNothing);
@@ -136,6 +140,8 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     int size = 20,
     String? keyword,
     String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
   }) async => PagedResult(
     items: [summary],
     page: page,

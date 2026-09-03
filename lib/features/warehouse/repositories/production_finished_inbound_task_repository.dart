@@ -99,6 +99,70 @@ class ProductionFinishedInboundTaskRepository {
     );
     return ProductionFinishedRememberPlacesResult.fromJson(json);
   }
+
+  /// 多报工单汇总登记：一次拉取多张待登记报工的明细（已登记的按只读带回）。
+  Future<List<ProductionFinishedArrivalRegistration>> batchArrivalRegistrations(
+    List<String> reportIds,
+  ) async {
+    final rows = await api.getList(
+      ApiEndpoints.productionFinishedArrivalBatchBase,
+      query: {'reportIds': reportIds.join(',')},
+    );
+    return rows
+        .map(ProductionFinishedArrivalRegistration.fromJson)
+        .toList(growable: false);
+  }
+
+  /// 多报工单同仓库位建议（一次请求合并全部行的建议）。
+  Future<List<ProductionFinishedPlaceSuggestion>> batchPlaceSuggestions({
+    required List<String> reportIds,
+    required String warehouseId,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.productionFinishedArrivalBatchPlaceSuggestions,
+      query: {'reportIds': reportIds.join(','), 'warehouseId': warehouseId},
+    );
+    return (json['items'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(ProductionFinishedPlaceSuggestion.fromJson)
+            .toList(growable: false) ??
+        const [];
+  }
+
+  /// 一次提交逐单 FQC：reports = [{reportId, warehouseId, items:[{reportItemId, place}]}]。
+  Future<ProductionFinishedBatchRegistrationResult>
+  saveArrivalRegistrationBatch(Map<String, dynamic> body) async {
+    final json = await api.post(
+      ApiEndpoints.productionFinishedArrivalBatchBase,
+      body: body,
+    );
+    return ProductionFinishedBatchRegistrationResult.fromJson(json);
+  }
+
+  /// 批量登记后的库位记忆（逐单聚合 remembered/unchanged/ambiguous 与告警）。
+  Future<ProductionFinishedRememberPlacesResult> rememberPlacesBatch(
+    List<String> reportIds,
+  ) async {
+    final json = await api.post(
+      ApiEndpoints.productionFinishedArrivalBatchRememberPlaces,
+      body: reportIds,
+    );
+    return ProductionFinishedRememberPlacesResult.fromJson(json);
+  }
+
+  /// 当前用户最近一次成品送检登记所用成品仓（无历史/空响应返回 null）。
+  Future<ProductionFinishedLastWarehouse?> lastArrivalWarehouse() async {
+    try {
+      final json = await api.get(
+        ApiEndpoints.productionFinishedArrivalLastWarehouse,
+      );
+      if (json.isEmpty) return null;
+      return ProductionFinishedLastWarehouse.fromJson(json);
+    } catch (_) {
+      // 上次仓记忆是锦上添花：拉取失败不阻断登记，仅不预选。
+      return null;
+    }
+  }
 }
 
 final productionFinishedInboundTaskRepositoryProvider =

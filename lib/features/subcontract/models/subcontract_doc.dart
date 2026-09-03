@@ -140,6 +140,7 @@ class SubcontractDocItem {
     this.frozenUnitQty,
     this.supplierEnding,
     this.remark,
+    this.sourceApplications = const [],
   });
 
   final String? id;
@@ -198,6 +199,10 @@ class SubcontractDocItem {
   final double? supplierEnding;
   final String? remark;
 
+  /// 全部来源申请（V463 同货品合并行多来源）：明细 id + 申请单 id + 单号，
+  /// 稳定顺序与 sources.line_no 一致；单来源行一条、手工行为空。
+  final List<SubcontractSourceApplicationRef> sourceApplications;
+
   factory SubcontractDocItem.fromJson(Map<String, dynamic> json) =>
       SubcontractDocItem(
         id: json['id'] as String?,
@@ -238,6 +243,34 @@ class SubcontractDocItem {
         frozenUnitQty: (json['frozenUnitQty'] as num?)?.toDouble(),
         supplierEnding: (json['supplierEnding'] as num?)?.toDouble(),
         remark: json['remark'] as String?,
+        sourceApplications: [
+          for (final entry
+              in (json['sourceApplications'] as List<dynamic>? ??
+                  const <dynamic>[]))
+            SubcontractSourceApplicationRef.fromJson(
+              entry as Map<String, dynamic>,
+            ),
+        ],
+      );
+}
+
+/// 委外订货行的来源申请引用（V463 合并行多来源）。
+class SubcontractSourceApplicationRef {
+  const SubcontractSourceApplicationRef({
+    required this.applicationItemId,
+    this.applicationId,
+    this.billNo,
+  });
+
+  final String applicationItemId;
+  final String? applicationId;
+  final String? billNo;
+
+  factory SubcontractSourceApplicationRef.fromJson(Map<String, dynamic> json) =>
+      SubcontractSourceApplicationRef(
+        applicationItemId: json['applicationItemId'] as String,
+        applicationId: json['applicationId'] as String?,
+        billNo: json['billNo'] as String?,
       );
 }
 

@@ -145,7 +145,8 @@ class PreplanAnalysisStockPegServiceTest {
         when(claimants.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
-            if (sql.contains("SELECT inspection.goods_id")) return anchor;
+            // V463：订货行逐来源展开后 SQL 前缀为 SELECT DISTINCT，匹配列名而非前缀。
+            if (sql.contains("inspection.goods_id")) return anchor;
             if (sql.contains("SELECT analysis.id")) return analysisLock;
             if (sql.contains("SELECT allocation.id")) return claimants;
             throw new AssertionError("unexpected SQL: " + sql);

@@ -8,9 +8,9 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -30,6 +30,12 @@ import '../../production/widgets/subcontract_make_task_tile.dart';
 /// 权威数量），支持按可通知量分批通知委外；「订货来源」页签是直接委外订货
 /// 财务批准后的前置自制待办。服务端拥有 BOM 判断、状态、数量、阻断原因和
 /// allowedActions；Flutter 只展示任务并转发显式命令。
+///
+/// 2026-09-03 统一「分类分段」范式（原生 SegmentedButton/状态下拉退役）：
+/// 来源大类行 + 订货来源页签下的准备状态小类行（无「全部状态」段）——
+/// 两行默认都不选（未选不发请求，显示引导占位）。
+/// 本页两个任务接口不支持日期范围，终态（目标件已出仓/已取消）保留为显式
+/// 阶段段，不另设时间门控历史段。
 class SubcontractPreparationPage extends ConsumerStatefulWidget {
   const SubcontractPreparationPage({
     super.key,
@@ -62,15 +68,15 @@ class _SubcontractPreparationPageState
   final _search = TextEditingController();
   Timer? _debounce;
   PagedResult<SubcontractPreparationTask>? _page;
-  bool _loading = true;
+  bool _loading = false;
   String? _error;
-  String _status = '';
+  String? _status;
   int _requestId = 0;
   String? _startingPlanItemId;
 
-  // V458 分析来源页签：先自制、后通知委外的账本投影。
-  // 默认停留在「订货来源」经典队列；分析来源页签承载新账本视角。
-  int _sourceTab = 1;
+  // 来源大类：0 = 分析来源（先自制、后通知委外的账本投影）；
+  // 1 = 订货来源经典队列。null = 未选择引导态（未选不发请求）。
+  int? _sourceTab;
   PagedResult<SubcontractMakeTask>? _makePage;
   bool _makeLoading = false;
   String? _makeError;
@@ -96,10 +102,20 @@ class _SubcontractPreparationPageState
   @override
   void initState() {
     super.initState();
-    Future<void>.microtask(() {
-      _loadMake();
-      _load();
+    // 默认不选来源：进页面不发列表请求，选页签后才加载对应视角。
+  }
+
+  void _selectSourceTab(int tab) {
+    if (_sourceTab == tab) return;
+    setState(() {
+      _sourceTab = tab;
+      _status = null;
     });
+    if (tab == 0) {
+      _loadMake();
+    } else {
+      _load();
+    }
   }
 
   Future<void> _loadMake({int page = 1}) async {
@@ -116,7 +132,7 @@ class _SubcontractPreparationPageState
           .subcontractMakeTasks(
             page: page,
             keyword: _search.text,
-            status: _status.isEmpty ? null : _status,
+            status: _status,
           );
       if (!mounted || requestId != _makeRequestId) return;
       setState(() {
@@ -156,7 +172,7 @@ class _SubcontractPreparationPageState
           .subcontractPreparationTasks(
             page: page,
             keyword: _search.text,
-            status: _status.isEmpty ? null : _status,
+            status: _status,
             planItemId: _focusedPlanItemId,
             sourceAnalysisId: _sourceAnalysisId,
             sourceMaterialLineId: _sourceMaterialLineId,
@@ -178,7 +194,7 @@ class _SubcontractPreparationPageState
   void _searchChanged(String _) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
+      if (!mounted || _sourceTab == null) return;
       if (_sourceTab == 0) {
         _loadMake();
       } else {
@@ -385,34 +401,62 @@ class _SubcontractPreparationPageState
     return LayoutBuilder(
       builder: (context, constraints) {
         final desktop = constraints.maxWidth >= 840;
+        final tab = _sourceTab;
+        // 来源大类行（统一工具条：分段 + 搜索；默认不选）。
         final header = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SegmentedButton<int>(
-              key: const Key('subcontract-preparation-source-tab'),
+            UtenFilterToolbar<int>(
+              segmentsKey: const Key('subcontract-preparation-source-tab'),
+              searchKey: const Key('subcontract-preparation-search'),
               segments: const [
-                ButtonSegment(
-                  value: 0,
-                  icon: Icon(Icons.science_outlined),
-                  label: Text('分析来源·前置自制'),
-                ),
-                ButtonSegment(
-                  value: 1,
-                  icon: Icon(Icons.receipt_long_outlined),
-                  label: Text('订货来源·前置自制'),
-                ),
+                UtenFilterSegment(value: 0, label: '分析来源·前置自制'),
+                UtenFilterSegment(value: 1, label: '订货来源·前置自制'),
               ],
-              selected: {_sourceTab},
+              selected: tab == null ? const {} : {tab},
               onSelectionChanged: _loading || _makeLoading
-                  ? null
-                  : (selection) => setState(() => _sourceTab = selection.first),
+                  ? (_) {}
+                  : _selectSourceTab,
+              searchHint: tab == 0 ? '搜索目标件编码、名称或任务号' : '搜索订货单号、目标件编码或名称',
+              searchController: _search,
+              onSearchChanged: (_) => _searchChanged(_search.text),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            _buildFilters(desktop: desktop),
+            // 订货来源小类行：准备状态（无「全部状态」段；默认不选=不过滤）。
+            if (tab == 1) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              UtenFilterToolbar<String>(
+                segmentsKey: const Key('subcontract-preparation-status'),
+                segments: [
+                  for (final entry in _statuses.entries)
+                    UtenFilterSegment(value: entry.key, label: entry.value),
+                ],
+                selected: _status == null ? const {} : {_status!},
+                onSelectionChanged: _loading
+                    ? (_) {}
+                    : (value) {
+                        setState(() => _status = value);
+                        _load();
+                      },
+              ),
+            ],
             const SizedBox(height: UtenSpacing.s12),
           ],
         );
-        if (_sourceTab == 0) {
+        if (tab == null) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              header,
+              const Expanded(
+                child: UtenFilterPlaceholder(
+                  message: '在上方选择来源后开始办理',
+                  description: '来源默认不选中，选择后加载对应视角的前置自制任务',
+                ),
+              ),
+            ],
+          );
+        }
+        if (tab == 0) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -592,55 +636,6 @@ class _SubcontractPreparationPageState
     return ref
         .read(currentPermissionsProvider)
         .contains(Perm.productionMaterialAnalysisNotify);
-  }
-
-  Widget _buildFilters({required bool desktop}) {
-    final search = SizedBox(
-      width: desktop ? 360 : double.infinity,
-      child: UtenSearchBar(
-        key: const Key('subcontract-preparation-search'),
-        controller: _search,
-        hint: _sourceTab == 0 ? '搜索目标件编码、名称或任务号' : '搜索订货单号、目标件编码或名称',
-        onChanged: _searchChanged,
-      ),
-    );
-    if (_sourceTab == 0) {
-      return desktop
-          ? Wrap(spacing: UtenSpacing.s12, children: [search])
-          : Column(children: [search]);
-    }
-    final status = SizedBox(
-      width: desktop ? 260 : double.infinity,
-      child: DropdownButtonFormField<String>(
-        key: const Key('subcontract-preparation-status'),
-        initialValue: _status,
-        decoration: const InputDecoration(labelText: '准备状态'),
-        items: [
-          const DropdownMenuItem(value: '', child: Text('全部状态')),
-          for (final entry in _statuses.entries)
-            DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-        ],
-        onChanged: _loading
-            ? null
-            : (value) {
-                setState(() => _status = value ?? '');
-                _load();
-              },
-      ),
-    );
-    return desktop
-        ? Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: [search, status],
-          )
-        : Column(
-            children: [
-              search,
-              const SizedBox(height: UtenSpacing.s8),
-              status,
-            ],
-          );
   }
 
   Widget _buildTable(PagedResult<SubcontractPreparationTask> page) {

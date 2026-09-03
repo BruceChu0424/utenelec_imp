@@ -1,12 +1,16 @@
 // 采购单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
+// 2026-09 行级商业条款改造起只服务 申请(只读)/收货/退货 三类；采购订货单走专属页
+// （purchase_order_edit_page.dart，行级供应商+商业条款+按组合拆单）。
+//
 // 差异由 config 驱动：供应商/币种/仓库下拉按 has* 显隐；
 // 人员（申请人/采购员/交货人/收货人）按 has* 显隐 UtenEmployeePicker；
 // 日期（单据/需求/交货）统一用 UtenDateField（outlined，与其它字段同款）；
-// 「从上游引入」按 hasUpstreamLink 显隐（收货/退货/订货）。
+// 「从上游引入」按 hasUpstreamLink 显隐（收货/退货）。
 //
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
-// 明细改 Excel 表：货品/数量/单价→金额自动 + 添加行/添加多行 + 行尾删除 + sticky 表头。
+// 明细改 Excel 表：货品/数量/单价→金额自动 + 添加行/添加多行 + 行尾删除 + sticky 表头
+// + 每行末尾「备注」列（随行提交 remark）。
 // 保存组装 body 调 create/update，成功后跳详情。
 import 'dart:async';
 
@@ -36,10 +40,9 @@ import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../notice/providers/notice_providers.dart';
 import '../../../shared/auth/document_scope_capability.dart';
-import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/session_provider.dart';
-import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/models/procurement_inbound.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -48,8 +51,6 @@ import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../repositories/purchase_repository.dart';
 import '../../basic_data/widgets/uten_supplier_picker.dart';
-import '../../../shared/concurrency/task_claim_session.dart';
-import '../../../shared/repositories/task_claim_repository.dart';
 import '../widgets/doc_link_picker.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -70,14 +71,10 @@ class PurchaseDocEditPage extends ConsumerStatefulWidget {
     super.key,
     required this.docType,
     this.id,
-    this.sourceRequestId,
-    this.sourceRequestItemIds = const [],
     this.receiptPrefill,
   });
   final PurchaseDocType docType;
   final String? id; // null=新建
-  final String? sourceRequestId;
-  final List<String> sourceRequestItemIds;
   final ProcurementReceiptPrefill? receiptPrefill;
 
   @override
@@ -88,9 +85,6 @@ class PurchaseDocEditPage extends ConsumerStatefulWidget {
 class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
 
-  bool get _canSubmitFinance => ref
-      .read(currentPermissionsProvider)
-      .contains(Perm.purchaseOrderSubmitFinance);
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
@@ -121,8 +115,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
-  // 采购分解订货的并发认领会话（PURCHASE_DECOMPOSE，按申请 id 认领；他人占用时禁用保存）。
-  TaskClaimSession? _decomposeClaim;
 
   @override
   void initState() {
@@ -138,8 +130,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     _taxRate.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
-    _decomposeClaim
-        ?.releaseAll(); // 离开订货编辑页释放分解认领（fire-and-forget；session 自带 repo）
     super.dispose();
   }
 
@@ -174,9 +164,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     }
     if (widget.id == null && widget.docType == PurchaseDocType.receipt) {
       await _prefillReceiptFromExpectation();
-    }
-    if (widget.id == null && widget.docType == PurchaseDocType.order) {
-      await _prefillFromRequest();
     }
     if (widget.id != null) {
       try {
@@ -249,28 +236,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
             ..colorId = it.colorId
             ..unitId = it.unitId
             ..unitRate = it.unitRate;
-          // 订货单一单一商：明细不落供应商 id，编辑回显按单头供应商回填各行。
-          if (widget.docType == PurchaseDocType.order) {
-            row.supplierId = d.supplierId;
-          }
           row.qty.text = it.qty?.toString() ?? '';
           row.weight.text = it.weight?.toString() ?? '';
           row.price.text = it.price?.toString() ?? '';
+          row.remark.text = it.remark ?? '';
           rows.add(row);
         }
         if (widget.docType == PurchaseDocType.receipt ||
             widget.docType == PurchaseDocType.returnDoc) {
           await _fillStockPlaces(rows);
-        }
-        // 「申请来源」列回显：编辑既有订货单按单头来源申请回填
-        //（服务端仅在全单同源时给出；跨申请分解的旧单该列留空）。
-        if (widget.docType == PurchaseDocType.order &&
-            d.sourceRequestId != null) {
-          for (final row in rows) {
-            row
-              ..sourceRequestId = d.sourceRequestId
-              ..sourceRequestNo = d.sourceRequestNo;
-          }
         }
         _grid.replaceAll(rows);
       } on ApiException catch (e) {
@@ -319,79 +293,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         }
       }),
     );
-  }
-
-  Future<void> _prefillFromRequest() async {
-    final selectedIds = widget.sourceRequestItemIds
-        .map((id) => id.trim())
-        .where((id) => id.isNotEmpty)
-        .toSet();
-    // 卡片直达新建（无任务中心带入的申请行）：留空白单，由用户「从上游引入」拉取申请明细。
-    if (selectedIds.isEmpty) return;
-    try {
-      final open = await ref
-          .read(purchaseRepositoryProvider(PurchaseDocType.request))
-          .decompositionPreview(selectedIds);
-      if (open.isEmpty) {
-        throw StateError('所选申请明细已全部分解，请返回任务中心刷新');
-      }
-      final goodsIds = open.map((item) => item.goodsId).toSet();
-      await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      if (!mounted) return;
-      final names = ref.read(masterNameServiceProvider);
-      final rows = <PurchaseGridRow>[];
-      for (final item in open) {
-        final linked = LinkedItem(
-          goodsId: item.goodsId,
-          qty: item.remainingQty,
-          maxQty: item.remainingQty,
-          upstreamItemId: item.sourceItemId,
-          colorId: item.colorId,
-          unitId: item.unitId,
-          unitRate: item.unitRate,
-        );
-        rows.add(
-          PurchaseGridRow.fromLinked(
-            linked,
-            GoodsOption(id: item.goodsId, name: names.goods(item.goodsId)),
-          ),
-        );
-      }
-      if (rows.isEmpty) throw StateError('所选采购申请明细缺少有效物料');
-      // 「申请来源」列自动回填：任务中心带单按申请行各自的来源单号/单据 id 填。
-      for (var i = 0; i < rows.length && i < open.length; i++) {
-        rows[i]
-          ..sourceRequestNo = open[i].sourceDocumentNo
-          ..sourceRequestId = open[i].sourceDocumentId;
-      }
-      _grid.replaceAll(rows);
-      // 引入申请行后按「学习记忆」预填各货品上次订货的供应商，减少逐行手选。
-      await _prefillRememberedSuppliers();
-      final dates =
-          open
-              .map((line) => _parseDate(line.needDate))
-              .whereType<DateTime>()
-              .toList()
-            ..sort();
-      _deliverDate = dates.isEmpty ? null : dates.first;
-      // 订货单不携带仓库（入库仓库到收货登记时再选），不预填申请行仓库。
-      // 并发认领（PURCHASE_DECOMPOSE）：按所引入采购申请 id 认领，他人正在分解同一申请时禁用保存。
-      // 仅 UX/防碰撞层；后端 decompositionPreview 守卫是正确性底线。认领失败 fail-open。
-      final requestIds = open.map((e) => e.sourceDocumentId).toSet();
-      if (requestIds.isNotEmpty) {
-        _decomposeClaim = TaskClaimSession(
-          ref.read(taskClaimRepositoryProvider),
-        );
-        await _decomposeClaim!.claimAll('PURCHASE_DECOMPOSE', requestIds);
-        if (mounted) setState(() {});
-      }
-    } on StateError catch (error) {
-      if (mounted) context.appError(error.message);
-    } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
-    } catch (_) {
-      if (mounted) context.appError('读取采购申请失败，请返回任务中心重新选择');
-    }
   }
 
   Future<void> _prefillReceiptFromExpectation() async {
@@ -463,44 +364,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       ..unitId = g.unitId
       ..unitRate = 1
       ..stockPlaceNotifier.value = g.stockPlace;
-    // 订货单：换货品后按「学习记忆」预填该货品上次订货的供应商（不覆盖已选值）。
-    if (widget.docType == PurchaseDocType.order) {
-      await _prefillRememberedSuppliers();
-    }
   }
-
-  /// 行级供应商「学习预填」：按货品查最近一次订货用的供应商（服务端历史归集），
-  /// 回填尚未选供应商的行。只回填启用中的供应商；失败静默（记忆是提效加分项）。
-  Future<void> _prefillRememberedSuppliers() async {
-    if (widget.docType != PurchaseDocType.order) return;
-    final pending = _grid.rows
-        .where((r) => r.goods != null && r.supplierId == null)
-        .map((r) => r.goods!.id)
-        .toSet();
-    if (pending.isEmpty) return;
-    try {
-      final remembered = await ref
-          .read(purchaseRepositoryProvider(PurchaseDocType.order))
-          .lastSuppliersByGoods(pending);
-      if (!mounted) return;
-      final names = ref.read(masterNameServiceProvider);
-      var changed = false;
-      for (final r in _grid.rows) {
-        final goodsId = r.goods?.id;
-        if (goodsId == null || r.supplierId != null) continue;
-        final sid = remembered[goodsId];
-        if (sid != null && !names.isSupplierDisabled(sid)) {
-          r.supplierId = sid;
-          changed = true;
-        }
-      }
-      if (changed) setState(() {});
-    } catch (_) {
-      // 学习预填失败静默：用户可逐行手选或勾选多行统一设置。
-    }
-  }
-
-  /// 批量设供应商弹窗的「新增供应商」由供应商滑入面板内置（supplier:create 权限）。
 
   /// 供应商确定后预填结账方式：上游单据带结账方式时优先（收货/退货沿用来源
   /// 快照），否则用供应商主档默认（V452）。仅预填启用中的方式；不替换单据
@@ -531,81 +395,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     }
   }
 
-  /// 多选行统一设供应商（订货单表头不录供应商，行级必填）：打开供应商滑入面板
-  /// （分类树+搜索+可内联新建）选一个，把同一供应商填到所有选中行；
-  /// 保存时后端按行供应商拆单归集。
-  Future<void> _batchSetSuppliers() async {
-    final rows = _grid.selectedRows;
-    if (rows.isEmpty) return;
-    final picked = await showUtenSupplierPicker(context, ref, title: '统一设置供应商');
-    if (picked == null || !mounted) return;
-    // 既有单据只持久化单头 supplierId，不能在编辑时制造多供应商行。
-    final targets = widget.id == null ? rows : _grid.rows;
-    for (final r in targets) {
-      r.supplierId = picked.id;
-    }
-    setState(() {});
-    unawaited(_prefillSettlementForSupplier(picked.id, null));
-  }
-
-  /// 行级供应商选择：打开供应商滑入面板，选中后按多选范围落值
-  /// （勾选多行时任一选中行选的供应商联动填到所有选中行；否则只写本行）。
-  Future<void> _pickRowSupplier(PurchaseGridRow row) async {
-    final picked = await showUtenSupplierPicker(context, ref);
-    if (picked == null || !mounted) return;
-    _applyRowSupplier(row, picked.id);
-  }
-
-  /// 行级供应商选择落值：该行处于多选选中态时，在任一选中行选的供应商
-  /// 会联动填到**所有**选中行；未勾选（或点的行不在选中集）则只写本行。
-  void _applyRowSupplier(PurchaseGridRow row, String? value) {
-    if (widget.id != null) {
-      for (final r in _grid.rows) {
-        r.supplierId = value;
-      }
-      context.appInfo('既有订货单保持一单一商，已同步全部明细行');
-      setState(() {});
-      return;
-    }
-    final selected = _grid.selectedRows;
-    if (selected.contains(row)) {
-      for (final r in selected) {
-        r.supplierId = value;
-      }
-      if (selected.length > 1) {
-        context.appSuccess('已为 ${selected.length} 行设置同一供应商');
-      }
-    } else {
-      row.supplierId = value;
-    }
-    setState(() {});
-  }
-
   /// 表头供应商展示名（启用商显名称；编辑旧单遇禁用商标注「已禁用」）。
   String? _supplierHeaderName() {
     final id = _supplierId;
     if (id == null || id.isEmpty) return null;
     final names = ref.read(masterNameServiceProvider);
     final name = names.supplierEntries[id];
-    if (name == null || name.isEmpty) return id;
+    if (name == null || name.isEmpty) return null;
     return names.isSupplierDisabled(id) ? '$name（已禁用）' : name;
-  }
-
-  /// 供应商显示名映射：启用中的供应商（禁用商不显示，避免对其新下单）。
-  /// 被 [referencedIds] 引用的禁用供应商（编辑旧单/上游预填）补进映射并标「已禁用」，
-  /// 保证已选值仍能显示名称；供明细供应商单元格显示用。
-  Map<String, String> _supplierDropdownEntries(
-    Iterable<String?> referencedIds,
-  ) {
-    final names = ref.read(masterNameServiceProvider);
-    final entries = {...names.supplierActiveEntries};
-    for (final id in referencedIds) {
-      if (id == null || id.isEmpty || entries.containsKey(id)) continue;
-      final name = names.supplierEntries[id];
-      if (name == null || name.isEmpty) continue;
-      entries[id] = '$name（已禁用）';
-    }
-    return entries;
   }
 
   /// 收货/退货实物单据：按货品主档补全各行库位号（选择器已返回的不再二次拉取）。
@@ -668,14 +465,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       );
       rows.add(PurchaseGridRow.fromLinked(li, goods));
     }
-    // 「申请来源」列自动回填：本次引入所选上游单据（订货单上游=采购申请）的单号/id。
-    if (widget.docType == PurchaseDocType.order) {
-      for (final r in rows) {
-        r
-          ..sourceRequestId = result.sourceDocId
-          ..sourceRequestNo = result.sourceDocNo;
-      }
-    }
     if (widget.docType == PurchaseDocType.receipt ||
         widget.docType == PurchaseDocType.returnDoc) {
       await _fillStockPlaces(rows);
@@ -695,17 +484,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       setState(() => _supplierId = sid);
       unawaited(_prefillSettlementForSupplier(sid, result.settlementMethodId));
     }
-    // 引入行后按「学习记忆」预填各货品上次订货的供应商（订货单行级必填）。
-    await _prefillRememberedSuppliers();
-  }
-
-  /// 「申请来源」列点击：跳来源采购申请详情（申请为计划下达的只读事实页）。
-  void _openSourceRequest(PurchaseGridRow row) {
-    final id = row.sourceRequestId;
-    if (id == null || id.isEmpty) return;
-    context.push(
-      RoutePath.purchaseDocDetail(PurchaseDocType.request.pathSegment, id),
-    );
   }
 
   Future<void> _save() async {
@@ -714,34 +492,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       context.appError('请至少添加一条明细');
       return;
     }
-    if (_cfg.supplierRequired &&
-        !_cfg.supplierOnRowOnly &&
-        _supplierId == null) {
+    if (_cfg.supplierRequired && _supplierId == null) {
       context.appError('请选择供应商');
       return;
-    }
-    if (_cfg.supplierOnRowOnly) {
-      // 订货单：供应商在明细行必填（表头不录），勾选多行可「统一设供应商」批量填。
-      final missing = rows
-          .where((r) => r.goods != null && r.supplierId == null)
-          .toList();
-      if (missing.isNotEmpty) {
-        context.appError(
-          '${missing.first.goods!.name} 等 ${missing.length} 行未选择供应商；'
-          '可勾选多行后在任一行选择供应商统一填写',
-        );
-        return;
-      }
-      // 行供应商全部一致时同步表头（编辑旧单口径；新建按行拆单不用表头）。
-      final rowSuppliers = rows
-          .where((r) => r.goods != null)
-          .map((r) => r.supplierId)
-          .toSet();
-      if (widget.id != null && rowSuppliers.length != 1) {
-        context.appError('既有采购订货单必须保持全部明细为同一供应商');
-        return;
-      }
-      if (rowSuppliers.length == 1) _supplierId = rowSuppliers.first;
     }
     if (_cfg.warehouseRequired && _warehouseId == null) {
       context.appError('请选择仓库');
@@ -793,11 +546,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         context.appError('${r.goods!.name} 的实际重量必须大于 0');
         return;
       }
-      if (widget.docType == PurchaseDocType.order &&
-          (price == null || price < 0)) {
-        context.appError('请填写${r.goods!.name}的有效采购单价');
-        return;
-      }
+      final remarkText = r.remark.text.trim();
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
@@ -813,9 +562,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.unitRate != null) 'unitRate': r.unitRate,
         'weight': ?weight,
-        // 订货单：明细级供应商（为空时后端按表头供应商回落）；保存时按供应商拆单。
-        if (widget.docType == PurchaseDocType.order && r.supplierId != null)
-          'supplierId': r.supplierId,
+        if (remarkText.isNotEmpty) 'remark': remarkText,
       });
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
@@ -844,105 +591,18 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     setState(() => _saving = true);
     try {
       final repo = ref.read(purchaseRepositoryProvider(widget.docType));
-      // 订货单新建：按供应商自动拆单（createBatch），逐张提交财务。
-      if (widget.docType == PurchaseDocType.order && widget.id == null) {
-        final created = await repo.createBatch(body);
-        if (!mounted) return;
-        String? financeError;
-        if (_canSubmitFinance) {
-          for (final createdDoc in created) {
-            try {
-              await repo.submitFinance(createdDoc.id);
-            } on ApiException catch (e) {
-              financeError ??= e.message;
-            }
-          }
-        }
-        if (!mounted) return;
-        bumpListRefresh(ref, _cfg.refreshKey);
-        // 业务动作完成 → 对应通知自动已读：指向来源采购申请或本次新建订货单
-        // 的通知（action_route 精确匹配）随保存一并清理；失败静默不打断业务。
-        unawaited(
-          markNoticesReadByRoute(
-            ProviderScope.containerOf(context, listen: false),
-            [
-              for (final row in _grid.rows)
-                if (row.sourceRequestId != null)
-                  RoutePath.purchaseDocDetail(
-                    PurchaseDocType.request.pathSegment,
-                    row.sourceRequestId!,
-                  ),
-              for (final createdDoc in created)
-                RoutePath.purchaseDocDetail(
-                  _cfg.type.pathSegment,
-                  createdDoc.id,
-                ),
-            ],
-          ),
-        );
-        if (financeError != null) {
-          context.appWarning(
-            '已生成 ${created.length} 张订货单，部分未提交财务审核组：$financeError。'
-            '请进入对应订货详情重新提交。',
-          );
-        } else if (_canSubmitFinance) {
-          context.appSuccess(
-            created.length > 1
-                ? '已按供应商拆分为 ${created.length} 张订货单并提交财务审核组；'
-                      '下一步由财务在「订货审批任务中心」审核'
-                : '订货单已保存并提交财务审核组；下一步由财务在「订货审批任务中心」审核',
-          );
-        } else {
-          context.appSuccess(
-            created.length > 1
-                ? '已按供应商拆分并保存 ${created.length} 张订货单草稿；'
-                      '下一步请由有权限的人员提交财务审核'
-                : '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
-          );
-        }
-        if (created.length == 1) {
-          context.replace(
-            RoutePath.purchaseDocDetail(
-              _cfg.type.pathSegment,
-              created.first.id,
-            ),
-          );
-        } else {
-          context.go('/purchase/${_cfg.type.pathSegment}');
-        }
-        return;
-      }
-      var d = widget.id == null
+      final d = widget.id == null
           ? await repo.create(body)
           : await repo.update(widget.id!, body);
       if (!mounted) return;
-      if (widget.docType == PurchaseDocType.order && _canSubmitFinance) {
-        try {
-          d = await repo.submitFinance(d.id);
-        } on ApiException catch (e) {
-          if (!mounted) return;
-          context.appWarning(
-            '订货单已保存，但未能提交财务审核组：${e.message}。'
-            '请在订货详情重新提交。',
-          );
-          bumpListRefresh(ref, _cfg.refreshKey);
-          context.replace(
-            RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id),
-          );
-          return;
-        }
-      }
-      if (!mounted) return;
       context.appSuccess(switch (widget.docType) {
-        PurchaseDocType.order when _canSubmitFinance =>
-          '订货单已保存并提交财务审核组；下一步由财务在「订货审批任务中心」审核',
-        PurchaseDocType.order => '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
+        PurchaseDocType.order => '订货单已保存', // 防御分支：订货已走专属编辑页
         PurchaseDocType.receipt => '采购收货单已保存；下一步请在单据详情点击「审核」',
         PurchaseDocType.returnDoc => '采购退货单已保存；下一步请在单据详情点击「审核」',
         PurchaseDocType.request => widget.id == null ? '已创建' : '已保存',
       });
       bumpListRefresh(ref, _cfg.refreshKey);
-      // 同上：保存/更新成功后，指向本单据的通知对当前用户自动已读。
+      // 保存/更新成功后，指向本单据的通知对当前用户自动已读。
       unawaited(
         markNoticesReadByRoute(
           ProviderScope.containerOf(context, listen: false),
@@ -1064,12 +724,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                     onChanged: (d) =>
                                         setState(() => _billDate = d),
                                   ),
-                                  // 订货单：供应商改在明细行逐行必选（表头不显示），
-                                  // 保存按行供应商拆单归集；收货/退货仍走表头。
+                                  // 收货/退货：表头单一供应商（订货单行级条款已走专属页）。
                                   // 选商走右侧滑入面板（同销售订货单「客户」交互）：
                                   // 分类树+搜索+分页+可内联新建，仅列启用供应商。
-                                  if (_cfg.hasSupplier &&
-                                      !_cfg.supplierOnRowOnly)
+                                  if (_cfg.hasSupplier)
                                     SupplierPickerField(
                                       initialId: _supplierId,
                                       initialName: _supplierHeaderName(),
@@ -1219,34 +877,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                           ),
                         ),
                       ),
-                      // 并发认领被占用的提示独立常驻（引入总结横幅已由明细
-                      // 「申请来源」列取代：来源单号逐行展示、可点跳申请详情）。
-                      if (_decomposeClaim?.blocked ?? false)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            top: UtenSpacing.s8,
-                            bottom: UtenSpacing.s4,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.lock_outline,
-                                size: 18,
-                                color: theme.colorScheme.error,
-                              ),
-                              const SizedBox(width: UtenSpacing.s8),
-                              Expanded(
-                                child: Text(
-                                  '${_decomposeClaim?.blockedByName ?? '同事'}'
-                                  '正在分解此采购申请，保存已禁用，请稍后再试',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.error,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                       const SizedBox(height: UtenSpacing.s12),
                       Row(
                         children: [
@@ -1268,37 +898,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                       ),
                       UtenEditableGrid<PurchaseGridRow>(
                         controller: _grid,
-                        // 订货单多选行批量操作：统一设供应商（可内联新建供应商）。
-                        batchActionsBuilder:
-                            widget.docType == PurchaseDocType.order
-                            ? (ctx, ctl) => [
-                                TextButton.icon(
-                                  onPressed: ctl.selectedCount > 0
-                                      ? _batchSetSuppliers
-                                      : null,
-                                  icon: const Icon(
-                                    Icons.local_shipping_outlined,
-                                    size: 16,
-                                  ),
-                                  label: Text('统一设供应商 (${ctl.selectedCount})'),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Theme.of(
-                                      ctx,
-                                    ).colorScheme.primary,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 2,
-                                    ),
-                                    minimumSize: const Size(0, 36),
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    textStyle: Theme.of(
-                                      ctx,
-                                    ).textTheme.titleSmall,
-                                  ),
-                                ),
-                              ]
-                            : null,
                         columns: purchaseGridColumns(
                           _pickGoods,
                           arrivalMode: _isArrivalMode,
@@ -1307,29 +906,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                           showStockPlace:
                               widget.docType == PurchaseDocType.receipt ||
                               widget.docType == PurchaseDocType.returnDoc,
-                          // 订货单：明细可逐行选供应商，保存时按供应商自动拆单。
-                          // 选项与表头同口径：只列启用供应商（行内已引用的禁用商补显）。
-                          supplierEntries:
-                              widget.docType == PurchaseDocType.order
-                              ? _supplierDropdownEntries([
-                                  _supplierId,
-                                  for (final r in _grid.rows) r.supplierId,
-                                ])
-                              : const {},
-                          // 订货单表头不录供应商：行级必选（列头红 * + 空值红字提示）。
-                          supplierRequired:
-                              widget.docType == PurchaseDocType.order,
-                          headerSupplierId:
-                              widget.docType == PurchaseDocType.order
-                              ? _supplierId
-                              : null,
-                          // 行内点选供应商 → 滑入面板（页面按多选范围落值联动）。
-                          onPickSupplier: _pickRowSupplier,
-                          // 订货单：「申请来源」列——引入行自动回填来源申请单号，点击跳申请详情。
-                          showSource: widget.docType == PurchaseDocType.order,
-                          onOpenSource: _openSourceRequest,
+                          // 每行末尾备注列（随行提交 remark）。
+                          showRemark: !_isArrivalMode,
                         ),
                         createBlankRow: () => PurchaseGridRow(),
+                        cloneRow: (r) => r.clone(),
                         // 到货登记模式：行来自预计到货任务（带订货明细关联），
                         // 不允许添加无来源行；行尾删除保留（部分到货=该行本次不收）。
                         showAddRow: !_isArrivalMode,
@@ -1370,18 +951,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
               ),
               UtenButton(
                 isLoading: _saving,
-                icon:
-                    widget.docType == PurchaseDocType.order && _canSubmitFinance
-                    ? Icons.send_outlined
-                    : Icons.save_outlined,
-                onPressed: (_saving || (_decomposeClaim?.blocked ?? false))
-                    ? null
-                    : _save,
+                icon: Icons.save_outlined,
+                onPressed: _saving ? null : _save,
+                // 订货已走专属编辑页；本页三类单据统一「保存，下一步审核/保存」文案。
                 child: Text(
-                  purchaseSaveActionLabel(
-                    widget.docType,
-                    submitFinance: _canSubmitFinance,
-                  ),
+                  purchaseSaveActionLabel(widget.docType, submitFinance: false),
                 ),
               ),
             ],

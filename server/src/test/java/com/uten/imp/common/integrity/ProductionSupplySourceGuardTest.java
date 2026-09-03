@@ -125,7 +125,9 @@ class ProductionSupplySourceGuardTest {
         assertThat(sql.get(1))
                 .contains("production_material_supply_pegs")
                 .contains("peg.supply_type = 'purchase_order_item'")
-                .contains("order_item.request_item_id")
+                // V463：订货行多来源锚定——守卫经 sources 展开全部来源申请行。
+                .contains("purchase_order_item_sources")
+                .contains("src.request_item_id")
                 .contains("action.external_document_id = request_item.request_id")
                 .doesNotContain("action.status")
                 .doesNotContain("action.is_deleted");
@@ -142,7 +144,9 @@ class ProductionSupplySourceGuardTest {
         assertThat(sql.get(3))
                 .contains("production_material_supply_pegs")
                 .contains("peg.supply_type = 'subcontract_order_item'")
-                .contains("order_item.application_item_id")
+                // V463：订货行多来源锚定——守卫经 sources 展开全部来源申请行。
+                .contains("subcontract_order_item_sources")
+                .contains("src.application_item_id")
                 .contains("action.external_document_id = application_item.application_id")
                 .doesNotContain("action.status")
                 .doesNotContain("action.is_deleted");

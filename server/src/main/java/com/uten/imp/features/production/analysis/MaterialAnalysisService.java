@@ -1179,8 +1179,12 @@ public class MaterialAnalysisService {
             BigDecimal required = node.snapshotRequiredQty();
             BigDecimal shortage = required.subtract(available)
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
+            // 初始快照与 persistAllocationSnapshot 权威口径一致：MAKE 与有子层
+            // SUBCONTRACT（先自制链）都可能下层未齐；随后权威重算会覆盖本值。
             boolean lowerPending = node.hasChildren()
-                    && "MAKE".equals(node.suggestion()) && shortage.signum() > 0;
+                    && ("MAKE".equals(node.suggestion())
+                        || "SUBCONTRACT".equals(node.suggestion()))
+                    && shortage.signum() > 0;
             em.createNativeQuery("""
                     INSERT INTO production_material_analysis_materials (
                         id, analysis_id, analysis_item_id, node_key, parent_node_key,
@@ -1502,45 +1506,52 @@ public class MaterialAnalysisService {
                         AND request.is_stopped = FALSE
                         AND request.is_closed = TRUE)
                   AND action.requested_qty > COALESCE((
-                      SELECT SUM(GREATEST(
-                          COALESCE((
-                              SELECT SUM(CASE
-                                  WHEN inspection.id IS NULL
-                                  THEN receipt_item.qty
-                                      * COALESCE(receipt_item.unit_rate,1)
-                                  WHEN inspection.status IN ('PARTIAL','RESOLVED')
-                                  THEN inspection.warehouse_stocked_base_qty
-                                  ELSE 0
-                              END)
-                              FROM purchase_receipt_items receipt_item
-                              JOIN purchase_receipts receipt
-                                ON receipt.id = receipt_item.receipt_id
-                               AND receipt.status = 1
-                               AND receipt.is_deleted = FALSE
-                              LEFT JOIN procurement_inspection_items inspection
-                                ON inspection.receipt_type = 'PURCHASE'
-                               AND inspection.receipt_item_id = receipt_item.id
-                              WHERE receipt_item.order_item_id = order_item.id
-                                AND receipt_item.is_deleted = FALSE
-                          ),0) - COALESCE(order_item.returned_qty,0)
-                              * COALESCE(order_item.unit_rate,1), 0))
-                      FROM purchase_order_items order_item
+                      -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
+                      SELECT SUM(fn_purchase_order_source_share(
+                          order_item.id, src.request_item_id,
+                          GREATEST(
+                              COALESCE((
+                                  SELECT SUM(CASE
+                                      WHEN inspection.id IS NULL
+                                      THEN receipt_item.qty
+                                          * COALESCE(receipt_item.unit_rate,1)
+                                      WHEN inspection.status IN ('PARTIAL','RESOLVED')
+                                      THEN inspection.warehouse_stocked_base_qty
+                                      ELSE 0
+                                  END)
+                                  FROM purchase_receipt_items receipt_item
+                                  JOIN purchase_receipts receipt
+                                    ON receipt.id = receipt_item.receipt_id
+                                   AND receipt.status = 1
+                                   AND receipt.is_deleted = FALSE
+                                  LEFT JOIN procurement_inspection_items inspection
+                                    ON inspection.receipt_type = 'PURCHASE'
+                                   AND inspection.receipt_item_id = receipt_item.id
+                                  WHERE receipt_item.order_item_id = order_item.id
+                                    AND receipt_item.is_deleted = FALSE
+                              ),0) - COALESCE(order_item.returned_qty,0)
+                                  * COALESCE(order_item.unit_rate,1), 0)))
+                      FROM purchase_order_item_sources src
+                      JOIN purchase_order_items order_item
+                        ON order_item.id = src.order_item_id
+                       AND order_item.is_deleted = FALSE
                       JOIN purchase_orders purchase_order
                         ON purchase_order.id = order_item.order_id
                        AND purchase_order.status = 1
                        AND purchase_order.is_deleted = FALSE
-                      WHERE order_item.is_deleted = FALSE
-                        AND order_item.request_item_id IN (
-                            SELECT allocation.external_item_id
-                            FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id
-                              AND allocation.external_item_id IS NOT NULL)
+                      WHERE src.request_item_id IN (
+                          SELECT allocation.external_item_id
+                          FROM preplan_supply_action_allocations allocation
+                          WHERE allocation.action_id = action.id
+                            AND allocation.external_item_id IS NOT NULL)
                   ),0)
                   AND EXISTS (
                       SELECT 1
                       FROM preplan_supply_action_allocations allocation
+                      JOIN purchase_order_item_sources src
+                        ON src.request_item_id = allocation.external_item_id
                       JOIN purchase_order_items order_item
-                        ON order_item.request_item_id = allocation.external_item_id
+                        ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
                       JOIN purchase_orders purchase_order
                         ON purchase_order.id = order_item.order_id
@@ -1562,23 +1573,41 @@ public class MaterialAnalysisService {
                   AND NOT EXISTS (
                       SELECT 1
                       FROM preplan_supply_action_allocations allocation
+                      JOIN purchase_order_item_sources src
+                        ON src.request_item_id = allocation.external_item_id
                       JOIN purchase_order_items order_item
-                        ON order_item.request_item_id = allocation.external_item_id
+                        ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
                       JOIN purchase_orders purchase_order
                         ON purchase_order.id = order_item.order_id
                        AND purchase_order.status = 1
                        AND purchase_order.is_deleted = FALSE
                       WHERE allocation.action_id = action.id
-                        AND GREATEST(
-                            COALESCE(order_item.qty,0)
-                            - COALESCE(order_item.received_qty,0)
-                            + COALESCE(order_item.returned_qty,0), 0) > 0)
+                        AND fn_purchase_order_source_share(
+                            order_item.id, src.request_item_id,
+                            GREATEST(
+                                COALESCE(order_item.qty,0)
+                                - COALESCE(order_item.received_qty,0)
+                                + COALESCE(order_item.returned_qty,0), 0)
+                            * COALESCE(order_item.unit_rate,1)
+                            + COALESCE((
+                                SELECT SUM(rejection.failed_base_qty)
+                                FROM procurement_iqc_rejection_cases rejection
+                                WHERE rejection.receipt_type='PURCHASE'
+                                  AND rejection.order_item_id=order_item.id
+                                  AND rejection.is_deleted=FALSE
+                                  AND rejection.return_recorded_at IS NOT NULL
+                                  AND rejection.status IN (
+                                      'RETURN_RECORDED','CREDIT_CONFIRMED',
+                                      'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
+                              ),0)) > 0)
                   AND NOT EXISTS (
                       SELECT 1
                       FROM preplan_supply_action_allocations allocation
+                      JOIN purchase_order_item_sources src
+                        ON src.request_item_id = allocation.external_item_id
                       JOIN purchase_order_items order_item
-                        ON order_item.request_item_id = allocation.external_item_id
+                        ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
                       JOIN purchase_receipt_items receipt_item
                         ON receipt_item.order_item_id = order_item.id
@@ -1619,45 +1648,52 @@ public class MaterialAnalysisService {
                         AND application.status IN (0,1)
                         AND application.is_closed = TRUE)
                   AND action.requested_qty > COALESCE((
-                      SELECT SUM(GREATEST(
-                          COALESCE((
-                              SELECT SUM(CASE
-                                  WHEN inspection.id IS NULL
-                                  THEN receipt_item.qty
-                                      * COALESCE(receipt_item.unit_rate,1)
-                                  WHEN inspection.status IN ('PARTIAL','RESOLVED')
-                                  THEN inspection.warehouse_stocked_base_qty
-                                  ELSE 0
-                              END)
-                              FROM subcontract_receipt_items receipt_item
-                              JOIN subcontract_receipts receipt
-                                ON receipt.id = receipt_item.receipt_id
-                               AND receipt.status = 1
-                               AND receipt.is_deleted = FALSE
-                              LEFT JOIN procurement_inspection_items inspection
-                                ON inspection.receipt_type = 'SUBCONTRACT'
-                               AND inspection.receipt_item_id = receipt_item.id
-                              WHERE receipt_item.order_item_id = order_item.id
-                                AND receipt_item.is_deleted = FALSE
-                          ),0) - COALESCE(order_item.returned_qty,0)
-                              * COALESCE(order_item.unit_rate,1), 0))
-                      FROM subcontract_order_items order_item
+                      -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
+                      SELECT SUM(fn_subcontract_order_source_share(
+                          order_item.id, src.application_item_id,
+                          GREATEST(
+                              COALESCE((
+                                  SELECT SUM(CASE
+                                      WHEN inspection.id IS NULL
+                                      THEN receipt_item.qty
+                                          * COALESCE(receipt_item.unit_rate,1)
+                                      WHEN inspection.status IN ('PARTIAL','RESOLVED')
+                                      THEN inspection.warehouse_stocked_base_qty
+                                      ELSE 0
+                                  END)
+                                  FROM subcontract_receipt_items receipt_item
+                                  JOIN subcontract_receipts receipt
+                                    ON receipt.id = receipt_item.receipt_id
+                                   AND receipt.status = 1
+                                   AND receipt.is_deleted = FALSE
+                                  LEFT JOIN procurement_inspection_items inspection
+                                    ON inspection.receipt_type = 'SUBCONTRACT'
+                                   AND inspection.receipt_item_id = receipt_item.id
+                                  WHERE receipt_item.order_item_id = order_item.id
+                                    AND receipt_item.is_deleted = FALSE
+                              ),0) - COALESCE(order_item.returned_qty,0)
+                                  * COALESCE(order_item.unit_rate,1), 0)))
+                      FROM subcontract_order_item_sources src
+                      JOIN subcontract_order_items order_item
+                        ON order_item.id = src.order_item_id
+                       AND order_item.is_deleted = FALSE
                       JOIN subcontract_orders subcontract_order
                         ON subcontract_order.id = order_item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
-                      WHERE order_item.is_deleted = FALSE
-                        AND order_item.application_item_id IN (
-                            SELECT allocation.external_item_id
-                            FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id
-                              AND allocation.external_item_id IS NOT NULL)
+                      WHERE src.application_item_id IN (
+                          SELECT allocation.external_item_id
+                          FROM preplan_supply_action_allocations allocation
+                          WHERE allocation.action_id = action.id
+                            AND allocation.external_item_id IS NOT NULL)
                   ),0)
                   AND EXISTS (
                       SELECT 1
                       FROM preplan_supply_action_allocations allocation
+                      JOIN subcontract_order_item_sources src
+                        ON src.application_item_id = allocation.external_item_id
                       JOIN subcontract_order_items order_item
-                        ON order_item.application_item_id = allocation.external_item_id
+                        ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
                       JOIN subcontract_orders subcontract_order
                         ON subcontract_order.id = order_item.order_id
@@ -1679,23 +1715,41 @@ public class MaterialAnalysisService {
                   AND NOT EXISTS (
                       SELECT 1
                       FROM preplan_supply_action_allocations allocation
+                      JOIN subcontract_order_item_sources src
+                        ON src.application_item_id = allocation.external_item_id
                       JOIN subcontract_order_items order_item
-                        ON order_item.application_item_id = allocation.external_item_id
+                        ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
                       JOIN subcontract_orders subcontract_order
                         ON subcontract_order.id = order_item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
                       WHERE allocation.action_id = action.id
-                        AND GREATEST(
-                            COALESCE(order_item.qty,0)
-                            - COALESCE(order_item.received_qty,0)
-                            + COALESCE(order_item.returned_qty,0), 0) > 0)
+                        AND fn_subcontract_order_source_share(
+                            order_item.id, src.application_item_id,
+                            GREATEST(
+                                COALESCE(order_item.qty,0)
+                                - COALESCE(order_item.received_qty,0)
+                                + COALESCE(order_item.returned_qty,0), 0)
+                            * COALESCE(order_item.unit_rate,1)
+                            + COALESCE((
+                                SELECT SUM(rejection.failed_base_qty)
+                                FROM procurement_iqc_rejection_cases rejection
+                                WHERE rejection.receipt_type='SUBCONTRACT'
+                                  AND rejection.order_item_id=order_item.id
+                                  AND rejection.is_deleted=FALSE
+                                  AND rejection.return_recorded_at IS NOT NULL
+                                  AND rejection.status IN (
+                                      'RETURN_RECORDED','CREDIT_CONFIRMED',
+                                      'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
+                              ),0)) > 0)
                   AND NOT EXISTS (
                       SELECT 1
                       FROM preplan_supply_action_allocations allocation
+                      JOIN subcontract_order_item_sources src
+                        ON src.application_item_id = allocation.external_item_id
                       JOIN subcontract_order_items order_item
-                        ON order_item.application_item_id = allocation.external_item_id
+                        ON order_item.id = src.order_item_id
                        AND order_item.is_deleted = FALSE
                       JOIN subcontract_receipt_items receipt_item
                         ON receipt_item.order_item_id = order_item.id
@@ -1744,52 +1798,59 @@ public class MaterialAnalysisService {
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.safety_replenishment_qty = 0
                   AND action.requested_qty > COALESCE((
-                      SELECT SUM(GREATEST(
-                          COALESCE((
-                              SELECT SUM(CASE
-                                  WHEN inspection.id IS NULL
-                                  THEN receipt_item.qty * COALESCE(
-                                      receipt_item.unit_rate,1)
-                                  WHEN inspection.status IN ('PARTIAL','RESOLVED')
-                                  THEN inspection.warehouse_stocked_base_qty
-                                  ELSE 0
-                              END)
-                              FROM purchase_receipt_items receipt_item
-                              JOIN purchase_receipts receipt
-                                ON receipt.id = receipt_item.receipt_id
-                               AND receipt.status = 1
-                               AND receipt.is_deleted = FALSE
-                              LEFT JOIN procurement_inspection_items inspection
-                                ON inspection.receipt_type = 'PURCHASE'
-                               AND inspection.receipt_item_id = receipt_item.id
-                              WHERE receipt_item.order_item_id = item.id
-                                AND receipt_item.is_deleted = FALSE
-                          ),0) - COALESCE(item.returned_qty,0)
-                              * COALESCE(item.unit_rate,1), 0))
-                      FROM purchase_order_items item
+                      -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
+                      SELECT SUM(fn_purchase_order_source_share(
+                          item.id, src.request_item_id,
+                          GREATEST(
+                              COALESCE((
+                                  SELECT SUM(CASE
+                                      WHEN inspection.id IS NULL
+                                      THEN receipt_item.qty * COALESCE(
+                                          receipt_item.unit_rate,1)
+                                      WHEN inspection.status IN ('PARTIAL','RESOLVED')
+                                      THEN inspection.warehouse_stocked_base_qty
+                                      ELSE 0
+                                  END)
+                                  FROM purchase_receipt_items receipt_item
+                                  JOIN purchase_receipts receipt
+                                    ON receipt.id = receipt_item.receipt_id
+                                   AND receipt.status = 1
+                                   AND receipt.is_deleted = FALSE
+                                  LEFT JOIN procurement_inspection_items inspection
+                                    ON inspection.receipt_type = 'PURCHASE'
+                                   AND inspection.receipt_item_id = receipt_item.id
+                                  WHERE receipt_item.order_item_id = item.id
+                                    AND receipt_item.is_deleted = FALSE
+                              ),0) - COALESCE(item.returned_qty,0)
+                                  * COALESCE(item.unit_rate,1), 0)))
+                      FROM purchase_order_item_sources src
+                      JOIN purchase_order_items item
+                        ON item.id = src.order_item_id
+                       AND item.is_deleted = FALSE
                       JOIN purchase_orders purchase_order
                         ON purchase_order.id = item.order_id
                        AND purchase_order.status = 1
                        AND purchase_order.is_deleted = FALSE
-                      WHERE item.is_deleted = FALSE
-                        AND item.request_item_id IN (
-                            SELECT allocation.external_item_id
-                            FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id
-                              AND allocation.external_item_id IS NOT NULL)
+                      WHERE src.request_item_id IN (
+                          SELECT allocation.external_item_id
+                          FROM preplan_supply_action_allocations allocation
+                          WHERE allocation.action_id = action.id
+                            AND allocation.external_item_id IS NOT NULL)
                   ),0)
                   AND (action.status = 'DONE' OR EXISTS (
-                      SELECT 1 FROM purchase_order_items item
+                      SELECT 1 FROM purchase_order_item_sources src
+                      JOIN purchase_order_items item
+                        ON item.id = src.order_item_id
+                       AND item.is_deleted = FALSE
                       JOIN purchase_orders purchase_order
                         ON purchase_order.id = item.order_id
                        AND purchase_order.status = 1
                        AND purchase_order.is_deleted = FALSE
-                      WHERE item.is_deleted = FALSE
-                        AND item.request_item_id IN (
-                            SELECT allocation.external_item_id
-                            FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id
-                              AND allocation.external_item_id IS NOT NULL)))
+                      WHERE src.request_item_id IN (
+                          SELECT allocation.external_item_id
+                          FROM preplan_supply_action_allocations allocation
+                          WHERE allocation.action_id = action.id
+                            AND allocation.external_item_id IS NOT NULL)))
                 """).setParameter("analysisId", analysisId).executeUpdate();
 
         em.createNativeQuery("""
@@ -1799,52 +1860,59 @@ public class MaterialAnalysisService {
                   AND action.status IN ('CREATED','DONE')
                   AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
                   AND action.requested_qty > COALESCE((
-                      SELECT SUM(GREATEST(
-                          COALESCE((
-                              SELECT SUM(CASE
-                                  WHEN inspection.id IS NULL
-                                  THEN receipt_item.qty * COALESCE(
-                                      receipt_item.unit_rate,1)
-                                  WHEN inspection.status IN ('PARTIAL','RESOLVED')
-                                  THEN inspection.warehouse_stocked_base_qty
-                                  ELSE 0
-                              END)
-                              FROM subcontract_receipt_items receipt_item
-                              JOIN subcontract_receipts receipt
-                                ON receipt.id = receipt_item.receipt_id
-                               AND receipt.status = 1
-                               AND receipt.is_deleted = FALSE
-                              LEFT JOIN procurement_inspection_items inspection
-                                ON inspection.receipt_type = 'SUBCONTRACT'
-                               AND inspection.receipt_item_id = receipt_item.id
-                              WHERE receipt_item.order_item_id = item.id
-                                AND receipt_item.is_deleted = FALSE
-                          ),0) - COALESCE(item.returned_qty,0)
-                              * COALESCE(item.unit_rate,1), 0))
-                      FROM subcontract_order_items item
+                      -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
+                      SELECT SUM(fn_subcontract_order_source_share(
+                          item.id, src.application_item_id,
+                          GREATEST(
+                              COALESCE((
+                                  SELECT SUM(CASE
+                                      WHEN inspection.id IS NULL
+                                      THEN receipt_item.qty * COALESCE(
+                                          receipt_item.unit_rate,1)
+                                      WHEN inspection.status IN ('PARTIAL','RESOLVED')
+                                      THEN inspection.warehouse_stocked_base_qty
+                                      ELSE 0
+                                  END)
+                                  FROM subcontract_receipt_items receipt_item
+                                  JOIN subcontract_receipts receipt
+                                    ON receipt.id = receipt_item.receipt_id
+                                   AND receipt.status = 1
+                                   AND receipt.is_deleted = FALSE
+                                  LEFT JOIN procurement_inspection_items inspection
+                                    ON inspection.receipt_type = 'SUBCONTRACT'
+                                   AND inspection.receipt_item_id = receipt_item.id
+                                  WHERE receipt_item.order_item_id = item.id
+                                    AND receipt_item.is_deleted = FALSE
+                              ),0) - COALESCE(item.returned_qty,0)
+                                  * COALESCE(item.unit_rate,1), 0)))
+                      FROM subcontract_order_item_sources src
+                      JOIN subcontract_order_items item
+                        ON item.id = src.order_item_id
+                       AND item.is_deleted = FALSE
                       JOIN subcontract_orders subcontract_order
                         ON subcontract_order.id = item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
-                      WHERE item.is_deleted = FALSE
-                        AND item.application_item_id IN (
-                            SELECT allocation.external_item_id
-                            FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id
-                              AND allocation.external_item_id IS NOT NULL)
+                      WHERE src.application_item_id IN (
+                          SELECT allocation.external_item_id
+                          FROM preplan_supply_action_allocations allocation
+                          WHERE allocation.action_id = action.id
+                            AND allocation.external_item_id IS NOT NULL)
                   ),0)
                   AND (action.status = 'DONE' OR EXISTS (
-                      SELECT 1 FROM subcontract_order_items item
+                      SELECT 1 FROM subcontract_order_item_sources src
+                      JOIN subcontract_order_items item
+                        ON item.id = src.order_item_id
+                       AND item.is_deleted = FALSE
                       JOIN subcontract_orders subcontract_order
                         ON subcontract_order.id = item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
-                      WHERE item.is_deleted = FALSE
-                        AND item.application_item_id IN (
-                            SELECT allocation.external_item_id
-                            FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id
-                              AND allocation.external_item_id IS NOT NULL)))
+                      WHERE src.application_item_id IN (
+                          SELECT allocation.external_item_id
+                          FROM preplan_supply_action_allocations allocation
+                          WHERE allocation.action_id = action.id
+                            AND allocation.external_item_id IS NOT NULL)))
                 """).setParameter("analysisId", analysisId).executeUpdate();
 
         em.createNativeQuery("""
@@ -1906,39 +1974,44 @@ public class MaterialAnalysisService {
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.safety_replenishment_qty = 0
                   AND action.requested_qty <= COALESCE((
-                      SELECT SUM(GREATEST(
-                          COALESCE((
-                              SELECT SUM(CASE
-                                  WHEN inspection.id IS NULL
-                                  THEN receipt_item.qty * COALESCE(
-                                      receipt_item.unit_rate,1)
-                                  WHEN inspection.status IN ('PARTIAL','RESOLVED')
-                                  THEN inspection.warehouse_stocked_base_qty
-                                  ELSE 0
-                              END)
-                              FROM purchase_receipt_items receipt_item
-                              JOIN purchase_receipts receipt
-                                ON receipt.id = receipt_item.receipt_id
-                               AND receipt.status = 1
-                               AND receipt.is_deleted = FALSE
-                              LEFT JOIN procurement_inspection_items inspection
-                                ON inspection.receipt_type = 'PURCHASE'
-                               AND inspection.receipt_item_id = receipt_item.id
-                              WHERE receipt_item.order_item_id = item.id
-                                AND receipt_item.is_deleted = FALSE
-                          ),0) - COALESCE(item.returned_qty,0)
-                              * COALESCE(item.unit_rate,1), 0))
-                      FROM purchase_order_items item
+                      -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
+                      SELECT SUM(fn_purchase_order_source_share(
+                          item.id, src.request_item_id,
+                          GREATEST(
+                              COALESCE((
+                                  SELECT SUM(CASE
+                                      WHEN inspection.id IS NULL
+                                      THEN receipt_item.qty * COALESCE(
+                                          receipt_item.unit_rate,1)
+                                      WHEN inspection.status IN ('PARTIAL','RESOLVED')
+                                      THEN inspection.warehouse_stocked_base_qty
+                                      ELSE 0
+                                  END)
+                                  FROM purchase_receipt_items receipt_item
+                                  JOIN purchase_receipts receipt
+                                    ON receipt.id = receipt_item.receipt_id
+                                   AND receipt.status = 1
+                                   AND receipt.is_deleted = FALSE
+                                  LEFT JOIN procurement_inspection_items inspection
+                                    ON inspection.receipt_type = 'PURCHASE'
+                                   AND inspection.receipt_item_id = receipt_item.id
+                                  WHERE receipt_item.order_item_id = item.id
+                                    AND receipt_item.is_deleted = FALSE
+                              ),0) - COALESCE(item.returned_qty,0)
+                                  * COALESCE(item.unit_rate,1), 0)))
+                      FROM purchase_order_item_sources src
+                      JOIN purchase_order_items item
+                        ON item.id = src.order_item_id
+                       AND item.is_deleted = FALSE
                       JOIN purchase_orders purchase_order
                         ON purchase_order.id = item.order_id
                        AND purchase_order.status = 1
                        AND purchase_order.is_deleted = FALSE
-                      WHERE item.is_deleted = FALSE
-                        AND item.request_item_id IN (
-                            SELECT allocation.external_item_id
-                            FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id
-                              AND allocation.external_item_id IS NOT NULL)
+                      WHERE src.request_item_id IN (
+                          SELECT allocation.external_item_id
+                          FROM preplan_supply_action_allocations allocation
+                          WHERE allocation.action_id = action.id
+                            AND allocation.external_item_id IS NOT NULL)
                   ),0)
                 """).setParameter("analysisId", analysisId).executeUpdate();
 
@@ -1949,39 +2022,44 @@ public class MaterialAnalysisService {
                   AND action.status IN ('CREATED','IN_PROGRESS')
                   AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
                   AND action.requested_qty <= COALESCE((
-                      SELECT SUM(GREATEST(
-                          COALESCE((
-                              SELECT SUM(CASE
-                                  WHEN inspection.id IS NULL
-                                  THEN receipt_item.qty * COALESCE(
-                                      receipt_item.unit_rate,1)
-                                  WHEN inspection.status IN ('PARTIAL','RESOLVED')
-                                  THEN inspection.warehouse_stocked_base_qty
-                                  ELSE 0
-                              END)
-                              FROM subcontract_receipt_items receipt_item
-                              JOIN subcontract_receipts receipt
-                                ON receipt.id = receipt_item.receipt_id
-                               AND receipt.status = 1
-                               AND receipt.is_deleted = FALSE
-                              LEFT JOIN procurement_inspection_items inspection
-                                ON inspection.receipt_type = 'SUBCONTRACT'
-                               AND inspection.receipt_item_id = receipt_item.id
-                              WHERE receipt_item.order_item_id = item.id
-                                AND receipt_item.is_deleted = FALSE
-                          ),0) - COALESCE(item.returned_qty,0)
-                              * COALESCE(item.unit_rate,1), 0))
-                      FROM subcontract_order_items item
+                      -- V463：合并订货行按来源 FIFO 分摊到各申请行后再汇总。
+                      SELECT SUM(fn_subcontract_order_source_share(
+                          item.id, src.application_item_id,
+                          GREATEST(
+                              COALESCE((
+                                  SELECT SUM(CASE
+                                      WHEN inspection.id IS NULL
+                                      THEN receipt_item.qty * COALESCE(
+                                          receipt_item.unit_rate,1)
+                                      WHEN inspection.status IN ('PARTIAL','RESOLVED')
+                                      THEN inspection.warehouse_stocked_base_qty
+                                      ELSE 0
+                                  END)
+                                  FROM subcontract_receipt_items receipt_item
+                                  JOIN subcontract_receipts receipt
+                                    ON receipt.id = receipt_item.receipt_id
+                                   AND receipt.status = 1
+                                   AND receipt.is_deleted = FALSE
+                                  LEFT JOIN procurement_inspection_items inspection
+                                    ON inspection.receipt_type = 'SUBCONTRACT'
+                                   AND inspection.receipt_item_id = receipt_item.id
+                                  WHERE receipt_item.order_item_id = item.id
+                                    AND receipt_item.is_deleted = FALSE
+                              ),0) - COALESCE(item.returned_qty,0)
+                                  * COALESCE(item.unit_rate,1), 0)))
+                      FROM subcontract_order_item_sources src
+                      JOIN subcontract_order_items item
+                        ON item.id = src.order_item_id
+                       AND item.is_deleted = FALSE
                       JOIN subcontract_orders subcontract_order
                         ON subcontract_order.id = item.order_id
                        AND subcontract_order.status = 1
                        AND subcontract_order.is_deleted = FALSE
-                      WHERE item.is_deleted = FALSE
-                        AND item.application_item_id IN (
-                            SELECT allocation.external_item_id
-                            FROM preplan_supply_action_allocations allocation
-                            WHERE allocation.action_id = action.id
-                              AND allocation.external_item_id IS NOT NULL)
+                      WHERE src.application_item_id IN (
+                          SELECT allocation.external_item_id
+                          FROM preplan_supply_action_allocations allocation
+                          WHERE allocation.action_id = action.id
+                            AND allocation.external_item_id IS NOT NULL)
                   ),0)
                 """).setParameter("analysisId", analysisId).executeUpdate();
 
@@ -2154,9 +2232,13 @@ public class MaterialAnalysisService {
                 shipAllocated = allocation.allocatedQty();
             }
             String nodeKey = nodeAllocationKey(node);
+            // V458/ADR-062 修订一②：有子层级的委外件与自制完全同构——下层未齐套时
+            // lower_level_pending=TRUE（进「暂不可安排」），齐套前禁止「下达委外」。
+            String effectiveRoute = effectiveRoutes.getOrDefault(
+                    nodeKey, node.suggestion());
             boolean lowerPending = node.hasChildren()
-                    && "MAKE".equals(effectiveRoutes.getOrDefault(
-                            nodeKey, node.suggestion()))
+                    && ("MAKE".equals(effectiveRoute)
+                        || "SUBCONTRACT".equals(effectiveRoute))
                     && !delegatedMakeNodes.contains(nodeKey)
                     && !STAGE_REFERENCE.equals(node.controlStage())
                     && nestedDiagnostic.hasUncoveredDirectChild(node);
@@ -4480,9 +4562,12 @@ public class MaterialAnalysisService {
                            cap.unit_id, cap.allocated_qty,
                            COALESCE(i.deliver_date,o.deliver_date) AS eta,
                            i.id AS supply_item_id,
-                           (GREATEST(COALESCE(i.qty,0)-COALESCE(i.received_qty,0)
-                                     +COALESCE(i.returned_qty,0),0)
-                            * COALESCE(i.unit_rate,1))::numeric AS open_qty
+                           -- V463：合并订货行在途量按来源 FIFO 分摊。
+                           fn_purchase_order_source_share(
+                               i.id, src.request_item_id,
+                               GREATEST(COALESCE(i.qty,0)-COALESCE(i.received_qty,0)
+                                        +COALESCE(i.returned_qty,0),0)
+                               * COALESCE(i.unit_rate,1))::numeric AS open_qty
                     FROM action_caps cap
                     JOIN purchase_request_items request_item
                       ON request_item.id = cap.external_item_id
@@ -4492,7 +4577,9 @@ public class MaterialAnalysisService {
                      AND request.is_deleted = FALSE
                      AND request.status IN (0,1)
                      AND request.is_stopped = FALSE
-                    JOIN purchase_order_items i ON i.request_item_id = cap.external_item_id
+                    JOIN purchase_order_item_sources src
+                      ON src.request_item_id = cap.external_item_id
+                    JOIN purchase_order_items i ON i.id = src.order_item_id
                     JOIN purchase_orders o ON o.id = i.order_id
                     WHERE cap.external_document_type IN (
                               'PURCHASE_REQUEST','PURCHASE_SAFETY')
@@ -4505,9 +4592,11 @@ public class MaterialAnalysisService {
                            cap.goods_id, cap.color_id, cap.unit_id,
                            cap.allocated_qty,
                            COALESCE(i.deliver_date,o.deliver_date), i.id,
-                           (GREATEST(COALESCE(i.qty,0)-COALESCE(i.received_qty,0)
-                                     +COALESCE(i.returned_qty,0),0)
-                            * COALESCE(i.unit_rate,1))::numeric
+                           fn_subcontract_order_source_share(
+                               i.id, src.application_item_id,
+                               GREATEST(COALESCE(i.qty,0)-COALESCE(i.received_qty,0)
+                                        +COALESCE(i.returned_qty,0),0)
+                               * COALESCE(i.unit_rate,1))::numeric
                     FROM action_caps cap
                     JOIN subcontract_application_items application_item
                       ON application_item.id = cap.external_item_id
@@ -4516,8 +4605,10 @@ public class MaterialAnalysisService {
                       ON application.id = application_item.application_id
                      AND application.is_deleted = FALSE
                      AND application.status IN (0,1)
+                    JOIN subcontract_order_item_sources src
+                      ON src.application_item_id = cap.external_item_id
                     JOIN subcontract_order_items i
-                      ON i.application_item_id = cap.external_item_id
+                      ON i.id = src.order_item_id
                     JOIN subcontract_orders o ON o.id = i.order_id
                     WHERE cap.external_document_type = 'SUBCONTRACT_APPLICATION'
                       AND o.status = 1 AND o.is_deleted = FALSE AND o.is_closed = FALSE
@@ -4570,10 +4661,12 @@ public class MaterialAnalysisService {
                            COALESCE(order_item.deliver_date, order_header.deliver_date)
                                AS eta,
                            order_item.id AS supply_item_id,
-                           (GREATEST(COALESCE(order_item.qty,0)
-                               - COALESCE(order_item.received_qty,0)
-                               + COALESCE(order_item.returned_qty,0),0)
-                            * COALESCE(order_item.unit_rate,1))::numeric AS open_qty
+                           fn_purchase_order_source_share(
+                               order_item.id, src.request_item_id,
+                               GREATEST(COALESCE(order_item.qty,0)
+                                   - COALESCE(order_item.received_qty,0)
+                                   + COALESCE(order_item.returned_qty,0),0)
+                               * COALESCE(order_item.unit_rate,1))::numeric AS open_qty
                     FROM v_preplan_subcontract_requirement_supply_claim_state claim
                     JOIN preplan_subcontract_requirement_handoff_items mapped
                       ON mapped.id = claim.handoff_item_id
@@ -4592,8 +4685,10 @@ public class MaterialAnalysisService {
                      AND request_header.is_deleted = FALSE
                      AND request_header.status IN (0,1)
                      AND request_header.is_stopped = FALSE
+                    JOIN purchase_order_item_sources src
+                      ON src.request_item_id = request_item.id
                     JOIN purchase_order_items order_item
-                      ON order_item.request_item_id = request_item.id
+                      ON order_item.id = src.order_item_id
                      AND order_item.is_deleted = FALSE
                     JOIN purchase_orders order_header
                       ON order_header.id = order_item.order_id
@@ -4613,10 +4708,12 @@ public class MaterialAnalysisService {
                            claim.future_qty,
                            COALESCE(order_item.deliver_date, order_header.deliver_date),
                            order_item.id,
-                           (GREATEST(COALESCE(order_item.qty,0)
-                               - COALESCE(order_item.received_qty,0)
-                               + COALESCE(order_item.returned_qty,0),0)
-                            * COALESCE(order_item.unit_rate,1))::numeric
+                           fn_subcontract_order_source_share(
+                               order_item.id, src.application_item_id,
+                               GREATEST(COALESCE(order_item.qty,0)
+                                   - COALESCE(order_item.received_qty,0)
+                                   + COALESCE(order_item.returned_qty,0),0)
+                               * COALESCE(order_item.unit_rate,1))::numeric
                     FROM v_preplan_subcontract_requirement_supply_claim_state claim
                     JOIN preplan_subcontract_requirement_handoff_items mapped
                       ON mapped.id = claim.handoff_item_id
@@ -4634,8 +4731,10 @@ public class MaterialAnalysisService {
                       ON application_header.id = application_item.application_id
                      AND application_header.is_deleted = FALSE
                      AND application_header.status IN (0,1)
+                    JOIN subcontract_order_item_sources src
+                      ON src.application_item_id = application_item.id
                     JOIN subcontract_order_items order_item
-                      ON order_item.application_item_id = application_item.id
+                      ON order_item.id = src.order_item_id
                      AND order_item.is_deleted = FALSE
                     JOIN subcontract_orders order_header
                       ON order_header.id = order_item.order_id

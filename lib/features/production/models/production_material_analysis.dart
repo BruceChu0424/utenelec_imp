@@ -286,6 +286,7 @@ class SubcontractMakeTask {
     required this.taskId,
     required this.analysisId,
     required this.status,
+    this.preparationItemId,
     this.analysisStatus,
     this.itemSourceRef,
     this.goodsId,
@@ -307,6 +308,10 @@ class SubcontractMakeTask {
   final String taskId;
   final String analysisId;
   final String status;
+
+  /// 对应 SUBCONTRACT_MAKE 分析行 id（preparation_item_id）——物料分析页
+  /// 用它把任务精确挂回自己的产品卡，不按货号猜。
+  final String? preparationItemId;
   final String? analysisStatus;
   final String? itemSourceRef;
   final String? goodsId;
@@ -338,6 +343,7 @@ class SubcontractMakeTask {
       SubcontractMakeTask(
         taskId: _string(json['taskId']) ?? '',
         analysisId: _string(json['analysisId']) ?? '',
+        preparationItemId: _string(json['preparationItemId']),
         analysisStatus: _string(json['analysisStatus']),
         itemSourceRef: _string(json['itemSourceRef']),
         goodsId: _string(json['goodsId']),

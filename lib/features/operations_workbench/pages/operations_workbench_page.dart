@@ -1,3 +1,11 @@
+// 履约任务工作台（采购/仓库/委外三部门共用）。
+//
+// 2026-09-03 起统一「分类分段」范式（原指标卡+状态/异常下拉退役）：
+// UtenFilterToolbar 阶段行（无「全部」段；终态「已完成/已领取」不占段，
+// 归入末尾「历史记录」段时间门控浏览）+ 异常小类行（选中阶段后出现，
+// 无「全部异常」）——两行默认都不选，内容区显示引导占位不发请求；
+// 阶段/异常分段挂后端全量计数徽章（进页面仅拉一次 size=1 概览）。
+// 表格多选 + 右下悬浮「生成采购订货单」批量链路保持不变。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,11 +13,12 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -18,10 +27,26 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../shared/widgets/metric_filter_cards.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../shared/widgets/metric_filter_cards.dart' show metricToneColor;
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/operations_workbench.dart';
 import '../repositories/operations_workbench_repository.dart';
+
+/// 阶段分段值：真实任务阶段（code 非空）或历史记录哨兵。
+class _WorkbenchSeg {
+  const _WorkbenchSeg.stage(String this.code) : history = false;
+  const _WorkbenchSeg.history() : code = null, history = true;
+
+  final String? code;
+  final bool history;
+  @override
+  bool operator ==(Object other) =>
+      other is _WorkbenchSeg && other.code == code && other.history == history;
+
+  @override
+  int get hashCode => Object.hash(code, history);
+}
 
 class OperationsWorkbenchPage extends ConsumerStatefulWidget {
   const OperationsWorkbenchPage({
@@ -46,25 +71,57 @@ class _OperationsWorkbenchPageState
   int _page = 1;
   int _requestId = 0;
   String _keyword = '';
-  String? _status;
+
+  /// 当前选中阶段分段；null = 未选择引导态（内容不加载）。
+  _WorkbenchSeg? _seg;
+
+  /// 异常小类；null = 未选择（不附加过滤）。
   String? _exception;
+
+  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+
   final Set<String> _selectedIds = {};
 
   OperationsWorkbenchGateway get _repository =>
       widget.repository ?? ref.read(operationsWorkbenchRepositoryProvider);
 
+  /// 阶段行分段（不含终态——已完成/已领取归入历史记录）。
+  List<({String code, String label})> get _stages {
+    return switch (widget.department) {
+      OperationsWorkbenchDepartment.purchase ||
+      OperationsWorkbenchDepartment.subcontract => const [
+        (code: 'WAITING_ORDER', label: '申请待分解'),
+        (code: 'ORDER_PENDING_APPROVAL', label: '等待财务审核'),
+        (code: 'FINANCE_APPROVED', label: '财务已通过'),
+        (code: 'FINANCE_REJECTED', label: '财务驳回'),
+      ],
+      OperationsWorkbenchDepartment.warehouse => const [
+        (code: 'READY_TO_PICK', label: '待备料 / 待领取'),
+        (code: 'PARTIAL', label: '部分领取'),
+      ],
+    };
+  }
+
+  bool get _shouldLoad {
+    final seg = _seg;
+    if (seg == null) return false;
+    if (seg.history && _historyTime.isNone) return false;
+    return true;
+  }
+
   @override
   void initState() {
     super.initState();
-    // 采购/仓库先看仍待处理任务（委外任务中心是独立的
-    // SubcontractDecompositionPage，默认全部业务阶段）。
-    _status = kOperationsWorkbenchOpenStatus;
-    Future<void>.microtask(_load);
+    // 默认不选阶段：内容不加载；仅拉一次 size=1 概览获取阶段/异常计数徽章。
+    Future<void>.microtask(() => _load(page: 1));
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page, int size = 50}) async {
     if (!mounted) return;
     final requestId = ++_requestId;
+    final seg = _seg;
+    final range = seg?.history == true ? _historyTime.range : null;
     setState(() {
       _loading = true;
       _error = null;
@@ -72,10 +129,14 @@ class _OperationsWorkbenchPageState
     try {
       final next = await _repository.load(
         department: widget.department,
-        page: _page,
+        page: page ?? _page,
+        // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数，内容区仍显示引导占位。
+        size: _shouldLoad ? size : 1,
         keyword: _keyword,
-        status: _status,
-        exception: _exception,
+        status: seg == null || seg.history ? null : seg.code,
+        exception: seg == null || seg.history ? null : _exception,
+        dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
+        dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
       );
       if (!mounted || requestId != _requestId) return;
       setState(() {
@@ -94,18 +155,45 @@ class _OperationsWorkbenchPageState
     }
   }
 
-  void _applyFilter({String? keyword, String? status, String? exception}) {
-    final needsReload = keyword != null || status != null || exception != null;
+  void _selectSeg(_WorkbenchSeg seg) {
+    if (seg == _seg) return;
     setState(() {
-      if (keyword != null) _keyword = keyword;
-      if (status != null) _status = status.isEmpty ? null : status;
-      if (exception != null) {
-        _exception = exception.isEmpty ? null : exception;
-      }
-      if (needsReload) _page = 1;
+      _seg = seg;
+      _exception = null;
+      _page = 1;
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
       _selectedIds.clear();
     });
-    if (needsReload) _load();
+    if (!seg.history || !_historyTime.isNone) {
+      _load(page: 1);
+    }
+  }
+
+  void _selectException(String code) {
+    if (_exception == code) return;
+    setState(() {
+      _exception = code;
+      _page = 1;
+      _selectedIds.clear();
+    });
+    _load(page: 1);
+  }
+
+  void _onHistoryTime(UtenHistoryTimeValue value) {
+    if (value == _historyTime) return;
+    setState(() {
+      _historyTime = value;
+      _page = 1;
+      _selectedIds.clear();
+    });
+    _load(page: 1);
+  }
+
+  void _applyKeyword(String value) {
+    final normalized = value.trim();
+    if (normalized == _keyword) return;
+    _keyword = normalized;
+    _load(page: 1);
   }
 
   void _toggleSelected(OperationsWorkbenchTask task) {
@@ -160,12 +248,21 @@ class _OperationsWorkbenchPageState
     }
   }
 
+  /// 归组行的申请明细 id 集：单货品单据仍有 actionDocItemId；多货品合并单
+  /// 从 actionItemIds 整单带入（订货单编辑页内仍可删减行）。
+  List<String> _purchaseItemIdsOf(OperationsWorkbenchTask task) {
+    final single = task.actionDocItemId?.trim();
+    if (single?.isNotEmpty == true) return [single!];
+    return task.actionItemIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList();
+  }
+
   String? _purchaseSelectionIssue(List<OperationsWorkbenchTask> selected) {
     if (selected.isEmpty) return '请先选择采购任务';
     final hasUnlinked = selected.any(
-      (task) =>
-          (task.actionDocItemId?.trim().isEmpty ?? true) ||
-          task.actionDocument == null,
+      (task) => task.actionDocument == null || _purchaseItemIdsOf(task).isEmpty,
     );
     if (hasUnlinked) return '先生成/挂接采购申请';
     final hasLaterStage = selected.any(
@@ -180,9 +277,10 @@ class _OperationsWorkbenchPageState
   }
 
   String _purchaseOrderRoute(List<OperationsWorkbenchTask> selected) {
-    final ids = selected
-        .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
-        .join(',');
+    final ids = [
+      for (final task in selected)
+        ..._purchaseItemIdsOf(task).map((id) => Uri.encodeComponent(id)),
+    ].join(',');
     return '/purchase/orders/new?requestItemIds=$ids';
   }
 
@@ -224,7 +322,7 @@ class _OperationsWorkbenchPageState
         if (next <= (previous ?? 0)) return;
         // Recovery must reload the currently visible workbench without asking
         // older users to leave the page or repeatedly press refresh.
-        Future<void>.microtask(_load);
+        Future<void>.microtask(() => _load());
       },
     );
     final selectionAction = _selectionPrimaryAction;
@@ -239,7 +337,7 @@ class _OperationsWorkbenchPageState
         actions: [
           IconButton(
             tooltip: '刷新',
-            onPressed: _loading ? null : _load,
+            onPressed: _loading ? null : () => _load(),
             icon: const Icon(Icons.refresh_rounded),
           ),
           const SizedBox(width: UtenSpacing.s8),
@@ -279,56 +377,89 @@ class _OperationsWorkbenchPageState
         message: '无法加载${widget.department.label}',
         description: _error,
         actionLabel: '重试',
-        onAction: _load,
+        onAction: () => _load(),
       );
     }
     final data = _data;
     if (data == null) {
-      return UtenEmpty.error(actionLabel: '重试', onAction: _load);
+      return UtenEmpty.error(actionLabel: '重试', onAction: () => _load());
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final breakpoint = breakpointForWidth(constraints.maxWidth);
-        final overview = _Overview(
-          metrics: data.metrics,
-          activeStatus: _status,
-          activeException: _exception,
-          onMetricTap: (metric) {
-            // 卡片单选互斥：任一时刻只允许一张筛选卡生效——点状态卡即清除异常
-            // 筛选、点异常卡即清除状态筛选（修复「已完成+逾期」双卡同显）；
-            // 再点已选卡取消，回到全量视图（状态/异常都为空）。
-            final status = metric.statusFilter;
-            final exception = metric.exceptionFilter;
-            if (status != null) {
-              _applyFilter(
-                status: _status == status ? '' : status,
-                exception: '',
-              );
-            } else if (exception != null) {
-              _applyFilter(
-                status: '',
-                exception: _exception == exception ? '' : exception,
-              );
-            }
-          },
+        final seg = _seg;
+        final statusCounts = data.summary.statusCounts;
+        final exceptionCounts = data.summary.exceptionCounts;
+        final exceptionOptions = data.exceptionOptions;
+        // 阶段行：真实阶段（无「全部」；终态归历史记录）+ 末尾历史记录；
+        // 计数取后端全量口径（statusCounts 不随当前筛选收窄）。
+        final stageRow = UtenFilterToolbar<_WorkbenchSeg>(
+          segmentsKey: Key(
+            'operations-workbench-stages-${widget.department.apiValue}',
+          ),
+          segments: [
+            for (final stage in _stages)
+              UtenFilterSegment(
+                value: _WorkbenchSeg.stage(stage.code),
+                label: stage.label,
+                count: statusCounts[stage.code],
+              ),
+            const UtenFilterSegment(
+              value: _WorkbenchSeg.history(),
+              label: '历史记录',
+            ),
+          ],
+          selected: seg == null ? const {} : {seg},
+          onSelectionChanged: _selectSeg,
+          searchHint: '搜索任务号、来源单号、货品或往来单位',
+          initialSearchValue: _keyword,
+          onSearchInputChanged: (_) => _requestId++,
+          onSearchChanged: _applyKeyword,
         );
-        final filters = _Filters(
-          keyword: _keyword,
-          status: _status,
-          exception: _exception,
-          statusOptions: data.statusOptions,
-          exceptionOptions: data.exceptionOptions,
-          onKeywordChanged: (value) => _applyFilter(keyword: value),
-          // 下拉与卡片同一互斥规则：选中具体值即清除另一维度；选「全部」只清自身。
-          onStatusChanged: (value) => value.isEmpty
-              ? _applyFilter(status: '')
-              : _applyFilter(status: value, exception: ''),
-          onExceptionChanged: (value) => value.isEmpty
-              ? _applyFilter(exception: '')
-              : _applyFilter(status: '', exception: value),
+        // 异常小类行：选中阶段后出现；无「全部异常」，默认不选=不附加过滤。
+        final exceptionRow =
+            (seg != null && !seg.history && exceptionOptions.isNotEmpty)
+            ? UtenFilterToolbar<String>(
+                segmentsKey: Key(
+                  'operations-workbench-exceptions-${widget.department.apiValue}',
+                ),
+                segments: [
+                  for (final option in exceptionOptions)
+                    UtenFilterSegment(
+                      value: option.value,
+                      label: option.label,
+                      count: exceptionCounts[option.value],
+                    ),
+                ],
+                selected: _exception == null ? const {} : {_exception!},
+                onSelectionChanged: _selectException,
+              )
+            : null;
+        final historyTimeRow = seg?.history == true
+            ? UtenHistoryTimeFilter(
+                key: Key(
+                  'operations-workbench-history-time-${widget.department.apiValue}',
+                ),
+                value: _historyTime,
+                onChanged: _onHistoryTime,
+              )
+            : null;
+        final filterRows = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            stageRow,
+            if (exceptionRow != null) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              exceptionRow,
+            ],
+            if (historyTimeRow != null) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              historyTimeRow,
+            ],
+          ],
         );
-        final selectionBar = selectionAction == null
+        final selectionBar = selectionAction == null || !_shouldLoad
             ? null
             : _SelectionBar(
                 selected: _selectedTasks,
@@ -353,42 +484,47 @@ class _OperationsWorkbenchPageState
         final tableSelectable = selectionAction != null;
 
         if (useTaskTable) {
-          // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：任意位置上滑先把概览卡
-          // 收完，筛选行与选中操作条随表格上移后钉在顶部常驻，之后表格内部滚动——
-          // 表格占满剩余空间，不再被顶部内容挤压。
+          // 「顶部折叠 + 表格吸顶内滚」：任意位置上滑先把分类工具条收完，
+          // 筛选行与选中操作条随表格上移后钉在顶部常驻，之后表格内部滚动。
           return UtenCollapsingHeaderScrollView(
-            collapsingHeader: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                overview,
-                const SizedBox(height: UtenSpacing.s16),
-              ],
+            collapsingHeader: Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+              child: filterRows,
             ),
             body: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                filters,
-                const SizedBox(height: UtenSpacing.s12),
-                if (selectionBar != null) ...[
-                  selectionBar,
-                  const SizedBox(height: UtenSpacing.s12),
-                ],
-                Expanded(
-                  child: _DesktopTaskTable(
-                    key: const Key('operations-workbench-desktop-table'),
-                    data: data,
-                    items: data.items,
-                    selectedIds: _selectedIds,
-                    selectable: tableSelectable,
-                    loading: _loading,
-                    onSelectedIdsChanged: _setSelectedIds,
-                    onOpenTask: _openAction,
-                    onPageChanged: (page) {
-                      setState(() => _page = page);
-                      _load();
-                    },
+                if (seg == null)
+                  const Expanded(
+                    child: UtenFilterPlaceholder(
+                      message: '在上方选择阶段后开始办理',
+                      description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
+                    ),
+                  )
+                else if (seg.history && _historyTime.isNone)
+                  const Expanded(child: UtenHistoryTimePlaceholder())
+                else ...[
+                  if (selectionBar != null) ...[
+                    selectionBar,
+                    const SizedBox(height: UtenSpacing.s12),
+                  ],
+                  Expanded(
+                    child: _DesktopTaskTable(
+                      key: const Key('operations-workbench-desktop-table'),
+                      data: data,
+                      items: data.items,
+                      selectedIds: _selectedIds,
+                      selectable: tableSelectable,
+                      loading: _loading,
+                      onSelectedIdsChanged: _setSelectedIds,
+                      onOpenTask: _openAction,
+                      onPageChanged: (page) {
+                        setState(() => _page = page);
+                        _load(page: page);
+                      },
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           );
@@ -399,253 +535,61 @@ class _OperationsWorkbenchPageState
           // 悬浮主操作不占页面布局；仅在滚动尾部留透明避让，防止遮住末张任务卡/分页器。
           padding: EdgeInsets.only(bottom: selectionAction == null ? 0 : 96),
           children: [
-            overview,
-            const SizedBox(height: UtenSpacing.s16),
-            filters,
+            filterRows,
             const SizedBox(height: UtenSpacing.s12),
-            if (selectionBar != null) ...[
-              selectionBar,
-              const SizedBox(height: UtenSpacing.s12),
-            ],
-            if (data.items.isEmpty)
+            if (seg == null)
               const SizedBox(
                 height: 320,
-                child: UtenEmpty(
-                  icon: Icons.task_alt_rounded,
-                  message: '当前筛选下没有任务',
-                  description: '可调整状态、异常或关键词筛选后重试。',
+                child: UtenFilterPlaceholder(
+                  message: '在上方选择阶段后开始办理',
+                  description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
                 ),
               )
-            else
-              for (final task in data.items) ...[
-                _TaskCard(
-                  task: task,
-                  selected:
-                      selectionAction != null && _selectedIds.contains(task.id),
-                  onSelected: selectionAction == null
-                      ? null
-                      : () => _toggleSelected(task),
-                  onOpen: !(task.actionDocument?.canView ?? false)
-                      ? null
-                      : () => _openAction(task),
-                ),
+            else if (seg.history && _historyTime.isNone)
+              const SizedBox(height: 320, child: UtenHistoryTimePlaceholder())
+            else ...[
+              if (selectionBar != null) ...[
+                selectionBar,
                 const SizedBox(height: UtenSpacing.s12),
               ],
-            _MobilePager(
-              page: data.page,
-              totalPages: data.totalPages,
-              loading: _loading,
-              onPageChanged: (page) {
-                setState(() => _page = page);
-                _load();
-              },
-            ),
+              if (data.items.isEmpty)
+                const SizedBox(
+                  height: 320,
+                  child: UtenEmpty(
+                    icon: Icons.task_alt_rounded,
+                    message: '当前筛选下没有任务',
+                    description: '可调整阶段、异常或关键词筛选后重试。',
+                  ),
+                )
+              else
+                for (final task in data.items) ...[
+                  _TaskCard(
+                    task: task,
+                    selected:
+                        selectionAction != null &&
+                        _selectedIds.contains(task.id),
+                    onSelected: selectionAction == null
+                        ? null
+                        : () => _toggleSelected(task),
+                    onOpen: !(task.actionDocument?.canView ?? false)
+                        ? null
+                        : () => _openAction(task),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
+              _MobilePager(
+                page: data.page,
+                totalPages: data.totalPages,
+                loading: _loading,
+                onPageChanged: (page) {
+                  setState(() => _page = page);
+                  _load(page: page);
+                },
+              ),
+            ],
           ],
         );
       },
-    );
-  }
-}
-
-class _Overview extends StatelessWidget {
-  const _Overview({
-    required this.metrics,
-    required this.activeStatus,
-    required this.activeException,
-    required this.onMetricTap,
-  });
-
-  final List<OperationsWorkbenchMetric> metrics;
-
-  final String? activeStatus;
-  final String? activeException;
-  final ValueChanged<OperationsWorkbenchMetric> onMetricTap;
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    if (metrics.isEmpty) {
-      return Container(
-        key: const Key('operations-workbench-overview-unavailable'),
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.info_outline_rounded,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            const Expanded(child: Text('后端尚未返回概览数据，系统不会用任务列表推算或伪造计数。')),
-          ],
-        ),
-      );
-    }
-    return MetricFilterCards(
-      key: const Key('operations-workbench-overview'),
-      items: [
-        for (final metric in metrics)
-          MetricFilterCardItem(
-            key: metric.key,
-            label: metric.label,
-            value: metric.value,
-            tone: metric.tone,
-            selected:
-                (metric.statusFilter != null &&
-                    metric.statusFilter == activeStatus) ||
-                (metric.exceptionFilter != null &&
-                    metric.exceptionFilter == activeException),
-            onTap: metric.statusFilter == null && metric.exceptionFilter == null
-                ? null
-                : () => onMetricTap(metric),
-          ),
-      ],
-    );
-  }
-}
-
-class _Filters extends StatelessWidget {
-  const _Filters({
-    required this.keyword,
-    required this.status,
-    required this.exception,
-    required this.statusOptions,
-    required this.exceptionOptions,
-    required this.onKeywordChanged,
-    required this.onStatusChanged,
-    required this.onExceptionChanged,
-  });
-
-  final String keyword;
-  final String? status;
-  final String? exception;
-  final List<OperationsWorkbenchFilterOption> statusOptions;
-  final List<OperationsWorkbenchFilterOption> exceptionOptions;
-  final ValueChanged<String> onKeywordChanged;
-  final ValueChanged<String> onStatusChanged;
-  final ValueChanged<String> onExceptionChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < UtenBreakpoints.mediumStart;
-        final children = [
-          SizedBox(
-            width: compact ? constraints.maxWidth : 360,
-            // 与状态下拉（DropdownButtonFormField + labelText 固有 56）同高，
-            // 避免紧凑搜索框（isDense，48）比旁边下拉矮一截。
-            height: _kFilterFieldHeight,
-            child: UtenSearchBar(
-              key: const Key('operations-workbench-keyword'),
-              initialValue: keyword,
-              hint: '搜索任务号、来源单号、货品或往来单位',
-              onChanged: onKeywordChanged,
-            ),
-          ),
-          SizedBox(
-            width: compact ? constraints.maxWidth : 220,
-            height: _kFilterFieldHeight,
-            child: _FilterDropdown(
-              key: const Key('operations-workbench-status-filter'),
-              label: '状态',
-              value: status,
-              allLabel: '全部状态',
-              options: statusOptions,
-              valueLabel: operationsWorkbenchStatusLabel,
-              onChanged: onStatusChanged,
-            ),
-          ),
-          SizedBox(
-            width: compact ? constraints.maxWidth : 220,
-            height: _kFilterFieldHeight,
-            child: _FilterDropdown(
-              key: const Key('operations-workbench-exception-filter'),
-              label: '异常',
-              value: exception,
-              allLabel: '全部异常',
-              options: exceptionOptions,
-              valueLabel: operationsWorkbenchExceptionLabel,
-              onChanged: onExceptionChanged,
-            ),
-          ),
-        ];
-        return Wrap(
-          spacing: UtenSpacing.s12,
-          runSpacing: UtenSpacing.s12,
-          children: children,
-        );
-      },
-    );
-  }
-}
-
-/// 筛选行统一控件高度：与 DropdownButtonFormField(labelText:) 固有高度（实测 56）对齐。
-const double _kFilterFieldHeight = 56;
-
-class _FilterDropdown extends StatelessWidget {
-  const _FilterDropdown({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.allLabel,
-    required this.options,
-    required this.valueLabel,
-    required this.onChanged,
-  });
-
-  final String label;
-  final String? value;
-  final String allLabel;
-  final List<OperationsWorkbenchFilterOption> options;
-  final String Function(String) valueLabel;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedValue = value?.trim() ?? '';
-    final optionsByValue = <String, OperationsWorkbenchFilterOption>{};
-    for (final option in options) {
-      final optionValue = option.value.trim();
-      if (optionValue.isEmpty) continue;
-      optionsByValue.putIfAbsent(
-        optionValue,
-        () => OperationsWorkbenchFilterOption(
-          value: optionValue,
-          label: option.label.trim().isEmpty
-              ? valueLabel(optionValue)
-              : option.label.trim(),
-        ),
-      );
-    }
-    if (selectedValue.isNotEmpty) {
-      optionsByValue.putIfAbsent(
-        selectedValue,
-        () => OperationsWorkbenchFilterOption(
-          value: selectedValue,
-          label: valueLabel(selectedValue),
-        ),
-      );
-    }
-    final normalizedOptions = optionsByValue.values.toList(growable: false);
-
-    return DropdownButtonFormField<String>(
-      key: ValueKey<String>('filter-$label-$selectedValue'),
-      initialValue: selectedValue,
-      isExpanded: true,
-      decoration: InputDecoration(labelText: label),
-      items: [
-        DropdownMenuItem(value: '', child: Text(allLabel)),
-        for (final option in normalizedOptions)
-          DropdownMenuItem(
-            value: option.value,
-            child: Text(option.label, overflow: TextOverflow.ellipsis),
-          ),
-      ],
-      onChanged: (next) => onChanged(next ?? ''),
     );
   }
 }
@@ -775,25 +719,36 @@ class _DesktopTaskTable extends StatelessWidget {
           value: (item) => item.planNo,
         ),
         MasterColumnDef(
+          // ADR-065 修订：行=当前执行单据（申请/订货单），单据号是首要身份；
+          // 双击行或「执行入口」直达详情，明细在单据详情里逐货品查看。
+          key: 'actionDocNo',
+          label: '单据号',
+          width: 160,
+          value: (item) => item.actionDocument?.number ?? '—',
+        ),
+        MasterColumnDef(
           key: 'goodsCode',
           label: '货品编码',
           width: 140,
-          value: (item) => item.goodsCode,
+          value: (item) => item.isDocumentGrouped ? '—' : item.goodsCode,
         ),
         MasterColumnDef(
           key: 'goodsName',
           label: '货品名称',
           width: 200,
-          value: (item) => item.goodsName,
+          value: (item) =>
+              item.isDocumentGrouped ? item.goodsSummaryLabel : item.goodsName,
         ),
         MasterColumnDef(
           key: 'spec',
           label: '规格 / 颜色',
           width: 180,
-          value: (item) => [
-            item.spec,
-            item.colorName,
-          ].where((value) => value.isNotEmpty).join(' / '),
+          value: (item) => item.isDocumentGrouped
+              ? '—'
+              : [
+                  item.spec,
+                  item.colorName,
+                ].where((value) => value.isNotEmpty).join(' / '),
         ),
         MasterColumnDef(
           key: 'supplyRoute',
@@ -808,28 +763,37 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '需求数量',
           width: 110,
           type: 'number',
-          value: (item) => _quantity(item.requiredQty, item.unitName),
+          // 归组行不同单位不能加总：数量列让位给「未完成」的行级摘要。
+          value: (item) => item.isDocumentGrouped
+              ? '—'
+              : _quantity(item.requiredQty, item.unitName),
         ),
         MasterColumnDef(
           key: 'allocatedQty',
           label: '已分配',
           width: 100,
           type: 'number',
-          value: (item) => _quantity(item.allocatedQty, item.unitName),
+          value: (item) => item.isDocumentGrouped
+              ? '—'
+              : _quantity(item.allocatedQty, item.unitName),
         ),
         MasterColumnDef(
           key: 'fulfilledQty',
           label: '已履约',
           width: 100,
           type: 'number',
-          value: (item) => _quantity(item.fulfilledQty, item.unitName),
+          value: (item) => item.isDocumentGrouped
+              ? '—'
+              : _quantity(item.fulfilledQty, item.unitName),
         ),
         MasterColumnDef(
           key: 'openQty',
           label: '未完成',
-          width: 100,
+          width: 110,
           type: 'number',
-          value: (item) => _quantity(item.openQty, item.unitName),
+          value: (item) => item.isDocumentGrouped
+              ? '${item.openLineCount} 行'
+              : _quantity(item.openQty, item.unitName),
         ),
         MasterColumnDef(
           key: 'status',

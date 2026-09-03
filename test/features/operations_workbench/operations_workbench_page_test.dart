@@ -77,6 +77,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 新范式：默认不选阶段（只拉一次概览徽章），点「申请待分解」段后才
+      // 加载任务列表，勾选/批量门禁都建立在阶段选中之后。
+      await tester.tap(find.text('申请待分解'));
+      await tester.pumpAndSettle();
+
       expect(find.text('采购任务工作台'), findsOneWidget);
       expect(find.text('已挂接轴套一'), findsOneWidget);
       expect(find.text('生成采购订货单'), findsOneWidget);
@@ -140,6 +145,87 @@ void main() {
     },
   );
 
+  testWidgets(
+    'document-grouped purchase row shows goods summary and stays selectable',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: _FakeGateway(
+                OperationsWorkbenchData(
+                  department: OperationsWorkbenchDepartment.purchase,
+                  summary: const OperationsWorkbenchSummary(
+                    totalTasks: 2,
+                    overdueTasks: 0,
+                    openTasks: 2,
+                    openQty: 0,
+                    statusCounts: {'WAITING_ORDER': 2},
+                  ),
+                  items: [
+                    // ADR-065 修订：5 个物料合并成的一张采购申请 = 一行；
+                    // actionItemIds 携带整单明细，勾选即整单带入生成订货单。
+                    _task(
+                      id: 'request-merged',
+                      goodsName: '',
+                      actionDocId: 'request-merged',
+                      goodsCount: 5,
+                      openLineCount: 5,
+                      actionItemIds: const [
+                        'merged-item-1',
+                        'merged-item-2',
+                        'merged-item-3',
+                        'merged-item-4',
+                        'merged-item-5',
+                      ],
+                    ),
+                    _task(
+                      id: 'task-single',
+                      goodsName: '单货品申请轴套',
+                      actionDocItemId: 'request-item-single',
+                    ),
+                  ],
+                  page: 1,
+                  size: 20,
+                  total: 2,
+                  totalPages: 1,
+                  capabilities: const OperationsWorkbenchCapabilities(
+                    canCreatePurchaseOrder: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 新阶段段交互（UtenFilterToolbar）：默认不选段只拉概览徽章，
+      // 点「申请待分解」段后才加载任务列表。
+      await tester.tap(find.text('申请待分解'));
+      await tester.pumpAndSettle();
+
+      // 归组行：货品列显示“N 种物料 · N 行”摘要、单据号列显示申请号，
+      // 不再按 5 条明细重复出 5 行。
+      expect(find.text('5 种物料 · 5 行'), findsOneWidget);
+      expect(find.text('PR-request-merged'), findsOneWidget);
+      expect(find.text('5 行'), findsOneWidget);
+      expect(find.text('单货品申请轴套'), findsOneWidget);
+
+      // 勾选归组行：actionItemIds 整单可用，生成订货单按钮可用。
+      await tester.tap(find.byType(Checkbox).at(0));
+      await tester.pump();
+      final batchButton = tester.widget<UtenButton>(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+      );
+      expect(batchButton.onPressed, isNotNull);
+      expect(find.text('先生成/挂接采购申请'), findsNothing);
+    },
+  );
+
   testWidgets('refresh disables an enabled floating create action', (
     tester,
   ) async {
@@ -182,6 +268,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // 默认未选阶段 → 无任务卡。点「申请待分解」段触发的加载同样被网关挂起，
+    // 手动放行后内容才出现（刷新语义与新范式下的首次列表加载一致）。
+    await tester.tap(find.text('申请待分解'));
+    await tester.pump();
+    gateway.completeRefresh();
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byType(Checkbox).first);
     await tester.pump();
     var button = tester.widget<UtenButton>(
@@ -204,69 +297,82 @@ void main() {
     expect(button.onPressed, isNotNull);
   });
 
-  testWidgets('overdue metric reloads with a backend-wide exception filter', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final gateway = _FakeGateway(
-      OperationsWorkbenchData(
-        department: OperationsWorkbenchDepartment.purchase,
-        summary: const OperationsWorkbenchSummary(
-          totalTasks: 1,
-          overdueTasks: 1,
-          openTasks: 1,
-          openQty: 8,
-          statusCounts: {'UNPEGGED': 1},
-          exceptionCounts: {'OVERDUE_SHORTAGE': 1},
-        ),
-        items: [
-          _task(
-            id: 'overdue-task',
-            goodsName: '逾期物料',
-            actionDocItemId: 'request-item-overdue',
+  testWidgets(
+    'exception segment reloads with a backend-wide exception filter after a stage is chosen',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gateway = _FakeGateway(
+        OperationsWorkbenchData(
+          department: OperationsWorkbenchDepartment.purchase,
+          summary: const OperationsWorkbenchSummary(
+            totalTasks: 1,
+            overdueTasks: 1,
+            openTasks: 1,
+            openQty: 8,
+            statusCounts: {'UNPEGGED': 1},
+            exceptionCounts: {'OVERDUE_SHORTAGE': 1},
           ),
-        ],
-        page: 1,
-        size: 20,
-        total: 1,
-        totalPages: 1,
-        capabilities: const OperationsWorkbenchCapabilities(
-          canCreatePurchaseOrder: true,
-        ),
-      ),
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        child: MaterialApp(
-          home: OperationsWorkbenchPage(
-            department: OperationsWorkbenchDepartment.purchase,
-            repository: gateway,
+          items: [
+            _task(
+              id: 'overdue-task',
+              goodsName: '逾期物料',
+              actionDocItemId: 'request-item-overdue',
+            ),
+          ],
+          page: 1,
+          size: 20,
+          total: 1,
+          totalPages: 1,
+          capabilities: const OperationsWorkbenchCapabilities(
+            canCreatePurchaseOrder: true,
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(gateway.exceptions, [null]);
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // 默认不选阶段：initState 只发一次概览请求，不带异常筛选。
+      expect(gateway.exceptions, [null]);
 
-    await tester.tap(find.text('逾期 / 异常'));
-    await tester.pumpAndSettle();
+      // 先选「申请待分解」阶段段，任务列表才加载。
+      await tester.tap(find.text('申请待分解'));
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, 'WAITING_ORDER');
+      expect(gateway.exceptions.last, isNull);
 
-    expect(gateway.exceptions.last, 'OVERDUE_ANY');
-    // 异常卡与状态卡互斥：默认「待完成」状态须被清除，只留逾期一个筛选。
-    expect(gateway.statuses.last, isNull);
-    expect(
-      gateway.data.exceptionOptions.map((option) => option.value),
-      containsAll(<String>['OVERDUE_ANY', 'OVERDUE_SHORTAGE']),
-    );
-    expect(find.text('全部逾期'), findsOneWidget);
-  });
+      // 阶段内点异常小类「逾期缺料」：带异常参数重新加载，阶段筛选保留；
+      // 「全部逾期」（OVERDUE_ANY 聚合段）2026-09-03 起不再显示。
+      await tester.tap(find.text('逾期缺料'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
+      expect(gateway.statuses.last, 'WAITING_ORDER');
+      expect(
+        gateway.data.exceptionOptions.map((option) => option.value),
+        contains('OVERDUE_SHORTAGE'),
+      );
+      expect(
+        gateway.data.exceptionOptions.map((option) => option.value),
+        isNot(contains('OVERDUE_ANY')),
+      );
+      expect(find.text('全部逾期'), findsNothing);
+    },
+  );
 
   testWidgets(
     'restricted document metadata and purchase create action stay hidden',
     (tester) async {
       // 375 宽保持 compact 卡片布局；1800 高保证懒构建 ListView 里的任务卡
-      // 在折叠线之上被物化（指标卡+筛选条占去首屏）。
+      // 在折叠线之上被物化（筛选工具条占去首屏）。
       await tester.binding.setSurfaceSize(const Size(375, 1800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final restrictedTask = _task(
@@ -301,6 +407,10 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
+
+      // 默认不选阶段：先点「申请待分解」段加载任务卡，再断言脱敏与权限隐藏。
+      await tester.tap(find.text('申请待分解'));
       await tester.pumpAndSettle();
 
       expect(find.text('无权查看关联单据'), findsOneWidget);
@@ -358,6 +468,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 默认未选阶段：仓库仍走表格布局（useTaskTable），但内容区是引导占位，
+      // 不发列表请求——点「待备料 / 待领取」段后表格才加载。
+      expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
+      expect(
+        find.byKey(const Key('operations-workbench-mobile-list')),
+        findsNothing,
+      );
+
+      await tester.tap(find.text('待备料 / 待领取'));
+      await tester.pumpAndSettle();
+
       expect(
         find.byKey(const Key('operations-workbench-selection-bar')),
         findsNothing,
@@ -392,21 +513,21 @@ void main() {
       <
         ({
           OperationsWorkbenchDepartment department,
-          String metricLabel,
+          String stageLabel,
           String status,
           Size surfaceSize,
         })
       >[
         (
           department: OperationsWorkbenchDepartment.warehouse,
-          metricLabel: '待备料 / 待领取',
+          stageLabel: '待备料 / 待领取',
           status: 'READY_TO_PICK',
-          // 375 宽保持 compact；1800 高保证筛选下拉在懒构建 ListView 内被物化。
+          // 375 宽保持 compact；1800 高保证阶段分段行 + 表格在首屏被物化。
           surfaceSize: const Size(375, 1800),
         ),
         (
           department: OperationsWorkbenchDepartment.purchase,
-          metricLabel: '申请待分解',
+          stageLabel: '申请待分解',
           status: 'WAITING_ORDER',
           surfaceSize: const Size(800, 1200),
         ),
@@ -414,12 +535,16 @@ void main() {
 
   for (final scenario in zeroStatusScenarios) {
     testWidgets(
-      '${scenario.department.apiValue} zero-count metric remains a valid filter',
+      '${scenario.department.apiValue} zero-count stage segment remains a valid filter',
       (tester) async {
         await tester.binding.setSurfaceSize(scenario.surfaceSize);
         addTearDown(() => tester.binding.setSurfaceSize(null));
         final gateway = _FakeGateway(
-          _emptyData(department: scenario.department),
+          // 徽章计数为 0 的阶段（概览返回 0）：分段仍可点击并按该阶段加载。
+          _emptyData(
+            department: scenario.department,
+            statusCounts: {scenario.status: 0},
+          ),
         );
         await tester.pumpWidget(
           ProviderScope(
@@ -433,28 +558,36 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // 采购/仓库默认待完成（委外默认全部的口径归 SubcontractDecompositionPage）。
-        expect(gateway.statuses, [kOperationsWorkbenchOpenStatus]);
-        await tester.tap(find.text(scenario.metricLabel));
+        // 默认不选阶段：仅一次概览请求（status=null）。
+        expect(gateway.statuses, [null]);
+        await tester.tap(find.text(scenario.stageLabel));
         await tester.pumpAndSettle();
 
         expect(gateway.statuses.last, scenario.status);
         expect(tester.takeException(), isNull);
-        final statusField = tester.widget<DropdownButtonFormField<String>>(
-          find.byType(DropdownButtonFormField<String>).first,
+        // 阶段段保持单选选中（零计数不使分段失效），引导占位消失。
+        final stageRow = tester.widget<SegmentedButton<dynamic>>(
+          find.byKey(
+            Key('operations-workbench-stages-${scenario.department.apiValue}'),
+          ),
         );
-        expect(statusField.initialValue, scenario.status);
+        expect(stageRow.selected.length, 1);
+        expect(find.text('在上方选择阶段后开始办理'), findsNothing);
       },
     );
   }
 
-  testWidgets('zero overdue metric remains a valid exception filter', (
+  testWidgets('zero-count overdue exception segment remains a valid filter', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(375, 667));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final gateway = _FakeGateway(
-      _emptyData(department: OperationsWorkbenchDepartment.purchase),
+      // 具体异常段（OVERDUE_ANY 聚合段已不显示）零计数：仍可点选过滤。
+      _emptyData(
+        department: OperationsWorkbenchDepartment.purchase,
+        exceptionCounts: const {'OVERDUE_SHORTAGE': 0},
+      ),
     );
     await tester.pumpWidget(
       ProviderScope(
@@ -468,68 +601,87 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('逾期 / 异常'));
+    // 异常小类行在选中阶段后才出现：先点「申请待分解」，再点「逾期缺料」。
+    await tester.tap(find.text('申请待分解'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('逾期缺料'));
     await tester.pumpAndSettle();
 
-    expect(gateway.exceptions.last, 'OVERDUE_ANY');
+    expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
+    expect(gateway.statuses.last, 'WAITING_ORDER');
     expect(tester.takeException(), isNull);
-    final exceptionField = tester.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>).at(1),
+    // 零计数异常段仍保持选中（分段单选不因计数为 0/无徽章失效）。
+    final exceptionRow = tester.widget<SegmentedButton<dynamic>>(
+      find.byKey(const Key('operations-workbench-exceptions-purchase')),
     );
-    expect(exceptionField.initialValue, 'OVERDUE_ANY');
+    expect(exceptionRow.selected.length, 1);
+  });
+
+  testWidgets('stage segments stay single-select and gate the exception row', (
+    tester,
+  ) async {
+    // 旧「指标卡互斥」语义的新范式等价物：阶段行单选；异常小类行仅在选中
+    // 阶段后出现并与阶段组合过滤；切换阶段时异常小类被重置（不残留）。
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final gateway = _FakeGateway(
+      _emptyData(
+        department: OperationsWorkbenchDepartment.purchase,
+        exceptionCounts: const {'OVERDUE_SHORTAGE': 1},
+      ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: OperationsWorkbenchPage(
+            department: OperationsWorkbenchDepartment.purchase,
+            repository: gateway,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // 默认不选阶段：只有一次概览请求，异常小类行不出现，内容区为引导占位。
+    expect(gateway.statuses, [null]);
+    expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
+    expect(find.text('逾期缺料'), findsNothing);
+
+    // 点「申请待分解」阶段段：单选生效，异常小类行解锁出现。
+    await tester.tap(find.text('申请待分解'));
+    await tester.pumpAndSettle();
+    expect(gateway.statuses.last, 'WAITING_ORDER');
+    expect(gateway.exceptions.last, isNull);
+    expect(find.text('逾期缺料'), findsOneWidget);
+
+    // 阶段内点异常段「逾期缺料」：异常与阶段组合（状态筛选保留）。
+    await tester.tap(find.text('逾期缺料'));
+    await tester.pumpAndSettle();
+    expect(gateway.statuses.last, 'WAITING_ORDER');
+    expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
+    expect(tester.takeException(), isNull);
+
+    // 切换到另一阶段段：阶段单选切换，且异常小类重置（不沿用上一个异常）。
+    await tester.tap(find.text('等待财务审核'));
+    await tester.pumpAndSettle();
+    expect(gateway.statuses.last, 'ORDER_PENDING_APPROVAL');
+    expect(gateway.exceptions.last, isNull);
+    final exceptionRow = tester.widget<SegmentedButton<dynamic>>(
+      find.byKey(const Key('operations-workbench-exceptions-purchase')),
+    );
+    expect(exceptionRow.selected, isEmpty);
   });
 
   testWidgets(
-    'metric cards are mutually exclusive across status and exception',
+    'selected stage segment stays selected when refreshed summary omits its count',
     (tester) async {
-      // 双显示回归：点「已完成」再点「逾期 / 异常」，状态筛选须被清除，
-      // 任一时刻只保留一张生效的筛选卡（而不是两张卡同时高亮）。
-      await tester.binding.setSurfaceSize(const Size(800, 1200));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final gateway = _FakeGateway(
-        _emptyData(department: OperationsWorkbenchDepartment.purchase),
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: OperationsWorkbenchPage(
-              department: OperationsWorkbenchDepartment.purchase,
-              repository: gateway,
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(gateway.statuses, [kOperationsWorkbenchOpenStatus]);
-
-      await tester.tap(find.text('已完成'));
-      await tester.pumpAndSettle();
-      expect(gateway.statuses.last, 'COMPLETED');
-      expect(gateway.exceptions.last, isNull);
-
-      await tester.tap(find.text('逾期 / 异常'));
-      await tester.pumpAndSettle();
-      expect(gateway.statuses.last, isNull);
-      expect(gateway.exceptions.last, 'OVERDUE_ANY');
-      expect(tester.takeException(), isNull);
-
-      // 再点已选的异常卡取消 → 回到「全部」（状态/异常都为空）。
-      await tester.tap(find.text('逾期 / 异常'));
-      await tester.pumpAndSettle();
-      expect(gateway.statuses.last, isNull);
-      expect(gateway.exceptions.last, isNull);
-    },
-  );
-
-  testWidgets(
-    'selected backend status remains valid when refreshed options omit it',
-    (tester) async {
+      // 阶段段来自页面固定 _stages 列表（不再依赖后端 statusOptions）：刷新返回
+      // 的概览即使缺失该阶段计数（徽章消失），选择也保持且仍带 status 请求。
       await tester.binding.setSurfaceSize(const Size(800, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final gateway = _FakeGateway(
         _emptyData(
           department: OperationsWorkbenchDepartment.purchase,
-          statusCounts: const {'LEGACY_STATE': 1},
+          statusCounts: const {'WAITING_ORDER': 1},
         ),
         dataAfterStatusFilter: _emptyData(
           department: OperationsWorkbenchDepartment.purchase,
@@ -547,17 +699,28 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+      // 点「申请待分解」：此后该网关返回的概览不再带任何 statusCounts。
+      await tester.tap(find.text('申请待分解'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('LEGACY_STATE').last);
+      expect(gateway.statuses, [null, 'WAITING_ORDER']);
+
+      await tester.tap(find.byTooltip('刷新'));
       await tester.pumpAndSettle();
 
-      expect(gateway.statuses, [
-        kOperationsWorkbenchOpenStatus,
-        'LEGACY_STATE',
-      ]);
+      // 刷新后阶段选择保持：仍以选中阶段发起请求，分段仍是单选选中态。
+      expect(gateway.statuses, [null, 'WAITING_ORDER', 'WAITING_ORDER']);
       expect(tester.takeException(), isNull);
-      expect(find.text('LEGACY_STATE'), findsOneWidget);
+      final stageRow = tester.widget<SegmentedButton<dynamic>>(
+        find.byKey(const Key('operations-workbench-stages-purchase')),
+      );
+      expect(stageRow.selected.length, 1);
+      expect(find.text('申请待分解'), findsOneWidget);
+      expect(find.text('在上方选择阶段后开始办理'), findsNothing);
+
+      // 阶段段在「选项缺失」的刷新后仍可继续切换。
+      await tester.tap(find.text('等待财务审核'));
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, 'ORDER_PENDING_APPROVAL');
     },
   );
 }
@@ -578,11 +741,13 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     String? keyword,
     String? status,
     String? exception,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     exceptions.add(exception);
     statuses.add(status);
-    // 首屏默认「待完成」哨兵（OPEN_ANY）仍应返回带完整选项的数据；
-    // 只有用户显式选择的具体状态才触发「刷新后选项缺失」场景。
+    // 概览请求（status=null）返回带完整计数的数据；选中具体阶段后的加载
+    // 才触发「刷新后选项缺失」场景（返回无 statusCounts 的数据）。
     final specificStatus =
         status != null && status != kOperationsWorkbenchOpenStatus;
     if (specificStatus && dataAfterStatusFilter != null) {
@@ -596,10 +761,11 @@ class _RefreshBlockingGateway implements OperationsWorkbenchGateway {
   _RefreshBlockingGateway(this.data);
 
   final OperationsWorkbenchData data;
-  final Completer<OperationsWorkbenchData> _refresh = Completer();
+  Completer<OperationsWorkbenchData>? _pending;
   var _calls = 0;
 
-  void completeRefresh() => _refresh.complete(data);
+  /// 放行当前被挂起的加载（点阶段段的首次列表加载、刷新均算）。
+  void completeRefresh() => _pending?.complete(data);
 
   @override
   Future<OperationsWorkbenchData> load({
@@ -609,15 +775,22 @@ class _RefreshBlockingGateway implements OperationsWorkbenchGateway {
     String? keyword,
     String? status,
     String? exception,
+    String? dateFrom,
+    String? dateTo,
   }) {
     _calls++;
-    return _calls == 1 ? Future.value(data) : _refresh.future;
+    // 首次（initState 概览）立即返回；此后每次加载都挂起，等测试手动放行。
+    if (_calls == 1) return Future.value(data);
+    final pending = Completer<OperationsWorkbenchData>();
+    _pending = pending;
+    return pending.future;
   }
 }
 
 OperationsWorkbenchData _emptyData({
   required OperationsWorkbenchDepartment department,
   Map<String, int> statusCounts = const {},
+  Map<String, int> exceptionCounts = const {},
 }) {
   return OperationsWorkbenchData(
     department: department,
@@ -627,6 +800,7 @@ OperationsWorkbenchData _emptyData({
       openTasks: 0,
       openQty: 0,
       statusCounts: statusCounts,
+      exceptionCounts: exceptionCounts,
     ),
     items: const [],
     page: 1,
@@ -644,6 +818,9 @@ OperationsWorkbenchTask _task({
   String? actionDocItemId,
   String actionDocStatus = '1',
   bool actionDocumentRestricted = false,
+  int goodsCount = 0,
+  int openLineCount = 0,
+  List<String> actionItemIds = const [],
 }) {
   return OperationsWorkbenchTask(
     taskId: id,
@@ -665,9 +842,13 @@ OperationsWorkbenchTask _task({
     taskStatus: 'OPEN',
     needDate: '2026-08-01',
     expectedDate: null,
-    exceptionCode: actionDocItemId == null ? 'UNLINKED' : null,
+    // 归组行没有单条明细链接，异常由明细行集合表达；单行任务保持
+    // “无明细链接即 UNLINKED” 的旧口径。
+    exceptionCode: (actionDocItemId == null && actionItemIds.isEmpty)
+        ? 'UNLINKED'
+        : null,
     updatedAt: '2026-07-31T10:00:00+08:00',
-    actionDocument: actionDocItemId == null
+    actionDocument: (actionDocItemId == null && actionItemIds.isEmpty)
         ? null
         : OperationsActionDocument(
             id: actionDocId,
@@ -680,6 +861,9 @@ OperationsWorkbenchTask _task({
           ),
     actionDocItemId: actionDocItemId,
     actionDocumentRestricted: actionDocumentRestricted,
+    goodsCount: goodsCount,
+    openLineCount: openLineCount,
+    actionItemIds: actionItemIds,
   );
 }
 

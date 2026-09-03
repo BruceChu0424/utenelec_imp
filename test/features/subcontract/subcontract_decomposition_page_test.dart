@@ -37,18 +37,25 @@ void main() {
         find.byKey(const Key('subcontract-decomposition-compact-list')),
         findsOneWidget,
       );
+      // 进页面只拉一次 size=1 概览（阶段计数徽章），不带 status 过滤。
       expect(gateway.statuses, [null]);
-      final stage = tester.widget<DropdownButtonFormField<String>>(
-        find.byKey(const Key('subcontract-decomposition-status')),
-      );
-      expect(stage.initialValue, '');
+      // 2026-09-03 分类范式：阶段行默认不选（引导占位，不发列表请求），
+      // 原「概览卡 + 阶段/异常下拉」已删除。
+      expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
       // V458 清理后页面不再有流程说教横幅，保留 KPI 指标条。
       expect(find.textContaining('这里分解物料分析下达'), findsNothing);
-      expect(find.text('待分解'), findsOneWidget);
+      expect(find.text('申请待分解'), findsOneWidget);
       var button = tester.widget<UtenButton>(
         find.byKey(const Key('subcontract-decomposition-create-order')),
       );
       expect(button.onPressed, isNull);
+
+      // 先 tap 阶段段「申请待分解」：加载任务卡后才能勾选。
+      await tester.tap(find.text('申请待分解'));
+      await tester.pumpAndSettle();
+      expect(gateway.statuses, [null, 'WAITING_ORDER']);
+      expect(find.text('计划申请已下达 / 待分解'), findsNWidgets(2));
 
       await tester.tap(find.byType(Checkbox).at(0));
       await tester.tap(find.byType(Checkbox).at(1));
@@ -129,6 +136,8 @@ class _Gateway implements OperationsWorkbenchGateway {
     String? keyword,
     String? status,
     String? exception,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     statuses.add(status);
     return data;

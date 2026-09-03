@@ -123,9 +123,41 @@ void main() {
     });
 
     test('finance procurement approval route uses view permission', () {
+      const employee = AppUser(
+        id: 'employee-approval',
+        code: 'E101',
+        name: '普通员工',
+        roles: [Role.employee],
+      );
+      const superAdmin = AppUser(
+        id: 'super-approval',
+        code: 'S101',
+        name: 'Super admin',
+        roles: [Role.admin],
+        superAdmin: true,
+      );
       expect(requiredAnyPermFor('/finance/procurement-approvals'), const [
         Perm.financeOrderApprovalView,
       ]);
+      // 审核详情子路由与列表同码（同销售确认范式）；动作分权在服务端。
+      expect(
+        requiredAnyPermFor('/finance/procurement-approvals/case-1'),
+        const [Perm.financeOrderApprovalView],
+      );
+      expect(
+        employeePermissionRedirect(
+          employee,
+          '/finance/procurement-approvals/case-1',
+        ),
+        RouteName.accessDenied,
+      );
+      expect(
+        employeePermissionRedirect(
+          superAdmin,
+          '/finance/procurement-approvals/case-1',
+        ),
+        isNull,
+      );
     });
 
     test('finance payables route uses AR/AP ledger view permission', () {
@@ -359,6 +391,17 @@ void main() {
         Perm.departmentView,
       ]);
       expect(requiredAllPermsFor('/employee/1/edit'), const [
+        Perm.employeeView,
+      ]);
+    });
+
+    test('hr task center sub-pages cannot be bypassed via deep links', () {
+      // 2026-09-03 审计补口：子页深链与主页同受 employee:view（深链不可绕过守卫）。
+      expect(requiredAnyPermFor('/hr/tasks'), const [Perm.employeeView]);
+      expect(requiredAnyPermFor('/hr/tasks/confirm'), const [
+        Perm.employeeView,
+      ]);
+      expect(requiredAnyPermFor('/hr/tasks/birthday'), const [
         Perm.employeeView,
       ]);
     });

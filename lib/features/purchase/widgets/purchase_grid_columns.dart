@@ -9,12 +9,17 @@ import 'package:flutter/material.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/procurement_commercial_grid.dart';
 import '../../../shared/widgets/procurement_supplier_cell.dart';
+import '../models/purchase_doc.dart' show PurchaseSourceRequestRef;
 import 'doc_link_picker.dart';
 
 /// 采购明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier）。
-class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
+/// 2026-09 起：币种/汇率/税率/结账方式与备注为行级（订货单），见
+/// [CommercialTermsRowMixin]/[RemarkRowMixin]。
+class PurchaseGridRow extends EditableGridRow
+    with AmountRowMixin, CommercialTermsRowMixin, RemarkRowMixin {
   PurchaseGridRow({this.sourceLocked = false}) {
     qty.addListener(_recalc);
     price.addListener(_recalc);
@@ -40,6 +45,30 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为
   /// requestItemId/orderItemId/receiptItemId）。
   String? upstreamItemId;
+
+  /// 全部来源申请明细 id（V463 同货品合并行，含 [upstreamItemId] 首来源，
+  /// 顺序=服务端 FIFO 分配顺序）；保存时 >1 条随行提交 requestItemIds。
+  /// 空列表 = 无来源/手工行。
+  List<String> upstreamItemIds = [];
+
+  /// 来源申请引用（合并行多来源展示与跳详情）：与 [upstreamItemIds] 对齐。
+  List<PurchaseSourceRequestRef> sourceDocs = [];
+
+  /// 申请来源列显示：多来源单号顿号连接；无 sourceDocs 时退回单来源谱系。
+  String get sourceDocsLabel {
+    final nos = sourceDocs
+        .map((doc) => doc.billNo)
+        .whereType<String>()
+        .where((no) => no.isNotEmpty)
+        .toList();
+    if (nos.isNotEmpty) return nos.join('、');
+    return sourceRequestNo ?? '';
+  }
+
+  /// 是否存在可跳转的来源申请详情（任一来源带回申请单 id）。
+  bool get canOpenSourceDocs =>
+      sourceDocs.any((doc) => doc.requestId?.isNotEmpty == true) ||
+      (sourceRequestId?.isNotEmpty == true);
 
   /// 来源单据编号谱系（到货登记=来源订货单号；与委外进仓口径一致，随行提交留痕）。
   String? sourceDocNo;
@@ -74,6 +103,10 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
       ..colorId = li.colorId
       ..unitId = li.unitId
       ..unitRate = li.unitRate;
+    r.upstreamItemIds = [
+      if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
+        li.upstreamItemId!,
+    ];
     r.qty.text = li.qty.toString();
     if (li.price != null) r.price.text = li.price.toString();
     return r;
@@ -82,6 +115,26 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
   void _recalc() => recalcAmount(
     () => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
   );
+
+  /// 深拷贝（明细复制/粘贴用）：拷用户录入（数量/重量/单价/行供应商/行级商业条款/
+  /// 备注）与货品主档透传描述（颜色/单位/换算率/库位显示）。不拷上游明细 id、来源谱系、
+  /// 到货门控（maxQty/approvedQty）——粘贴行是自由新明细，不得双引用上游行；sourceLocked
+  /// 也不拷（无上游绑定的行可改货品）。
+  PurchaseGridRow clone() {
+    final c = PurchaseGridRow()
+      ..goods = goods
+      ..stockPlaceNotifier.value = stockPlaceNotifier.value
+      ..colorId = colorId
+      ..unitId = unitId
+      ..unitRate = unitRate
+      ..supplierId = supplierId;
+    c.qty.text = qty.text;
+    c.weight.text = weight.text;
+    c.price.text = price.text;
+    c.copyCommercialFrom(this);
+    c.remark.text = remark.text;
+    return c;
+  }
 
   @override
   void dispose() {
@@ -106,17 +159,30 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
 /// [showStockPlace]（收货/退货实物单据）：货品列后加「库位号」只读列（主档带出，上架/拣货指引）。
 /// [showSource]+[onOpenSource]（订货单）：货品列后加「申请来源」只读列，引入行自动回填
 /// 来源申请单号；点击单号由 [onOpenSource] 跳申请详情（无来源 id 时退化为纯文本）。
+/// [showCommercial]+[currencyEntries]/[settlementEntries]/[onPickCurrency]/[onPickSettlement]
+/// （订货单）：金额列后加「币种/汇率/税率/结账方式」四列（行级商业条款，保存按组合拆单）。
+/// [showRemark]：明细末尾加「备注」列（随行提交 remark）。
+/// [unitAfterWeight]（订货单，2026-09-03 用户口径）：单位列放在「实际重量」之后
+///（货品/来源/供应商之后紧跟数量、重量、单位、单价…）；默认 false 时单位在供应商前
+///（申请/收货/退货原布局不变）。
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   Future<void> Function(PurchaseGridRow row) onPickGoods, {
   bool arrivalMode = false,
   bool showStockPlace = false,
   bool showSource = false,
+  bool unitAfterWeight = false,
   Map<String, String> unitEntries = const {},
   Map<String, String> supplierEntries = const {},
   bool supplierRequired = false,
   String? headerSupplierId,
   Future<void> Function(PurchaseGridRow row)? onPickSupplier,
   void Function(PurchaseGridRow row)? onOpenSource,
+  bool showCommercial = false,
+  Map<String, String> currencyEntries = const {},
+  Map<String, String> settlementEntries = const {},
+  ValueChanged<String?> Function(PurchaseGridRow row)? onPickCurrency,
+  ValueChanged<String?> Function(PurchaseGridRow row)? onPickSettlement,
+  bool showRemark = false,
 }) {
   final showSupplier = !arrivalMode && supplierEntries.isNotEmpty;
   return [
@@ -164,10 +230,10 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         key: 'source',
         label: '申请来源',
         width: 150,
-        textOf: (r) => r.sourceRequestNo ?? '',
+        textOf: (r) => r.sourceDocsLabel,
         cellBuilder: (context, row) {
-          final no = row.sourceRequestNo;
-          if (no == null || no.isEmpty) {
+          final no = row.sourceDocsLabel;
+          if (no.isEmpty) {
             return Text(
               '—',
               style: TextStyle(
@@ -176,8 +242,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             );
           }
           // 有来源单据 id 才可点跳详情；任务/接口未带回 id 时退化为纯文本谱系。
-          final canOpen =
-              row.sourceRequestId != null && row.sourceRequestId!.isNotEmpty;
+          final canOpen = row.canOpenSourceDocs;
           final theme = Theme.of(context);
           return InkWell(
             onTap: canOpen && onOpenSource != null
@@ -237,20 +302,21 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           ),
         ),
       ),
-    EditableGridColumn<PurchaseGridRow>(
-      key: 'unit',
-      label: '单位',
-      width: 84,
-      textOf: (r) => unitEntries[r.unitId] ?? '',
-      cellBuilder: (context, row) => Text(
-        unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
-        style: TextStyle(
-          color: row.unitId == null
-              ? Theme.of(context).colorScheme.error
-              : Theme.of(context).colorScheme.onSurfaceVariant,
+    if (!unitAfterWeight)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'unit',
+        label: '单位',
+        width: 84,
+        textOf: (r) => unitEntries[r.unitId] ?? '',
+        cellBuilder: (context, row) => Text(
+          unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
+          style: TextStyle(
+            color: row.unitId == null
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
-    ),
     if (showSupplier)
       EditableGridColumn<PurchaseGridRow>(
         key: 'supplier',
@@ -310,6 +376,22 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         decoration: const InputDecoration(isDense: true, hintText: '可选'),
       ),
     ),
+    // 订货单口径（2026-09-03）：单位列紧跟「实际重量」之后。
+    if (unitAfterWeight)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'unit',
+        label: '单位',
+        width: 84,
+        textOf: (r) => unitEntries[r.unitId] ?? '',
+        cellBuilder: (context, row) => Text(
+          unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
+          style: TextStyle(
+            color: row.unitId == null
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
     if (!arrivalMode)
       EditableGridColumn<PurchaseGridRow>(
         key: 'price',
@@ -341,5 +423,15 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
         ),
       ),
+    // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
+    if (showCommercial && !arrivalMode)
+      ...procurementCommercialColumns<PurchaseGridRow>(
+        currencyEntries: currencyEntries,
+        settlementEntries: settlementEntries,
+        onPickCurrency: onPickCurrency ?? (row) => (value) {},
+        onPickSettlement: onPickSettlement ?? (row) => (value) {},
+      ),
+    // 每行末尾备注列：随行提交 remark。
+    if (showRemark) procurementRemarkColumn<PurchaseGridRow>(),
   ];
 }

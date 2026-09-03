@@ -112,12 +112,13 @@ class _ProductionFinishedInboundTasksViewState
       setState(() {
         _result = result;
         _loading = false;
-        final currentIds = result.items
-            .where((task) => !task.isArrivalRegistration)
-            .map((task) => task.documentId)
-            .whereType<String>()
-            .where((id) => id.isNotEmpty)
-            .toSet();
+        final currentIds = <String>{
+          for (final task in result.items)
+            if (task.isArrivalRegistration)
+              'reg:${task.reportId ?? ''}'
+            else if ((task.documentId ?? '').isNotEmpty)
+              'doc:${task.documentId}',
+        }..removeWhere((id) => id.endsWith(':') || id.endsWith(':null'));
         _selectedIds.removeWhere((id) => !currentIds.contains(id));
       });
     } on ApiException catch (error) {
@@ -189,11 +190,15 @@ class _ProductionFinishedInboundTasksViewState
   }
 
   Future<void> _confirmSelected(Set<String> selectedIds) async {
-    if (_batchConfirming || selectedIds.isEmpty) {
-      if (selectedIds.isEmpty) context.appWarning('请先选择待最终点收任务');
+    final documentIds = selectedIds
+        .where((id) => id.startsWith('doc:'))
+        .map((id) => id.substring(4))
+        .toSet();
+    if (_batchConfirming || documentIds.isEmpty) {
+      if (documentIds.isEmpty) context.appWarning('请先选择待最终点收任务');
       return;
     }
-    final ids = selectedIds.toList()..sort();
+    final ids = documentIds.toList()..sort();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -269,9 +274,69 @@ class _ProductionFinishedInboundTasksViewState
     }
   }
 
+  /// 多选「批量登记成品仓并送检」：进入多报工单汇总登记页（页头默认仓+行内批量设）。
+  Future<void> _openBatchRegistration(Set<String> selectedIds) async {
+    if (_batchConfirming) return;
+    final currentItems =
+        _result?.items ?? const <ProductionFinishedInboundTask>[];
+    final reportIds = <String>{
+      for (final id in selectedIds)
+        if (id.startsWith('reg:')) id.substring(4),
+    }.toList()..sort();
+    if (reportIds.isEmpty) {
+      context.appWarning('请先选择“待登记成品仓与库位”的任务');
+      return;
+    }
+    if (reportIds.length != selectedIds.length) {
+      context.appWarning('混选了不同步骤的任务：批量登记送检只处理“待登记成品仓与库位”，请分开操作');
+      return;
+    }
+    final knownReports = currentItems
+        .where((task) => task.isArrivalRegistration)
+        .map((task) => task.reportId ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (!knownReports.containsAll(reportIds)) {
+      context.appWarning('所选任务状态已变化，请刷新后重新选择');
+      return;
+    }
+    final changed = await context.push<bool>(
+      RoutePath.warehouseProductionFinishedArrivalBatchRegistration(
+        reportIds,
+        returnTo: GoRouterState.of(context).matchedLocation,
+      ),
+    );
+    if (!mounted || changed != true) return;
+    invalidateWarehouseTaskCounts(ref);
+    _selectedIds.clear();
+    await _load(_result?.page ?? 1, replaceActive: true);
+  }
+
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
-    final count = selectedIds.length;
+    final count = selectedIds.where((id) => id.startsWith('doc:')).length;
+    final registerCount = selectedIds
+        .where((id) => id.startsWith('reg:'))
+        .length;
     return [
+      Tooltip(
+        message: registerCount == 0
+            ? '请选择“待登记成品仓与库位”的任务'
+            : '多张报工单汇总到一页统一登记成品仓与库位，一次提交逐单送检',
+        child: UtenButton(
+          key: const Key('production-finished-inbound-batch-register'),
+          size: UtenButtonSize.large,
+          icon: Icons.edit_location_alt_outlined,
+          onPressed: _batchConfirming || registerCount == 0
+              ? null
+              : () => _openBatchRegistration(selectedIds),
+          onDisabledTap: registerCount == 0
+              ? () => context.appWarning('请先选择“待登记成品仓与库位”的任务')
+              : null,
+          child: Text(
+            registerCount == 0 ? '批量登记成品仓并送检' : '批量登记成品仓并送检($registerCount)',
+          ),
+        ),
+      ),
       Tooltip(
         message: count == 0
             ? '请选择“品质通过 · 待最终点收”的任务'
@@ -343,7 +408,15 @@ class _ProductionFinishedInboundTasksViewState
             filters: const {},
             onFilterChanged: (_, _) {},
             selectable: canCount,
-            idOf: (task) => task.isArrivalRegistration ? null : task.documentId,
+            // 两类任务分别可选：待登记任务键 reg:<reportId>（批量登记送检），
+            // 待点收任务键 doc:<documentId>（批量全量点收）；两个批量按钮各取各的。
+            idOf: (task) => task.isArrivalRegistration
+                ? (task.reportId?.isNotEmpty == true
+                      ? 'reg:${task.reportId}'
+                      : null)
+                : ((task.documentId ?? '').isEmpty
+                      ? null
+                      : 'doc:${task.documentId}'),
             selectedIds: _selectedIds,
             onSelectedIdsChanged: _setSelectedIds,
             batchActionsBuilder: canCount ? _batchActions : null,
@@ -513,7 +586,8 @@ class _ProcessHint extends StatelessWidget {
       const Expanded(
         child: Text(
           '先登记成品仓和库位并送检；品质放行后，再按实物执行最终点收。'
-          '品质通过的任务可多选后在右下角批量全量点收；短收、拒收仍须逐单进入确认。',
+          '「待登记成品仓与库位」可多选后进入汇总登记页，一次提交统一送检；'
+          '品质通过的任务可多选批量全量点收；短收、拒收仍须逐单进入确认。',
         ),
       ),
     ],

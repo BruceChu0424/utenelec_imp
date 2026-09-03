@@ -58,8 +58,9 @@ class SubcontractReadProjectionContractTest {
                 .contains("order_header.deliver_date, effective.status")
                 .contains("source_allocation.analysis_id = ?")
                 .contains("source_allocation.analysis_material_id = ?")
-                .contains("source_allocation.external_item_id =")
-                .contains("order_item.application_item_id")
+                // V463：订货行多来源锚定——筛选子句按 sources 展开（IN 子查询）。
+                .contains("source_allocation.external_item_id IN (")
+                .contains("src.application_item_id")
                 .contains("source_action.route = 'SUBCONTRACT'")
                 .contains("source_action.status <> 'CANCELLED'")
                 .contains("source_action.external_document_type =")

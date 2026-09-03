@@ -1,7 +1,9 @@
 package com.uten.imp.features.operations.workbench;
 
+import java.time.LocalDate;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,9 +24,11 @@ public class FulfillmentWorkbenchController {
             @RequestParam(defaultValue = "") String status,
             @RequestParam(defaultValue = "") String exception,
             @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return queryService.query("WAREHOUSE", status, keyword, exception, page, size);
+        return queryService.query("WAREHOUSE", status, keyword, exception, dateFrom, dateTo, page, size);
     }
 
     @GetMapping("/warehouse/count")
@@ -39,9 +43,11 @@ public class FulfillmentWorkbenchController {
             @RequestParam(defaultValue = "") String status,
             @RequestParam(defaultValue = "") String exception,
             @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return queryService.query("PURCHASE", status, keyword, exception, page, size);
+        return queryService.query("PURCHASE", status, keyword, exception, dateFrom, dateTo, page, size);
     }
 
     @GetMapping("/purchase/count")
@@ -56,9 +62,11 @@ public class FulfillmentWorkbenchController {
             @RequestParam(defaultValue = "") String status,
             @RequestParam(defaultValue = "") String exception,
             @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return queryService.query("SUBCONTRACT", status, keyword, exception, page, size);
+        return queryService.query("SUBCONTRACT", status, keyword, exception, dateFrom, dateTo, page, size);
     }
 
     @GetMapping("/subcontract/count")

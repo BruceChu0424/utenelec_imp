@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.reflect.Method;
+import java.time.LocalDate;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,7 +50,7 @@ class WarehouseHistoryControllerSecurityTest {
             String permission,
             boolean list) throws Exception {
         Class<?>[] parameters = list
-                ? new Class<?>[]{String.class, Short.class, int.class, int.class}
+                ? new Class<?>[]{String.class, Short.class, LocalDate.class, LocalDate.class, int.class, int.class}
                 : new Class<?>[]{java.util.UUID.class};
         Method method = WarehouseHistoryController.class.getDeclaredMethod(methodName, parameters);
         GetMapping mapping = method.getAnnotation(GetMapping.class);

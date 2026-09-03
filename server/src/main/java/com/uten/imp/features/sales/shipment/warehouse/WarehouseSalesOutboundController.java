@@ -4,6 +4,7 @@ import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
 
@@ -36,9 +38,11 @@ public class WarehouseSalesOutboundController {
     public PageResponse<WarehouseSalesOutboundListItem> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String warehouseWorkStatus,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(keyword, warehouseWorkStatus, page, size);
+        return service.list(keyword, warehouseWorkStatus, dateFrom, dateTo, page, size);
     }
 
     /** 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）。 */

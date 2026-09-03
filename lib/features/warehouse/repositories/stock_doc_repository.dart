@@ -13,6 +13,8 @@ class StockDocFilter {
     this.status,
     this.departmentId,
     this.issueStatus,
+    this.dateFrom,
+    this.dateTo,
   });
   final String? keyword;
   final String? warehouseId;
@@ -23,6 +25,10 @@ class StockDocFilter {
 
   /// 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完
   final int? issueStatus;
+
+  /// 业务日期范围（yyyy-MM-dd；历史记录段时间门控用）。
+  final String? dateFrom;
+  final String? dateTo;
 }
 
 class StockDocRepository {
@@ -49,6 +55,8 @@ class StockDocRepository {
         if (filter.status != null) 'status': filter.status,
         if (filter.departmentId != null) 'departmentId': filter.departmentId,
         if (filter.issueStatus != null) 'issueStatus': filter.issueStatus,
+        if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
+        if (filter.dateTo != null) 'dateTo': filter.dateTo,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
       },

@@ -30,6 +30,7 @@ import '../../../features/notice/widgets/celebration_popup_gate.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../widgets/dashboard_overview_sections.dart';
+import '../widgets/system_test_area.dart';
 import '../widgets/workbench_module_area.dart';
 
 class DashboardPage extends ConsumerWidget {
@@ -52,6 +53,9 @@ class DashboardPage extends ConsumerWidget {
         const SizedBox(height: UtenSpacing.s24),
         // 功能模块区：原侧边栏全部分组迁入，按权限点显隐（各组可折叠）
         const WorkbenchModuleArea(),
+        const SizedBox(height: UtenSpacing.s24),
+        // 系统测试区（最底部，仅超管可见）：清空业务数据等测试工具
+        const SystemTestArea(),
         // 登录庆典弹窗触发器（每日一次；不可见）。
         const CelebrationPopupGate(),
       ],
@@ -67,7 +71,11 @@ class DashboardPage extends ConsumerWidget {
         ),
         // compact 由页面自行收敛宽度；medium+ 外壳已套 UtenContentContainer，
         // 再套一层会叠加 gutter，故按断点取舍
-        child: isCompact ? UtenContentContainer(child: content) : content,
+        // selectable:false：工作台模块徽章轮询（结构性闪现）与拖选并发有 CME
+        // 风险（准则 §3.4，用户口径：轮询页不包；当年全局事故的触发源即徽章轮询）。
+        child: isCompact
+            ? UtenContentContainer(selectable: false, child: content)
+            : content,
       ),
     );
   }

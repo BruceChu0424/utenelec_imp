@@ -1,22 +1,31 @@
-// 生产调度与进度（合一页面，三 Tab）。
+// 生产调度与进度（大类分段：待排产｜进行中｜历史记录）。
 //
-//  Tab1 待排产：已审订单行缺口列表（交货升序 ≤3天标红）→ 勾选/全选 → 合并排产（原调度页能力）。
-//  Tab2 进行中：已审未结案计划卡片（父计划圆形总进度，点开展子计划小圆环），搜索 + 车间筛选 + 显示设置。
-//  Tab3 已完成：已结案计划卡片（绿色完成标志）。
+//  待排产：已审订单行缺口列表（交货升序 ≤3天标红）→ 勾选/全选 → 合并排产（原调度页能力）。
+//  进行中：已审未结案计划卡片（父计划圆形总进度，点开展子计划小圆环），车间筛选 + 排序 + 显示设置。
+//  历史记录：已结案计划（原「已完成」Tab，2026-09-03 起并入历史）——时间门控
+//  （时间段/全部，未选时间不发请求），选定后按开单日期范围加载。
+//
+// 2026-09-03 起统一「分类分段」范式（ADR-066，原 AppBar 下 TabBar 退役）：
+// 大类行 = 待排产/进行中/历史记录 + 页级搜索；默认不选显示引导占位不发请求
+//（路由深链 initialTab 预选例外：/production/schedule 预选待排产、
+// /production/progress 预选进行中）。各分段保留自己的细化筛选
+//（待排产：交货日期范围；进行中：车间/排序/显示设置）。
 //
 // 进度 = 完工入库量 ÷ 排产量（成品入库审核后即时反映）。
-// 路由：/production/schedule → Tab0；/production/progress → Tab1（旧两页合并，Hub 两卡片进不同 Tab）。
+// 路由：/production/schedule → 预选待排产；/production/progress → 预选进行中（旧两页合并，Hub 两卡片进不同分段）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -34,71 +43,134 @@ import '../widgets/progress_ring.dart';
 import '../widgets/production_fqc_replenishment_banner.dart';
 
 class ProductionBoardPage extends ConsumerStatefulWidget {
-  const ProductionBoardPage({super.key, this.initialTab = 0});
+  const ProductionBoardPage({super.key, this.initialTab});
 
-  final int initialTab;
+  /// 深链预选大类：0=待排产、1=进行中；null = 不预选（引导占位）。
+  final int? initialTab;
 
   @override
   ConsumerState<ProductionBoardPage> createState() =>
       _ProductionBoardPageState();
 }
 
-class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
-  late int _activeTab;
+class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
+  /// 当前大类分段：pending/progress/history；null = 未选择引导态（不发请求）。
+  String? _segment;
+
+  /// 页级搜索关键字（300ms 防抖后的值，下发给当前分段）。
+  String _keyword = '';
+
+  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
 
   @override
   void initState() {
     super.initState();
-    _activeTab = widget.initialTab.clamp(0, 2);
-    _tabController = TabController(
-      length: 3,
-      initialIndex: _activeTab,
-      vsync: this,
-    )..addListener(_handleTabChange);
-  }
-
-  void _handleTabChange() {
-    final next = _tabController.index;
-    if (next != _activeTab && mounted) {
-      setState(() => _activeTab = next);
-    }
-  }
-
-  @override
-  void dispose() {
-    _tabController
-      ..removeListener(_handleTabChange)
-      ..dispose();
-    super.dispose();
+    _segment = switch (widget.initialTab) {
+      0 => 'pending',
+      1 => 'progress',
+      _ => null,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
+    final segment = _segment;
+    final historyReady = _historyTime.range != null || _historyTime.all;
     return Scaffold(
       appBar: UtenAppBar(
         title: '生产调度与进度',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.production),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: '待排产'),
-            Tab(text: '进行中'),
-            Tab(text: '已完成'),
-          ],
-        ),
       ),
       body: SafeArea(
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _PendingPanel(active: _activeTab == 0),
-            _PlanPanel(closed: false, active: _activeTab == 1),
-            _PlanPanel(closed: true, active: _activeTab == 2),
-          ],
+        child: UtenContentContainer.wide(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s12,
+                  UtenSpacing.s12,
+                  UtenSpacing.s12,
+                  UtenSpacing.s8,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 大类行：待排产/进行中/历史记录 + 页级搜索；默认不选。
+                    UtenFilterToolbar<String>(
+                      segmentsKey: const Key('production-board-segments'),
+                      segments: const [
+                        UtenFilterSegment(value: 'pending', label: '待排产'),
+                        UtenFilterSegment(value: 'progress', label: '进行中'),
+                        UtenFilterSegment(value: 'history', label: '历史记录'),
+                      ],
+                      selected: segment == null ? const {} : {segment},
+                      onSelectionChanged: (value) => setState(() {
+                        _segment = value;
+                        if (value != 'history') {
+                          _historyTime = const UtenHistoryTimeValue.none();
+                        }
+                      }),
+                      searchHint: '搜索订单号 / 计划单号 / 客户 / 货品',
+                      onSearchChanged: (v) =>
+                          setState(() => _keyword = v.trim()),
+                    ),
+                    if (segment == 'history') ...[
+                      const SizedBox(height: UtenSpacing.s8),
+                      UtenHistoryTimeFilter(
+                        key: const Key('production-board-history-time'),
+                        value: _historyTime,
+                        onChanged: (value) =>
+                            setState(() => _historyTime = value),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Expanded(
+                child: switch (segment) {
+                  'pending' => _PendingPanel(
+                    key: const Key('production-board-pending'),
+                    keyword: _keyword,
+                  ),
+                  'progress' => _PlanPanel(
+                    key: const Key('production-board-progress'),
+                    closed: false,
+                    keyword: _keyword,
+                  ),
+                  'history' =>
+                    historyReady
+                        ? _PlanPanel(
+                            key: Key(
+                              'production-board-history-'
+                              '${_historyTime.all ? 'all' : ChinaDateTime.formatDate(_historyTime.range!.start)}'
+                              '-${_historyTime.all ? '' : ChinaDateTime.formatDate(_historyTime.range!.end)}',
+                            ),
+                            closed: true,
+                            keyword: _keyword,
+                            forcedDateFrom: _historyTime.range == null
+                                ? null
+                                : ChinaDateTime.formatDate(
+                                    _historyTime.range!.start,
+                                  ),
+                            forcedDateTo: _historyTime.range == null
+                                ? null
+                                : ChinaDateTime.formatDate(
+                                    _historyTime.range!.end,
+                                  ),
+                          )
+                        : const UtenHistoryTimePlaceholder(),
+                  _ => const UtenFilterPlaceholder(
+                    message: '在上方选择分类后开始办理',
+                    description: '大类默认不选中；历史记录需先选时间段或「全部」',
+                  ),
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -108,9 +180,10 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage>
 // ═════════════════════════ Tab1 待排产（原调度页） ═════════════════════════
 
 class _PendingPanel extends ConsumerStatefulWidget {
-  const _PendingPanel({required this.active});
+  const _PendingPanel({super.key, required this.keyword});
 
-  final bool active;
+  /// 页级搜索关键字（300ms 防抖后的值；变化即重拉）。
+  final String keyword;
 
   @override
   ConsumerState<_PendingPanel> createState() => _PendingPanelState();
@@ -134,8 +207,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   DateTime? _deliverFrom; // 交货日期范围筛选（从）
   DateTime? _deliverTo; // 交货日期范围筛选（至）
-  final _searchCtrl = TextEditingController();
-  String _keyword = '';
   bool _hasLoaded = false;
 
   /// 表头值筛选（当前仅 status：紧急/正常）。
@@ -153,27 +224,19 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   @override
   void initState() {
     super.initState();
-    _loadWhenActive();
-  }
-
-  @override
-  void didUpdateWidget(covariant _PendingPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.active && !oldWidget.active) _loadWhenActive();
-  }
-
-  void _loadWhenActive() {
-    if (!widget.active || _hasLoaded) return;
-    _hasLoaded = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _load();
     });
   }
 
   @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant _PendingPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.keyword != widget.keyword && _hasLoaded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reload();
+      });
+    }
   }
 
   bool get _canCreateAnalysis => ref
@@ -220,12 +283,13 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   }
 
   Future<void> _load() async {
+    _hasLoaded = true;
     setState(() {
       _loading = true;
       _error = null;
     });
     final repo = ref.read(productionPlanRepositoryProvider);
-    final kw = _keyword;
+    final kw = widget.keyword;
     final dateFrom = _deliverFrom == null ? null : _fmtDate(_deliverFrom!);
     final dateTo = _deliverTo == null ? null : _fmtDate(_deliverTo!);
     try {
@@ -426,6 +490,42 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     }
   }
 
+  /// 双击行 → 有活动分析直接恢复那张联合分析（多销售单联合分析时，任何一行
+  /// 都带同一张分析的 id，点谁都是进那张合并分析页）；未分析/无权限的行也给
+  /// 明确提示——双击任何行都必须有反馈，不能“点了没反应”。
+  Future<void> _openRowAnalysis(SchedulePendingRow row) async {
+    final analysisId = row.materialAnalysisId;
+    if (analysisId == null) {
+      context.appInfo('该行尚未分析；请勾选后点右下角「联合分析所选 N 项」');
+      return;
+    }
+    if (!_canRefreshAnalysis) {
+      context.appWarning('当前账号没有继续分析权限');
+      return;
+    }
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      await context.push(
+        RouteName.productionMaterialAnalysis,
+        extra: ProductionMaterialAnalysisSeed(
+          analysisId: analysisId,
+          analysisVersion: row.materialAnalysisVersion,
+          billDate: _fmtDate(ChinaDateTime.today()),
+        ),
+      );
+      if (!mounted) return;
+      await _load();
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// 只要有任一分析权限，所有行都可双击：未分析行双击出引导提示，
+  /// 已分析行直达联合分析。无任何权限时表格本就只读。
+  bool _canOpenRowAnalysis(SchedulePendingRow row) =>
+      _canUseAnalysis && !_submitting;
+
   void _toggle(SchedulePendingRow r, bool on) {
     if (on && !_canSelectForAnalysis(r)) return;
     if (on &&
@@ -501,90 +601,77 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     final theme = Theme.of(context);
     final compact = context.breakpoint.isCompact;
     return Scaffold(
-      body: UtenContentContainer.wide(
-        child: Column(
-          children: [
-            // 工具行：搜索 + 交货日期范围 + 建议计划 + 刷新
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-              child: Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 240,
-                    child: UtenSearchBar(
-                      controller: _searchCtrl,
-                      hint: '搜索订单号 / 客户 / 货品',
-                      // 服务端筛选：防抖由 UtenSearchBar 内置（300ms），停止输入后再发请求。
-                      onChanged: (v) {
-                        _keyword = v;
-                        _reload();
-                      },
-                    ),
+      // 容器（UtenContentContainer.wide）由页面级统一提供，面板不再自套（避免双 gutter）。
+      body: Column(
+        children: [
+          // 工具行：交货日期范围 + 建议计划 + 刷新（搜索在大类行，页级统一下发）。
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+            child: Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _pickDeliverDate(true),
+                  icon: const Icon(Icons.date_range_rounded, size: 16),
+                  label: Text(
+                    _deliverFrom == null ? '交货从' : _fmtDate(_deliverFrom!),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: () => _pickDeliverDate(true),
-                    icon: const Icon(Icons.date_range_rounded, size: 16),
-                    label: Text(
-                      _deliverFrom == null ? '交货从' : _fmtDate(_deliverFrom!),
-                    ),
-                    style: _deliverFrom != null
-                        ? OutlinedButton.styleFrom(
-                            foregroundColor: theme.colorScheme.primary,
-                          )
-                        : null,
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => _pickDeliverDate(false),
-                    icon: const Icon(Icons.event_rounded, size: 16),
-                    label: Text(
-                      _deliverTo == null ? '交货至' : _fmtDate(_deliverTo!),
-                    ),
-                    style: _deliverTo != null
-                        ? OutlinedButton.styleFrom(
-                            foregroundColor: theme.colorScheme.primary,
-                          )
-                        : null,
-                  ),
-                  if (_deliverFrom != null || _deliverTo != null)
-                    IconButton(
-                      icon: const Icon(Icons.clear_rounded, size: 18),
-                      tooltip: '清除时间筛选',
-                      onPressed: () {
-                        _deliverFrom = null;
-                        _deliverTo = null;
-                        _reload();
-                      },
-                    ),
-                  if (_canCreateAnalysis)
-                    TextButton.icon(
-                      icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                      label: Text('建议联合分析(本页 ${_rows.length} 行)'),
-                      onPressed: _rows.isEmpty || _submitting
-                          ? null
-                          : _suggestAllAndSubmit,
-                    ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh_rounded),
-                    tooltip: '刷新',
-                    onPressed: _load,
-                  ),
-                ],
-              ),
-            ),
-            if (widget.active) const ProductionFqcReplenishmentBanner(),
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  bottom: compact && _canUseAnalysis ? 96 : 0,
+                  style: _deliverFrom != null
+                      ? OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.primary,
+                        )
+                      : null,
                 ),
-                child: _list(theme),
-              ),
+                OutlinedButton.icon(
+                  onPressed: () => _pickDeliverDate(false),
+                  icon: const Icon(Icons.event_rounded, size: 16),
+                  label: Text(
+                    _deliverTo == null ? '交货至' : _fmtDate(_deliverTo!),
+                  ),
+                  style: _deliverTo != null
+                      ? OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.primary,
+                        )
+                      : null,
+                ),
+                if (_deliverFrom != null || _deliverTo != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear_rounded, size: 18),
+                    tooltip: '清除时间筛选',
+                    onPressed: () {
+                      _deliverFrom = null;
+                      _deliverTo = null;
+                      _reload();
+                    },
+                  ),
+                if (_canCreateAnalysis)
+                  TextButton.icon(
+                    icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                    label: Text('建议联合分析(本页 ${_rows.length} 行)'),
+                    onPressed: _rows.isEmpty || _submitting
+                        ? null
+                        : _suggestAllAndSubmit,
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded),
+                  tooltip: '刷新',
+                  onPressed: _load,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          const ProductionFqcReplenishmentBanner(),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: compact && _canUseAnalysis ? 96 : 0,
+              ),
+              child: _list(theme),
+            ),
+          ),
+        ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
@@ -629,11 +716,21 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   sortColumn: _sortKey,
                   sortAscending: _sortAsc,
                   onSortChange: _onSortChange,
+                  // 双击已分析行直达联合分析详情（单击仍只选中，表格统一交互）。
+                  onRowTap: _openRowAnalysis,
+                  canOpenRow: _canOpenRowAnalysis,
+                  canShowRowMenu: _canOpenRowAnalysis,
+                  rowMenuBuilder: (row) => [
+                    UtenMenuItem(
+                      label: '打开物料分析',
+                      onTap: () => _openRowAnalysis(row),
+                    ),
+                  ],
                   isLoading: _loading,
                   error: (_error != null && rows.isEmpty) ? _error : null,
                   onRetry: _load,
                   emptyMessage:
-                      _keyword.isEmpty &&
+                      widget.keyword.isEmpty &&
                           _deliverFrom == null &&
                           _deliverTo == null &&
                           _filters.isEmpty
@@ -804,6 +901,26 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                       '最后分析 ${_shortDateTime(row.materialAnalyzedAt)}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  if (row.materialAnalysisId != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          key: ValueKey(
+                            'pending-mobile-open-analysis-${row.orderItemId}',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                          ),
+                          onPressed: _canRefreshAnalysis && !_submitting
+                              ? () => _openRowAnalysis(row)
+                              : null,
+                          icon: const Icon(Icons.insights_rounded, size: 18),
+                          label: const Text('继续分析'),
+                        ),
                       ),
                     ),
                   if (awaitingApproval)
@@ -1025,10 +1142,23 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 enum _PlanSort { billDate, billDateDesc, deliveryDate, progress }
 
 class _PlanPanel extends ConsumerStatefulWidget {
-  const _PlanPanel({required this.closed, required this.active});
+  const _PlanPanel({
+    super.key,
+    required this.closed,
+    required this.keyword,
+    this.forcedDateFrom,
+    this.forcedDateTo,
+  });
 
   final bool closed;
-  final bool active;
+
+  /// 页级搜索关键字（300ms 防抖后的值；变化即重拉）。
+  final String keyword;
+
+  /// 历史记录段强制开单日期范围（yyyy-MM-dd；历史模式下时间门控值即日期，
+  /// 面板内不再显示自带的开单日期按钮）。非 null 即历史模式。
+  final String? forcedDateFrom;
+  final String? forcedDateTo;
 
   @override
   ConsumerState<_PlanPanel> createState() => _PlanPanelState();
@@ -1044,13 +1174,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   int _pageNo = 1;
   int _pageSize = 20;
 
-  final _searchCtrl = TextEditingController();
-  String _keyword = '';
   String? _workshop; // null=全部车间
-  DateTime? _from; // 开单日期范围（从）
-  DateTime? _to; // 开单日期范围（至）
+  DateTime? _from; // 开单日期范围（从；历史模式下被 forced 覆盖）
+  DateTime? _to; // 开单日期范围（至；历史模式下被 forced 覆盖）
   final Set<String> _expanded = {};
-  bool _hasLoaded = false;
 
   /// 显示设置（Excel 列显隐思路）：卡片上哪些信息块可见。
   bool _showWorkshop = true;
@@ -1076,27 +1203,21 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   @override
   void initState() {
     super.initState();
-    _loadWhenActive();
-  }
-
-  @override
-  void didUpdateWidget(covariant _PlanPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.active && !oldWidget.active) _loadWhenActive();
-  }
-
-  void _loadWhenActive() {
-    if (!widget.active || _hasLoaded) return;
-    _hasLoaded = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _load();
     });
   }
 
   @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant _PlanPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.keyword != widget.keyword ||
+        oldWidget.forcedDateFrom != widget.forcedDateFrom ||
+        oldWidget.forcedDateTo != widget.forcedDateTo) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reload();
+      });
+    }
   }
 
   String _fmtDate(DateTime d) =>
@@ -1115,10 +1236,12 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     });
     final repo = ref.read(productionPlanRepositoryProvider);
     final sort = ref.read(productionBoardSortProvider);
-    final kw = _keyword;
+    final kw = widget.keyword;
     final ws = _workshop ?? '';
-    final from = _from == null ? null : _fmtDate(_from!);
-    final to = _to == null ? null : _fmtDate(_to!);
+    // 历史模式（forced 日期非 null）：日期来自时间门控值，覆盖面板自带范围。
+    final from =
+        widget.forcedDateFrom ?? (_from == null ? null : _fmtDate(_from!));
+    final to = widget.forcedDateTo ?? (_to == null ? null : _fmtDate(_to!));
     try {
       final results = await Future.wait([
         repo.planProgress(
@@ -1201,44 +1324,44 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return UtenContentContainer.wide(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // 大屏幕：左右布局（左筛选面板 / 右卡片列表）；窄屏：顶部筛选 + 下列表
-          final wide = constraints.maxWidth >= 1080;
-          if (wide) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 264,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: UtenSpacing.s8,
-                    ),
-                    child: _controls(theme, vertical: true),
-                  ),
-                ),
-                const VerticalDivider(width: 1),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(child: _listPane(theme)),
-              ],
-            );
-          }
-          return Column(
+    // 容器（UtenContentContainer.wide）由页面级统一提供，面板不再自套（避免双 gutter）。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 大屏幕：左右布局（左筛选面板 / 右卡片列表）；窄屏：顶部筛选 + 下列表
+        final wide = constraints.maxWidth >= 1080;
+        if (wide) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _controls(theme, vertical: false),
+              SizedBox(
+                width: 264,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+                  child: _controls(theme, vertical: true),
+                ),
+              ),
+              const VerticalDivider(width: 1),
+              const SizedBox(width: UtenSpacing.s12),
               Expanded(child: _listPane(theme)),
             ],
           );
-        },
-      ),
+        }
+        return Column(
+          children: [
+            _controls(theme, vertical: false),
+            Expanded(child: _listPane(theme)),
+          ],
+        );
+      },
     );
   }
 
-  /// 筛选面板：搜索 / 车间 / 排序 / 开单日期范围 / 显示设置 / 刷新。
+  /// 筛选面板：车间 / 排序 / 开单日期范围（历史模式隐藏——日期来自时间门控）/
+  /// 显示设置 / 刷新（搜索在大类行，页级统一下发）。
   /// vertical=true 宽屏左栏竖排；false 窄屏顶部 Wrap 横排。
   Widget _controls(ThemeData theme, {required bool vertical}) {
+    final showDates =
+        widget.forcedDateFrom == null && widget.forcedDateTo == null;
     if (vertical) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1250,13 +1373,13 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
             ),
           ),
           const SizedBox(height: UtenSpacing.s8),
-          _searchField(),
-          const SizedBox(height: UtenSpacing.s8),
           _workshopDropdown(),
           const SizedBox(height: UtenSpacing.s8),
           _sortDropdown(),
-          const SizedBox(height: UtenSpacing.s8),
-          Align(alignment: Alignment.centerLeft, child: _dateRange()),
+          if (showDates) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Align(alignment: Alignment.centerLeft, child: _dateRange()),
+          ],
           const SizedBox(height: UtenSpacing.s4),
           Row(children: [_settingsMenu(), const Spacer(), _refreshBtn()]),
         ],
@@ -1271,13 +1394,13 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _searchField(),
-                    const SizedBox(height: UtenSpacing.s8),
                     _workshopDropdown(),
                     const SizedBox(height: UtenSpacing.s8),
                     _sortDropdown(),
-                    const SizedBox(height: UtenSpacing.s8),
-                    _dateRange(),
+                    if (showDates) ...[
+                      const SizedBox(height: UtenSpacing.s8),
+                      _dateRange(),
+                    ],
                     Row(
                       children: [
                         _settingsMenu(),
@@ -1292,27 +1415,14 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                   runSpacing: UtenSpacing.s8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    SizedBox(width: 240, child: _searchField()),
                     SizedBox(width: 160, child: _workshopDropdown()),
                     SizedBox(width: 160, child: _sortDropdown()),
-                    _dateRange(),
+                    if (showDates) _dateRange(),
                     _settingsMenu(),
                     _refreshBtn(),
                   ],
                 ),
         );
-      },
-    );
-  }
-
-  Widget _searchField() {
-    return UtenSearchBar(
-      controller: _searchCtrl,
-      hint: '搜索计划单号 / 车间',
-      // 服务端筛选：防抖由 UtenSearchBar 内置（300ms），停止输入后再发请求。
-      onChanged: (v) {
-        _keyword = v;
-        _reload();
       },
     );
   }
@@ -1600,7 +1710,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         child: Text(
           widget.closed
               ? '暂无已完成计划'
-              : (_keyword.isEmpty &&
+              : (widget.keyword.isEmpty &&
                         _workshop == null &&
                         _from == null &&
                         _to == null

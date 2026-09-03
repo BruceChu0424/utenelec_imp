@@ -628,6 +628,55 @@ class WarehouseArrivalRegistration {
   }
 }
 
+/// 预计到货「批量继续送检」结果：逐张收货单送检结果（alreadyCompleted = 同幂等键
+/// 重试时该单已处理过，按既有事实安全重放）。
+class WarehouseArrivalBatchCompleteResult {
+  const WarehouseArrivalBatchCompleteResult({
+    required this.processedCount,
+    required this.items,
+  });
+
+  final int processedCount;
+  final List<WarehouseArrivalBatchCompleteItem> items;
+
+  factory WarehouseArrivalBatchCompleteResult.fromJson(
+    Map<String, dynamic> json,
+  ) => WarehouseArrivalBatchCompleteResult(
+    processedCount: _integer(json['processedCount']) ?? 0,
+    items: _maps(
+      json['items'],
+    ).map(WarehouseArrivalBatchCompleteItem.fromJson).toList(growable: false),
+  );
+}
+
+class WarehouseArrivalBatchCompleteItem {
+  const WarehouseArrivalBatchCompleteItem({
+    required this.receiptId,
+    this.receiptBillNo,
+    required this.outcome,
+    this.exceptionId,
+    this.alreadyCompleted = false,
+  });
+
+  final String receiptId;
+  final String? receiptBillNo;
+  final WarehouseArrivalRegistrationOutcome outcome;
+  final String? exceptionId;
+  final bool alreadyCompleted;
+
+  factory WarehouseArrivalBatchCompleteItem.fromJson(
+    Map<String, dynamic> json,
+  ) => WarehouseArrivalBatchCompleteItem(
+    receiptId: _text(json['receiptId']) ?? '',
+    receiptBillNo: _text(json['receiptBillNo']),
+    outcome: WarehouseArrivalRegistrationOutcome.fromName(
+      _text(json['outcome']),
+    ),
+    exceptionId: _text(json['exceptionId']),
+    alreadyCompleted: json['alreadyCompleted'] as bool? ?? false,
+  );
+}
+
 String procurementQty(num value) {
   final fixed = value.toStringAsFixed(4);
   return fixed.replaceFirst(RegExp(r'\.?0+$'), '');

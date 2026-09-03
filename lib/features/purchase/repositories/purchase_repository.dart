@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/models/procurement_commercial_terms.dart';
 import '../models/purchase_doc.dart';
 
 class PurchaseDocFilter {
@@ -89,17 +90,23 @@ class PurchaseRepository {
     ];
   }
 
-  /// 货品 → 最近一次订货供应商（订货编辑页行级供应商「学习预填」用）。
-  /// 仅订货单仓库有此端点；无历史货品不在返回 Map 中。
-  Future<Map<String, String>> lastSuppliersByGoods(Set<String> goodsIds) async {
+  /// 货品 → 最近一次订货商业条款（行级条款「学习预填」：供应商/结账方式/币种/
+  /// 汇率/税率一次带回；2026-09 行级条款改造起的预填契约）。无历史货品不在返回 Map 中。
+  /// （旧 /last-suppliers 仅回供应商的端点保留一个发布周期兼容旧客户端，前端已不再使用。）
+  Future<Map<String, ProcurementLastTerms>> lastTermsByGoods(
+    Set<String> goodsIds,
+  ) async {
     if (goodsIds.isEmpty) return const {};
     final json = await api.get(
-      '$_base/last-suppliers',
+      '$_base/last-terms',
       query: {'goodsIds': goodsIds.join(',')},
     );
     return {
       for (final entry in json.entries)
-        if (entry.value != null) entry.key: entry.value as String,
+        if (entry.value is Map<String, dynamic>)
+          entry.key: ProcurementLastTerms.fromJson(
+            entry.value as Map<String, dynamic>,
+          ),
     };
   }
 

@@ -138,87 +138,90 @@ class _DepartmentOrgChartDialogState
     final canExport = ref
         .watch(currentPermissionsProvider)
         .contains(Perm.employeeExport);
-    return Dialog(
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680, maxHeight: 760),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 8, 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.account_tree_outlined,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      '${widget.node.name} · 组织架构图',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+    // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region）。
+    return SelectionArea(
+      child: Dialog(
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680, maxHeight: 760),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 8, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.account_tree_outlined,
+                      color: theme.colorScheme.primary,
                     ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Flexible(
-              child: _loading
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(48),
-                        child: CircularProgressIndicator(),
-                      ),
-                    )
-                  : _error != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Text(_error!),
-                      ),
-                    )
-                  : ListView(
-                      padding: const EdgeInsets.all(UtenSpacing.s16),
-                      children: [_deptTile(context, _root!, 0)],
-                    ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Row(
-                children: [
-                  if (!canExport)
+                    const SizedBox(width: UtenSpacing.s8),
                     Expanded(
                       child: Text(
-                        '如需打印件请联系有导出权限的同事',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                        '${widget.node.name} · 组织架构图',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                  const Spacer(),
-                  if (canExport)
-                    UtenButton(
-                      icon: Icons.print_outlined,
-                      isLoading: _printing,
-                      onPressed: (_loading || _error != null)
-                          ? null
-                          : _printPdf,
-                      child: const Text('打印架构图'),
+                    IconButton(
+                      tooltip: '关闭',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
                     ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+              const Divider(height: 1),
+              Flexible(
+                child: _loading
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(48),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    : _error != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Text(_error!),
+                        ),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        children: [_deptTile(context, _root!, 0)],
+                      ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: Row(
+                  children: [
+                    if (!canExport)
+                      Expanded(
+                        child: Text(
+                          '如需打印件请联系有导出权限的同事',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    const Spacer(),
+                    if (canExport)
+                      UtenButton(
+                        icon: Icons.print_outlined,
+                        isLoading: _printing,
+                        onPressed: (_loading || _error != null)
+                            ? null
+                            : _printPdf,
+                        child: const Text('打印架构图'),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

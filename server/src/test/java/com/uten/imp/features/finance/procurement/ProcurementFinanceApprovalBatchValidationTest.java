@@ -39,18 +39,18 @@ class ProcurementFinanceApprovalBatchValidationTest {
         UUID caseId = UUID.randomUUID();
 
         assertThrows(ApiException.class,
-                () -> fixture.service().approveBatch(List.of()));
+                () -> fixture.service().approveBatch(List.of(), null));
         assertThrows(ApiException.class,
                 () -> fixture.service().approveBatch(List.of(
                         new BatchDecisionItem(caseId, 1L),
-                        new BatchDecisionItem(caseId, 1L))));
+                        new BatchDecisionItem(caseId, 1L)), null));
 
         List<BatchDecisionItem> tooMany = new ArrayList<>();
         for (int index = 0; index < 101; index++) {
             tooMany.add(new BatchDecisionItem(UUID.randomUUID(), 1L));
         }
         assertThrows(ApiException.class,
-                () -> fixture.service().approveBatch(tooMany));
+                () -> fixture.service().approveBatch(tooMany, null));
         assertThrows(ApiException.class,
                 () -> fixture.service().rejectBatch(
                         List.of(new BatchDecisionItem(caseId, 1L)), " "));
@@ -67,13 +67,13 @@ class ProcurementFinanceApprovalBatchValidationTest {
 
         assertThrows(ApiException.class,
                 () -> fixture.service().approveBatch(List.of(
-                        new BatchDecisionItem(UUID.randomUUID(), 1L))));
+                        new BatchDecisionItem(UUID.randomUUID(), 1L)), null));
     }
 
     @Test
     void bothBatchCommandsDeclareTransactionBoundaries() throws Exception {
         assertNotNull(ProcurementFinanceApprovalService.class
-                .getMethod("approveBatch", List.class)
+                .getMethod("approveBatch", List.class, String.class)
                 .getAnnotation(Transactional.class));
         assertNotNull(ProcurementFinanceApprovalService.class
                 .getMethod("rejectBatch", List.class, String.class)

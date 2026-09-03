@@ -52,19 +52,45 @@ class ProcurementFinanceApprovalBatchControllerTest {
                 new BatchDecisionResponse(2, List.of());
         BatchDecisionResponse rejected =
                 new BatchDecisionResponse(2, List.of());
-        when(service.approveBatch(items)).thenReturn(approved);
+        when(service.approveBatch(items, null)).thenReturn(approved);
+        when(service.approveBatch(items, "留意供应商账期")).thenReturn(approved);
         when(service.rejectBatch(items, "统一原因")).thenReturn(rejected);
 
         assertSame(
                 approved,
-                controller.approveBatch(new BatchApprovalRequest(items)));
+                controller.approveBatch(new BatchApprovalRequest(items, null)));
+        assertSame(
+                approved,
+                controller.approveBatch(
+                        new BatchApprovalRequest(items, "留意供应商账期")));
         assertSame(
                 rejected,
                 controller.rejectBatch(
                         new BatchRejectionRequest(items, "统一原因")));
 
-        verify(service).approveBatch(items);
+        verify(service).approveBatch(items, null);
+        verify(service).approveBatch(items, "留意供应商账期");
         verify(service).rejectBatch(items, "统一原因");
+    }
+
+    @Test
+    void reviewEndpointDelegatesToCaseBoundProjection() {
+        ProcurementFinanceApprovalService service =
+                mock(ProcurementFinanceApprovalService.class);
+        ProcurementFinanceApprovalController controller =
+                new ProcurementFinanceApprovalController(service);
+        UUID caseId = UUID.randomUUID();
+        ProcurementApprovalContracts.ApprovalReview review =
+                new ProcurementApprovalContracts.ApprovalReview(
+                        caseId, "PURCHASE", UUID.randomUUID(), "CG20260001",
+                        "PENDING", 1, 1L, List.of("APPROVE"),
+                        "提交人", null, null, "供应商A", "S001", null,
+                        "人民币", null, "月结", null, null, null, null, null,
+                        null, null, null, 0, List.of(), List.of());
+
+        when(service.review(caseId)).thenReturn(review);
+        assertSame(review, controller.review(caseId));
+        verify(service).review(caseId);
     }
 
     @Test

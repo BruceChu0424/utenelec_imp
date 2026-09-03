@@ -48,7 +48,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         FulfillmentWorkbenchAccessPolicy accessPolicy =
                 mock(FulfillmentWorkbenchAccessPolicy.class);
         FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(em, accessPolicy)
-                .query("PURCHASE", "UNPEGGED", "轴套", "OVERDUE_ANY", 2, 20);
+                .query("PURCHASE", "UNPEGGED", "轴套", "OVERDUE_ANY", null, null, 2, 20);
 
         verify(rows).setParameter("exception", "OVERDUE_ANY");
         verify(summary).setParameter("exception", "OVERDUE_ANY");
@@ -82,7 +82,7 @@ class FulfillmentWorkbenchQueryServiceTest {
 
         FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(
                         em, mock(FulfillmentWorkbenchAccessPolicy.class))
-                .query("PURCHASE", "COMPLETED", "", "", 1, 20);
+                .query("PURCHASE", "COMPLETED", "", "", null, null, 1, 20);
 
         // 「待完成」卡走部门×关键字全量口径：状态绑定 ""，不被已选「已完成」卡清零。
         verify(pending).setParameter("status", "");
@@ -114,7 +114,7 @@ class FulfillmentWorkbenchQueryServiceTest {
 
         FulfillmentWorkbenchPage result = new FulfillmentWorkbenchQueryService(
                         em, mock(FulfillmentWorkbenchAccessPolicy.class))
-                .query("SUBCONTRACT", "OPEN_ANY", "", "", 1, 20);
+                .query("SUBCONTRACT", "OPEN_ANY", "", "", null, null, 1, 20);
 
         // OPEN_ANY 哨兵原样下传 SQL（按 open_qty > 0 过滤），不当作真实 task_status。
         verify(rows).setParameter("status", "OPEN_ANY");
@@ -158,8 +158,12 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertEquals(4L, count);
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
+        // 2026-09-03 仓库口径与列表归组对齐：一张 DRAW 领料单=一个待办
+        //（DISTINCT COALESCE 兜底尚未挂单的行级需求）。
         assertTrue(sql.getValue().contains("v_fulfillment_workbench_actions"));
         assertTrue(sql.getValue().contains("open_qty > 0"));
+        assertTrue(sql.getValue()
+                .contains("DISTINCT COALESCE(action_doc_id, task_id)"));
         verify(countQuery).setParameter("department", "WAREHOUSE");
     }
 
@@ -201,7 +205,7 @@ class FulfillmentWorkbenchQueryServiceTest {
 
         FulfillmentWorkbenchPage page =
                 new FulfillmentWorkbenchQueryService(em, accessPolicy)
-                        .query("PURCHASE", "", "", "", 1, 20);
+                        .query("PURCHASE", "", "", "", null, null, 1, 20);
 
         FulfillmentTaskRow task = page.items().getFirst();
         assertTrue(task.actionDocRestricted());
@@ -240,7 +244,7 @@ class FulfillmentWorkbenchQueryServiceTest {
 
         FulfillmentWorkbenchPage page =
                 new FulfillmentWorkbenchQueryService(em, accessPolicy)
-                        .query("PURCHASE", "", "", "", 1, 20);
+                        .query("PURCHASE", "", "", "", null, null, 1, 20);
 
         FulfillmentTaskRow task = page.items().getFirst();
         assertEquals(documentId, task.actionDocId());
@@ -282,8 +286,10 @@ class FulfillmentWorkbenchQueryServiceTest {
     }
 
     private static void assertPermission(String methodName, String expected) throws Exception {
+        // 控制器读端点签名：status/exception/keyword + dateFrom/dateTo + 分页。
         Method method = FulfillmentWorkbenchController.class.getDeclaredMethod(
-                methodName, String.class, String.class, String.class, int.class, int.class);
+                methodName, String.class, String.class, String.class,
+                LocalDate.class, LocalDate.class, int.class, int.class);
         assertEquals(expected, method.getAnnotation(PreAuthorize.class).value());
     }
 
@@ -323,7 +329,12 @@ class FulfillmentWorkbenchQueryServiceTest {
                 documentId,
                 "DOC-001",
                 documentItemId,
-                "1"
+                "1",
+                // 2026-09-03 按单据归组新增列：单货品行 goods_count=1、
+                // open_line_count=1、action_item_ids=null（stringArray 回空表）。
+                1L,
+                1L,
+                null
         };
     }
 }

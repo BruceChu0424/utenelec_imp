@@ -323,4 +323,87 @@ void main() {
     expect(find.byKey(const Key('finance-review-confirm')), findsNothing);
     expect(find.byKey(const Key('finance-review-reject')), findsNothing);
   });
+
+  // 回归（v2026.09.03-1 现场）：V459 审核弹窗「去审核」router.go 直达审核页时
+  // 路由栈空，确认成功后 context.pop(true) 抛 GoError 被外层 catch 吞掉，
+  // 误报「确认失败，请稍后重试」而实际后端已成功。
+  Future<GoRouter> pumpDecisionFlow(
+    WidgetTester tester, {
+    required bool push,
+  }) async {
+    tester.view.physicalSize = const Size(900, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _FakeConfirmationRepository(
+      [],
+      reviewValue: const SalesOrderFinanceReview(
+        orderId: 'order-1',
+        billNo: 'XD20260829000003',
+      ),
+    );
+    const reviewRoute = '/finance/sales-order-confirmations/order-1';
+    final router = GoRouter(
+      initialLocation: push
+          ? '/finance/sales-order-confirmations'
+          : reviewRoute,
+      routes: [
+        GoRoute(
+          path: '/finance/sales-order-confirmations',
+          builder: (_, _) => const Text('确认列表页'),
+          routes: [
+            GoRoute(
+              path: ':id',
+              builder: (_, state) =>
+                  FinanceSalesOrderReviewPage(id: state.pathParameters['id']!),
+            ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isSuperAdminProvider.overrideWithValue(false),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.salesOrderFinanceView,
+            Perm.salesOrderFinanceConfirm,
+          }),
+          sessionProvider.overrideWith(_FinanceSessionNotifier.new),
+          salesOrderFinanceConfirmationCountProvider.overrideWith(
+            (ref) async => 0,
+          ),
+          salesOrderFinanceConfirmationRepositoryProvider.overrideWithValue(
+            repository,
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    if (push) {
+      router.push(reviewRoute);
+    }
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('finance-review-confirm')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('finance-review-confirm-submit')));
+    await tester.pumpAndSettle();
+    return router;
+  }
+
+  testWidgets('弹窗 go 直达：确认通过后回列表页且不误报确认失败', (tester) async {
+    await pumpDecisionFlow(tester, push: false);
+
+    expect(find.text('确认失败，请稍后重试'), findsNothing);
+    expect(find.text('确认列表页'), findsOneWidget);
+  });
+
+  testWidgets('列表 push 进入：确认通过后 pop 回列表（返回值路径不受影响）', (tester) async {
+    await pumpDecisionFlow(tester, push: true);
+
+    expect(find.text('确认失败，请稍后重试'), findsNothing);
+    expect(find.text('确认列表页'), findsOneWidget);
+  });
 }

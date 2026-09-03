@@ -58,8 +58,10 @@ public class ProductionSupplySourceGuard {
                 UNION ALL
                 SELECT action.id AS source_id
                 FROM purchase_order_items order_item
+                JOIN purchase_order_item_sources src
+                  ON src.order_item_id = order_item.id
                 JOIN purchase_request_items request_item
-                  ON request_item.id = order_item.request_item_id
+                  ON request_item.id = src.request_item_id
                 JOIN preplan_supply_actions action
                   ON action.external_document_type = 'PURCHASE_REQUEST'
                  AND action.external_document_id = request_item.request_id
@@ -96,8 +98,10 @@ public class ProductionSupplySourceGuard {
                 UNION ALL
                 SELECT action.id AS source_id
                 FROM subcontract_order_items order_item
+                JOIN subcontract_order_item_sources src
+                  ON src.order_item_id = order_item.id
                 JOIN subcontract_application_items application_item
-                  ON application_item.id = order_item.application_item_id
+                  ON application_item.id = src.application_item_id
                 JOIN preplan_supply_actions action
                   ON action.external_document_type = 'SUBCONTRACT_APPLICATION'
                  AND action.external_document_id = application_item.application_id

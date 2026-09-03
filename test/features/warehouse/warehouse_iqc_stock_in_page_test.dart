@@ -112,6 +112,12 @@ void main() {
         _qualityApp(const WarehouseQualityResultsPage(), gateway, preferences),
       );
       await tester.pumpAndSettle();
+      // 2026-09-03 分类范式：来源/状态默认不选（未选不发请求），
+      // 先选来源（采购收货）再选状态（等待结果）才渲染表格。
+      await tester.tap(find.text('采购收货').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('等待结果').last);
+      await tester.pumpAndSettle();
 
       final table = tester
           .widget<MasterDataTableView<WarehouseQualityResultTask>>(
@@ -173,6 +179,8 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
+    String? dateFrom,
+    String? dateTo,
   }) async => PagedResult(
     items: [WarehouseQualityResultTask.fromJson(_qualitySummaryJson)],
     page: page,

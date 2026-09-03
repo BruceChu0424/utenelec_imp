@@ -269,78 +269,83 @@ class _GoodsBomPreviewDialogState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final rows = _rows;
-    return Dialog(
-      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 860,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.92,
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 头部：标题 + 操作
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16,
-                  UtenSpacing.s12,
-                  UtenSpacing.s8,
-                  UtenSpacing.s12,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '预览 · $_title', // TODO(l10n): 补 arb
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      size: UtenButtonSize.small,
-                      icon: Icons.print_outlined,
-                      onPressed: (rows == null || rows.isEmpty) ? null : _print,
-                      child: const Text('打印'), // TODO(l10n): 补 arb
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    UtenExportButton(
-                      endpoint: ApiEndpoints.goodsBomExport(widget.goodsId),
-                      requiredPermission: Perm.goodsExport,
-                      report: '',
-                      queryParams: const {},
-                      filename:
-                          '${_title}_${widget.productCode ?? widget.productName ?? 'goods'}',
-                      label: '下载Excel', // TODO(l10n): 补 arb
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              // A4 纸面（灰底 + 白纸卡片，横向可滚动保证窄屏可看全）
-              Expanded(
-                child: Container(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  child: _error != null
-                      ? Center(child: Text(_error!))
-                      : rows == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : SingleChildScrollView(
-                          padding: const EdgeInsets.all(UtenSpacing.s16),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: _a4Paper(theme, rows),
+    // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region；内嵌表格自带更深 region）。
+    return SelectionArea(
+      child: Dialog(
+        shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 860,
+            maxHeight: MediaQuery.sizeOf(context).height * 0.92,
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 头部：标题 + 操作
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    UtenSpacing.s16,
+                    UtenSpacing.s12,
+                    UtenSpacing.s8,
+                    UtenSpacing.s12,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '预览 · $_title', // TODO(l10n): 补 arb
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
+                      ),
+                      UtenButton(
+                        type: UtenButtonType.tonal,
+                        size: UtenButtonSize.small,
+                        icon: Icons.print_outlined,
+                        onPressed: (rows == null || rows.isEmpty)
+                            ? null
+                            : _print,
+                        child: const Text('打印'), // TODO(l10n): 补 arb
+                      ),
+                      const SizedBox(width: UtenSpacing.s8),
+                      UtenExportButton(
+                        endpoint: ApiEndpoints.goodsBomExport(widget.goodsId),
+                        requiredPermission: Perm.goodsExport,
+                        report: '',
+                        queryParams: const {},
+                        filename:
+                            '${_title}_${widget.productCode ?? widget.productName ?? 'goods'}',
+                        label: '下载Excel', // TODO(l10n): 补 arb
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                const Divider(height: 1),
+                // A4 纸面（灰底 + 白纸卡片，横向可滚动保证窄屏可看全）
+                Expanded(
+                  child: Container(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: _error != null
+                        ? Center(child: Text(_error!))
+                        : rows == null
+                        ? const Center(child: CircularProgressIndicator())
+                        : SingleChildScrollView(
+                            padding: const EdgeInsets.all(UtenSpacing.s16),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: _a4Paper(theme, rows),
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

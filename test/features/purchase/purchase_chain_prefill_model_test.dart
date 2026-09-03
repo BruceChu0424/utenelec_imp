@@ -51,4 +51,73 @@ void main() {
     addTearDown(blank.dispose);
     expect(source.textOf!(blank), '');
   });
+
+  test('merged row joins multi-source doc nos and exposes jump ids (V463)', () {
+    final columns = purchaseGridColumns((_) async {}, showSource: true);
+    final source = columns.firstWhere((c) => c.key == 'source');
+
+    final row = PurchaseGridRow.fromLinked(
+      const LinkedItem(
+        goodsId: 'goods-1',
+        qty: 50,
+        maxQty: 50,
+        upstreamItemId: 'request-item-1',
+      ),
+      const GoodsOption(id: 'goods-1', name: '轴套'),
+    );
+    addTearDown(row.dispose);
+    row
+      ..upstreamItemIds = ['request-item-1', 'request-item-2', 'request-item-3']
+      ..sourceDocs = const [
+        PurchaseSourceRequestRef(
+          requestItemId: 'request-item-1',
+          requestId: 'request-1',
+          billNo: 'CG20260901-001',
+        ),
+        PurchaseSourceRequestRef(
+          requestItemId: 'request-item-2',
+          requestId: 'request-2',
+          billNo: 'CG20260902-007',
+        ),
+        PurchaseSourceRequestRef(
+          requestItemId: 'request-item-3',
+          requestId: 'request-3',
+          billNo: 'CG20260903-015',
+        ),
+      ];
+
+    // 同货品合并行：来源单号顿号连接，任一来源带回申请单 id 即可点开跳转。
+    expect(source.textOf!(row), 'CG20260901-001、CG20260902-007、CG20260903-015');
+    expect(row.canOpenSourceDocs, isTrue);
+    expect(row.upstreamItemIds.length, 3);
+  });
+
+  test('detail item parses structured source requests (V463)', () {
+    final item = PurchaseDocItem.fromJson({
+      'id': 'order-item-1',
+      'goodsId': 'goods-1',
+      'qty': 50,
+      'requestItemId': 'request-item-1',
+      'sourceRequests': [
+        {
+          'requestItemId': 'request-item-1',
+          'requestId': 'request-1',
+          'billNo': 'CG20260901-001',
+        },
+        {
+          'requestItemId': 'request-item-2',
+          'requestId': 'request-2',
+          'billNo': 'CG20260902-007',
+        },
+      ],
+    });
+
+    expect(item.sourceRequests.length, 2);
+    expect(item.sourceRequests.first.requestItemId, 'request-item-1');
+    expect(item.sourceRequests.first.requestId, 'request-1');
+    expect(item.sourceRequests[1].billNo, 'CG20260902-007');
+    // 历史行/手工行无 sources：空列表不炸。
+    final legacy = PurchaseDocItem.fromJson({'id': 'order-item-2'});
+    expect(legacy.sourceRequests, isEmpty);
+  });
 }

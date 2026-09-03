@@ -345,6 +345,9 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
       ),
       body: UtenContentContainer(
         maxWidth: 1040,
+        // 轮询页不包选择区：本页 watch 未读数轮询与拖选并发有 CME 风险
+        // （准则 §3.4，用户口径：轮询页不包；正文表单本身是输入框可原生复制）。
+        selectable: false,
         child: Form(
           key: _formKey,
           child: LayoutBuilder(

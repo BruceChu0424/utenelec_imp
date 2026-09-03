@@ -36,4 +36,26 @@ public interface PurchaseOrderItemRepository extends JpaRepository<PurchaseOrder
             order by i.goods_id, o.created_at desc, o.id desc, i.id desc
             """, nativeQuery = true)
     List<Object[]> findLastSupplierPerGoods(@Param("goodsIds") Collection<UUID> goodsIds);
+
+    /**
+     * 货品 → 最近一次订货商业条款（行级条款「学习预填」用）：取每个货品最新一张
+     * 未删订货单的头条款（供应商/结账方式/币种/汇率/税率）。与 findLastSupplierPerGoods
+     * 的差异：不过滤供应商停用状态——结账方式/币种等条款对停用商仍可参考，
+     * 供应商是否可回填由前端按字典判断。
+     */
+    @Query(value = """
+            select distinct on (i.goods_id)
+                   i.goods_id, o.supplier_id, o.settlement_method_id,
+                   o.currency_id, o.exchange_rate, o.tax_rate
+            from purchase_order_items i
+            join purchase_orders o on o.id = i.order_id
+            join suppliers s on s.id = o.supplier_id
+            where i.goods_id in (:goodsIds)
+              and o.supplier_id is not null
+              and o.is_deleted = false
+              and s.is_deleted = false
+              and s.is_internal_workshop = false
+            order by i.goods_id, o.created_at desc, o.id desc, i.id desc
+            """, nativeQuery = true)
+    List<Object[]> findLastTermsPerGoods(@Param("goodsIds") Collection<UUID> goodsIds);
 }

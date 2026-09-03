@@ -9,6 +9,7 @@ import java.lang.reflect.RecordComponent;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -68,7 +69,7 @@ class WarehouseQualityResultApiContractTest {
                 .contains(" or ");
 
         Method list = WarehouseQualityResultController.class.getDeclaredMethod(
-                "list", String.class, String.class, String.class, int.class, int.class);
+                "list", String.class, String.class, String.class, LocalDate.class, LocalDate.class, int.class, int.class);
         Method detail = WarehouseQualityResultController.class.getDeclaredMethod(
                 "detail", String.class, UUID.class);
         // 读接口只吃类级任一视图权限，方法级不得再叠加更严的口径。

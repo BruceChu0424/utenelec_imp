@@ -56,6 +56,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 分类分段范式（ADR-066）：状态默认不选不发请求（引导占位），
+      // 先点「待拣货」段加载列表，再点「拣货中」验证状态筛选下发。
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('warehouse-sales-outbound-status')),
+          matching: find.text('待拣货'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
       expect(
         find.byKey(const Key('warehouse-sales-outbound-table')),
         findsOneWidget,
@@ -157,6 +167,8 @@ class _OutboundGateway implements WarehouseSalesOutboundGateway {
     int size = 20,
     String? keyword,
     String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     workStatuses.add(warehouseWorkStatus);
     return PagedResult(

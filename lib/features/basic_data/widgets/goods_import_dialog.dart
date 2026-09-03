@@ -24,14 +24,17 @@ Future<void> showGoodsImportDialog(
 }) {
   return showDialog<void>(
     context: context,
-    builder: (ctx) => Dialog(
-      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 580,
-          maxHeight: MediaQuery.sizeOf(ctx).height * 0.85,
+    // 导入弹窗文字（步骤说明/错误结果）可框选复制（准则 §3.4）。
+    builder: (ctx) => SelectionArea(
+      child: Dialog(
+        shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 580,
+            maxHeight: MediaQuery.sizeOf(ctx).height * 0.85,
+          ),
+          child: _GoodsImportDialog(onImported: onImported),
         ),
-        child: _GoodsImportDialog(onImported: onImported),
       ),
     ),
   );

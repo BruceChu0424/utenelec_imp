@@ -265,7 +265,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
                         ),
                       ),
                     ),
-                    SelectionArea(child: _headerCard(theme, names)),
+                    // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
+                    // SelectionArea（准则 §3.4），无需再单独包。
+                    _headerCard(theme, names),
                     if (_cfg.type == FinanceDocType.receipt &&
                         _detail!.receiptKind == 'CUSTOMER_PREPAYMENT' &&
                         _detail!.salesOrderId != null) ...[

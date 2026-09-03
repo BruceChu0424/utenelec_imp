@@ -60,7 +60,7 @@ class ProcurementFinanceSubmitterOwnerGuardTest {
         ApiException stopped = assertThrows(
                 ApiException.class,
                 () -> fixture.service().approveBatch(List.of(
-                        duplicate, duplicate)));
+                        duplicate, duplicate), null));
 
         assertEquals(ErrorCode.VALIDATION_FAILED, stopped.getCode());
         verify(fixture.port(), never()).requireFinanceSubmitterWritable(any());

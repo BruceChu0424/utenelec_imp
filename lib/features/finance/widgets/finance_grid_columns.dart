@@ -135,6 +135,26 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
         : financeExactDecimalFromUnits(balanceUnits - cashUnits);
   }
 
+  /// 深拷贝（明细复制/粘贴用，allocate/transfer 模式）：拷用户录入（金额/数量/单价/
+  /// 汇率/核销/备注/部门）与下拉/日期选择（费用/收入风格、转入账户、转入日期）。
+  /// settle 台账绑定（appliedLedgerId 等）不拷——核销明细由「引用应收应付」生成，
+  /// 该模式无增删行操作条与行菜单，正常到不了 clone。金额文本回填即触发
+  /// [_syncFromAmountField]，amountNotifier/表尾合计自动同步。
+  FinanceGridRow clone() {
+    final c = FinanceGridRow(mode: mode)
+      ..styleId = styleId
+      ..inAccountId = inAccountId
+      ..occurDate = occurDate;
+    c.department.text = department.text;
+    c.qty.text = qty.text;
+    c.price.text = price.text;
+    c.amount.text = amount.text;
+    c.exchangeRate.text = exchangeRate.text;
+    c.writeOff.text = writeOff.text;
+    c.remark.text = remark.text;
+    return c;
+  }
+
   @override
   void dispose() {
     qty.dispose();

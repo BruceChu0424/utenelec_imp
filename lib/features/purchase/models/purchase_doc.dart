@@ -137,6 +137,7 @@ class PurchaseDocItem {
     this.productionPlanNo,
     this.salesOrderNo,
     this.remark,
+    this.sourceRequests = const [],
   });
 
   final String? id;
@@ -169,6 +170,10 @@ class PurchaseDocItem {
   final String? salesOrderNo;
   final String? remark;
 
+  /// 全部来源申请（V463 同货品合并行多来源）：明细 id + 申请单 id + 单号，
+  /// 稳定顺序与 sources.line_no 一致；单来源行一条、手工/历史行为空。
+  final List<PurchaseSourceRequestRef> sourceRequests;
+
   factory PurchaseDocItem.fromJson(Map<String, dynamic> json) =>
       PurchaseDocItem(
         id: json['id'] as String?,
@@ -196,6 +201,32 @@ class PurchaseDocItem {
         productionPlanNo: json['productionPlanNo'] as String?,
         salesOrderNo: json['salesOrderNo'] as String?,
         remark: json['remark'] as String?,
+        sourceRequests: [
+          for (final entry
+              in (json['sourceRequests'] as List<dynamic>? ??
+                  const <dynamic>[]))
+            PurchaseSourceRequestRef.fromJson(entry as Map<String, dynamic>),
+        ],
+      );
+}
+
+/// 订货行的来源采购申请引用（V463 合并行多来源）。
+class PurchaseSourceRequestRef {
+  const PurchaseSourceRequestRef({
+    required this.requestItemId,
+    this.requestId,
+    this.billNo,
+  });
+
+  final String requestItemId;
+  final String? requestId;
+  final String? billNo;
+
+  factory PurchaseSourceRequestRef.fromJson(Map<String, dynamic> json) =>
+      PurchaseSourceRequestRef(
+        requestItemId: json['requestItemId'] as String,
+        requestId: json['requestId'] as String?,
+        billNo: json['billNo'] as String?,
       );
 }
 

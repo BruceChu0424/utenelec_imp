@@ -13,6 +13,7 @@ import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,8 @@ public class WarehouseSalesOutboundProjectionService {
     public PageResponse<WarehouseSalesOutboundListItem> list(
             String keyword,
             String warehouseWorkStatus,
+            LocalDate dateFrom,
+            LocalDate dateTo,
             int page,
             int size) {
         PageResponse<ShipmentListItem> source = shipments.list(
@@ -47,8 +50,8 @@ public class WarehouseSalesOutboundProjectionService {
                         null,
                         (short) 1,
                         normalize(warehouseWorkStatus),
-                        null,
-                        null),
+                        dateFrom,
+                        dateTo),
                 page,
                 size,
                 null,

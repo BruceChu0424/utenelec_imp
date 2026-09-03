@@ -24,7 +24,10 @@ public class OrderSaveRequest {
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private UUID purchaserId;
-    @NotNull(message = "采购订货单必须选择结账方式")
+    /**
+     * 结账方式：单张创建/编辑必填（服务端 create/update 运行时校验，原 @NotNull
+     * 已随批量拆单放开——批量请求头不再携带商业条款，改为逐行校验后按组合归集）。
+     */
     private UUID settlementMethodId;
     private Integer settlementStyleLegacy;
     private LocalDate deliverDate;

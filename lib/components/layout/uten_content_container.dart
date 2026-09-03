@@ -9,6 +9,11 @@
 // 注意：gutter 基于 LayoutBuilder 拿到的"可用宽度"（父容器实际宽度），
 // 而不是屏幕宽度——桌面端被侧边栏挤窄的内容区也能正确取 gutter。
 //
+// 文字框选：默认把 child 包一层局部 SelectionArea（页面正文文字可拖选复制，
+// 悬停自动变文本光标；手机长按弹复制工具条）。是页面级选择区的标准挂点——
+// 局部而非全局，外壳轮询（徽章/通知）在选择区外，不触发框架 CME（准则 §3.4）。
+// 页内自动轮询做结构重建的页面（如生产物料分析）必须传 selectable:false 退出。
+//
 // 用法：
 //   UtenContentContainer(child: 页面内容)          // 列表/工作台等宽页面
 //   UtenContentContainer.narrow(child: 表单)       // 表单/详情等窄页面（maxWidth 1120）
@@ -31,6 +36,7 @@ class UtenContentContainer extends StatelessWidget {
     this.maxWidth = UtenBreakpoints.maxContentWidth,
     this.padding,
     this.center = true,
+    this.selectable = true,
   });
 
   /// 窄内容变体：表单 / 详情页专用（maxWidth 1120）
@@ -39,12 +45,14 @@ class UtenContentContainer extends StatelessWidget {
     required Widget child,
     EdgeInsetsGeometry? padding,
     bool center = true,
+    bool selectable = true,
   }) {
     return UtenContentContainer(
       key: key,
       maxWidth: narrowMaxWidth,
       padding: padding,
       center: center,
+      selectable: selectable,
       child: child,
     );
   }
@@ -57,12 +65,14 @@ class UtenContentContainer extends StatelessWidget {
     Key? key,
     required Widget child,
     EdgeInsetsGeometry? padding,
+    bool selectable = true,
   }) {
     return UtenContentContainer(
       key: key,
       maxWidth: wideMaxWidth,
       padding: padding,
       center: false,
+      selectable: selectable,
       child: child,
     );
   }
@@ -85,6 +95,10 @@ class UtenContentContainer extends StatelessWidget {
   /// 是否居中（false 时内容靠左，仅钳制最大宽度）
   final bool center;
 
+  /// 是否把 child 包一层局部 SelectionArea（文字框选复制；页内有结构重建轮询的
+  /// 页面传 false 退出，见类注释）。
+  final bool selectable;
+
   /// 响应式水平 gutter：<600 取 16，<840 取 24，>=840 取 32
   static double gutterForWidth(double width) {
     if (width < UtenBreakpoints.mediumStart) return 16;
@@ -104,7 +118,11 @@ class UtenContentContainer extends StatelessWidget {
 
         Widget content = ConstrainedBox(
           constraints: BoxConstraints(maxWidth: math.min(maxWidth, available)),
-          child: SizedBox(width: double.infinity, child: child),
+          child: SizedBox(
+            width: double.infinity,
+            // 局部 SelectionArea：页面正文文字可框选复制（准则 §3.4 局部包裹口径）。
+            child: selectable ? SelectionArea(child: child) : child,
+          ),
         );
 
         if (center) {

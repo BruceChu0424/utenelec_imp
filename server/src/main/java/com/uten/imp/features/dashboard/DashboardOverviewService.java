@@ -261,7 +261,7 @@ public class DashboardOverviewService {
             String titleSuffix,
             String route) {
         FulfillmentWorkbenchPage.Summary summary =
-                fulfillmentWorkbench.query(department, "", "", "", 1, 1).summary();
+                fulfillmentWorkbench.query(department, "", "", "", null, null, 1, 1).summary();
         if (summary.openTasks() == 0) return;
         todos.add(new TodoCard(
                 "fulfillment-" + id,

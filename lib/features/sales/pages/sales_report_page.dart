@@ -356,6 +356,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
                 ),
               ),
               body: UtenListTwoPane(
+                splitPersistenceKey: 'sales.report',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),

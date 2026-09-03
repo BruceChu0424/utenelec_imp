@@ -85,9 +85,12 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             return;
         }
         // 待检行 → 收货行 → 订货行 → 来源申请/委外申请明细（外部锚点）。
+        // V463：合并订货行逐来源展开（按 sources.line_no FIFO），入库量在来源间
+        // 先到先得，各来源的分摊容量（action allocation）仍逐来源封顶防重复归属。
         List<Object[]> anchors = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT inspection.goods_id, inspection.color_id,
-                               order_item.id, order_item.%s
+                        SELECT DISTINCT inspection.goods_id, inspection.color_id,
+                               order_item.id, src.%s AS external_item_id,
+                               src.line_no, src.id
                         FROM procurement_inspection_items inspection
                         JOIN %s receipt_item
                           ON receipt_item.id = inspection.receipt_item_id
@@ -95,35 +98,73 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         JOIN %s order_item
                           ON order_item.id = receipt_item.order_item_id
                          AND order_item.is_deleted = FALSE
+                        JOIN %s src
+                          ON src.order_item_id = order_item.id
                         WHERE inspection.id = :inspectionItemId
                           AND inspection.receipt_type = :receiptType
                           AND inspection.receipt_id = :receiptId
+                        ORDER BY src.line_no, src.id
                         """.formatted(
                         purchase ? "request_item_id" : "application_item_id",
                         purchase ? "purchase_receipt_items" : "subcontract_receipt_items",
-                        purchase ? "purchase_order_items" : "subcontract_order_items"))
+                        purchase ? "purchase_order_items" : "subcontract_order_items",
+                        purchase
+                                ? "purchase_order_item_sources"
+                                : "subcontract_order_item_sources"))
                 .setParameter("inspectionItemId", inspectionItemId)
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId));
         if (anchors.isEmpty()) {
-            return; // 无订货来源的行（不应存在：到货控制已强制逐行关联订货明细）
+            // 无 sources 的历史/手工行：退回订货行主锚点单来源（V463 前行为）。
+            anchors = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                            SELECT DISTINCT inspection.goods_id, inspection.color_id,
+                                   order_item.id, order_item.%s
+                            FROM procurement_inspection_items inspection
+                            JOIN %s receipt_item
+                              ON receipt_item.id = inspection.receipt_item_id
+                             AND receipt_item.is_deleted = FALSE
+                            JOIN %s order_item
+                              ON order_item.id = receipt_item.order_item_id
+                             AND order_item.is_deleted = FALSE
+                            WHERE inspection.id = :inspectionItemId
+                              AND inspection.receipt_type = :receiptType
+                              AND inspection.receipt_id = :receiptId
+                            """.formatted(
+                            purchase ? "request_item_id" : "application_item_id",
+                            purchase ? "purchase_receipt_items" : "subcontract_receipt_items",
+                            purchase ? "purchase_order_items" : "subcontract_order_items"))
+                    .setParameter("inspectionItemId", inspectionItemId)
+                    .setParameter("receiptType", receiptType)
+                    .setParameter("receiptId", receiptId));
+        }
+        anchors = anchors.stream()
+                .filter(row -> row[3] != null)
+                .toList();
+        if (anchors.isEmpty()) {
+            return; // 订货行无申请来源（历史/手工），不参与分析绑定
         }
         UUID goodsId = (UUID) anchors.getFirst()[0];
         UUID colorId = (UUID) anchors.getFirst()[1];
-        UUID externalItemId = (UUID) anchors.getFirst()[3];
-        if (externalItemId == null) {
-            return; // 订货行无申请来源（历史/手工），不参与分析绑定
-        }
         inventoryLock.lock(new InventoryKey(goodsId, colorId));
         String supplyType = purchase
                 ? SUPPLY_PURCHASE_REQUEST_ITEM
                 : SUPPLY_SUBCONTRACT_APPLICATION_ITEM;
-        lockClaimantAnalyses(externalItemId, goodsId, colorId);
+        // 先锁定全部来源的候选分析（analysis.id 全序），再逐来源 FIFO 分摊。
+        for (Object[] anchor : anchors) {
+            lockClaimantAnalyses((UUID) anchor[3], goodsId, colorId);
+        }
 
         // 精确归属候选：按供应行动分摊行（analysis_material_id）逐行锁定容量。
         // V307 之前只有 analysis_id 粒度；现在每次 PASS 建一条物理预留及其
         // 一对一 exact-peg 子账，避免同分析内相同物料的兄弟产品抢占。
-        jakarta.persistence.Query claimantQuery = em.createNativeQuery("""
+        BigDecimal remaining = stockedBaseQty;
+        Map<UUID, BigDecimal> legacyRemainingByAnalysis = new LinkedHashMap<>();
+        for (Object[] anchor : anchors) {
+            if (remaining.signum() <= 0) {
+                break;
+            }
+            UUID externalItemId = (UUID) anchor[3];
+            List<Object[]> claimants = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT allocation.id, allocation.analysis_id,
                                allocation.analysis_material_id,
                                allocation.allocated_qty
@@ -146,43 +187,41 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                  allocation.created_at, allocation.id
                         FOR UPDATE OF action, allocation
                         """)
-                .setParameter("externalItemId", externalItemId)
-                .setParameter("goodsId", goodsId)
-                .setParameter("colorId", colorId);
-        List<Object[]> claimants = NativeQueryResults.objectArrayRows(claimantQuery);
+                    .setParameter("externalItemId", externalItemId)
+                    .setParameter("goodsId", goodsId)
+                    .setParameter("colorId", colorId));
 
-        BigDecimal remaining = stockedBaseQty;
-        Map<UUID, BigDecimal> legacyRemainingByAnalysis = new LinkedHashMap<>();
-        for (Object[] claimant : claimants) {
-            if (remaining.signum() <= 0) {
-                break;
+            for (Object[] claimant : claimants) {
+                if (remaining.signum() <= 0) {
+                    break;
+                }
+                UUID allocationId = (UUID) claimant[0];
+                UUID analysisId = (UUID) claimant[1];
+                UUID analysisMaterialId = (UUID) claimant[2];
+                BigDecimal allocatedCap = decimal(claimant[3]);
+                BigDecimal exactAttributed = exactAttributed(allocationId);
+                // 历史 V298 预留没有 exact 子账。它们仍保留分析级池语义，但必须
+                // 先按稳定顺序占用该分析的分摊容量，避免升级后重复绑定超量。
+                BigDecimal legacyRemaining = legacyRemainingByAnalysis.computeIfAbsent(
+                        analysisId, ignored -> legacyAttributed(
+                                analysisId, supplyType, externalItemId));
+                BigDecimal capacityAfterExact = allocatedCap.subtract(exactAttributed)
+                        .max(BigDecimal.ZERO);
+                BigDecimal legacyUse = capacityAfterExact.min(legacyRemaining);
+                legacyRemainingByAnalysis.put(
+                        analysisId, legacyRemaining.subtract(legacyUse));
+                BigDecimal headroom = capacityAfterExact.subtract(legacyUse);
+                BigDecimal take = remaining.min(headroom.max(BigDecimal.ZERO));
+                if (take.signum() <= 0) {
+                    continue;
+                }
+                insertExactReservation(
+                        allocationId, analysisId, analysisMaterialId,
+                        warehouseId, goodsId, colorId, take,
+                        supplyType, externalItemId, receiptType, receiptId,
+                        dispositionEventId, warehouseStockInItemId);
+                remaining = remaining.subtract(take);
             }
-            UUID allocationId = (UUID) claimant[0];
-            UUID analysisId = (UUID) claimant[1];
-            UUID analysisMaterialId = (UUID) claimant[2];
-            BigDecimal allocatedCap = decimal(claimant[3]);
-            BigDecimal exactAttributed = exactAttributed(allocationId);
-            // 历史 V298 预留没有 exact 子账。它们仍保留分析级池语义，但必须
-            // 先按稳定顺序占用该分析的分摊容量，避免升级后重复绑定超量。
-            BigDecimal legacyRemaining = legacyRemainingByAnalysis.computeIfAbsent(
-                    analysisId, ignored -> legacyAttributed(
-                            analysisId, supplyType, externalItemId));
-            BigDecimal capacityAfterExact = allocatedCap.subtract(exactAttributed)
-                    .max(BigDecimal.ZERO);
-            BigDecimal legacyUse = capacityAfterExact.min(legacyRemaining);
-            legacyRemainingByAnalysis.put(
-                    analysisId, legacyRemaining.subtract(legacyUse));
-            BigDecimal headroom = capacityAfterExact.subtract(legacyUse);
-            BigDecimal take = remaining.min(headroom.max(BigDecimal.ZERO));
-            if (take.signum() <= 0) {
-                continue;
-            }
-            insertExactReservation(
-                    allocationId, analysisId, analysisMaterialId,
-                    warehouseId, goodsId, colorId, take,
-                    supplyType, externalItemId, receiptType, receiptId,
-                    dispositionEventId, warehouseStockInItemId);
-            remaining = remaining.subtract(take);
         }
         // 超出分析分摊量的部分（含财务特批超收）不绑定，按公共现货处理。
     }

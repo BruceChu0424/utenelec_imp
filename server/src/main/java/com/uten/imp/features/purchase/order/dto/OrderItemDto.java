@@ -6,6 +6,7 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Getter
@@ -35,4 +36,13 @@ public class OrderItemDto {
     private String productionPlanNo;
     private String salesOrderNo;
     private String remark;
+    /**
+     * 全部来源申请（V463 合并行多来源；稳定顺序与 sources.line_no 一致）：
+     * 申请明细 id + 申请单 id（跳详情用）+ 申请单号。单来源行同样返回一条。
+     */
+    private List<SourceRequestDoc> sourceRequests;
+
+    /** 订货行的来源申请引用（合并行多来源展示/编辑回显/跳转）。 */
+    public record SourceRequestDoc(
+            UUID requestItemId, UUID requestId, String billNo) {}
 }

@@ -227,19 +227,19 @@ flowchart TD
 - **点击行为**：任意优先级顶部条点击均先标注已读，再跳 `notice.actionRoute`（附 `returnTo=/notice`）；空路由或历史脏路由回退通知详情弹层。顶部关闭只确认本设备已真实展示，不清通知未读，不冒充业务完成。
 - **排队、确认与恢复**：每个 active notice ID 独立持有 `onDismissed`；只有真实关闭才加入 deliveredIds 并持久化，重复回调幂等忽略。超过 3 条只限制同时完整展示，队列不删除；`clear()`、身份切换、宿主销毁或进程中断不会误确认，重启/全量对账只重放未关闭项。
 - **业务事件覆盖**：到达 feed 面向当前员工全部可见 Notice；业务模块只负责可靠落库/outbox、接收人、`source_event`、priority、业务操作者/时间/原因和 actionRoute，不直接操作 Flutter 弹层。角标另读真实任务状态；通知未读不能冒充未解决业务。
-- **V459 审核待办卡（ADR-063）**：`source_event` 在服务端 `ReviewNoticeCatalog` 注册的通知
-  （DTO `interactive=true`）不走普通顶部条，改走 `dispatchReviewCard`：带【去审核（filled）/
-  稍后再看】操作按钮区与动态状态行（`statusLine` ValueNotifier），停留 20s（悬停暂停）。
-  弹前先调 `GET /notices/pending-review-status` 真态校验（已办结不弹）；停留期间每 30s 心跳：
-  他人认领 → 状态行「XX 正在审核」，办结 → 自动收卡 + 「已由他人处理」轻提示。两按钮均
-  标注已读（R6）；稍后再看 = 服务端 `snoozed_until` 15 分钟（跨设备一致，到点未办结重弹）。
-  `banner()` 新增 `actions`/`statusLine` 参数并返回卡片 id（办结收卡用）。arrivals 服务端
-  排除已办结（resolved_at 非空）与未到期 snooze 的通知。
-- **V459 第二轮（居中审核弹窗）**：同一事件三形态并存——通知中心条目 + 顶部条 +
-  **居中审核弹窗**（[`ReviewPendingDialog`](ReviewPendingDialog.md)，主交互：认领状态
-  实时/去审核/稍后再看/办结自关）。**每次登录检查**：`ReviewPendingLoginGate` 登录后 3s
+- **V459 审核待办卡（ADR-063；2026-09-03 第三轮修订：纯显示）**：`source_event`
+  在服务端 `ReviewNoticeCatalog` 注册的通知（DTO `interactive=true`）不走普通顶部条，
+  改走 `dispatchReviewCard`。顶部条**纯显示**——不带操作按钮与动态状态行，停留 20s
+  （悬停暂停）；操作入口只在同时弹出的居中审核弹窗（避免同一待办两处重复按钮）。
+  弹前先调 `GET /notices/pending-review-status` 真态校验（已办结不弹）。
+  `banner()` 的 `actions`/`statusLine` 参数与返回卡片 id 的能力保留备用。
+  arrivals 服务端排除已办结（resolved_at 非空）与未到期 snooze 的通知。
+- **V459 第二轮（居中审核弹窗）**：同一事件三形态并存——通知中心条目 + 顶部条
+  （纯显示）+ **居中审核弹窗**（[`ReviewPendingDialog`](ReviewPendingDialog.md)，
+  主交互：认领状态实时/**去工作台处理**/稍后再看/办结自关/新到待办并入）。
+  **每次登录检查**：`ReviewPendingLoginGate` 登录后 3s
   拉 `GET /notices/pending-reviews`（未办结+未稍后）有则弹；snooze 是唯一静默途径，
-  X 关闭下次登录仍提醒。弹窗单例防叠窗。
+  X 关闭下次登录仍提醒。弹窗单例防叠窗（后到待办并入同一弹窗）。
 
 ## 八、避坑
 

@@ -81,6 +81,64 @@ public final class ProductionFinishedArrivalContracts {
         }
     }
 
+    /** 多张报工单一次性汇总登记：一次提交逐单复用同一登记事务（每单一份 FQC）。 */
+    public record BatchArrivalRegistrationRequest(
+            @NotBlank
+            @Size(min = 8, max = 128)
+            @Pattern(regexp = "[A-Za-z0-9._:-]+",
+                    message = "幂等键只能包含字母、数字或 ._:-")
+            String idempotencyKey,
+            @Valid
+            @NotNull
+            @Size(min = 1, max = 50)
+            List<BatchReportRegistrationRequest> reports) {
+    }
+
+    public record BatchReportRegistrationRequest(
+            @NotNull UUID reportId,
+            @NotNull UUID warehouseId,
+            @Valid
+            @NotNull
+            @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
+            List<ArrivalRegistrationItemRequest> items) {
+    }
+
+    public record BatchArrivalRegistrationResult(
+            int registeredCount,
+            List<RegisteredReportView> reports) {
+
+        public BatchArrivalRegistrationResult {
+            reports = List.copyOf(reports);
+        }
+    }
+
+    public record RegisteredReportView(
+            UUID reportId,
+            String reportNo,
+            UUID warehouseId,
+            String warehouseName) {
+    }
+
+    /** 批量登记后的库位记忆汇总（逐单聚合 remembered/unchanged/ambiguous 与告警）。 */
+    public record BatchRememberPlacesResult(
+            int remembered,
+            int unchanged,
+            int ambiguous,
+            List<String> warnings) {
+
+        public BatchRememberPlacesResult {
+            warnings = List.copyOf(warnings);
+        }
+    }
+
+    /** 当前用户最近一次成品送检登记所用的成品仓（下次进入自动预选）。 */
+    public record LastWarehouseView(
+            UUID warehouseId,
+            String warehouseCode,
+            String warehouseName,
+            OffsetDateTime usedAt) {
+    }
+
     public record ArrivalRegistrationItemView(
             UUID reportItemId,
             Integer lineNo,

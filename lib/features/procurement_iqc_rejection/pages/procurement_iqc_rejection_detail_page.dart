@@ -6,6 +6,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -211,25 +212,22 @@ class _ProcurementIqcRejectionDetailPageState
             if (!expanded) {
               return ListView(children: [...facts, ...workflow]);
             }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: ListView(
-                    padding: const EdgeInsets.only(right: UtenSpacing.s8),
-                    children: facts,
-                  ),
+            // 大屏双栏（原 3:2 定比）统一接入可拖拽分栏（2026-09-03）：左事实区
+            // 可拖宽，初始/复位宽取布局宽的 58% 对齐旧 flex 3:2 观感。
+            return LayoutBuilder(
+              builder: (context, constraints) => UtenSplitView(
+                persistenceKey: 'procurementIqc.rejectionDetail',
+                initialLeadingWidth: constraints.maxWidth * 0.58,
+                minLeadingWidth: 320,
+                leading: ListView(
+                  padding: const EdgeInsets.only(right: UtenSpacing.s8),
+                  children: facts,
                 ),
-                const VerticalDivider(width: UtenSpacing.s16),
-                Expanded(
-                  flex: 2,
-                  child: ListView(
-                    padding: const EdgeInsets.only(left: UtenSpacing.s8),
-                    children: workflow,
-                  ),
+                trailing: ListView(
+                  padding: const EdgeInsets.only(left: UtenSpacing.s8),
+                  children: workflow,
                 ),
-              ],
+              ),
             );
           },
         ),
@@ -301,7 +299,7 @@ class _ProcurementIqcRejectionDetailPageState
   );
 
   Widget _buildQuantityAndAmount(ProcurementIqcRejectionCase item) => _section(
-    title: '拒收数量与冻结金额',
+    title: '不合格数量与金额（本币）',
     icon: Icons.rule_folder_outlined,
     description: item.priceMasked
         ? '金额已由服务端按权限脱敏；view_all 不自动授予金额。'

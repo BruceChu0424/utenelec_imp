@@ -283,6 +283,9 @@ class OperationsWorkbenchTask {
     required this.actionDocument,
     required this.actionDocItemId,
     required this.actionDocumentRestricted,
+    this.goodsCount = 0,
+    this.openLineCount = 0,
+    this.actionItemIds = const [],
   });
 
   final String taskId;
@@ -310,10 +313,24 @@ class OperationsWorkbenchTask {
   final String? actionDocItemId;
   final bool actionDocumentRestricted;
 
+  /// ADR-065 修订（2026-09-03）：采购/委外行按「当前执行单据」归组——
+  /// 一行=一张采购/委外申请（申请待分解阶段）或一张订货单（后续阶段）。
+  final int goodsCount;
+  final int openLineCount;
+  final List<String> actionItemIds;
+
   String get id => taskId;
   String get taskNo => taskId;
-  String get title => goodsName;
+  String get title => isDocumentGrouped ? goodsSummaryLabel : goodsName;
   String get sourceNo => planNo;
+
+  /// 归组行：货品身份列显示规模摘要（“5 种物料”），单货品单据照旧逐列显示。
+  bool get isDocumentGrouped =>
+      goodsCount > 1 || openLineCount > 1 || actionItemIds.length > 1;
+
+  String get goodsSummaryLabel =>
+      '$goodsCount 种物料${openLineCount > 0 ? ' · $openLineCount 行' : ''}';
+
   String get statusLabel {
     // 订单级阶段（等待财务审核/财务已通过/财务驳回/已完成）优先用任务状态标签，
     // 否则会被采购单据标签覆盖，无法区分各阶段。
@@ -332,7 +349,11 @@ class OperationsWorkbenchTask {
       : operationsWorkbenchExceptionLabel(exceptionCode!);
   String get counterparty => warehouseName.isEmpty ? '—' : warehouseName;
   String get dueDate => needDate ?? expectedDate ?? '—';
-  String get quantityText => '${_displayNumber(openQty)} $unitName'.trim();
+
+  /// 单货品单据照旧显示数量；多货品归组行不同单位不能加总，显示行级摘要。
+  String get quantityText => isDocumentGrouped
+      ? (openLineCount > 0 ? '$openLineCount 行待处理' : '$goodsCount 种物料')
+      : '${_displayNumber(openQty)} $unitName'.trim();
   bool get hasException => exceptionCode != null;
 
   factory OperationsWorkbenchTask.fromJson(
@@ -345,17 +366,19 @@ class OperationsWorkbenchTask {
       planId: _optionalString(json, 'planId'),
       planNo: _optionalString(json, 'planNo') ?? '—',
       warehouseName: _optionalString(json, 'warehouseName') ?? '',
-      goodsCode: _requiredString(json, 'goodsCode'),
-      goodsName: _requiredString(json, 'goodsName'),
+      // 归组行（多货品合并单）货品列为空：身份由 goodsSummaryLabel 表达。
+      goodsCode: _optionalString(json, 'goodsCode') ?? '',
+      goodsName: _optionalString(json, 'goodsName') ?? '',
       spec: _optionalString(json, 'spec') ?? '',
       colorName: _optionalString(json, 'colorName') ?? '',
       unitName: _optionalString(json, 'unitName') ?? '',
       supplyRoute: _requiredString(json, 'supplyRoute'),
-      requiredQty: _requiredNumber(json, 'requiredQty'),
-      allocatedQty: _requiredNumber(json, 'allocatedQty'),
-      fulfilledQty: _requiredNumber(json, 'fulfilledQty'),
-      supplyPeggedQty: _requiredNumber(json, 'supplyPeggedQty'),
-      openQty: _requiredNumber(json, 'openQty'),
+      // 归组行数量列为空（不同单位不能加总），回退 0 由摘要列表达。
+      requiredQty: _optionalNumber(json, 'requiredQty') ?? 0,
+      allocatedQty: _optionalNumber(json, 'allocatedQty') ?? 0,
+      fulfilledQty: _optionalNumber(json, 'fulfilledQty') ?? 0,
+      supplyPeggedQty: _optionalNumber(json, 'supplyPeggedQty') ?? 0,
+      openQty: _optionalNumber(json, 'openQty') ?? 0,
       taskStatus: _requiredString(json, 'taskStatus'),
       needDate: _optionalString(json, 'needDate'),
       expectedDate: _optionalString(json, 'expectedDate'),
@@ -364,6 +387,13 @@ class OperationsWorkbenchTask {
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,
+      goodsCount: (json['goodsCount'] as num?)?.toInt() ?? 0,
+      openLineCount: (json['openLineCount'] as num?)?.toInt() ?? 0,
+      actionItemIds:
+          (json['actionItemIds'] as List?)
+              ?.map((id) => id.toString())
+              .toList(growable: false) ??
+          const [],
     );
   }
 }
@@ -413,11 +443,16 @@ class OperationsWorkbenchData {
     ...metrics.map((metric) => metric.statusFilter).whereType<String>(),
   ], operationsWorkbenchStatusLabel);
 
-  List<OperationsWorkbenchFilterOption> get exceptionOptions =>
-      _options(<String>[
-        ...summary.exceptionCounts.keys,
-        ...metrics.map((metric) => metric.exceptionFilter).whereType<String>(),
-      ], operationsWorkbenchExceptionLabel);
+  List<OperationsWorkbenchFilterOption> get exceptionOptions => _options(
+    <String>[
+      ...summary.exceptionCounts.keys,
+      ...metrics.map((metric) => metric.exceptionFilter).whereType<String>(),
+    ],
+    operationsWorkbenchExceptionLabel,
+  ).where((option) => option.value != 'OVERDUE_ANY').toList();
+  // OVERDUE_ANY（全部逾期）2026-09-03 起不显示：它是旧指标卡的聚合筛选，
+  // 与具体异常段（已逾期/逾期缺料等）重复，且聚合段无法回退到"无异常"
+  //（SegmentedButton 单选点已选段不回调）；具体异常段之间切换即可。
 
   factory OperationsWorkbenchData.fromJson(
     Map<String, dynamic> json,
@@ -573,6 +608,14 @@ num _requiredNumber(Map<String, dynamic> json, String key) {
     if (parsed != null) return parsed;
   }
   throw FormatException('履约工作台数值字段 $key 缺失或格式错误');
+}
+
+/// 归组行（多货品合并单）的数量列可为空——不同单位不能加总，由摘要列表达。
+num? _optionalNumber(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value is num) return value;
+  if (value is String) return num.tryParse(value);
+  return null;
 }
 
 int _requiredInt(Map<String, dynamic> json, String key) {

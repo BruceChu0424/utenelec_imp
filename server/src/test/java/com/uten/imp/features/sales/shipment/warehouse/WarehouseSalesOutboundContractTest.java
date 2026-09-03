@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
+import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -49,7 +50,7 @@ class WarehouseSalesOutboundContractTest {
                 .isEqualTo("hasAuthority('sales_shipment:warehouse-work')");
 
         Method list = WarehouseSalesOutboundController.class.getDeclaredMethod(
-                "list", String.class, String.class, int.class, int.class);
+                "list", String.class, String.class, LocalDate.class, LocalDate.class, int.class, int.class);
         Method detail = WarehouseSalesOutboundController.class.getDeclaredMethod(
                 "detail", UUID.class);
         Method command = WarehouseSalesOutboundController.class.getDeclaredMethod(

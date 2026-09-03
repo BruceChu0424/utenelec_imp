@@ -839,6 +839,7 @@ class _ProductionPlanEditPageState
                           _wireRow(r);
                           return r;
                         },
+                        cloneRow: (r) => r.clone(),
                       ),
                     ],
                   ),

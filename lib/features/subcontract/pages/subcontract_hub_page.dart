@@ -154,6 +154,9 @@ class SubcontractHubPage extends ConsumerWidget {
       ),
       body: SafeArea(
         child: UtenContentContainer(
+          // 轮询页不包选择区：委外任务徽章定时刷新（结构性闪现）与拖选并发有
+          // CME 风险（准则 §3.4，用户口径：轮询页不包）。
+          selectable: false,
           child: ListView(
             padding: EdgeInsets.only(
               top: UtenSpacing.s12,

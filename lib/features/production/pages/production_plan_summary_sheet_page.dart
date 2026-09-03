@@ -299,7 +299,8 @@ class _ProductionPlanSummarySheetPageState
           ),
         ),
       ),
-      body: SafeArea(child: _body()),
+      // 局部 SelectionArea：计划汇总页文字可框选复制（准则 §3.4；无周期轮询，可包）。
+      body: SelectionArea(child: SafeArea(child: _body())),
       bottomNavigationBar: _bottomBar(),
     );
   }

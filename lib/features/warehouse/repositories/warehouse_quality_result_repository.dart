@@ -13,6 +13,8 @@ abstract interface class WarehouseQualityResultGateway {
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
+    String? dateFrom,
+    String? dateTo,
   });
 
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
@@ -49,6 +51,8 @@ class WarehouseQualityResultRepository
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     final normalizedKeyword = keyword?.trim();
     final json = await api.get(
@@ -59,6 +63,8 @@ class WarehouseQualityResultRepository
         'receiptType': receiptType?.apiValue ?? 'ALL',
         if (workStatus != null) 'status': workStatus.apiValue,
         if (normalizedKeyword?.isNotEmpty == true) 'keyword': normalizedKeyword,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
       },
     );
     return PagedResult.fromJson(json, WarehouseQualityResultTask.fromJson);

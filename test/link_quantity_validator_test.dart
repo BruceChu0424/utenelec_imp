@@ -27,6 +27,23 @@ void main() {
         isNotNull,
       );
     });
+
+    test('allowOverRemaining（2026-09 订货超采）跳过上限但保留正数校验', () {
+      // 超过剩余量放行（超采/超委外备货是业务口径）。
+      expect(
+        validateLinkQuantity('999', remaining: 2, allowOverRemaining: true),
+        isNull,
+      );
+      // 仍要求大于 0 且剩余量本身可用。
+      expect(
+        validateLinkQuantity('0', remaining: 2, allowOverRemaining: true),
+        '请输入大于 0 的本次数量',
+      );
+      expect(
+        validateLinkQuantity('1', remaining: 0, allowOverRemaining: true),
+        '该明细已无剩余可引入数量',
+      );
+    });
   });
 
   test('formatLinkQuantity removes only unnecessary trailing zeroes', () {

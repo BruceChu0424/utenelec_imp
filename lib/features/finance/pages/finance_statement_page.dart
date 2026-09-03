@@ -309,6 +309,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
                 ),
               ),
               body: UtenListTwoPane(
+                splitPersistenceKey: 'finance.statement',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),

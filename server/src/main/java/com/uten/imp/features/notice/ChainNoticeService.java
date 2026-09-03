@@ -89,6 +89,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     static final String EVENT_SHIPMENT_REJECTED = "SALES_SHIPMENT_REJECTED";
     static final String EVENT_PREPLAN_SUPPLY_ACTION_CREATED =
             "PREPLAN_SUPPLY_ACTION_CREATED";
+    static final String EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED =
+            "PREPLAN_SUPPLY_DOCUMENT_CREATED";
     static final String EVENT_SUBCONTRACT_PREPARATION_REQUIRED =
             "SUBCONTRACT_PREPARATION_REQUIRED";
     static final String EVENT_SUBCONTRACT_PREPARE_SHORTAGE =
@@ -278,6 +280,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         notifyShipmentRejected(aggregateId, payload.path("reason").asText(""));
                 case EVENT_PREPLAN_SUPPLY_ACTION_CREATED ->
                         notifyPreplanSupplyActionCreated(aggregateId);
+                case EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED ->
+                        notifyPreplanSupplyDocumentCreated(
+                                aggregateId, payload.path("documentType").asText(""));
                 case EVENT_SUBCONTRACT_PREPARATION_REQUIRED ->
                         notifySubcontractPreparationRequired(aggregateId);
                 case EVENT_SUBCONTRACT_PREPARE_SHORTAGE ->
@@ -1450,8 +1455,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                 JOIN subcontract_order_items order_item
                   ON order_item.id = receipt_item.order_item_id
                  AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                JOIN subcontract_order_item_sources src
+                  ON src.order_item_id = order_item.id
                 JOIN subcontract_application_items application_item
-                  ON application_item.id = order_item.application_item_id
+                  ON application_item.id = src.application_item_id
                  AND COALESCE(application_item.is_deleted, FALSE) = FALSE
                 JOIN subcontract_applications application
                   ON application.id = application_item.application_id
@@ -1728,6 +1735,78 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             } else {
                 return;
             }
+            notifyPreplanSupplyRecipients(
+                    TYPE_TASK,
+                    title,
+                    content,
+                    actionRoute,
+                    requiredViewAuthority);
+        });
+    }
+
+    /**
+     * ADR-065 修订（2026-09-03）：同批备料下达合并为一张采购/委外申请后，
+     * 通知按「单据」聚合——每张申请只给接收人提醒一次（单号 + N 种物料 +
+     * 直达详情），不再逐 action 重复发条。旧 action 级事件保留，仅用于
+     * 已入箱历史事件的投递兼容。
+     */
+    public void notifyPreplanSupplyDocumentCreated(UUID documentId, String documentType) {
+        boolean purchase = "PURCHASE_REQUEST".equals(documentType);
+        boolean subcontract = "SUBCONTRACT_APPLICATION".equals(documentType);
+        if (!purchase && !subcontract) return;
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED,
+                    "PREPLAN_SUPPLY_DOCUMENT",
+                    documentId,
+                    Map.of("documentType", documentType),
+                    EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED
+                            + ':' + documentType + ':' + documentId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> document = one(purchase ? """
+                    SELECT request.bill_no,
+                           COUNT(DISTINCT item.goods_id) AS goods_count,
+                           COUNT(item.id) AS line_count
+                    FROM purchase_requests request
+                    JOIN purchase_request_items item
+                      ON item.request_id = request.id AND item.is_deleted = FALSE
+                    WHERE request.id = ?
+                      AND request.is_deleted = FALSE
+                    GROUP BY request.bill_no
+                    """ : """
+                    SELECT application.bill_no,
+                           COUNT(DISTINCT item.goods_id) AS goods_count,
+                           COUNT(item.id) AS line_count
+                    FROM subcontract_applications application
+                    JOIN subcontract_application_items item
+                      ON item.application_id = application.id AND item.is_deleted = FALSE
+                    WHERE application.id = ?
+                      AND application.is_deleted = FALSE
+                    GROUP BY application.bill_no
+                    """, documentId);
+            if (document == null) return;
+
+            String billNo = str(document.get("bill_no"));
+            int goodsCount = document.get("goods_count") == null
+                    ? 0 : ((Number) document.get("goods_count")).intValue();
+            int lineCount = document.get("line_count") == null
+                    ? 0 : ((Number) document.get("line_count")).intValue();
+            String noun = purchase ? "\u91c7\u8d2d" : "\u59d4\u5916";
+            String title = "\u65b0" + noun + "\u9700\u6c42\uff1a" + billNo
+                    + "\uff08" + goodsCount + " \u79cd\u7269\u6599\uff09";
+            String content = "\u8ba1\u5212\u90e8\u5df2\u4e0b\u8fbe" + noun
+                    + "\u7533\u8bf7 " + billNo + "\uff0c\u5171 " + goodsCount
+                    + " \u79cd\u7269\u6599\uff08" + lineCount
+                    + " \u6761\u660e\u7ec6\uff09\u3002\u8bf7\u5230" + noun
+                    + "\u7533\u8bf7\u8be6\u60c5\u6838\u5bf9\uff0c\u5e76\u4ece"
+                    + noun + "\u4efb\u52a1\u4e2d\u5fc3\u7ee7\u7eed\u5206\u89e3\u8ba2\u8d27\u3002";
+            String actionRoute = (purchase ? "/purchase/requests/"
+                    : "/subcontract/applications/") + documentId;
+            String requiredViewAuthority = purchase
+                    ? PURCHASE_REQUEST_VIEW_AUTHORITY
+                    : SUBCONTRACT_APPLICATION_VIEW_AUTHORITY;
             notifyPreplanSupplyRecipients(
                     TYPE_TASK,
                     title,
@@ -2124,8 +2203,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     JOIN subcontract_order_items order_item
                       ON order_item.id = issue_item.order_item_id
                      AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                    JOIN subcontract_order_item_sources src
+                      ON src.order_item_id = order_item.id
                     JOIN subcontract_application_items application_item
-                      ON application_item.id = order_item.application_item_id
+                      ON application_item.id = src.application_item_id
                      AND COALESCE(application_item.is_deleted, FALSE) = FALSE
                     JOIN subcontract_applications application
                       ON application.id = application_item.application_id
@@ -2257,8 +2338,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             for (Map<String, Object> analysis : jdbc.queryForList("""
                     SELECT DISTINCT material_analysis.maker_id
                     FROM subcontract_order_items order_item
+                    JOIN subcontract_order_item_sources src
+                      ON src.order_item_id = order_item.id
                     JOIN subcontract_application_items application_item
-                      ON application_item.id = order_item.application_item_id
+                      ON application_item.id = src.application_item_id
                      AND COALESCE(application_item.is_deleted, FALSE) = FALSE
                     JOIN subcontract_applications application
                       ON application.id = application_item.application_id

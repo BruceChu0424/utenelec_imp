@@ -78,6 +78,7 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
+    // 页面级容器为唯一 gutter（面板内层容器已移除），375px 紧凑布局回归验证。
     await tester.binding.setSurfaceSize(const Size(375, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 

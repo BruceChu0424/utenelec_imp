@@ -1,14 +1,14 @@
-// 采购订货单行级供应商多选联动测试（滑入面板交互）：
-// 表头不显示供应商；勾选多行后点击任一选中行的供应商单元格 → 右侧滑入供应商面板
-// （分类树+列表+确定）→ 选一个供应商 → 所有选中行联动填上同一供应商。
+// 采购订货单行级条款多选联动测试（2026-09 行级商业条款改造后的专属编辑页）：
+// 表头不显示供应商/币种/结账方式；勾选多行后点击任一选中行的供应商单元格 →
+// 右侧滑入供应商面板（分类树+列表+确定）→ 选一个供应商 → 所有选中行联动填上同一供应商；
+// 操作条批量按钮为「统一设置条款 (N)」（一次写供应商+结账方式+币种+汇率+税率）。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
-import 'package:uten_imp/features/purchase/pages/purchase_doc_edit_page.dart';
+import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
@@ -22,16 +22,18 @@ void main() {
           apiClientProvider.overrideWithValue(_OrderApi()),
           sessionProvider.overrideWith(_EmptySessionNotifier.new),
         ],
-        child: const MaterialApp(
-          home: PurchaseDocEditPage(docType: PurchaseDocType.order),
-        ),
+        child: const MaterialApp(home: PurchaseOrderEditPage()),
       ),
     );
     await tester.pumpAndSettle();
 
-    // 表头不再有供应商下拉字段（行级录入口径）。
+    // 表头不再有供应商/币种/结账方式字段（行级录入口径）。
     expect(
       find.byWidgetPredicate((w) => w is UtenDropdownField && w.label == '供应商'),
+      findsNothing,
+    );
+    expect(
+      find.byWidgetPredicate((w) => w is UtenDropdownField && w.label == '币种'),
       findsNothing,
     );
 
@@ -48,8 +50,8 @@ void main() {
     await tester.pump();
     await tester.tap(checkboxes.at(1));
     await tester.pumpAndSettle();
-    // 操作条批量按钮显示已选 2 行。
-    expect(find.text('统一设供应商 (2)'), findsOneWidget);
+    // 操作条批量按钮显示已选 2 行（一次写全套条款）。
+    expect(find.text('统一设置条款 (2)'), findsOneWidget);
 
     // 点击第一个选中行的供应商单元格（必填未选显示红字提示）→ 右侧滑入供应商面板。
     final cells = find.text('必选供应商');

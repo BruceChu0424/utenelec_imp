@@ -132,6 +132,8 @@ final class WarehouseHistoryQueries {
         String filters = includeFilters ? """
                   -- null 参数类型坑：可选过滤一律 CAST(:param AS 类型) IS NULL OR ...
                   AND (CAST(:status AS smallint) IS NULL OR h.status = CAST(:status AS smallint))
+                  AND (CAST(:date_from AS date) IS NULL OR h.bill_date >= CAST(:date_from AS date))
+                  AND (CAST(:date_to AS date) IS NULL OR h.bill_date <= CAST(:date_to AS date))
                   AND (
                        CAST(:keyword AS text) = ''
                        OR LOWER(COALESCE(h.bill_no, '')) LIKE :keyword_pattern

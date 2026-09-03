@@ -153,9 +153,16 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     void makeNotificationIsRejectedWhileLowerLevelMaterialsArePending() throws Exception {
         String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
 
-        assertThat(commands).contains("\"MAKE\".equals(route)");
+        // V458/ADR-062 修订一②：MAKE 与有子层 SUBCONTRACT 同构——下层未齐套
+        // （lower_level_pending）一律拒绝下达，分路线文案。
         assertThat(commands).contains("lines.stream().anyMatch(MaterialView::lowerLevelPending)");
         assertThat(commands).contains("自制件的下层物料尚未齐套，请先完成底层备料再安排生产");
+        assertThat(commands).contains("该委外件的下层物料尚未齐套，请先完成底层备料再下达委外");
+
+        // lower_level_pending 的权威重算同样覆盖有子层 SUBCONTRACT（ADR-062 修订一②），
+        // 否则前端两段式门禁拿不到信号、notify 拦截也永远不触发。
+        String service = source("features/production/analysis/MaterialAnalysisService.java");
+        assertThat(service).contains("SUBCONTRACT\".equals(effectiveRoute)");
     }
 
     @Test
@@ -186,6 +193,26 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(commands)
                 .contains("stockEntitlement.restoreMakeDelegationsForAction(")
                 .contains("CASE WHEN route = 'MAKE' THEN 0 ELSE 1 END");
+    }
+
+    @Test
+    void subcontractMakeNotificationAlsoDelegatesExactEntitlements()
+            throws Exception {
+        // 2026-09-04 事故：有子层委外件下达后建 SUBCONTRACT_MAKE 任务行接管子树需求，
+        // 但权益迁移只在 MAKE 路线执行——ORIGIN_MAKE/IQC 预留被钉死在需求已归零的
+        // 旧父树节点（planExactPegs 按毛需求 secured/earmark 共享池），委外子树
+        // 库存明明齐套却永远「还缺 X 种物料」。修复=迁移查询与 notify 循环同时
+        // 覆盖 SUBCONTRACT；无子层委外申请无子任务行，查询自然无匹配。
+        String commands = source(
+                "features/production/analysis/MaterialAnalysisCommandService.java");
+        assertThat(commands).contains(
+                "!\"SUBCONTRACT\".equals(action.group().route())");
+        String entitlements = source(
+                "features/production/analysis/PreplanStockEntitlementService.java");
+        assertThat(entitlements).contains(
+                "('SUBCONTRACT', 'SUBCONTRACT_MAKE', 'SUBCONTRACT_MAKE_TASK')");
+        assertThat(entitlements).contains(
+                "parent_material.confirmed_route = action.route");
     }
 
     @Test
@@ -340,21 +367,22 @@ class ProductionMaterialAnalysisWorkflowContractTest {
             throws Exception {
         String commands = source(
                 "features/production/analysis/MaterialAnalysisCommandService.java");
-        String notifyCall =
-                "chainNotice.notifyPreplanSupplyActionCreated(action.actionId());";
 
-        int purchaseMark = commands.indexOf(
-                "markCreated(action.actionId(), \"PURCHASE_REQUEST\"");
-        int purchaseNotice = commands.indexOf(notifyCall, purchaseMark);
-        int subcontractMark = commands.indexOf(
-                "markCreated(action.actionId(), \"SUBCONTRACT_APPLICATION\"");
+        // ADR-065 修订（2026-09-03）：通知按单据聚合——每张申请只提醒一次，
+        // 且必须在逐 action 的 createExternalDocument 循环完成之后发布
+        // （投递时单据链接已存在）。逐 action 通知已从命令侧下线。
+        int createLoop = commands.indexOf(
+                "createExternalDocument(analysisId, action, prepared)");
+        int purchaseNotice = commands.indexOf(
+                "chainNotice.notifyPreplanSupplyDocumentCreated(", createLoop);
         int subcontractNotice = commands.indexOf(
-                notifyCall, purchaseNotice + notifyCall.length());
+                "chainNotice.notifyPreplanSupplyDocumentCreated(", purchaseNotice + 1);
 
-        assertThat(purchaseMark).isGreaterThanOrEqualTo(0);
-        assertThat(purchaseNotice).isGreaterThan(purchaseMark);
-        assertThat(subcontractMark).isGreaterThan(purchaseNotice);
-        assertThat(subcontractNotice).isGreaterThan(subcontractMark);
+        assertThat(createLoop).isGreaterThanOrEqualTo(0);
+        assertThat(purchaseNotice).isGreaterThan(createLoop);
+        assertThat(subcontractNotice).isGreaterThan(purchaseNotice);
+        assertThat(commands).doesNotContain(
+                "chainNotice.notifyPreplanSupplyActionCreated(");
     }
 
     @Test

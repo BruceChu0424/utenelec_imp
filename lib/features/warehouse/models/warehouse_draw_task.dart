@@ -1,6 +1,7 @@
 // 仓库侧「待领任务」轻量读模型：履约工作台公开投影（/operations/workbench/
-// warehouse）的仓库允许清单副本——只含数量/货品/仓库/日期/状态与领料单深链，
-// 不复用 operations_workbench 模型（架构边界：warehouse 不依赖其它 feature）。
+// warehouse）的仓库允许清单副本——一行=一张 DRAW 领料单（按单据归组口径，
+// 与 ADR-065 修订后的采购/委外一致），只含数量/货品/仓库/日期/状态与领料单
+// 深链，不复用 operations_workbench 模型（架构边界：warehouse 不依赖其它 feature）。
 
 class WarehouseDrawTask {
   const WarehouseDrawTask({
@@ -19,6 +20,9 @@ class WarehouseDrawTask {
     required this.exceptionCode,
     required this.actionDocId,
     required this.actionDocType,
+    this.actionDocNo = '',
+    this.goodsCount = 0,
+    this.openLineCount = 0,
   });
 
   final String taskId;
@@ -36,6 +40,12 @@ class WarehouseDrawTask {
   final String? exceptionCode;
   final String? actionDocId;
   final String? actionDocType;
+  final String actionDocNo;
+  final int goodsCount;
+  final int openLineCount;
+
+  /// 归组行（一张领料单多行物料）：货品身份列改显示规模摘要。
+  bool get isDocumentGrouped => goodsCount > 1 || openLineCount > 1;
 
   /// 领料单深链：服务端投影 actionDocCanView=true 时才有（对象范围裁剪）。
   String? get drawDocPath {
@@ -45,14 +55,22 @@ class WarehouseDrawTask {
     return '/warehouse/DRAW/$id';
   }
 
-  String get goodsLabel => [
-    goodsCode,
-    goodsName,
-    if (spec.isNotEmpty) spec,
-    if (colorName.isNotEmpty) colorName,
-  ].join(' ');
+  /// 单货品单据显示完整货品身份；多货品归组行显示「N 种物料 · N 行待领」。
+  String get goodsLabel => isDocumentGrouped
+      ? '$goodsCount 种物料${openLineCount > 0 ? ' · $openLineCount 行待领' : ''}'
+      : [
+          goodsCode,
+          goodsName,
+          if (spec.isNotEmpty) spec,
+          if (colorName.isNotEmpty) colorName,
+        ].join(' ');
+
+  String get drawBillLabel => actionDocNo.isEmpty ? '—' : actionDocNo;
 
   String get quantityText {
+    if (isDocumentGrouped) {
+      return openLineCount > 0 ? '$openLineCount 行' : '—';
+    }
     final text = openQty
         .toStringAsFixed(4)
         .replaceFirst(RegExp(r'0+$'), '')
@@ -97,6 +115,9 @@ class WarehouseDrawTask {
       exceptionCode: json['exceptionCode'] as String?,
       actionDocId: json['actionDocId'] as String?,
       actionDocType: json['actionDocType'] as String?,
+      actionDocNo: (json['actionDocNo'] ?? '') as String,
+      goodsCount: (json['goodsCount'] as num?)?.toInt() ?? 0,
+      openLineCount: (json['openLineCount'] as num?)?.toInt() ?? 0,
     );
   }
 }

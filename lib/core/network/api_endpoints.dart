@@ -40,6 +40,8 @@ abstract final class ApiEndpoints {
       '/finance/procurement-approvals/tasks/batch-approve';
   static const financeProcurementApprovalBatchReject =
       '/finance/procurement-approvals/tasks/batch-reject';
+  static String financeProcurementApprovalReview(String caseId) =>
+      '/finance/procurement-approvals/tasks/$caseId/review';
 
   // 销售订货单财务确认（V294 闸门）：待确认列表 / 徽标计数 / 确认动作。
   static const salesOrderFinanceConfirmationPending =
@@ -107,6 +109,15 @@ abstract final class ApiEndpoints {
       '${productionFinishedArrivalRegistration(reportId)}/place-suggestions';
   static String productionFinishedArrivalRememberPlaces(String reportId) =>
       '${productionFinishedArrivalRegistration(reportId)}/remember-places';
+  // 多报工单汇总登记（一次提交逐单 FQC）：批量明细/批量库位建议/批量记忆/上次成品仓。
+  static const productionFinishedArrivalBatchBase =
+      '/warehouse/production-finished-in/arrival-registrations/batch';
+  static const productionFinishedArrivalBatchPlaceSuggestions =
+      '$productionFinishedArrivalBatchBase/place-suggestions';
+  static const productionFinishedArrivalBatchRememberPlaces =
+      '$productionFinishedArrivalBatchBase/remember-places';
+  static const productionFinishedArrivalLastWarehouse =
+      '/warehouse/production-finished-in/arrival-registrations/last-warehouse';
   static const productionQualityInspections = '/production/quality-inspections';
   static const productionQualityInspectionCount =
       '/production/quality-inspections/count';
@@ -134,6 +145,9 @@ abstract final class ApiEndpoints {
   // 完成中断的到货登记（断点恢复）：草稿收货单一键继续送检，不进采购/委外单据页。
   static String warehouseInboundArrivalComplete(String receiptId) =>
       '/warehouse/inbound/arrivals/$receiptId/complete';
+  // 预计到货「批量继续送检」：一个事务逐张草稿收货单完成送检步骤。
+  static const warehouseInboundArrivalBatchComplete =
+      '/warehouse/inbound/arrivals/batch-complete';
 
   // 委外出仓工作台（V304）：财务批准委外订货后按 BOM 展开发料计划并自动生出仓草稿；
   // 仓库在此看任务、拣货、审核出仓（编辑/审核走既有 /subcontract/material-issues 端点）。
@@ -599,4 +613,8 @@ abstract final class ApiEndpoints {
 
   // 单据号预览（新建页占位显示；不消耗序列，并发时可能差1以保存后为准）
   static const docNumberPeek = '/doc-number/peek';
+
+  // 系统测试（工作台「系统测试」区，仅超管+本地/内网测试环境可用；
+  // 后端 features/admin/systemtest/SystemTestController）
+  static const systemTestBusinessDataReset = '/system-test/business-data/reset';
 }

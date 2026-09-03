@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
+import java.util.UUID;
 
 /** 采购/委外订货单财务审批任务接口（/api/finance/procurement-approvals）。 */
 @RestController
@@ -46,13 +48,24 @@ public class ProcurementFinanceApprovalController {
         return service.countTasksByType();
     }
 
-    /** 整批同事务通过；任一 case/version/快照失败则全部回滚。 */
+    /**
+     * 审核详情（财务专用视图，与采购/委外业务详情页分离）：
+     * 任务身份 + 订单头 + 供应商应付快照 + 明细 + 审批历史；
+     * allowedActions 仅 PENDING case 按当前审核员实时资格返回。
+     */
+    @GetMapping("/tasks/{caseId}/review")
+    public ProcurementApprovalContracts.ApprovalReview review(
+            @PathVariable UUID caseId) {
+        return service.review(caseId);
+    }
+
+    /** 整批同事务通过；任一 case/version/快照失败则全部回滚。remark 选填留痕。 */
     @PostMapping("/tasks/batch-approve")
     @PreAuthorize("hasAuthority('finance_order_approval:view') and "
             + "hasAuthority('finance_order_approval:approve')")
     public BatchDecisionResponse approveBatch(
             @Valid @RequestBody BatchApprovalRequest request) {
-        return service.approveBatch(request.items());
+        return service.approveBatch(request.items(), request.remark());
     }
 
     /** 整批使用同一退回原因；任一项失败则全部回滚。 */

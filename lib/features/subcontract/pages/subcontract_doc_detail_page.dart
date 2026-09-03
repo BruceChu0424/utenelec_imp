@@ -333,7 +333,9 @@ class _SubcontractDocDetailPageState
                           ),
                         ),
                       ),
-                    SelectionArea(child: _headerCard(theme)),
+                    // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
+                    // SelectionArea（准则 §3.4），无需再单独包。
+                    _headerCard(theme),
                     if (_cfg.approvalBlockedReason != null) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _materialIssueSafetyBanner(theme),
@@ -587,6 +589,18 @@ class _SubcontractDocDetailPageState
                 width: 150,
                 value: (it) => it.orderBillNo ?? '',
               ),
+            // V463：合并订货行的来源申请单号（多来源顿号连接，单来源一条）。
+            if (widget.docType == SubcontractDocType.order)
+              MasterColumnDef(
+                key: 'sourceApplications',
+                label: '来源申请',
+                width: 170,
+                value: (it) => it.sourceApplications
+                    .map((source) => source.billNo)
+                    .whereType<String>()
+                    .where((no) => no.isNotEmpty)
+                    .join('、'),
+              ),
             MasterColumnDef(
               key: 'qty',
               label: '数量',
@@ -714,7 +728,7 @@ class _SubcontractDocDetailPageState
             Expanded(
               child: Text(
                 widget.docType == SubcontractDocType.application
-                    ? '$reason\n此申请由计划部下达，委外人员只能查看并在任务中心生成委外订货单。'
+                    ? '$reason\n此申请由计划部下达，委外人员只能查看；可在本页或任务中心生成委外订货单。'
                     : '$reason\n仍可查看；后续调整请从生产计划专用流程发起。',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onTertiaryContainer,
@@ -1014,15 +1028,57 @@ class _SubcontractDocDetailPageState
           ),
         );
       }
-    } else if (s == kSubcontractStatusApproved && _canReverse && d.canReverse) {
-      children.add(
-        UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.undo_outlined,
-          onPressed: _reverse,
-          child: const Text('红冲'),
-        ),
-      );
+    } else if (s == kSubcontractStatusApproved) {
+      if (widget.docType == SubcontractDocType.application) {
+        // 与委外申请分解页同一条链路：详情页直达订货编辑页（预填时后端
+        // 分解预览自动过滤已分解完的明细；全部分解完会提示）。
+        final canDecompose =
+            _hasPermission(Perm.subcontractOrderView) &&
+            _hasPermission(Perm.subcontractOrderCreate) &&
+            _hasPermission(Perm.subcontractOrderDecompose);
+        final applicationItemIds = d.items
+            .map((it) => it.id)
+            .whereType<String>()
+            .map((id) => id.trim())
+            .where((id) => id.isNotEmpty)
+            .toList();
+        if (canDecompose && applicationItemIds.isNotEmpty) {
+          children.add(
+            UtenButton(
+              key: const Key('subcontract-application-generate-order'),
+              icon: Icons.add_shopping_cart_rounded,
+              onPressed: () => context.push(
+                '/subcontract/orders/new?applicationItemIds='
+                '${applicationItemIds.join(',')}',
+              ),
+              child: const Text('生成委外订货单'),
+            ),
+          );
+        }
+      }
+      if (_canReverse && d.canReverse) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.undo_outlined,
+            onPressed: _reverse,
+            child: const Text('红冲'),
+          ),
+        );
+      }
+      if (children.isEmpty) {
+        children.add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: () =>
+                context.go(SubcontractRoute.list(_cfg.pathSegment)),
+            child: const Text('返回列表'),
+          ),
+        );
+      }
     } else {
       children.add(
         UtenButton(

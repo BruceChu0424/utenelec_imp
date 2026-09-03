@@ -48,6 +48,20 @@ class ProcurementOrderSourceRequirementTest {
         when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
         DocNumberService numbers = mock(DocNumberService.class);
         when(numbers.nextNumber(any())).thenReturn("PO-SOURCE-REQUIRED");
+        EntityManager em = mock(EntityManager.class);
+        // 请求携带结账方式（2026-09 起 @NotNull 改 service 运行时校验）→
+        // applyHeader 走 UUID resolver 查 settlement_methods，stub 一行有效映射。
+        jakarta.persistence.Query settlementQuery =
+                mock(jakarta.persistence.Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.argThat(sql ->
+                sql != null && sql.contains("FROM settlement_methods method"))))
+                .thenReturn(settlementQuery);
+        when(settlementQuery.setParameter(any(String.class), any()))
+                .thenReturn(settlementQuery);
+        when(settlementQuery.setMaxResults(org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(settlementQuery);
+        when(settlementQuery.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{UUID.randomUUID(), 1, "CASH", "现金", null}));
         PurchaseOrderService service = new PurchaseOrderService(
                 mock(PurchaseOrderRepository.class),
                 mock(PurchaseOrderItemRepository.class),
@@ -56,7 +70,7 @@ class ProcurementOrderSourceRequirementTest {
                 mock(TxSessionVars.class),
                 currentUser,
                 mock(EmployeeNameResolver.class),
-                mock(EntityManager.class),
+                em,
                 numbers,
                 mock(ProductionSupplySourceGuard.class),
                 mock(PurchaseLineUnitPolicy.class),
@@ -124,6 +138,9 @@ class ProcurementOrderSourceRequirementTest {
         var request =
                 new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 2));
+        // 结账方式随 2026-09 行级条款改造从 @NotNull 移到 service 运行时校验；
+        // 本测试锁「缺申请来源」边界，带齐结账方式让流程走到来源校验。
+        request.setSettlementMethodId(UUID.randomUUID());
         var line = new com.uten.imp.features.purchase.order.dto.OrderItemLine();
         line.setGoodsId(UUID.randomUUID());
         line.setQty(BigDecimal.ONE);

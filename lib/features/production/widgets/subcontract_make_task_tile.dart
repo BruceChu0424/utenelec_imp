@@ -22,6 +22,7 @@ class SubcontractMakeTaskTile extends ConsumerStatefulWidget {
     this.onOpenAnalysis,
     this.onNotified,
     this.compact = false,
+    this.embedded = false,
   });
 
   final SubcontractMakeTask task;
@@ -29,6 +30,10 @@ class SubcontractMakeTaskTile extends ConsumerStatefulWidget {
   final VoidCallback? onOpenAnalysis;
   final VoidCallback? onNotified;
   final bool compact;
+
+  /// 嵌入模式（物料分析页产品卡内）：隐藏货品身份行（卡标题已是该货品），
+  /// 只保留状态徽标、权威数量与「通知委外」入口。
+  final bool embedded;
 
   @override
   ConsumerState<SubcontractMakeTaskTile> createState() =>
@@ -73,62 +78,72 @@ class _SubcontractMakeTaskTileState
       '自制中·可分批通知' || '满批待通知' => theme.colorScheme.tertiary,
       _ => theme.colorScheme.primary,
     };
+    final statusBadge = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.12),
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Text(
+        _statusLabel,
+        style: theme.textTheme.labelSmall?.copyWith(color: statusColor),
+      ),
+    );
     return Padding(
       key: ValueKey('subcontract-make-task-${task.taskId}'),
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s6),
+      padding: widget.embedded
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(vertical: UtenSpacing.s6),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (!widget.embedded)
+                  Wrap(
+                    spacing: UtenSpacing.s8,
+                    runSpacing: UtenSpacing.s4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        task.goodsLabel,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      statusBadge,
+                      if (task.itemSourceRef case final sourceRef?)
+                        Text(
+                          sourceRef,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.outline,
+                          ),
+                        ),
+                    ],
+                  ),
+                if (!widget.embedded) const SizedBox(height: UtenSpacing.s2),
                 Wrap(
                   spacing: UtenSpacing.s8,
                   runSpacing: UtenSpacing.s4,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    if (widget.embedded) statusBadge,
                     Text(
-                      task.goodsLabel,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                      '需求 ${_qtyText(task.requiredQty)} · 已产 '
+                      '${_qtyText(task.producedQty)} · 已通知 '
+                      '${_qtyText(task.notifiedQty)} · 可通知 '
+                      '${_qtyText(task.availableQty)}'
+                      '${task.unitName == null ? '' : ' ${task.unitName}'}'
+                      '${task.warehouseName == null ? '' : ' · ${task.warehouseName}'}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.12),
-                        borderRadius: UtenRadius.smAll,
-                      ),
-                      child: Text(
-                        _statusLabel,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: statusColor,
-                        ),
-                      ),
-                    ),
-                    if (task.itemSourceRef case final sourceRef?)
-                      Text(
-                        sourceRef,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.outline,
-                        ),
-                      ),
                   ],
-                ),
-                const SizedBox(height: UtenSpacing.s2),
-                Text(
-                  '需求 ${_qtyText(task.requiredQty)} · 已产 '
-                  '${_qtyText(task.producedQty)} · 已通知 '
-                  '${_qtyText(task.notifiedQty)} · 可通知 '
-                  '${_qtyText(task.availableQty)}'
-                  '${task.unitName == null ? '' : ' ${task.unitName}'}'
-                  '${task.warehouseName == null ? '' : ' · ${task.warehouseName}'}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
                 ),
               ],
             ),

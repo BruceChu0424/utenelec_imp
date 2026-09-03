@@ -334,6 +334,7 @@ class _ProductionPlanListPageState
                   // （常驻、未选灰色禁用，与货品资料等主档页一致），见 _planBatchActions。
                   // 桌面：左筛选侧栏（统一筛选工具条）+ 右表格；手机：垂直堆叠
                   body: UtenListTwoPane(
+                    splitPersistenceKey: 'production.planList',
                     // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(

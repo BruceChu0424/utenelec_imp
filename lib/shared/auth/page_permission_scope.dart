@@ -381,7 +381,8 @@ PagePermissionScope? _productionScopeFor(List<String> segments) {
 
 PagePermissionScope? _financeScopeFor(String path, List<String> segments) {
   if (segments.length == 1) return _financeHubScope;
-  if (path == '/finance/procurement-approvals') {
+  if (path == '/finance/procurement-approvals' ||
+      _isDescendant(path, '/finance/procurement-approvals')) {
     return _financeOrderApprovalScope;
   }
   if (path == '/finance/sales-order-confirmations' ||

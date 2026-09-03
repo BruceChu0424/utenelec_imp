@@ -161,8 +161,10 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
                   ),
               ],
             );
+            // compact 自套收敛；selectable:false——访客待办计数轮询（结构性闪现）
+            // 与拖选并发有 CME 风险（准则 §3.4，用户口径：轮询页不包）。
             if (isCompact) {
-              content = UtenContentContainer(child: content);
+              content = UtenContentContainer(selectable: false, child: content);
             }
             return SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),

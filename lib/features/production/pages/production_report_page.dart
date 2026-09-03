@@ -281,6 +281,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
                 ),
               ),
               body: UtenListTwoPane(
+                splitPersistenceKey: 'production.report',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),

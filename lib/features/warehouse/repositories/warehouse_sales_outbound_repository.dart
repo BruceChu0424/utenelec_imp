@@ -10,6 +10,8 @@ abstract interface class WarehouseSalesOutboundGateway {
     int size = 20,
     String? keyword,
     String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
   });
 
   /// 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）。
@@ -37,6 +39,8 @@ class WarehouseSalesOutboundRepository
     int size = 20,
     String? keyword,
     String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     final query = <String, dynamic>{
       'page': page < 1 ? 1 : page,
@@ -46,6 +50,8 @@ class WarehouseSalesOutboundRepository
     if (_trimmed(warehouseWorkStatus) case final value?) {
       query['warehouseWorkStatus'] = value;
     }
+    if (_trimmed(dateFrom) case final value?) query['dateFrom'] = value;
+    if (_trimmed(dateTo) case final value?) query['dateTo'] = value;
     final json = await api.get(_base, query: query);
     return PagedResult.fromJson(json, WarehouseSalesOutboundSummary.fromJson);
   }

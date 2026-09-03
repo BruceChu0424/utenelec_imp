@@ -666,7 +666,9 @@ class _EmptyCard extends StatelessWidget {
 }
 
 Future<void> _showPolicyDetail(BuildContext context, PolicyBrief item) async {
-  final content = _PolicyDetail(item: item);
+  // 弹窗/底部弹层文字可框选复制（准则 §3.4：独立路由自带局部 region，
+  // 与工作台页面的轮询徽章互不影响）。此处包一处，紧凑 sheet 与 Dialog 两分支共用。
+  final content = SelectionArea(child: _PolicyDetail(item: item));
   if (context.breakpoint.isCompact) {
     await showModalBottomSheet<void>(
       context: context,

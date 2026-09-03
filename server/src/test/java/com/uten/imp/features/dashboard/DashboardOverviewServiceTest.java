@@ -150,7 +150,7 @@ class DashboardOverviewServiceTest {
         when(noticeService.unreadCount()).thenReturn(3L);
         when(noticeService.pendingTodos(8)).thenReturn(List.of());
         when(fulfillmentWorkbench.query(
-                workbenchDepartment, "", "", "", 1, 1))
+                workbenchDepartment, "", "", "", null, null, 1, 1))
                 .thenThrow(new ApiException(
                         ErrorCode.CONFLICT,
                         "工作台更新时间类型异常"));
@@ -187,7 +187,7 @@ class DashboardOverviewServiceTest {
     void fulfillmentAuthenticationFailureIsNotDegraded() {
         configurePurchaseDepartment(Set.of("purchase_request:view"));
         ApiException failure = new ApiException(ErrorCode.UNAUTHORIZED);
-        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", 1, 1))
+        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", null, null, 1, 1))
                 .thenThrow(failure);
 
         assertThatThrownBy(service::overview).isSameAs(failure);
@@ -198,7 +198,7 @@ class DashboardOverviewServiceTest {
     void fulfillmentAuthorizationFailureIsNotDegraded() {
         configurePurchaseDepartment(Set.of("purchase_request:view"));
         AccessDeniedException failure = new AccessDeniedException("denied");
-        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", 1, 1))
+        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", null, null, 1, 1))
                 .thenThrow(failure);
 
         assertThatThrownBy(service::overview).isSameAs(failure);
@@ -210,7 +210,7 @@ class DashboardOverviewServiceTest {
         configurePurchaseDepartment(Set.of("purchase_request:view"));
         AuthenticationCredentialsNotFoundException failure =
                 new AuthenticationCredentialsNotFoundException("missing");
-        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", 1, 1))
+        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", null, null, 1, 1))
                 .thenThrow(failure);
 
         assertThatThrownBy(service::overview).isSameAs(failure);
@@ -222,7 +222,7 @@ class DashboardOverviewServiceTest {
         configurePurchaseDepartment(Set.of("notice:read", "purchase_request:view"));
         when(noticeService.unreadCount()).thenReturn(2L);
         when(noticeService.pendingTodos(8)).thenReturn(List.of());
-        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", 1, 1))
+        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", null, null, 1, 1))
                 .thenThrow(new ApiException(ErrorCode.CONFLICT));
         doThrow(new IllegalStateException("audit unavailable"))
                 .when(auditService)

@@ -172,6 +172,7 @@ class UtenDocLinkPickerConfig<D, I, N> {
     required this.middleItemColumns,
     required this.remainQty,
     required this.createBlankRow,
+    this.allowOverRemaining = false,
   });
 
   /// Step1 标题，如「从订货引入」。
@@ -247,6 +248,11 @@ class UtenDocLinkPickerConfig<D, I, N> {
 
   /// UtenEditableGrid 的空白行工厂（showAddRow:false 下不会被调用）。
   final UtenDocLinkItemRow<I> Function() createBlankRow;
+
+  /// 2026-09 订货超采放开：true 时「本次数量」允许超过剩余量（仅校验大于 0），
+  /// 剩余量仍作为默认值与只读对照。采购/委外订货引入申请时置 true；
+  /// 收货/退货等实物单据保持上限（默认 false）。
+  final bool allowOverRemaining;
 }
 
 /// 弹出「从上游引入」两步面板（compact 底部弹层 / 宽屏 840 右滑入）。
@@ -469,7 +475,11 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       final goodsId = _cfg.itemFields.goodsId(it);
       if (goodsId == null) continue;
       final remaining = _cfg.remainQty(it);
-      final error = validateLinkQuantity(row.qty.text, remaining: remaining);
+      final error = validateLinkQuantity(
+        row.qty.text,
+        remaining: remaining,
+        allowOverRemaining: _cfg.allowOverRemaining,
+      );
       row.qtyError.value = error;
       if (error != null) {
         hasQuantityError = true;
@@ -787,6 +797,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
               row.qtyError.value = validateLinkQuantity(
                 value,
                 remaining: _cfg.remainQty(row.item),
+                allowOverRemaining: _cfg.allowOverRemaining,
               );
             }
           },

@@ -2,6 +2,68 @@ part of 'production_material_analysis_page.dart';
 
 abstract class _MaterialAnalysisProductTasksState
     extends _MaterialAnalysisPlanActionsState {
+  bool get _canNotifySubcontractMake =>
+      _permissions.contains(Perm.productionMaterialAnalysisNotify);
+
+  /// 按精确 preparation_item_id 找到该委外子件产品对应的前置自制任务；
+  /// 同货多路径时不按货号猜（找不到=尚未回传，面板不显示）。
+  SubcontractMakeTask? _subcontractMakeTaskOf(
+    PagedResult<SubcontractMakeTask> page,
+    ProductionMaterialAnalysisProduct product,
+  ) {
+    for (final task in page.items) {
+      if (task.preparationItemId == product.analysisLineId) return task;
+    }
+    return null;
+  }
+
+  /// 委外子件产品卡内嵌的「先自制、后通知委外」账本面板（2026-09-03 收口）：
+  /// 需求/已产/已通知/可通知 + 「通知委外(可通知量)」分批入口。满批自动通知
+  /// 由服务端在成品入库事务内完成，本面板的手动入口只负责分批场景。
+  /// 替代原独立「委外件前置自制」区块，与自制子件“一个任务一张卡”同构。
+  Widget _subcontractMakeTaskPanel(
+    ThemeData theme,
+    ProductionMaterialAnalysisProduct product, {
+    required bool selected,
+  }) {
+    final analysis = _analysis;
+    if (analysis == null) return const SizedBox.shrink();
+    final tasksAsync = ref.watch(
+      _subcontractMakeTasksProvider(analysis.analysisId),
+    );
+    return tasksAsync.maybeWhen(
+      data: (page) {
+        final task = _subcontractMakeTaskOf(page, product);
+        if (task == null) return const SizedBox.shrink();
+        return Container(
+          key: ValueKey(
+            'material-analysis-subcontract-make-${product.analysisLineId}',
+          ),
+          padding: const EdgeInsets.all(UtenSpacing.s8),
+          decoration: BoxDecoration(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.12)
+                : theme.colorScheme.surfaceContainerLow,
+            borderRadius: UtenRadius.smAll,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: SubcontractMakeTaskTile(
+            task: task,
+            canNotify: _canNotifySubcontractMake,
+            embedded: true,
+            onNotified: () {
+              ref.invalidate(
+                _subcontractMakeTasksProvider(analysis.analysisId),
+              );
+              _reloadAnalysisSilently(protectUnsavedEditing: true);
+            },
+          ),
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+  }
+
   List<ProductionMaterialAnalysisMaterial> _depth1MaterialsFor(
     ProductionMaterialAnalysisProduct product,
   ) {
@@ -1212,6 +1274,19 @@ abstract class _MaterialAnalysisProductTasksState
                           fontWeight: FontWeight.w700,
                         ),
                       )
+                    else if (product.sourceType == 'SUBCONTRACT_MAKE')
+                      Text(
+                        product.parentGoodsName == null
+                            ? '委外子件 · 先自制，入库后通知委外部'
+                            : '委外子件 · 用于 ${product.parentGoodsName}'
+                                  ' · 入库后通知委外部',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: selected
+                              ? Colors.white
+                              : theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      )
                     else if (subcontractPreparation)
                       Text(
                         '委外前置自制 · 完成合格入仓后交仓库出仓',
@@ -1257,6 +1332,12 @@ abstract class _MaterialAnalysisProductTasksState
                     'material-analysis-product-blocker-${product.analysisLineId}',
                   ),
           ),
+          // 委外子件：前置自制账本（需求/已产/已通知/可通知）与「通知委外」
+          // 分批入口内嵌在卡上，不再在页面下方重复开独立区块。
+          if (product.sourceType == 'SUBCONTRACT_MAKE') ...[
+            const SizedBox(height: UtenSpacing.s8),
+            _subcontractMakeTaskPanel(theme, product, selected: selected),
+          ],
           if (product.latestPlanId != null) ...[
             const SizedBox(height: UtenSpacing.s8),
             if (_canViewPlans)
@@ -1790,8 +1871,9 @@ abstract class _MaterialAnalysisProductTasksState
     final material = group.representative;
     final notified = _notifiedTargetOf(material);
     if (notified != null) {
-      if (notified.target == MaterialSupplyRoute.make) {
-        final child = _makeChildProductOf(material);
+      if (notified.target == MaterialSupplyRoute.make ||
+          notified.target == MaterialSupplyRoute.subcontract) {
+        final child = _taskChildProductOf(material);
         if (child != null &&
             child.planExecutionStatus == null &&
             _canSelectProduct(child)) {
@@ -1812,9 +1894,9 @@ abstract class _MaterialAnalysisProductTasksState
           );
         }
       }
-      final child = notified.target == MaterialSupplyRoute.make
-          ? _makeChildProductOf(material)
-          : null;
+      final child = notified.target == MaterialSupplyRoute.buy
+          ? null
+          : _taskChildProductOf(material);
       final latestPlanId = child?.latestPlanId;
       if (latestPlanId != null) {
         return _makePlanReference(theme, material, child!, selected: selected);
@@ -2002,8 +2084,11 @@ abstract class _MaterialAnalysisProductTasksState
           theme.colorScheme.error,
         );
       }
-      if (route == MaterialSupplyRoute.make) {
-        final child = _makeChildProductOf(material);
+      // MAKE 与有子层 SUBCONTRACT 的子件任务同构：内联真实子件执行状态；
+      // 无子层委外叶子没有子件，落回下方普通已下达口径。
+      final taskChild = _taskChildProductOf(material);
+      if (route == MaterialSupplyRoute.make || taskChild != null) {
+        final child = taskChild;
         final executionStage = child == null
             ? null
             : _productExecutionStage(child);

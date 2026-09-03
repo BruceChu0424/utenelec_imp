@@ -108,11 +108,13 @@ double _remainQty(
 
 /// 弹出"从上游引入"右滑入大面板；返回所选明细 + 上游供应商（null 表示用户取消）。
 /// [initialSupplierId]：编辑页表头已选供应商时传入，面板供应商筛选默认锁定该供应商。
+/// [allowOverRemaining]（订货引入申请时 true）：本次数量允许超过申请剩余量（超采备货）。
 Future<PurchaseLinkPickResult?> showDocLinkPicker(
   BuildContext context,
   WidgetRef ref,
   PurchaseDocConfig cfg, {
   String? initialSupplierId,
+  bool allowOverRemaining = false,
 }) async {
   final upstream = _upstreamType(cfg);
   final docConfig =
@@ -126,6 +128,7 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
             '暂无已审${_upTypeLabel(upstream)}单', // TODO(l10n): 补 arb
         partyNoun: '供应商',
         allPartiesLabel: '全部供应商', // TODO(l10n): 补 arb
+        allowOverRemaining: allowOverRemaining,
         docIdOf: (d) => d.id,
         partyIdOf: (d) => d.supplierId,
         watchNames: (ref) => ref.watch(masterNameServiceProvider),

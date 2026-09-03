@@ -199,131 +199,134 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
         _buckets.buyShortage.isNotEmpty ||
         _buckets.makeShortage.isNotEmpty ||
         _buckets.subcontractShortage.isNotEmpty;
-    return AlertDialog(
-      insetPadding: utenDialogInsetPadding(context),
-      title: Row(
-        children: [
-          Icon(Icons.account_tree_outlined, color: theme.colorScheme.primary),
-          const SizedBox(width: 8),
-          Expanded(
+    // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region）。
+    return SelectionArea(
+      child: AlertDialog(
+        insetPadding: utenDialogInsetPadding(context),
+        title: Row(
+          children: [
+            Icon(Icons.account_tree_outlined, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('物料需求评审', style: theme.textTheme.titleMedium),
+                  Text(
+                    '计划 ${widget.planBillNo} · 发料仓 ${widget.warehouseName}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: utenDialogWidth(context, 760),
+          child: SingleChildScrollView(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('物料需求评审', style: theme.textTheme.titleMedium),
-                Text(
-                  '计划 ${widget.planBillNo} · 发料仓 ${widget.warehouseName}',
-                  style: theme.textTheme.bodySmall,
+                _notice(
+                  theme,
+                  color: theme.colorScheme.primary,
+                  icon: Icons.info_outline_rounded,
+                  text: hasShortage
+                      ? '系统已按目标仓库存、在途与 BOM 形成建议方案。可直接采用，也可进入详细排产调整数量、车间、班组与日期。'
+                      : '所有本层物料库存充足。可直接采用建议方案，也可进入详细排产复核车间、班组与日期。',
                 ),
+                if (_buckets.sufficient.isNotEmpty)
+                  _category(
+                    theme,
+                    icon: Icons.check_circle_outline_rounded,
+                    color: Colors.green,
+                    title: '库存充足，可立即生产',
+                    count: _buckets.sufficient.length,
+                    materials: _buckets.sufficient,
+                    hint: (m) => '需 ${_q(m.gross)} · 库存 ${_q(m.bookStock)}',
+                  ),
+                if (_buckets.buyShortage.isNotEmpty)
+                  _category(
+                    theme,
+                    icon: Icons.shopping_cart_outlined,
+                    color: Colors.orange.shade700,
+                    title: '采购缺料',
+                    count: _buckets.buyShortage.length,
+                    materials: _buckets.buyShortage,
+                    hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
+                    trailing: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        Icons.check_box_rounded,
+                        color: theme.colorScheme.primary,
+                      ),
+                      title: Text(
+                        '自动生成采购申请(必需)',
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      subtitle: const Text('采购缺口必须形成可跟进的供给单据，此项不可取消。'),
+                    ),
+                  ),
+                if (_buckets.makeShortage.isNotEmpty)
+                  _category(
+                    theme,
+                    icon: Icons.precision_manufacturing_outlined,
+                    color: Colors.blue.shade700,
+                    title: '自制缺料(将派生子生产计划)',
+                    count: _buckets.makeShortage.length,
+                    materials: _buckets.makeShortage,
+                    hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
+                    note:
+                        '确认后系统自动生成自制件子计划：有下层 BOM 的进子计划后继续展开；'
+                        '叶子件(无 BOM，原料走车间领料)直接生产造 N 个，可报工入库。',
+                  ),
+                if (_buckets.subcontractShortage.isNotEmpty)
+                  _category(
+                    theme,
+                    icon: Icons.local_shipping_outlined,
+                    color: Colors.purple.shade700,
+                    title: '委外缺料(将生成委外申请)',
+                    count: _buckets.subcontractShortage.length,
+                    materials: _buckets.subcontractShortage,
+                    hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
+                  ),
+                if (directMakeCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                    child: _notice(
+                      theme,
+                      color: theme.colorScheme.primary,
+                      icon: Icons.info_outline_rounded,
+                      text:
+                          '另有 $directMakeCount 个产品没有下层领用物料，将按直接自制投产；'
+                          '审核下达后不生成空领料单。',
+                    ),
+                  ),
               ],
             ),
           ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => _openDetailedPlanning(),
+            icon: const Icon(Icons.table_view_outlined, size: 18),
+            label: const Text('详细排产'),
+          ),
+          FilledButton.icon(
+            onPressed: _confirm,
+            icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+            label: const Text('采用建议方案'),
+          ),
         ],
       ),
-      content: SizedBox(
-        width: utenDialogWidth(context, 760),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _notice(
-                theme,
-                color: theme.colorScheme.primary,
-                icon: Icons.info_outline_rounded,
-                text: hasShortage
-                    ? '系统已按目标仓库存、在途与 BOM 形成建议方案。可直接采用，也可进入详细排产调整数量、车间、班组与日期。'
-                    : '所有本层物料库存充足。可直接采用建议方案，也可进入详细排产复核车间、班组与日期。',
-              ),
-              if (_buckets.sufficient.isNotEmpty)
-                _category(
-                  theme,
-                  icon: Icons.check_circle_outline_rounded,
-                  color: Colors.green,
-                  title: '库存充足，可立即生产',
-                  count: _buckets.sufficient.length,
-                  materials: _buckets.sufficient,
-                  hint: (m) => '需 ${_q(m.gross)} · 库存 ${_q(m.bookStock)}',
-                ),
-              if (_buckets.buyShortage.isNotEmpty)
-                _category(
-                  theme,
-                  icon: Icons.shopping_cart_outlined,
-                  color: Colors.orange.shade700,
-                  title: '采购缺料',
-                  count: _buckets.buyShortage.length,
-                  materials: _buckets.buyShortage,
-                  hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
-                  trailing: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      Icons.check_box_rounded,
-                      color: theme.colorScheme.primary,
-                    ),
-                    title: Text(
-                      '自动生成采购申请(必需)',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    subtitle: const Text('采购缺口必须形成可跟进的供给单据，此项不可取消。'),
-                  ),
-                ),
-              if (_buckets.makeShortage.isNotEmpty)
-                _category(
-                  theme,
-                  icon: Icons.precision_manufacturing_outlined,
-                  color: Colors.blue.shade700,
-                  title: '自制缺料(将派生子生产计划)',
-                  count: _buckets.makeShortage.length,
-                  materials: _buckets.makeShortage,
-                  hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
-                  note:
-                      '确认后系统自动生成自制件子计划：有下层 BOM 的进子计划后继续展开；'
-                      '叶子件(无 BOM，原料走车间领料)直接生产造 N 个，可报工入库。',
-                ),
-              if (_buckets.subcontractShortage.isNotEmpty)
-                _category(
-                  theme,
-                  icon: Icons.local_shipping_outlined,
-                  color: Colors.purple.shade700,
-                  title: '委外缺料(将生成委外申请)',
-                  count: _buckets.subcontractShortage.length,
-                  materials: _buckets.subcontractShortage,
-                  hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
-                ),
-              if (directMakeCount > 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                  child: _notice(
-                    theme,
-                    color: theme.colorScheme.primary,
-                    icon: Icons.info_outline_rounded,
-                    text:
-                        '另有 $directMakeCount 个产品没有下层领用物料，将按直接自制投产；'
-                        '审核下达后不生成空领料单。',
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        OutlinedButton.icon(
-          onPressed: () => _openDetailedPlanning(),
-          icon: const Icon(Icons.table_view_outlined, size: 18),
-          label: const Text('详细排产'),
-        ),
-        FilledButton.icon(
-          onPressed: _confirm,
-          icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-          label: const Text('采用建议方案'),
-        ),
-      ],
     );
   }
 

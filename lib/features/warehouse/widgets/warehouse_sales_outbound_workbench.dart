@@ -1,21 +1,43 @@
 // 销售出库工作台（可嵌入）：仓库侧执行财务已放行销售出货的拣货/异常/交接。
 //
 // 2026-09-01 起「出库任务中心 · 销售出库」分段内嵌本组件（embedded=true 时不带
-// 搜索框——关键字由任务中心页级工具条统一下发；状态分段新增「已出库」= 历史出库）。
-// 独立路由 /warehouse/sales-outbound 由 warehouse_sales_outbound_page.dart 以
-// embedded=false 包一层 Scaffold 继续承接，深链与既有测试不受影响。
+// 搜索框——关键字由任务中心页级工具条统一下发）。独立路由 /warehouse/sales-outbound
+// 由 warehouse_sales_outbound_page.dart 以 embedded=false 包一层 Scaffold 继续承接。
+//
+// 2026-09-03 统一范式：状态小类行默认不选（未选不发请求，显示引导占位）；
+// 末尾新增「历史单据」段——时间门控（时间段/全部，选定后才按日期加载，
+// 不限作业状态）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_sales_outbound.dart';
 import '../providers/warehouse_sales_outbound_count_provider.dart';
 import '../repositories/warehouse_sales_outbound_repository.dart';
+
+/// 状态小类分段值：真实作业状态或历史单据哨兵。
+class _SalesOutboundSeg {
+  const _SalesOutboundSeg.stage(String this.status) : history = false;
+  const _SalesOutboundSeg.history() : status = null, history = true;
+
+  final String? status;
+  final bool history;
+  @override
+  bool operator ==(Object other) =>
+      other is _SalesOutboundSeg &&
+      other.status == status &&
+      other.history == history;
+
+  @override
+  int get hashCode => Object.hash(status, history);
+}
 
 class WarehouseSalesOutboundWorkbench extends ConsumerStatefulWidget {
   const WarehouseSalesOutboundWorkbench({
@@ -49,14 +71,26 @@ class _WarehouseSalesOutboundWorkbenchState
   bool _loading = false;
   String? _error;
   String _keyword = '';
-  String _status = WarehouseSalesOutboundStatus.pendingPick;
+
+  /// 当前选中分段；null = 未选择引导态（不发请求）。
+  _SalesOutboundSeg? _seg;
+
+  /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
   int _requestVersion = 0;
 
   @override
   void initState() {
     super.initState();
     _keyword = widget.keyword;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    // 默认不选分类：进页面不发列表请求。
+  }
+
+  bool get _shouldLoad {
+    final seg = _seg;
+    if (seg == null) return false;
+    if (seg.history && _historyTime.isNone) return false;
+    return true;
   }
 
   @override
@@ -70,7 +104,10 @@ class _WarehouseSalesOutboundWorkbenchState
   }
 
   Future<void> _load(int page) async {
+    if (!_shouldLoad) return;
     final version = ++_requestVersion;
+    final seg = _seg!;
+    final range = seg.history ? _historyTime.range : null;
     setState(() {
       _loading = true;
       _error = null;
@@ -81,7 +118,11 @@ class _WarehouseSalesOutboundWorkbenchState
           .list(
             page: page,
             keyword: _keyword,
-            warehouseWorkStatus: _status.isEmpty ? null : _status,
+            warehouseWorkStatus: seg.history ? null : seg.status,
+            dateFrom: range == null
+                ? null
+                : ChinaDateTime.formatDate(range.start),
+            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
           );
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -112,9 +153,18 @@ class _WarehouseSalesOutboundWorkbenchState
     _load(1);
   }
 
-  void _selectStatus(String value) {
-    if (value == _status) return;
-    setState(() => _status = value);
+  void _selectSeg(_SalesOutboundSeg seg) {
+    if (seg == _seg) return;
+    setState(() {
+      _seg = seg;
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+    });
+    if (!seg.history || !_historyTime.isNone) _load(1);
+  }
+
+  void _onHistoryTime(UtenHistoryTimeValue value) {
+    if (value == _historyTime) return;
+    setState(() => _historyTime = value);
     _load(1);
   }
 
@@ -137,6 +187,17 @@ class _WarehouseSalesOutboundWorkbenchState
           const SizedBox(height: UtenSpacing.s12),
         ],
         _toolbar(result),
+        if (_seg?.history == true) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+            child: UtenHistoryTimeFilter(
+              key: const Key('warehouse-sales-outbound-history-time'),
+              value: _historyTime,
+              onChanged: _onHistoryTime,
+            ),
+          ),
+        ],
         if (_error != null && result.items.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s8),
           Semantics(
@@ -149,41 +210,52 @@ class _WarehouseSalesOutboundWorkbenchState
         ],
         const SizedBox(height: UtenSpacing.s12),
         Expanded(
-          child: MasterDataTableView<WarehouseSalesOutboundSummary>(
-            key: const Key('warehouse-sales-outbound-table'),
-            columns: _columns,
-            items: result.items,
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            onRowTap: (item) => context.push(
-              '/warehouse/sales-outbound/${Uri.encodeComponent(item.id)}',
-            ),
-            isLoading: _loading && _result == null,
-            loadingMore: _loading && _result != null,
-            error: result.items.isEmpty ? _error : null,
-            onRetry: () => _load(result.page),
-            emptyMessage: _emptyMessage,
-            currentPage: result.page,
-            totalPages: result.totalPages,
-            onPageChange: _load,
-          ),
+          child: _seg == null
+              ? const UtenFilterPlaceholder(
+                  message: '在上方选择分类后开始办理',
+                  description: '分类默认不选中；历史单据需先选时间段或「全部」',
+                )
+              : _seg!.history && _historyTime.isNone
+              ? const UtenHistoryTimePlaceholder()
+              : MasterDataTableView<WarehouseSalesOutboundSummary>(
+                  key: const Key('warehouse-sales-outbound-table'),
+                  columns: _columns,
+                  items: result.items,
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  onRowTap: (item) => context.push(
+                    '/warehouse/sales-outbound/${Uri.encodeComponent(item.id)}',
+                  ),
+                  isLoading: _loading && _result == null,
+                  loadingMore: _loading && _result != null,
+                  error: result.items.isEmpty ? _error : null,
+                  onRetry: () => _load(result.page),
+                  emptyMessage: _emptyMessage,
+                  currentPage: result.page,
+                  totalPages: result.totalPages,
+                  onPageChange: _load,
+                ),
         ),
       ],
     );
   }
 
   String get _emptyMessage {
-    final label = WarehouseSalesOutboundStatus.label(_status);
     if (_keyword.isNotEmpty) return '没有匹配“$_keyword”的销售出库任务';
+    if (_seg?.history == true) return '该时间段内暂无销售出库单';
+    final label = _seg?.status == null
+        ? ''
+        : WarehouseSalesOutboundStatus.label(_seg!.status!);
     return '暂无$label任务';
   }
 
   Widget _toolbar(PagedResult<WarehouseSalesOutboundSummary> result) {
-    // 全平台统一筛选工具条：仓库作业状态分段（+任务中心模式的「已出库」历史段）。
-    // 分段键沿用 warehouse-sales-outbound-status（独立页既有测试锚点不变）。
-    return UtenFilterToolbar<String>(
+    // 全平台统一筛选工具条：仓库作业状态分段 + 末尾「历史单据」时间门控段。
+    // 分段键沿用 warehouse-sales-outbound-status（独立页既有测试锚点不变）；
+    // 默认不选（未选=引导占位，不发请求）。
+    return UtenFilterToolbar<_SalesOutboundSeg>(
       segmentsKey: const Key('warehouse-sales-outbound-status'),
       searchKey: widget.embedded
           ? null
@@ -194,15 +266,19 @@ class _WarehouseSalesOutboundWorkbenchState
           WarehouseSalesOutboundStatus.picking,
           WarehouseSalesOutboundStatus.picked,
           WarehouseSalesOutboundStatus.exception,
-          if (widget.embedded) WarehouseSalesOutboundStatus.shipped,
+          WarehouseSalesOutboundStatus.shipped,
         ])
           UtenFilterSegment(
-            value: status,
+            value: _SalesOutboundSeg.stage(status),
             label: WarehouseSalesOutboundStatus.label(status),
           ),
+        const UtenFilterSegment(
+          value: _SalesOutboundSeg.history(),
+          label: '历史单据',
+        ),
       ],
-      selected: {_status},
-      onSelectionChanged: _selectStatus,
+      selected: _seg == null ? const {} : {_seg!},
+      onSelectionChanged: _selectSeg,
       searchHint: widget.embedded ? null : '搜索出货单号 / 客户 / 仓库',
       initialSearchValue: widget.embedded ? null : _keyword,
       onSearchInputChanged: widget.embedded ? null : (_) => _requestVersion++,

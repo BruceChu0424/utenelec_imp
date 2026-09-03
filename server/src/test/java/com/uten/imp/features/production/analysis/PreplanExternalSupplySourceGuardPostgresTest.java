@@ -136,6 +136,7 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                     demandRequestItemId, safetyRequestItemId);
             execute(connection, "UPDATE purchase_requests SET is_closed=TRUE WHERE id=?",
                     requestId);
+            anchorOrderItemSources(connection, orderId);
 
             UUID receiptId = UUID.randomUUID();
             UUID demandReceiptItemId = UUID.randomUUID();
@@ -1212,5 +1213,19 @@ class PreplanExternalSupplySourceGuardPostgresTest {
             UUID orderId,
             UUID orderItemId,
             String billNo) {
+    }
+
+    /**
+     * V463 起切片进度视图经 purchase_order_item_sources 分摊；应用保存订货单
+     * 必写来源行。本测试用裸 SQL 造订货行（绕过应用），这里按 V463 回填同口径
+     * 为该订单下带 request_item_id 的行补单来源锚点（alloc=行数量、line_no=1），
+     * 幂等（已有来源行的订货行不动）。
+     */
+    private static void anchorOrderItemSources(
+            Connection connection, UUID orderId) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement("INSERT INTO purchase_order_item_sources(order_item_id, request_item_id, alloc_qty, line_no) SELECT oi.id, oi.request_item_id, oi.qty, 1 FROM purchase_order_items oi WHERE oi.order_id=? AND oi.request_item_id IS NOT NULL AND oi.qty > 0 AND NOT EXISTS (SELECT 1 FROM purchase_order_item_sources s WHERE s.order_item_id=oi.id)")) {
+            statement.setObject(1, orderId);
+            statement.executeUpdate();
+        }
     }
 }

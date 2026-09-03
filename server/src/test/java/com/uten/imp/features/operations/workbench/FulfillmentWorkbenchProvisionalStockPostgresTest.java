@@ -182,11 +182,20 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                         false));
         FulfillmentWorkbenchQueryService service =
                 new FulfillmentWorkbenchQueryService(entityManager, accessPolicy);
+        // ADR-065 修订（2026-09-03）：任务行按单据归组——task_id 即申请单 id
+        // （明细行 id 收敛进 actionItemIds）；受限行单据元数据被脱敏，只能按
+        // task_id 定位该行。
+        UUID requestId = transactions.execute(status ->
+                (UUID) entityManager.createNativeQuery("""
+                                SELECT request_id FROM purchase_request_items WHERE id = :itemId
+                                """)
+                        .setParameter("itemId", purchaseTaskId)
+                        .getSingleResult());
         FulfillmentWorkbenchPage page = transactions.execute(status ->
-                service.query("PURCHASE", "", "", "", 1, 100));
+                service.query("PURCHASE", "", "", "", null, null, 1, 100));
         assertNotNull(page);
         FulfillmentTaskRow task = page.items().stream()
-                .filter(row -> row.taskId().equals(purchaseTaskId))
+                .filter(row -> row.taskId().equals(requestId))
                 .findFirst()
                 .orElseThrow();
 

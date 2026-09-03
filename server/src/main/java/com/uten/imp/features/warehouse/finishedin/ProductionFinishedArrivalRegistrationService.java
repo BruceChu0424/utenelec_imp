@@ -10,8 +10,14 @@ import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContr
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationView;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationResult;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchRememberPlacesResult;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.LastWarehouseView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.PlaceSuggestionItemView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.PlaceSuggestionsView;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RegisteredReportView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RememberPlacesResult;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -486,6 +492,140 @@ public class ProductionFinishedArrivalRegistrationService {
                 text(header[4]), (UUID) header[6], text(header[7]),
                 text(header[8]), receiverId, receiverName,
                 offsetDateTime(header[11]), items);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public List<ArrivalRegistrationView> batchDetail(List<UUID> reportIds) {
+        access.requireWarehouseTaskAccess("无权查看生产成品送检登记");
+        List<UUID> ids = requireReportIds(reportIds);
+        return ids.stream().map(this::detailInternal).toList();
+    }
+
+    /** 多报工单同仓库位建议合并（一次 HTTP 请求；逐单复用单册建议 SQL 口径）。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public PlaceSuggestionsView batchPlaceSuggestions(
+            List<UUID> reportIds, UUID warehouseId) {
+        access.requireWarehouseTaskAccess("无权查看生产成品库位建议");
+        List<UUID> ids = requireReportIds(reportIds);
+        if (warehouseId == null) {
+            throw validation("生产成品库位建议缺少仓库 UUID");
+        }
+        List<PlaceSuggestionItemView> merged = new ArrayList<>();
+        for (UUID reportId : ids) {
+            merged.addAll(placeSuggestions(reportId, warehouseId).items());
+        }
+        return new PlaceSuggestionsView(merged);
+    }
+
+    /**
+     * 多张报工单一次性汇总登记送检：外层一个事务，逐单复用 {@link #register}
+     * 的完整校验与 FQC 创建（每单一份 FQC、行级锚定不变）；任一单失败整批回滚。
+     * 幂等：批量键 + 报工单 UUID 派生逐单子键，重试时已完成单自动安全重放。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
+    public BatchArrivalRegistrationResult batchRegister(
+            BatchArrivalRegistrationRequest request) {
+        tx.bind();
+        access.requireWarehouseTaskAccess("无权登记生产成品送检");
+        if (request == null || request.idempotencyKey() == null
+                || request.reports() == null || request.reports().isEmpty()) {
+            throw validation("批量送检登记请求不能为空");
+        }
+        String batchKey = request.idempotencyKey().strip();
+        if (batchKey.length() < 8 || batchKey.length() > 128
+                || !batchKey.matches("[A-Za-z0-9._:-]+")) {
+            throw validation("批量送检登记幂等键格式无效");
+        }
+        if (request.reports().size() > 50) {
+            throw validation("一次最多汇总登记 50 张报工单");
+        }
+        LinkedHashSet<UUID> reportIds = new LinkedHashSet<>();
+        for (BatchReportRegistrationRequest report : request.reports()) {
+            if (report == null || report.reportId() == null) {
+                throw validation("批量送检登记缺少报工单 UUID");
+            }
+            if (!reportIds.add(report.reportId())) {
+                throw validation("批量送检登记不能重复选择同一报工单");
+            }
+        }
+
+        List<RegisteredReportView> registered = new ArrayList<>();
+        for (BatchReportRegistrationRequest report : request.reports()) {
+            UUID reportId = report.reportId();
+            // 子键 = 批量键 + 报工单 UUID（UUID 仅含十六进制与 '-'，落在合法字符集内）。
+            String reportKey = batchKey + ":" + reportId;
+            ArrivalRegistrationView view = register(reportId, new ArrivalRegistrationRequest(
+                    reportKey, report.warehouseId(), report.items()));
+            registered.add(new RegisteredReportView(
+                    view.reportId(), view.reportNo(),
+                    view.warehouseId(), view.warehouseName()));
+        }
+        return new BatchArrivalRegistrationResult(registered.size(), registered);
+    }
+
+    /** 批量登记后的库位记忆：逐单复用 {@link #rememberPlaces} 的偏好 UPSERT 口径并汇总。 */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
+    public BatchRememberPlacesResult rememberPlacesBatch(List<UUID> reportIds) {
+        tx.bind();
+        access.requireWarehouseTaskAccess("无权记忆生产成品库位建议");
+        List<UUID> ids = requireReportIds(reportIds);
+        int remembered = 0;
+        int unchanged = 0;
+        int ambiguous = 0;
+        List<String> warnings = new ArrayList<>();
+        for (UUID reportId : ids) {
+            RememberPlacesResult result = rememberPlaces(reportId);
+            remembered += result.remembered();
+            unchanged += result.unchanged();
+            ambiguous += result.ambiguous();
+            warnings.addAll(result.warnings());
+        }
+        return new BatchRememberPlacesResult(remembered, unchanged, ambiguous, warnings);
+    }
+
+    /** 当前用户最近一次成品送检登记所用成品仓（无登记历史返回 null）。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public LastWarehouseView lastWarehouse() {
+        access.requireWarehouseTaskAccess("无权查看生产成品送检登记");
+        UUID actorId = currentUser.requireId();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT registration.warehouse_id,
+                                       registration.warehouse_code_snapshot,
+                                       registration.warehouse_name_snapshot,
+                                       registration.created_at
+                                FROM production_finished_arrival_registrations registration
+                                WHERE registration.created_by = :actorId
+                                ORDER BY registration.created_at DESC,
+                                         registration.id DESC
+                                LIMIT 1
+                                """)
+                        .setParameter("actorId", actorId));
+        if (rows.isEmpty()) return null;
+        Object[] row = rows.getFirst();
+        return new LastWarehouseView(
+                (UUID) row[0], text(row[1]), text(row[2]), offsetDateTime(row[3]));
+    }
+
+    private static List<UUID> requireReportIds(List<UUID> reportIds) {
+        if (reportIds == null || reportIds.isEmpty()) {
+            throw validation("批量送检登记缺少报工单清单");
+        }
+        if (reportIds.size() > 50) {
+            throw validation("一次最多汇总登记 50 张报工单");
+        }
+        LinkedHashSet<UUID> distinct = new LinkedHashSet<>();
+        for (UUID id : reportIds) {
+            if (id == null || !distinct.add(id)) {
+                throw validation("批量送检登记的报工单清单无效或存在重复");
+            }
+        }
+        return List.copyOf(distinct);
     }
 
     private Object[] lockApprovedReport(UUID reportId) {

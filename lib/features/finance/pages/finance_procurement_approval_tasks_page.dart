@@ -161,7 +161,25 @@ class _FinanceProcurementApprovalTasksPageState
     }
   }
 
-  void _open(FinanceProcurementApprovalTask task) {
+  Future<void> _open(FinanceProcurementApprovalTask task) async {
+    // 双击/行菜单主入口 → 财务专用审核详情页（底部通过/驳回，不退回本列表即可决策）；
+    // 与采购/委外业务订货详情页彻底分离（ADR-027 §五 2026-09-03 增补）。
+    if (task.caseId.isEmpty) {
+      context.appWarning('该任务缺少有效的审批身份，请刷新后重试');
+      return;
+    }
+    final decided = await context.push<bool>(
+      '${FinanceWorkflowRoutes.approvalTasks}/${Uri.encodeComponent(task.caseId)}',
+    );
+    if (decided == true && mounted) {
+      // 审核详情页已办结该笔：回列表即刷新，勾选状态清空避免指向已变化任务。
+      setState(_clearSelectionState);
+      await _load(_result?.page ?? 1);
+    }
+  }
+
+  /// 次要入口：跳共享只读订货单详情（财务想看订单全貌时用）。
+  void _openSourceOrder(FinanceProcurementApprovalTask task) {
     final route = task.detailRoute;
     if (route == null) {
       context.appWarning('该任务缺少有效的订货类型或单据编号，请刷新后重试');
@@ -482,10 +500,16 @@ class _FinanceProcurementApprovalTasksPageState
                   canOpenRow: (task) => task.canOpen,
                   rowMenuBuilder: (task) => [
                     UtenMenuItem(
-                      label: '查看订货详情',
-                      icon: Icons.open_in_new_rounded,
+                      label: '打开审核详情',
+                      icon: Icons.fact_check_outlined,
                       onTap: () => _open(task),
                     ),
+                    if (task.detailRoute != null)
+                      UtenMenuItem(
+                        label: '查看原订货单详情',
+                        icon: Icons.open_in_new_rounded,
+                        onTap: () => _openSourceOrder(task),
+                      ),
                   ],
                   canShowRowMenu: (task) => task.canOpen,
                   isLoading: _loading,
@@ -552,8 +576,8 @@ class _FinanceProcurementApprovalTasksPageState
               final compact = MediaQuery.sizeOf(context).width < 840;
               return Text(
                 compact
-                    ? '单击选择，双击或长按查看订货详情'
-                    : '共 ${result.total} 笔 · 单击选择，双击或长按详情',
+                    ? '单击选择，双击或长按打开审核详情'
+                    : '共 ${result.total} 笔 · 单击选择，双击打开审核详情',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),

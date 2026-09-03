@@ -166,36 +166,6 @@ public class LinkedDocumentIntegrityService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void validateSubcontractOrder(
-            UUID supplierId, List<QuantityLinkedLine> lines) {
-        requireParty(supplierId, "委外订货单需指定委外商");
-        Map<UUID, Object[]> rows = lockRows(
-                lines, QuantityLinkedLine::sourceItemId, """
-                        SELECT ai.id, a.supplier_id, ai.goods_id, ai.color_id,
-                               ai.unit_id, COALESCE(ai.unit_rate, 1),
-                               ai.qty, COALESCE(ai.ordered_qty, 0), a.status
-                        FROM subcontract_application_items ai
-                        JOIN subcontract_applications a ON a.id = ai.application_id
-                        WHERE ai.id IN (:ids)
-                          AND COALESCE(ai.is_deleted, FALSE) = FALSE
-                          AND COALESCE(a.is_deleted, FALSE) = FALSE
-                        ORDER BY ai.id
-                        FOR UPDATE OF ai, a
-                        """);
-        for (QuantityLinkedLine line : lines) {
-            if (line.sourceItemId() == null) {
-                continue;
-            }
-            Object[] source = requireSource(
-                    rows, line.sourceItemId(), "委外来源申请明细不存在或已删除");
-            requireApproved(source[8], "委外订货只能关联已审核申请单");
-            requireSame(supplierId, uuid(source[1]), "委外商与来源申请单不一致");
-            requireQuantityDimensions(line, source, 2, "委外订货明细与来源申请明细不一致");
-        }
-        validateAllocationCapacity(lines, rows, 6, 7, "委外订货量超过申请剩余量");
-    }
-
-    @Transactional(propagation = Propagation.MANDATORY)
     public void validatePurchaseReceipt(UUID supplierId, List<LinkedLine> lines) {
         requireParty(supplierId, "采购收货单需指定供应商");
         validatePurchaseOrderSources(supplierId, lines, LinkedLine::sourceItemId);
@@ -406,30 +376,8 @@ public class LinkedDocumentIntegrityService {
             }
             requireQuantityDimensions(line, source, 1, "采购订货明细与来源申请明细不一致");
         }
-        validateAllocationCapacity(lines, rows, 5, 6, "采购订货量超过申请剩余量");
-    }
-
-    private void validateAllocationCapacity(
-            List<QuantityLinkedLine> lines,
-            Map<UUID, Object[]> rows,
-            int capacityIndex,
-            int allocatedIndex,
-            String message) {
-        Map<UUID, BigDecimal> increments = new HashMap<>();
-        for (QuantityLinkedLine line : lines) {
-            requirePositiveQuantity(line.qty());
-            if (line.sourceItemId() != null) {
-                increments.merge(line.sourceItemId(), line.qty(), BigDecimal::add);
-            }
-        }
-        for (Map.Entry<UUID, BigDecimal> entry : increments.entrySet()) {
-            Object[] source = requireSource(rows, entry.getKey(), message);
-            BigDecimal capacity = decimal(source[capacityIndex]);
-            BigDecimal allocated = decimal(source[allocatedIndex]);
-            if (allocated.add(entry.getValue()).compareTo(capacity) > 0) {
-                throw business(message);
-            }
-        }
+        // 2026-09 起订货允许超过申请剩余量（超采备货是业务口径）：不再校验
+        // allocated + 本次 <= capacity；ordered_qty 超出时剩余量为负、申请照常结案。
     }
 
     private void validateSubcontractOrderSources(
@@ -568,10 +516,6 @@ public class LinkedDocumentIntegrityService {
 
     private static UUID uuid(Object value) {
         return value == null ? null : (UUID) value;
-    }
-
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO : (BigDecimal) value;
     }
 
     private static boolean sameRate(BigDecimal actual, Object rawExpected) {

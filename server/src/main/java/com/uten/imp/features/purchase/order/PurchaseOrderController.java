@@ -87,13 +87,33 @@ public class PurchaseOrderController {
     /**
      * 货品 → 最近一次订货供应商（订货编辑页行级供应商「学习预填」：选货品后自动带出
      * 上次该货品的订货供应商）。goodsIds 为逗号分隔的货品 UUID，返回 {goodsId: supplierId}。
+     *
+     * @deprecated 2026-09 行级商业条款改造起由 /last-terms 取代（同一次查询带回整套条款）；
+     *     保留一个发布周期兼容已发版的旧客户端。
      */
+    @Deprecated(since = "2026-09-03")
     @GetMapping("/last-suppliers")
     @PreAuthorize("hasAuthority('purchase_order:view')")
     public java.util.Map<String, UUID> lastSuppliers(@RequestParam String goodsIds) {
         java.util.Set<UUID> ids = RequestUuidSets.commaSeparated(goodsIds, "货品 ID");
         java.util.Map<String, UUID> result = new java.util.LinkedHashMap<>();
         service.lastSuppliersPerGoods(ids).forEach((k, v) -> result.put(k.toString(), v));
+        return result;
+    }
+
+    /**
+     * 货品 → 最近一次订货商业条款（行级条款「学习预填」：同一货品下次建单自动带出
+     * 上次的供应商/结账方式/币种/汇率/税率）。goodsIds 为逗号分隔的货品 UUID，
+     * 返回 {goodsId: {supplierId, settlementMethodId, currencyId, exchangeRate, taxRate}}。
+     */
+    @GetMapping("/last-terms")
+    @PreAuthorize("hasAuthority('purchase_order:view')")
+    public java.util.Map<String, PurchaseOrderService.LastTermsPerGoods> lastTerms(
+            @RequestParam String goodsIds) {
+        java.util.Set<UUID> ids = RequestUuidSets.commaSeparated(goodsIds, "货品 ID");
+        java.util.Map<String, PurchaseOrderService.LastTermsPerGoods> result =
+                new java.util.LinkedHashMap<>();
+        service.lastTermsPerGoods(ids).forEach((k, v) -> result.put(k.toString(), v));
         return result;
     }
 

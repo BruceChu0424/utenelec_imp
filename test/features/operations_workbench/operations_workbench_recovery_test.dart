@@ -54,6 +54,8 @@ class _RecoveringGateway implements OperationsWorkbenchGateway {
     String? keyword,
     String? status,
     String? exception,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     calls++;
     if (calls == 1) {

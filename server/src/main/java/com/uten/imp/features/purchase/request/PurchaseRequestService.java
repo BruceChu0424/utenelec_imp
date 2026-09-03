@@ -117,9 +117,10 @@ public class PurchaseRequestService {
                                 FROM purchase_request_items i
                                 JOIN purchase_requests r ON r.id = i.request_id
                                 LEFT JOIN (
-                                    SELECT oi.request_item_id,
-                                           SUM(COALESCE(oi.qty, 0)) AS pending_qty
-                                    FROM purchase_order_items oi
+                                    SELECT src.request_item_id,
+                                           SUM(COALESCE(src.alloc_qty, 0)) AS pending_qty
+                                    FROM purchase_order_item_sources src
+                                    JOIN purchase_order_items oi ON oi.id = src.order_item_id
                                     JOIN purchase_orders o ON o.id = oi.order_id
                                     JOIN (
                                         SELECT DISTINCT order_id
@@ -128,10 +129,9 @@ public class PurchaseRequestService {
                                           AND status = 'PENDING'
                                     ) pending_case ON pending_case.order_id = o.id
                                     WHERE oi.is_deleted = FALSE
-                                      AND oi.request_item_id IS NOT NULL
                                       AND o.status = 0
                                       AND o.is_deleted = FALSE
-                                    GROUP BY oi.request_item_id
+                                    GROUP BY src.request_item_id
                                 ) pending ON pending.request_item_id = i.id
                                 WHERE i.id IN (:itemIds)
                                   AND i.is_deleted = FALSE

@@ -79,87 +79,90 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(title: l10n.securityTitle, showBackButton: true),
-      body: Stack(
-        children: [
-          if (!kIsWeb && _controller != null)
-            MobileScanner(controller: _controller!, onDetect: _onDetect)
-          else
-            Center(
-              child: Text(
-                l10n.securityScanManual,
-                style: theme.textTheme.bodyLarge,
-              ),
-            ),
-          Center(
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white70, width: 2),
-                borderRadius: UtenRadius.xlAll,
-              ),
-            ),
-          ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s24),
-              // 深色胶囊底：提示文字在任意取景画面上都可读
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  borderRadius: UtenRadius.pillAll,
+      // 局部 SelectionArea：扫码页说明文字可框选复制（准则 §3.4）。
+      body: SelectionArea(
+        child: Stack(
+          children: [
+            if (!kIsWeb && _controller != null)
+              MobileScanner(controller: _controller!, onDetect: _onDetect)
+            else
+              Center(
+                child: Text(
+                  l10n.securityScanManual,
+                  style: theme.textTheme.bodyLarge,
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s12,
-                    vertical: UtenSpacing.s4,
+              ),
+            Center(
+              child: Container(
+                width: 240,
+                height: 240,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white70, width: 2),
+                  borderRadius: UtenRadius.xlAll,
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s24),
+                // 深色胶囊底：提示文字在任意取景画面上都可读
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: UtenRadius.pillAll,
                   ),
-                  child: Text(
-                    l10n.securityScanHint,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s12,
+                      vertical: UtenSpacing.s4,
+                    ),
+                    child: Text(
+                      l10n.securityScanHint,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s16,
-                0,
-                UtenSpacing.s16,
-                UtenSpacing.s24,
-              ),
-              child: SafeArea(
-                top: false,
-                child: UtenCard(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: UtenInput(
-                          controller: _manualCtl,
-                          label: l10n.securityPasscodeHint,
-                          keyboardType: TextInputType.number,
-                          prefixIcon: Icons.password_rounded,
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s16,
+                  0,
+                  UtenSpacing.s16,
+                  UtenSpacing.s24,
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: UtenCard(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: UtenInput(
+                            controller: _manualCtl,
+                            label: l10n.securityPasscodeHint,
+                            keyboardType: TextInputType.number,
+                            prefixIcon: Icons.password_rounded,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      UtenButton(
-                        onPressed: _manualGo,
-                        child: Text(l10n.commonConfirm),
-                      ),
-                    ],
+                        const SizedBox(width: UtenSpacing.s8),
+                        UtenButton(
+                          onPressed: _manualGo,
+                          child: Text(l10n.commonConfirm),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

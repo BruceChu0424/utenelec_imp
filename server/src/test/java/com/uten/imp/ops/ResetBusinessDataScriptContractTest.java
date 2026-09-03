@@ -51,12 +51,19 @@ class ResetBusinessDataScriptContractTest {
         Map<String, String> policy = policy();
 
         // V458 委外先做后审账本加 2 张业务事实表（315→317，CLEAR 220→222）；
-        // V459 兼职部门表属组织与权限治理数据（PRESERVE，317→318、95→96）。
-        assertThat(policy).hasSize(318);
+        // V459 兼职部门表属组织与权限治理数据（PRESERVE，317→318、95→96）；
+        // V463 订货行来源分配表加 2 张（CLEAR，318→320、222→224）。
+        assertThat(policy).hasSize(320);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(222);
+                .isEqualTo(224);
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
                 .isEqualTo(96);
+
+        // V463：订货行多来源锚定的两张分配表随业务数据清空。
+        assertThat(policy).containsEntry(
+                "purchase_order_item_sources", "CLEAR");
+        assertThat(policy).containsEntry(
+                "subcontract_order_item_sources", "CLEAR");
 
         // V459：兼职部门归属是治理配置，重置保留
         assertThat(policy).containsEntry("employee_secondary_departments", "PRESERVE");
@@ -185,7 +192,12 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(459, 421)")
                 .contains("(460, 422)")
                 .contains("(461, 423)")
-                .contains("仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422 或 V461/423 目录")
+                .contains("(462, 424)")
+                .contains("(463, 425)")
+                .contains("(464, 426)")
+                .contains("(465, 427)")
+                .contains("(466, 428)")
+                .contains("仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427 或 V466/428 目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")
@@ -199,6 +211,8 @@ class ResetBusinessDataScriptContractTest {
                 .contains("v446_business_table_count = 2")
                 .contains("clear_count - v454_celebration_table_count = 214")
                 .contains("clear_count - v454_celebration_table_count = 219")
+                .contains("clear_count - v454_celebration_table_count = 221")
+                .contains("clear_count - v454_celebration_table_count = 223")
                 .contains("V443/V446/V447 白名单数量异常")
                 .contains("V447 委外前置自制权益交接表只出现 %/5")
                 .contains("V447新增五张交接事实表后为219张")

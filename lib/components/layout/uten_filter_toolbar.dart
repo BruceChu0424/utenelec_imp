@@ -185,3 +185,45 @@ class UtenFilterToolbar<T> extends StatelessWidget {
     );
   }
 }
+
+/// 分类未选时的内容区引导占位（任务中心「在上方选择分类后开始办理」的通用版；
+/// 2026-09-03 起单据列表/工作台页统一「默认不选、点击后才加载」范式共用）。
+class UtenFilterPlaceholder extends StatelessWidget {
+  const UtenFilterPlaceholder({
+    super.key,
+    this.message = '在上方选择分类后开始浏览',
+    this.description = '分类默认不选中，选择后才加载对应数据',
+  });
+
+  final String message;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      label: message,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.touch_app_outlined,
+              size: 40,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            Text(message, style: theme.textTheme.titleSmall),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              description,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

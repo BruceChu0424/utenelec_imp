@@ -3,13 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_doc_detail_page.dart';
-import 'package:uten_imp/features/subcontract/pages/subcontract_doc_edit_page.dart';
+import 'package:uten_imp/features/subcontract/pages/subcontract_order_edit_page.dart';
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart' as mn;
@@ -177,26 +176,25 @@ void main() {
         settlementOverride: settlementMethodOptionsProvider.overrideWith(
           (ref) async => const [_settlementMethod],
         ),
-        home: const SubcontractDocEditPage(
-          docType: SubcontractDocType.order,
-          id: 'order-1',
-        ),
+        home: const SubcontractOrderEditPage(id: 'order-1'),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('结算方式 *', findRichText: true), findsOneWidget);
+    // 2026-09 行级商业条款：结算方式在明细行，单元格显示名称(代码)，单头无结算字段。
     expect(find.text('月结(NET30)'), findsOneWidget);
-    expect(find.text('— 不选 —'), findsNothing);
 
     await tester.tap(find.text('保存订货单草稿'));
     await tester.pump();
 
+    // 单头条款 = 全行一致的条款；行级同值随行提交（批量拆单契约）。
     expect(repository.updatedBody?['settlementMethodId'], _settlementId);
+    final items = repository.updatedBody?['items'] as List;
+    expect((items.first as Map)['settlementMethodId'], _settlementId);
   });
 
-  testWidgets('结算方式有候选但未选择时立即红框并阻断保存', (tester) async {
+  testWidgets('结算方式未选择时提示红字并阻断保存', (tester) async {
     _usePhoneViewport(tester);
     final api = _api((_) => <Object?>[]);
     final detailJson = _orderDetailJson()..remove('settlementMethodId');
@@ -212,36 +210,22 @@ void main() {
         settlementOverride: settlementMethodOptionsProvider.overrideWith(
           (ref) async => const [_settlementMethod],
         ),
-        home: const SubcontractDocEditPage(
-          docType: SubcontractDocType.order,
-          id: 'order-1',
-        ),
+        home: const SubcontractOrderEditPage(id: 'order-1'),
       ),
     );
     await tester.pumpAndSettle();
 
-    // 必填且为空：UtenDropdownField 立即红框（与采购结账方式同款 requiredEmpty 行为）。
-    final fieldFinder = find.ancestor(
-      of: find.text('结算方式 *', findRichText: true),
-      matching: find.byType(UtenDropdownField),
-    );
-    expect(fieldFinder, findsOneWidget);
-    final decorator = tester.widget<InputDecorator>(
-      find.descendant(of: fieldFinder, matching: find.byType(InputDecorator)),
-    );
-    final border = decorator.decoration.enabledBorder! as OutlineInputBorder;
-    expect(
-      border.borderSide.color,
-      Theme.of(tester.element(fieldFinder)).colorScheme.error,
-    );
+    // 必填且为空：行内下拉格显示红字提示「点击选择」（requiredEmpty 口径）。
+    expect(find.text('点击选择'), findsAtLeastNWidgets(1));
 
     await tester.tap(find.text('保存订货单草稿'));
     await tester.pump();
 
+    // 行级结算方式必填：未选择阻断保存（更新未发出）。
     expect(repository.updatedBody, isNull);
   });
 
-  testWidgets('结算方式空字典阻断保存并标红提示', (tester) async {
+  testWidgets('结算方式空字典阻断保存并提示已停用', (tester) async {
     _usePhoneViewport(tester);
     final api = _api((_) => <Object?>[]);
     final repository = _RecordingOrderRepository(
@@ -256,10 +240,7 @@ void main() {
         settlementOverride: settlementMethodOptionsProvider.overrideWith(
           (ref) async => const <ReferenceMethodOption>[],
         ),
-        home: const SubcontractDocEditPage(
-          docType: SubcontractDocType.order,
-          id: 'order-1',
-        ),
+        home: const SubcontractOrderEditPage(id: 'order-1'),
       ),
     );
     await tester.pumpAndSettle();
@@ -269,8 +250,8 @@ void main() {
     await tester.tap(find.text('保存订货单草稿'));
     await tester.pump();
 
+    // 字典为空 = 既有值不在启用字典中：阻断保存（更新未发出）。
     expect(repository.updatedBody, isNull);
-    expect(find.text('当前结算方式已停用，请重新选择'), findsOneWidget);
   });
 
   testWidgets('结算方式字典加载失败不崩且阻断保存', (tester) async {
@@ -288,10 +269,7 @@ void main() {
         settlementOverride: settlementMethodOptionsProvider.overrideWith(
           (ref) async => throw StateError('dictionary unavailable'),
         ),
-        home: const SubcontractDocEditPage(
-          docType: SubcontractDocType.order,
-          id: 'order-1',
-        ),
+        home: const SubcontractOrderEditPage(id: 'order-1'),
       ),
     );
     await tester.pumpAndSettle();

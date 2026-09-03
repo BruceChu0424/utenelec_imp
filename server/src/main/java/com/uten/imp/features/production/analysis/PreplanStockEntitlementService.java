@@ -345,6 +345,12 @@ public class PreplanStockEntitlementService {
      * Moves exact entitlement from the former parent-tree child path to the
      * matching depth-one path owned by a newly-created MAKE_COMPONENT item.
      *
+     * <p>V458/ADR-062 修订二：有子层级的委外件下达后同样创建 SUBCONTRACT_MAKE
+     * 前置自制任务行并整树委托需求，若不把 exact 权益一并迁入新行，
+     * planExactPegs 仍按旧节点的毛需求快照 secured/earmark 共享池，而旧节点
+     * 有效需求已归零——库存被钉死，委外子树永远缺料（自锁）。故 MAKE 与
+     * SUBCONTRACT 共用本迁移，仅路线/任务类型配对不同。</p>
+     *
      * <p>The caller must already hold inventory-dimension locks and the analysis
      * header lock. The first refresh creates the target material rows; a second
      * refresh consumes the new beneficiary projection.</p>
@@ -366,8 +372,11 @@ public class PreplanStockEntitlementService {
                 JOIN production_material_analysis_items child
                   ON child.id = action.external_document_id
                  AND child.analysis_id = action.analysis_id
-                 AND child.source_type = 'MAKE_COMPONENT'
                  AND child.is_deleted = FALSE
+                 AND (action.route, child.source_type,
+                      action.external_document_type) IN (
+                      ('MAKE', 'MAKE_COMPONENT', 'PREPLAN_MAKE_TASK'),
+                      ('SUBCONTRACT', 'SUBCONTRACT_MAKE', 'SUBCONTRACT_MAKE_TASK'))
                 JOIN preplan_supply_action_allocations allocation
                   ON allocation.action_id = action.id
                  AND allocation.analysis_id = action.analysis_id
@@ -375,7 +384,7 @@ public class PreplanStockEntitlementService {
                   ON parent_material.id = allocation.analysis_material_id
                  AND parent_material.analysis_id = action.analysis_id
                  AND parent_material.active = TRUE
-                 AND parent_material.confirmed_route = 'MAKE'
+                 AND parent_material.confirmed_route = action.route
                 JOIN production_material_analysis_materials source_material
                   ON source_material.analysis_id = action.analysis_id
                  AND source_material.analysis_item_id =
@@ -394,9 +403,10 @@ public class PreplanStockEntitlementService {
                  AND target_material.active = TRUE
                 WHERE action.id = :actionId
                   AND action.analysis_id = :analysisId
-                  AND action.route = 'MAKE'
+                  AND action.route IN ('MAKE', 'SUBCONTRACT')
                   AND action.status <> 'CANCELLED'
-                  AND action.external_document_type = 'PREPLAN_MAKE_TASK'
+                  AND action.external_document_type IN (
+                      'PREPLAN_MAKE_TASK', 'SUBCONTRACT_MAKE_TASK')
                   AND child.parent_analysis_material_id = parent_material.id
                 ORDER BY target_material.id, source_material.id
                 FOR UPDATE OF action, allocation, child, parent_material,

@@ -324,6 +324,7 @@ class _FinanceReportTablePageState
                 ),
               ),
               body: UtenListTwoPane(
+                splitPersistenceKey: 'finance.reportTable',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),

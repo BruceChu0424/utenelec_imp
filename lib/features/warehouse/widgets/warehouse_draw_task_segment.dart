@@ -1,9 +1,11 @@
 // 生产领料任务中心 · 待领任务分段：仓库履约（备料/领取）任务队列。
 //
-// 数据源与 /operations/workbench/warehouse 履约工作台同源（生产物料需求 × DRAW
-// 领料单的 open_qty 投影）；本分段只保留仓库日常所需的紧凑表格：状态分段 +
-// 待领数量 + 双击进入对应领料单（/warehouse/DRAW/:id）办理分批出库。
-// 读取走仓库侧轻量读模型（WarehouseDrawTask），不依赖 operations_workbench feature。
+// 数据源与 /operations/workbench/warehouse 履约工作台同源（生产物料需求 ×
+// DRAW 领料单的 open_qty 投影，按单据归组：一行=一张领料单，多物料单显示
+// 「N 种物料」规模摘要，物料明细在领料单详情内逐行办理）；本分段只保留仓库
+// 日常所需的紧凑表格：状态分段 + 双击进入对应领料单（/warehouse/DRAW/:id）
+// 办理分批出库。读取走仓库侧轻量读模型（WarehouseDrawTask），
+// 不依赖 operations_workbench feature。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -195,6 +197,12 @@ class _WarehouseDrawTaskSegmentState
       label: '生产计划',
       width: 170,
       value: (task) => task.planNo,
+    ),
+    MasterColumnDef(
+      key: 'drawBillNo',
+      label: '领料单号',
+      width: 150,
+      value: (task) => task.drawBillLabel,
     ),
     MasterColumnDef(
       key: 'goods',

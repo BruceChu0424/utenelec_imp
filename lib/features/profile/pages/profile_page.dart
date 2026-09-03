@@ -145,86 +145,89 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
         ];
 
         return Scaffold(
-          body: SafeArea(
-            bottom: false,
-            child: switch (bp) {
-              // 单列：身份区随上滑折叠，Tab 栏吸顶后正文内滚（同员工详情页）。
-              UtenBreakpoint.compact || UtenBreakpoint.medium => Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: _centerIfMedium(
-                  bp,
-                  child: UtenCollapsingHeaderScrollView(
-                    collapsingHeader: Padding(
-                      padding: const EdgeInsets.only(top: UtenSpacing.s16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          identityGroup.hero,
-                          const SizedBox(height: UtenSpacing.s12),
-                          identityGroup.department,
-                          const SizedBox(height: UtenSpacing.s12),
-                          identityGroup.shortcut,
-                          const SizedBox(height: UtenSpacing.s4),
-                        ],
-                      ),
-                    ),
-                    pinnedHeader: _pinnedTabBar(theme, tabBar),
-                    pinnedHeaderExtent: tabBar.preferredSize.height,
-                    body: TabBarView(controller: _tab, children: tabViews),
-                  ),
-                ),
-              ),
-              // 双列：左身份组固定自滚 | 右 TabBar 常驻 + Tab 内滚。
-              UtenBreakpoint.expanded => Padding(
-                padding: EdgeInsets.fromLTRB(
-                  horizontalPadding,
-                  UtenSpacing.s24,
-                  horizontalPadding,
-                  0,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 380,
-                      child: SingleChildScrollView(
+          // 局部 SelectionArea：个人资料各 Tab 文字可框选复制（准则 §3.4）。
+          body: SelectionArea(
+            child: SafeArea(
+              bottom: false,
+              child: switch (bp) {
+                // 单列：身份区随上滑折叠，Tab 栏吸顶后正文内滚（同员工详情页）。
+                UtenBreakpoint.compact || UtenBreakpoint.medium => Padding(
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                  child: _centerIfMedium(
+                    bp,
+                    child: UtenCollapsingHeaderScrollView(
+                      collapsingHeader: Padding(
+                        padding: const EdgeInsets.only(top: UtenSpacing.s16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             identityGroup.hero,
-                            const SizedBox(height: UtenSpacing.s16),
+                            const SizedBox(height: UtenSpacing.s12),
                             identityGroup.department,
                             const SizedBox(height: UtenSpacing.s12),
                             identityGroup.shortcut,
+                            const SizedBox(height: UtenSpacing.s4),
                           ],
                         ),
                       ),
+                      pinnedHeader: _pinnedTabBar(theme, tabBar),
+                      pinnedHeaderExtent: tabBar.preferredSize.height,
+                      body: TabBarView(controller: _tab, children: tabViews),
                     ),
-                    const SizedBox(width: UtenSpacing.s32),
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 720),
+                  ),
+                ),
+                // 双列：左身份组固定自滚 | 右 TabBar 常驻 + Tab 内滚。
+                UtenBreakpoint.expanded => Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    UtenSpacing.s24,
+                    horizontalPadding,
+                    0,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 380,
+                        child: SingleChildScrollView(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _pinnedTabBar(theme, tabBar),
-                              Expanded(
-                                child: TabBarView(
-                                  controller: _tab,
-                                  children: tabViews,
-                                ),
-                              ),
+                              identityGroup.hero,
+                              const SizedBox(height: UtenSpacing.s16),
+                              identityGroup.department,
+                              const SizedBox(height: UtenSpacing.s12),
+                              identityGroup.shortcut,
                             ],
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: UtenSpacing.s32),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 720),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _pinnedTabBar(theme, tabBar),
+                                Expanded(
+                                  child: TabBarView(
+                                    controller: _tab,
+                                    children: tabViews,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            },
+              },
+            ),
           ),
         );
       },

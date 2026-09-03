@@ -565,7 +565,7 @@ void dispatchNoticeArrival(
     ),
   };
 
-  // V459 审核待办弹卡：带「去审核/稍后再看」双按钮 + 认领状态行 + 办结自动收卡，
+  // V459 审核待办：顶部纯显示条 + 居中审核弹窗（主交互在弹窗内），
   // 弹前先做一次真态校验（已办结不弹）。与普通顶部条同为非阻塞（ADR-063）。
   if (notice.interactive) {
     unawaited(
@@ -599,12 +599,11 @@ void dispatchNoticeArrival(
 
 /// V459 审核待办弹卡分派（见 ADR-063 / 方案 D2/D5/D6）。
 ///
-/// 交互契约：
-/// - 「去审核」：标已读（R6）→ 跳 actionRoute（域专属审核页；页面内自行认领）。
-/// - 「稍后再看」：标已读 + 服务端 snooze 15 分钟（跨设备一致），到点未办结重弹。
-/// - 停留期间每 30s 心跳真态校验：他人认领 → 状态行「XX 正在审核」；办结 →
-///   自动收卡 + 轻提示「已由 XX 处理」；弹卡本身 20s 到期自然收起（悬停暂停）。
-/// - 弹前先校验一次：已办结的待办不弹（R5），也不打扰。
+/// 交互契约（2026-09-03 口径修订）：
+/// - 主交互全部由同时弹出的居中审核弹窗承载（认领状态心跳/去审核/稍后再看）；
+/// - 顶部条降级为纯显示——不带操作按钮与状态行，20s 自然收起，
+///   避免同一待办在两处出现重复的「去审核」按钮；
+/// - 弹前先校验一次：已办结的待办不弹，也不打扰。
 Future<void> dispatchReviewCard(
   BuildContext context,
   Notice notice, {
@@ -613,7 +612,6 @@ Future<void> dispatchReviewCard(
 }) async {
   // 与 dispatchNoticeArrival 相同的失效防护：提前捕获容器与根 Navigator context。
   final container = ProviderScope.containerOf(context, listen: false);
-  final router = GoRouter.of(context);
   final detailContext = Navigator.of(context, rootNavigator: true).context;
   final repository = container.read(noticeRepositoryProvider);
 
@@ -621,78 +619,20 @@ Future<void> dispatchReviewCard(
     notice.actionRoute,
   ]);
 
-  // 卡片关闭后心跳停止；statusLine 故意不 dispose——收卡动画窗口内卡片仍在监听，
-  // 提前 dispose 会崩（数量级为个位 notifier，泄漏可忽略）。
-  final statusLine = ValueNotifier<String?>(null);
-  Timer? heartbeat;
-  var cardId = '';
-  var closed = false;
-
-  void stopHeartbeat() {
-    heartbeat?.cancel();
-    heartbeat = null;
-  }
-
-  void closeCard({String? completionMessage}) {
-    if (closed) return;
-    closed = true;
-    stopHeartbeat();
-    if (cardId.isNotEmpty) {
-      container.read(appNotificationProvider.notifier).dismiss(cardId);
-    }
-    if (completionMessage != null) {
-      container
-          .read(appNotificationProvider.notifier)
-          .showInfo(completionMessage);
-    }
-  }
-
-  Future<void> checkOnce({bool silentWhenInitiallyResolved = false}) async {
-    if (closed) return;
-    try {
-      final statuses = await repository.pendingReviewStatus([notice.id]);
-      final status = statuses.isEmpty ? null : statuses.first;
-      if (status == null) return;
-      if (status.resolved) {
-        closeCard(
-          completionMessage: silentWhenInitiallyResolved
-              ? null
-              : '「${notice.title}」已由他人处理',
-        );
-        return;
-      }
-      statusLine.value = status.claimedByName == null
-          ? null
-          : '${status.claimedByName} 正在审核';
-    } catch (_) {
-      // 真态校验失败可容忍：弹卡继续按既有停留时长自然收起。
-    }
-  }
-
   // 弹前真态校验：办结的待办不弹（仍算已送达）。
-  await checkOnce(silentWhenInitiallyResolved: true);
-  if (closed) {
-    onDelivered?.call();
-    return;
-  }
-
-  void navigateToTarget() {
-    try {
-      if (noticeActionTarget(notice) case final target?) {
-        final match = router.configuration.findMatch(Uri.parse(target));
-        if (!match.isError) {
-          router.go(target);
-          return;
-        }
-      }
-    } catch (_) {
-      // 历史脏 route 回退详情弹层。
+  try {
+    final statuses = await repository.pendingReviewStatus([notice.id]);
+    final status = statuses.isEmpty ? null : statuses.first;
+    if (status != null && status.resolved) {
+      onDelivered?.call();
+      return;
     }
-    showNoticeDetailDialog(detailContext, noticeId: notice.id);
+  } catch (_) {
+    // 真态校验失败可容忍：按到达即弹，居中弹窗的心跳会再校验。
   }
 
-  // 经已捕获的容器入队（不跨 async gap 使用 context）。
-  cardId = container
+  // 纯显示顶部条：无按钮/状态行，20s 自然收起（悬停暂停）。
+  container
       .read(appNotificationProvider.notifier)
       .showMessage(
         notice.title,
@@ -700,44 +640,19 @@ Future<void> dispatchReviewCard(
         kind: kind,
         icon: notice.type.icon,
         duration: const Duration(seconds: 20),
-        statusLine: statusLine,
-        actions: [
-          AppNotificationAction(
-            label: '去审核',
-            filled: true,
-            onPressed: () {
-              markNoticeReadContainer(container, notice.id).ignore();
-              navigateToTarget();
-            },
-          ),
-          AppNotificationAction(
-            label: '稍后再看',
-            onPressed: () {
-              // R6：稍后再看也算已处理提醒；snooze 失败可容忍（下轮到达仍会弹）。
-              markNoticeReadContainer(container, notice.id).ignore();
-              repository.snooze(notice.id).ignore();
-            },
-          ),
-        ],
-        onDismissed: () {
-          closed = true;
-          stopHeartbeat();
-          onDelivered?.call();
-        },
+        onDismissed: onDelivered,
         // 同一单据的多份通知（逐人落库）必须各自弹卡；ID 去重由协调器负责。
         force: true,
       );
 
-  heartbeat = Timer.periodic(const Duration(seconds: 30), (_) => checkOnce());
-
   // 三形态并存（ADR-063 第二轮口径）：通知中心条目（落库即有）+ 顶部通知条
-  // （上方，20s 自然收起）+ 居中审核弹窗（主交互：认领状态/去审核/稍后再看；
+  // （纯显示，20s 自然收起）+ 居中审核弹窗（主交互：认领状态/去审核/稍后再看；
   // 关闭或办结自动退出）。detailContext 为根 Navigator context（提前捕获，
   // 页面切换不失效；弹前校验后仍挂载才弹）。
   if (detailContext.mounted) {
     unawaited(
       showReviewPendingDialog(detailContext, pending: [notice]).then((_) {
-        // 居中弹窗退出后顶部条继续按自身节奏收起/心跳，无需干预。
+        // 居中弹窗退出后顶部条继续按自身节奏收起，无需干预。
       }),
     );
   }

@@ -52,6 +52,8 @@ class WarehouseHistoryQueryPostgresTest {
         for (WarehouseHistoryType type : WarehouseHistoryType.values()) {
             MapSqlParameterSource listParameters = new MapSqlParameterSource()
                     .addValue("status", (short) 0)
+                    .addValue("date_from", null)
+                    .addValue("date_to", null)
                     .addValue("keyword", "")
                     .addValue("keyword_pattern", "%%")
                     .addValue("limit", 20)
@@ -94,6 +96,8 @@ class WarehouseHistoryQueryPostgresTest {
         for (WarehouseHistoryType type : WarehouseHistoryType.values()) {
             MapSqlParameterSource parameters = new MapSqlParameterSource()
                     .addValue("status", null)
+                    .addValue("date_from", null)
+                    .addValue("date_to", null)
                     .addValue("keyword", "")
                     .addValue("keyword_pattern", "%%")
                     .addValue("limit", 20)

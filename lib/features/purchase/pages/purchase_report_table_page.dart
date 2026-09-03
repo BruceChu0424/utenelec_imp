@@ -298,6 +298,7 @@ class _PurchaseReportTablePageState
                 ),
               ),
               body: UtenListTwoPane(
+                splitPersistenceKey: 'purchase.reportTable',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),

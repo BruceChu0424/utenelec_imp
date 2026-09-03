@@ -119,11 +119,13 @@ double _remainQty(
 
 /// 弹出"从上游引入"右滑入大面板。null=取消；返回所选明细 + 上游委外商。
 /// [initialSupplierId]：编辑页表头已选委外商时传入，面板委外商筛选默认锁定该委外商。
+/// [allowOverRemaining]（订货引入申请时 true）：本次数量允许超过申请剩余量（超委外备货）。
 Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
   BuildContext context,
   WidgetRef ref,
   SubcontractDocConfig cfg, {
   String? initialSupplierId,
+  bool allowOverRemaining = false,
 }) async {
   if (cfg.type == SubcontractDocType.materialIssue && !cfg.approvalEnabled) {
     await showDialog<void>(
@@ -159,6 +161,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
             '暂无已审的${_upstreamLabel(upstream)}', // TODO(l10n): 补 arb
         partyNoun: '委外商',
         allPartiesLabel: '全部委外商', // TODO(l10n): 补 arb
+        allowOverRemaining: allowOverRemaining,
         docIdOf: (d) => d.id,
         partyIdOf: (d) => d.supplierId,
         watchNames: (ref) => ref.watch(mn.masterNameServiceProvider),

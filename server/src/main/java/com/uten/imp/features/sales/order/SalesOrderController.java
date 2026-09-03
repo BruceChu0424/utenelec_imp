@@ -67,8 +67,11 @@ public class SalesOrderController {
     public PageResponse<com.uten.imp.features.sales.order.dto.OrderProgressRow> progress(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "") String stage) {
-        return service.progress(page, size, stage);
+            @RequestParam(defaultValue = "") String stage,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+        return service.progress(page, size, stage, keyword, dateFrom, dateTo);
     }
 
     /** 订单进度各阶段计数：顶部筛选卡（待完成/待排产/生产中/可发货/已发货）的全量口径。 */

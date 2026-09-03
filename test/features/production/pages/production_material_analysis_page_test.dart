@@ -1268,7 +1268,8 @@ void main() {
       final acceptWidget = tester.widget<UtenButton>(
         find.ancestor(of: acceptButton, matching: find.byType(UtenButton)),
       );
-      expect(acceptWidget.type, UtenButtonType.success);
+      // 2026-09-03：悬浮区可执行主动作统一 danger（红底白字）高亮。
+      expect(acceptWidget.type, UtenButtonType.danger);
       expect(acceptWidget.icon, isNull);
       expect(find.byIcon(Icons.done_all_rounded), findsNothing);
       await tester.ensureVisible(acceptButton);
@@ -1838,6 +1839,37 @@ void main() {
       await tester.pump();
       // 勾选后底部出现委外路线的批量下达按钮（服务端分流建前置自制任务）。
       expect(find.text('下达委外(1)'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'SUBCONTRACT_MAKE child has no second BOM root and no standalone section',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        size: const Size(1200, 900),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: _pendingMakeCandidateAnalysisJson(
+          parentRoute: 'SUBCONTRACT',
+          includeRealChild: true,
+          childSourceType: 'SUBCONTRACT_MAKE',
+        ),
+      );
+
+      // 2026-09-03 收口：委外子件与自制完全同构——不在页面下方重复开
+      // 「委外件前置自制」独立区块，也不在 BOM 树新开第二个产品根。
+      expect(find.text('委外件前置自制'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('material-bom-product-pending-make-child-1')),
+        findsNothing,
+      );
+      // 子件身份只在“生产准备任务”分区的真实产品卡上表达一次。
+      expect(find.text('委外子件 · 用于 测试产品 · 入库后通知委外部'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -6776,6 +6808,7 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
   bool actionable = true,
   bool includeMixedReadyCandidate = false,
   String parentRoute = 'MAKE',
+  String childSourceType = 'MAKE_COMPONENT',
 }) {
   final json = _analysisJson(const ['NOTIFY_SUPPLY', 'GENERATE_PLAN']);
   final childShortage = lowerLevelPending ? 4 : 0;
@@ -6891,7 +6924,7 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
   if (includeRealChild) {
     (json['products']! as List<dynamic>).add({
       'analysisLineId': 'pending-make-child-1',
-      'sourceType': 'MAKE_COMPONENT',
+      'sourceType': childSourceType,
       'parentAnalysisLineId': 'product-line-1',
       'parentGoodsName': '测试产品',
       'goodsId': 'goods-pending-make-1',

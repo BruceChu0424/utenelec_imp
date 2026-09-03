@@ -1,35 +1,56 @@
 // 采购单据列表页（按 docType 参数化）。
 //
-// 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+新建) + 状态筛选(DocKpiBar 状态卡条，非 Chip 行) + MasterDataTableView。
-// 过滤由本页自带的 KPI 状态卡条 + 关键词搜索承担（facets 传空，表头降级为纯标签）。
-// 名称解析（供应商/仓库）通过 MasterNameService。编辑按 edit 权限显隐「新建」。
-// 分页/竞态/静默刷新状态机在共享 PagedListController（本页只留状态筛选与列定义）。
+// 2026-09-03 起统一「分类分段」范式（原 DocKpiBar 状态卡条退役）：
+// UtenFilterToolbar 状态分段（草稿/已审/红冲，无「全部」段）+ 末尾「历史记录」段——
+// - 默认不选：进页面不预选、不发请求，内容区显示引导占位（UtenFilterPlaceholder）；
+// - 徽章只挂待处理段（申请页=计划已下达待分解；订货/收货/退货页=草稿），
+//   计数取后端 list(size:1) 全量口径；
+// - 历史记录段：内容区顶部渲染 UtenHistoryTimeFilter（时间段/全部），
+//   未选时间不发请求显示引导占位；选中后按 dateFrom/dateTo 加载（不限状态）。
+// 其余（折叠头+表格吸顶内滚、列表刷新 tick、返回即刷新、PagedListController
+// 竞态状态机）保持原实现。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/widgets/doc_kpi_bar.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/purchase_repository.dart';
+
+/// 状态分段值：真实单据状态（status 非空）或历史记录哨兵。
+class _PurchaseDocSeg {
+  const _PurchaseDocSeg.stage(int this.status) : history = false;
+  const _PurchaseDocSeg.history() : status = null, history = true;
+
+  final int? status;
+  final bool history;
+  @override
+  bool operator ==(Object other) =>
+      other is _PurchaseDocSeg &&
+      other.status == status &&
+      other.history == history;
+
+  @override
+  int get hashCode => Object.hash(status, history);
+}
 
 class PurchaseDocListPage extends ConsumerStatefulWidget {
   const PurchaseDocListPage({super.key, required this.docType});
@@ -47,14 +68,34 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
   String? _myLocation;
-  int? _statusFilter; // null=全部
+
+  /// 当前选中分段；null = 未选择引导态（不发请求）。
+  _PurchaseDocSeg? _seg;
+
+  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+
+  /// 待处理段徽章计数；null = 加载中（不显示徽章，不把未知伪装成 0）。
+  int? _actionableCount;
+
+  /// 待处理段对应的状态：申请页=计划已下达（待分解）；其余=草稿（待提交/待审）。
+  int get _actionableStatus => widget.docType == PurchaseDocType.request
+      ? kPurchaseStatusApproved
+      : kPurchaseStatusDraft;
+
+  bool get _shouldLoad {
+    final seg = _seg;
+    if (seg == null) return false;
+    if (seg.history && _historyTime.isNone) return false;
+    return true;
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(masterNameServiceProvider).ensureLoaded();
-      _reload(1);
+      _loadBadge();
     });
   }
 
@@ -72,24 +113,57 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   }
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<PurchaseDocListItem>> _fetch() => ref
-      .read(purchaseRepositoryProvider(widget.docType))
-      .list(
-        page: _list.pageNum,
-        filter: PurchaseDocFilter(
-          keyword: _list.normalizedKeyword,
-          status: _statusFilter,
-        ),
-        sort: _list.sortKey,
-        order: _list.sortOrder,
-      );
+  Future<PagedResult<PurchaseDocListItem>> _fetch() {
+    final seg = _seg!;
+    final range = seg.history ? _historyTime.range : null;
+    return ref
+        .read(purchaseRepositoryProvider(widget.docType))
+        .list(
+          page: _list.pageNum,
+          filter: PurchaseDocFilter(
+            keyword: _list.normalizedKeyword,
+            status: seg.history ? null : seg.status,
+            dateFrom: range == null
+                ? null
+                : ChinaDateTime.formatDate(range.start),
+            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+          ),
+          sort: _list.sortKey,
+          order: _list.sortOrder,
+        );
+  }
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  Future<void> _reload([int? page, bool silent = false]) {
+    if (!_shouldLoad) return Future.value();
+    return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  }
 
-  void _onStatus(int? s) {
-    setState(() => _statusFilter = s);
+  void _selectSeg(_PurchaseDocSeg seg) {
+    if (seg == _seg) return;
+    setState(() {
+      _seg = seg;
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+    });
+    if (!seg.history || !_historyTime.isNone) _reload(1);
+  }
+
+  void _onHistoryTime(UtenHistoryTimeValue value) {
+    if (value == _historyTime) return;
+    setState(() => _historyTime = value);
     _reload(1);
+  }
+
+  /// 待处理段计数（list size=1 取 total；失败保持 null 不显示徽章）。
+  Future<void> _loadBadge() async {
+    try {
+      final r = await ref
+          .read(purchaseRepositoryProvider(widget.docType))
+          .list(size: 1, filter: PurchaseDocFilter(status: _actionableStatus));
+      if (!mounted) return;
+      setState(() => _actionableCount = r.total);
+    } catch (_) {
+      // 计数失败静默：徽章不显示，不影响列表。
+    }
   }
 
   String _statusLabel(PurchaseDocListItem item) {
@@ -167,11 +241,15 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
     ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
       _reload();
+      _loadBadge();
     });
     // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
     // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
     ref.onPageResume(_myLocation!, () => _reload(null, true));
+    final isRequest = widget.docType == PurchaseDocType.request;
+    final approvedLabel = isRequest ? '计划已下达' : '已审';
+    final seg = _seg;
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,
@@ -182,7 +260,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新', // TODO(l10n): 补 arb
-            onPressed: () => _reload(),
+            onPressed: () {
+              _reload();
+              _loadBadge();
+            },
           ),
         ],
       ),
@@ -200,24 +281,53 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                     ) &&
                     !(_list.page?.items.any((item) => item.priceMasked) ??
                         false);
-                // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：KPI 卡条随上滑
-                // 收起腾出空间，标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
+                // 「顶部折叠 + 表格吸顶内滚」：分类工具条随上滑收起腾出空间，
+                // 标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
                 return UtenCollapsingHeaderScrollView(
-                  collapsingHeader: Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
+                  collapsingHeader: UtenFilterToolbar<_PurchaseDocSeg>(
+                    segmentsKey: Key(
+                      'purchase-doc-segments-${_cfg.type.pathSegment}',
                     ),
-                    // KPI 条：状态过滤 + 概览（横向 4 卡，上滑收起、下滑拉回）。
-                    child: DocKpiBar(
-                      counter: _countStatus,
-                      selected: _statusFilter,
-                      onSelect: _onStatus,
-                    ),
+                    segments: [
+                      UtenFilterSegment(
+                        value: const _PurchaseDocSeg.stage(
+                          kPurchaseStatusDraft,
+                        ),
+                        label: '草稿',
+                        count: _actionableStatus == kPurchaseStatusDraft
+                            ? _actionableCount
+                            : null,
+                      ),
+                      UtenFilterSegment(
+                        value: const _PurchaseDocSeg.stage(
+                          kPurchaseStatusApproved,
+                        ),
+                        label: approvedLabel,
+                        count: _actionableStatus == kPurchaseStatusApproved
+                            ? _actionableCount
+                            : null,
+                      ),
+                      const UtenFilterSegment(
+                        value: _PurchaseDocSeg.stage(kPurchaseStatusReversed),
+                        label: '红冲',
+                      ),
+                      const UtenFilterSegment(
+                        value: _PurchaseDocSeg.history(),
+                        label: '历史记录',
+                      ),
+                    ],
+                    selected: seg == null ? const {} : {seg},
+                    onSelectionChanged: _selectSeg,
+                    searchHint: '搜索单据号', // TODO(l10n): 补 arb
+                    initialSearchValue: _list.keyword,
+                    onSearchChanged: (v) {
+                      _list.keyword = v;
+                      _reload(1);
+                    },
                   ),
                   body: Column(
                     children: [
-                      // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
+                      // 页面头：Icon + 标题 + 计数 + 新建按钮。
                       Padding(
                         padding: const EdgeInsets.only(
                           bottom: UtenSpacing.s8,
@@ -253,61 +363,63 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                           ],
                         ),
                       ),
-                      // 桌面：左筛选侧栏（搜索）+ 右表格；手机：垂直堆叠
-                      Expanded(
-                        child: UtenListTwoPane(
-                          filterPane: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: UtenSpacing.s4,
-                            ),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: UtenSearchBar(
-                                hint: '搜索单据号', // TODO(l10n): 补 arb
-                                initialValue: _list.keyword,
-                                onChanged: (v) {
-                                  _list.keyword = v;
-                                  _reload(1);
-                                },
-                              ),
-                            ),
+                      if (seg?.history == true) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: UtenSpacing.s8,
+                            left: UtenSpacing.s4,
+                            right: UtenSpacing.s4,
                           ),
-                          tablePane: MasterDataTableView<PurchaseDocListItem>(
-                            // primary:true → 表体参与「KPI 卡折叠 → 表格内滚」联动。
-                            primary: true,
-                            columns: _columns(
-                              names,
-                              canViewCommercialAmounts:
-                                  canViewCommercialAmounts,
+                          child: UtenHistoryTimeFilter(
+                            key: Key(
+                              'purchase-doc-history-time-${_cfg.type.pathSegment}',
                             ),
-                            items: _list.page?.items ?? const [],
-                            facets: const {},
-                            nullCounts: const {},
-                            filters: const {},
-                            onFilterChanged: (_, _) {},
-                            sortColumn: _list.sortKey,
-                            sortAscending: _list.sortAsc,
-                            onSortChange: (column, ascending) {
-                              _list.onSortChange(column, ascending);
-                              _reload(1);
-                            },
-                            onRowTap: (it) => context.push(
-                              RoutePath.purchaseDocDetail(
-                                _cfg.type.pathSegment,
-                                it.id,
-                              ),
-                            ),
-                            isLoading: _list.isLoadingFirst,
-                            loadingMore: _list.isLoadingMore,
-                            error: _list.error,
-                            onRetry: () => _reload(),
-                            emptyMessage:
-                                '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
-                            currentPage: _list.currentPage,
-                            totalPages: _list.totalPages,
-                            onPageChange: (p) => _reload(p),
+                            value: _historyTime,
+                            onChanged: _onHistoryTime,
                           ),
                         ),
+                      ],
+                      Expanded(
+                        child: seg == null
+                            ? const UtenFilterPlaceholder()
+                            : seg.history && _historyTime.isNone
+                            ? const UtenHistoryTimePlaceholder()
+                            : MasterDataTableView<PurchaseDocListItem>(
+                                // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+                                primary: true,
+                                columns: _columns(
+                                  names,
+                                  canViewCommercialAmounts:
+                                      canViewCommercialAmounts,
+                                ),
+                                items: _list.page?.items ?? const [],
+                                facets: const {},
+                                nullCounts: const {},
+                                filters: const {},
+                                onFilterChanged: (_, _) {},
+                                sortColumn: _list.sortKey,
+                                sortAscending: _list.sortAsc,
+                                onSortChange: (column, ascending) {
+                                  _list.onSortChange(column, ascending);
+                                  _reload(1);
+                                },
+                                onRowTap: (it) => context.push(
+                                  RoutePath.purchaseDocDetail(
+                                    _cfg.type.pathSegment,
+                                    it.id,
+                                  ),
+                                ),
+                                isLoading: _list.isLoadingFirst,
+                                loadingMore: _list.isLoadingMore,
+                                error: _list.error,
+                                onRetry: () => _reload(),
+                                emptyMessage: seg.history
+                                    ? '该时间段内暂无${_cfg.shortLabel}单'
+                                    : '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
+                                currentPage: _list.currentPage,
+                                totalPages: _list.totalPages,
+                                onPageChange: (p) => _reload(p),
+                              ),
                       ),
                     ],
                   ),
@@ -318,17 +430,5 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
         ),
       ),
     );
-  }
-
-  /// 各状态单据数（KPI 条用，并行 4 次 list size=1 取 total）。
-  Future<int> _countStatus(int? s) async {
-    try {
-      final r = await ref
-          .read(purchaseRepositoryProvider(widget.docType))
-          .list(size: 1, filter: PurchaseDocFilter(status: s));
-      return r.total;
-    } catch (_) {
-      return 0;
-    }
   }
 }

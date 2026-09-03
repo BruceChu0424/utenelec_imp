@@ -4,6 +4,7 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.TaskDetail;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.TaskSummary;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,9 +35,11 @@ public class WarehouseQualityResultController {
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(defaultValue = "ALL") String receiptType,
             @RequestParam(defaultValue = "") String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "40") int size) {
-        return service.list(keyword, receiptType, status, page, size);
+        return service.list(keyword, receiptType, status, dateFrom, dateTo, page, size);
     }
 
     /** 顶部状态分段计数（等待检查结果/全部合格/部分合格/需退回/已完结）。 */

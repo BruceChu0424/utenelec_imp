@@ -159,6 +159,8 @@ class _Gateway implements WarehouseDocumentHistoryGateway {
     int size = 20,
     String? keyword,
     String? status,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     statuses.add(status);
     return PagedResult<WarehouseDocumentHistorySummary>(

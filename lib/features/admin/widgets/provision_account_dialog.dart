@@ -116,55 +116,58 @@ class _ProvisionAccountDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
-      title: const Row(
-        children: [
-          Icon(Icons.person_add_alt_1_rounded),
-          SizedBox(width: UtenSpacing.s8),
-          Text('开通账号'),
-        ],
-      ),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                '为还没有登录账号的在册员工补开账号。'
-                '缺少手机号或证件号的员工无法开通，请先在员工档案中补全资料。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.5,
+    // 一次性凭据弹窗：账号/密码必须可框选复制（准则 §3.4 弹窗局部 region）。
+    return SelectionArea(
+      child: AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.person_add_alt_1_rounded),
+            SizedBox(width: UtenSpacing.s8),
+            Text('开通账号'),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '为还没有登录账号的在册员工补开账号。'
+                  '缺少手机号或证件号的员工无法开通，请先在员工档案中补全资料。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
                 ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              UtenSearchBar(
-                hint: '搜索姓名或工号',
-                autofocus: true,
-                onChanged: (v) {
-                  final next = v.trim();
-                  if (next != _search) {
-                    _search = next;
-                    unawaited(_load());
-                  }
-                },
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              SizedBox(height: 320, child: _listBody(theme)),
-            ],
+                const SizedBox(height: UtenSpacing.s12),
+                UtenSearchBar(
+                  hint: '搜索姓名或工号',
+                  autofocus: true,
+                  onChanged: (v) {
+                    final next = v.trim();
+                    if (next != _search) {
+                      _search = next;
+                      unawaited(_load());
+                    }
+                  },
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                SizedBox(height: 320, child: _listBody(theme)),
+              ],
+            ),
           ),
         ),
+        actionsAlignment: MainAxisAlignment.end,
+        actions: [
+          TextButton(
+            onPressed: _provisioning ? null : () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
       ),
-      actionsAlignment: MainAxisAlignment.end,
-      actions: [
-        TextButton(
-          onPressed: _provisioning ? null : () => Navigator.pop(context),
-          child: const Text('关闭'),
-        ),
-      ],
     );
   }
 

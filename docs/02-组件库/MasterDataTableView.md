@@ -56,6 +56,11 @@
   常驻选择摘要「已选 N 项 + 清除选择」；`batchActionsBuilder` 返回的真正业务动作（批量审核/
   禁用/删除等）统一悬浮在表格右下角，与采购任务工作台同一视觉。未选中时动作仍可发现但灰显，
   由 `AbsorbPointer` 拦截；表体同时预留底部滚动空间，末行不会被遮挡。
+  多选表体整体 `SelectionContainer.disabled`——勾选场景不需要文本复制，也挡住页面级
+  SelectionArea（UtenContentContainer 默认包裹）渗入（2026-09-03，准则 §3.4）。
+- **文字框选（2026-09-03 全站口径，准则 §3.4）**：表体自带局部 `SelectionArea`（跨格框选 +
+  复制，页面 region 嵌套时各管各的）；**表头整体 `SelectionContainer.disabled`**——表头有
+  「按住拖拽隐藏列/拖拽调宽」手势，与拖选隔离，且挡住页面级 SelectionArea 渗入。
 - **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。
 - **空/错/加载态**：内置 `UtenEmpty` / loading / 重试。
 - **`toolbarActions`、批量悬浮动作与全屏**：`toolbarActions` 的按钮排在工具条

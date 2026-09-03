@@ -11,6 +11,8 @@ abstract interface class OperationsWorkbenchGateway {
     String? keyword,
     String? status,
     String? exception,
+    String? dateFrom,
+    String? dateTo,
   });
 }
 
@@ -27,6 +29,8 @@ class OperationsWorkbenchRepository implements OperationsWorkbenchGateway {
     String? keyword,
     String? status,
     String? exception,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     final json = await api.get(
       '/operations/workbench/${department.apiValue}',
@@ -37,6 +41,8 @@ class OperationsWorkbenchRepository implements OperationsWorkbenchGateway {
           'keyword': keyword.trim(),
         if (status != null && status.isNotEmpty) 'status': status,
         if (exception != null && exception.isNotEmpty) 'exception': exception,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
       },
     );
     return OperationsWorkbenchData.fromJson(json, department);

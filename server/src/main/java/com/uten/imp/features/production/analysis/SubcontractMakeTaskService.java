@@ -63,7 +63,8 @@ public class SubcontractMakeTaskService {
             LocalDate needDate,
             String status,
             List<String> allowedActions,
-            java.time.Instant updatedAt) {
+            java.time.Instant updatedAt,
+            UUID preparationItemId) {
     }
 
     public record TaskPageRequest(
@@ -121,7 +122,8 @@ public class SubcontractMakeTaskService {
                                  'SUBMITTED','APPROVED')
                        ), 0),
                        item.delivery_date,
-                       task.status, task.updated_at
+                       task.status, task.updated_at,
+                       task.preparation_item_id
                 """ + baseSql + " ORDER BY task.updated_at DESC NULLS LAST, task.id");
         if (request.analysisId() != null) {
             countQuery.setParameter("analysisId", request.analysisId());
@@ -156,7 +158,8 @@ public class SubcontractMakeTaskService {
                                 .toLocalDate(row[17]),
                 Objects.toString(row[18], ""),
                 allowedActions(decimal(row[15]), Objects.toString(row[18], "")),
-                row[19] == null ? null : toInstant(row[19]))).toList();
+                row[19] == null ? null : toInstant(row[19]),
+                (UUID) row[20])).toList();
         return new PageResponse<>(content, page, size, total,
                 (int) Math.ceil((double) total / size));
     }

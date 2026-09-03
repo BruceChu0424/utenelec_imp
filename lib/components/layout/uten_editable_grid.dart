@@ -13,12 +13,15 @@
 //   内容变宽时列自动加长——只增不减、封顶 480；用户手动拖拽过的列锁定用户宽度，不再
 //   自动加宽（列集合变化才解锁）。详见 EditableGridColumn.textOf 文档。
 // - "添加行"(加1) + "添加多行"(对话框填 N，1-50)；行尾删除。
+// - 行级右键/长按操作菜单（2026-09-03，可编辑模式）：复用 UtenContextMenu——
+//   复制选中/粘贴/批量粘贴/在上方插入空行/删除选中，与操作条同一套 controller 逻辑。
 // - 全尺寸 Excel（手机横向滚动，与报表一致）；不做列隐藏，单套代码。
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../feedback/uten_context_menu.dart';
 import '../feedback/uten_dialog.dart';
 import 'uten_h_scroll_area.dart';
 
@@ -326,6 +329,16 @@ class UtenEditableGridController<T extends EditableGridRow>
     } else {
       _selected.addAll(_rows);
     }
+    notifyListeners();
+  }
+
+  /// 行菜单打开前的选中归位：该行已在选中集 → 不动（保留多选，菜单作用于整组）；
+  /// 不在 → 选择集替换为仅该行（文件管理器语义，与 MasterDataTableView 右键一致）。
+  void selectOnly(T row) {
+    if (_selected.contains(row)) return;
+    _selected
+      ..clear()
+      ..add(row);
     notifyListeners();
   }
 
@@ -968,22 +981,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
                         itemCount: rows.length,
                         itemBuilder: (context, i) => RepaintBoundary(
                           // 隔离行重绘：列宽拖拽/选中/粘性头重排时只绘本行，不蔓延整表与外层页面。
-                          child: _DataRow<T>(
-                            index: i,
-                            row: rows[i],
-                            columns: widget.columns,
-                            widths: _widths,
-                            showSelect: widget._showSelect,
-                            isSelected: _rowIsSelected(rows[i]),
-                            onSelect: _rowOnSelect(rows[i]),
-                            rowTint: widget.rowColor?.call(rows[i]),
-                            showDelete: widget.showRowDelete,
-                            deleteColWidth: _deleteColWidth,
-                            divider: divider,
-                            confirmDelete: widget.confirmDelete,
-                            deleteConfirmLabel: widget.deleteConfirmLabel,
-                            onDelete: () => widget.controller.removeAt(i),
-                          ),
+                          child: _rowCellOrMenuRegion(rows[i], i, divider),
                         ),
                       );
                     },
@@ -1030,12 +1028,96 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
     // 操作条放在 Stack 之外（外层 Column），随页滚动且永不被 sticky 表头覆盖。
     // 仅可编辑表格（showAddRow）显示；选择弹层（showAddRow=false）不显示。
-    if (!widget.showAddRow) return body;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [_actionsBar(theme), body],
+    // 整体 SelectionContainer.disabled：单元格本就是 TextField（自带长按选词复制，
+    // 不受 disabled 影响），而行级长按菜单/列宽拖拽把手与区域文字拖选手势打架，
+    // 故编辑网格整体不参与页面级 SelectionArea（准则 §3.4）。
+    if (!widget.showAddRow) {
+      return SelectionContainer.disabled(child: body);
+    }
+    return SelectionContainer.disabled(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [_actionsBar(theme), body],
+      ),
     );
+  }
+
+  /// 单个行单元：可编辑模式（showAddRow）外套一层右键/长按操作菜单（UtenContextMenuRegion），
+  /// 只选/任务办理模式不包——明细由上游固定带入，无自由增删语义。
+  Widget _rowCellOrMenuRegion(T row, int i, BorderSide divider) {
+    final cell = _DataRow<T>(
+      index: i,
+      row: row,
+      columns: widget.columns,
+      widths: _widths,
+      showSelect: widget._showSelect,
+      isSelected: _rowIsSelected(row),
+      onSelect: _rowOnSelect(row),
+      rowTint: widget.rowColor?.call(row),
+      showDelete: widget.showRowDelete,
+      deleteColWidth: _deleteColWidth,
+      divider: divider,
+      confirmDelete: widget.confirmDelete,
+      deleteConfirmLabel: widget.deleteConfirmLabel,
+      onDelete: () => widget.controller.removeAt(i),
+    );
+    if (!widget.showAddRow) return cell;
+    return UtenContextMenuRegion(
+      // 组件在手势触发时先调 entriesBuilder 再回调 onMenuOpening——选中归位必须
+      // 在构建条目前完成，"复制选中 (n)"/"删除选中 (n)" 的计数才是归位后的口径。
+      entriesBuilder: () {
+        final c = widget.controller;
+        if (!c.isSelected(row)) c.selectOnly(row);
+        return _rowMenuEntries(row, i);
+      },
+      child: cell,
+    );
+  }
+
+  /// 行菜单条目：复制选中/粘贴/批量粘贴/在上方插入空行/删除选中。
+  /// cloneRow 未提供（页面无行克隆）时不显复制粘贴组；缓冲为空时粘贴置灰不隐藏
+  /// （与 UtenContextMenu「看得见功能边界」约定一致）。所有操作与操作条同一套
+  /// controller 逻辑 + 确认弹窗，粘贴统一追加表尾。
+  List<UtenContextMenuEntry> _rowMenuEntries(T row, int i) {
+    final c = widget.controller;
+    final clone = widget.cloneRow;
+    final n = c.selectedCount;
+    return [
+      if (clone != null) ...[
+        UtenMenuItem(
+          label: '复制选中 ($n)',
+          icon: Icons.copy_rounded,
+          enabled: n > 0,
+          onTap: () => c.copySelected(clone),
+        ),
+        UtenMenuItem(
+          label: '粘贴',
+          icon: Icons.content_paste_rounded,
+          enabled: c.hasBuffer,
+          onTap: () => c.paste(clone),
+        ),
+        UtenMenuItem(
+          label: '批量粘贴',
+          icon: Icons.library_add_rounded,
+          enabled: c.hasBuffer,
+          onTap: () => _pasteMany(context, clone),
+        ),
+      ],
+      UtenMenuItem(
+        label: '在上方插入空行',
+        icon: Icons.add_circle_outline_rounded,
+        onTap: () => c.insertAt(i, widget.createBlankRow!()),
+      ),
+      const UtenMenuDivider(),
+      UtenMenuItem(
+        label: '删除选中 ($n)',
+        icon: Icons.delete_outline_rounded,
+        enabled: n > 0,
+        destructive: true,
+        onTap: () => _confirmBatchDelete(context),
+      ),
+    ];
   }
 
   /// 明细操作条（全选/复制选中/批量删除/粘贴），常驻显示在表体上方。

@@ -67,6 +67,27 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
         (double.tryParse(bookQty.text) ?? 0),
   );
 
+  /// 深拷贝（明细复制/粘贴用）：拷货品、录入量（非盘点=数量/重量；盘点=账面/实盘，
+  /// 盘盈亏随控制器自动重算）与只读主档展示列。上游/执行段/退料来源引用与 maxQty
+  /// 门控不拷——可编辑模式下本就为空，防御性排除。
+  StockGridRow clone() {
+    final c = StockGridRow(isCheck: isCheck)
+      ..goods = goods
+      ..colorId = colorId
+      ..unitId = unitId
+      ..unitRate = unitRate
+      ..goodsCode = goodsCode
+      ..goodsSeries = goodsSeries
+      ..goodsStockPlace = goodsStockPlace
+      ..colorName = colorName
+      ..unitName = unitName;
+    c.qty.text = qty.text;
+    c.weight.text = weight.text;
+    c.bookQty.text = bookQty.text;
+    c.checkQty.text = checkQty.text;
+    return c;
+  }
+
   @override
   void dispose() {
     goodsNotifier.dispose();

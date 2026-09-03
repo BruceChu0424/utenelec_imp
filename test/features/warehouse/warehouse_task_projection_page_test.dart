@@ -41,6 +41,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // 2026-09-03 分类范式：状态行默认不选（未选不发请求），
+    // 先选「待拣货」段再断言表格列。
+    await tester.tap(find.text('待拣货').last);
+    await tester.pumpAndSettle();
 
     final table = tester
         .widget<MasterDataTableView<WarehouseSalesOutboundSummary>>(
@@ -111,7 +115,7 @@ void main() {
     await tester.pumpAndSettle();
     // 不合格退回案件在合并详情页内展示物理事实（货品/拒收数量/登记入口）。
     expect(find.textContaining('拒收产品'), findsWidgets);
-    expect(find.textContaining('拒收 2 件'), findsOneWidget);
+    expect(find.textContaining('不合格 2 件'), findsOneWidget);
     expect(find.text('登记退回'), findsOneWidget);
     // 只读权限（无入库确认双权限）：不出确认底栏，明细表不渲染输入单元。
     expect(
@@ -167,6 +171,8 @@ class _SalesGateway implements WarehouseSalesOutboundGateway {
     int size = 20,
     String? keyword,
     String? warehouseWorkStatus,
+    String? dateFrom,
+    String? dateTo,
   }) async => PagedResult(
     items: [_salesDetail.header],
     page: page,
@@ -218,6 +224,8 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
+    String? dateFrom,
+    String? dateTo,
   }) async => throw StateError('unexpected list');
 }
 

@@ -348,12 +348,15 @@ abstract class _MaterialAnalysisBomTreeState
     return count;
   }
 
-  /// MAKE_COMPONENT remains a real server-side ownership and traceability
-  /// fact, but it is not a second top-level BOM requested by the planner.
-  /// Its plan/progress stays inline on the original MAKE node.
+  /// MAKE_COMPONENT / SUBCONTRACT_MAKE remain real server-side ownership and
+  /// traceability facts, but they are not second top-level BOMs requested by
+  /// the planner. Their plan/progress stays inline on the original node
+  /// （与自制完全同构，不再在下方重复开一个“分析层级”）。
   bool _isEmbeddedMakeChildProduct(
     ProductionMaterialAnalysisProduct? product,
-  ) => product?.sourceType == 'MAKE_COMPONENT';
+  ) =>
+      product?.sourceType == 'MAKE_COMPONENT' ||
+      product?.sourceType == 'SUBCONTRACT_MAKE';
 
   bool _bomModeMatches(ProductionMaterialAnalysisMaterial material) =>
       switch (_bomViewMode) {
@@ -1363,14 +1366,17 @@ abstract class _MaterialAnalysisBomTreeState
         : status;
     final shortage = material.shortageQty > 0;
     final notified = _notifiedTargetOf(material);
-    final makeChild = _makeChildProductOf(material);
+    // MAKE 与有子层 SUBCONTRACT 的子件任务同构：内联真实子件的执行状态，
+    // 不在下方重复开第二个 BOM 根。
+    final makeChild = _taskChildProductOf(material);
     final makeExecutionStage = makeChild == null
         ? null
         : _productExecutionStage(makeChild);
     final hasMakePlanFacts =
         makeChild != null && _hasPlanExecutionFacts(makeChild);
     final hasUnfinishedMakeTask =
-        notified?.target == MaterialSupplyRoute.make &&
+        notified != null &&
+        notified.target != MaterialSupplyRoute.buy &&
         makeExecutionStage?.status != 'COMPLETED';
     // 备货完成（本批需求被现货/合格入库全覆盖）的节点收成单行紧凑卡：
     // [路线][层级 N] 名称（编号） …… [备货完成]，整卡浅绿成功态。
@@ -1871,9 +1877,7 @@ abstract class _MaterialAnalysisBomTreeState
     final levelColor = _levelBandColor(theme, material.level);
     final exactPeggedQty = material.exactPeggedQty;
     final notified = _notifiedTargetOf(material);
-    final makeChild = notified?.target == MaterialSupplyRoute.make
-        ? _makeChildProductOf(material)
-        : null;
+    final makeChild = _taskChildProductOf(material);
     final hasMakePlanFacts =
         makeChild != null && _hasPlanExecutionFacts(makeChild);
     return Container(

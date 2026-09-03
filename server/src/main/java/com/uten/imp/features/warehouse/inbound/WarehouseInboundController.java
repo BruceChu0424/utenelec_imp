@@ -9,6 +9,8 @@ import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.Goods
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationTask;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalExceptionBatchStockInRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalExceptionBatchStockInResult;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterResult;
 import jakarta.validation.Valid;
@@ -98,6 +100,17 @@ public class WarehouseInboundController {
     public WarehouseArrivalRegisterResult completeArrival(
             @PathVariable UUID receiptId) {
         return arrivalRegistration.complete(receiptId);
+    }
+
+    /**
+     * 预计到货「批量继续送检」：一个事务逐张完成中断的送检步骤（采购/委外草稿
+     * 收货单混批均可）。单张超量隔离不回滚其他单；权限与单册「继续送检」一致。
+     */
+    @PostMapping("/arrivals/batch-complete")
+    @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
+    public WarehouseArrivalBatchCompleteResult completeArrivalBatch(
+            @Valid @RequestBody WarehouseArrivalBatchCompleteRequest request) {
+        return arrivalRegistration.completeBatch(request);
     }
 
     /**

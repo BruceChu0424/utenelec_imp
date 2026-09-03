@@ -1739,6 +1739,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                           ),
                           createBlankRow: () =>
                               FinanceGridRow(mode: _cfg.itemMode),
+                          cloneRow: (r) => r.clone(),
                           showAddRow: !_cfg.isSettle,
                           emptyMessage: isReceipt
                               ? '暂无明细，请点击顶部“引用应收”添加'

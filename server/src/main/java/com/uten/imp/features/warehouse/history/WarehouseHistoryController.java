@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.history;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 /** Warehouse-only, amount-free history API. */
@@ -31,9 +33,11 @@ public class WarehouseHistoryController {
     public PageResponse<WarehouseHistoryListItem> purchaseReceipts(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(WarehouseHistoryType.PURCHASE_RECEIPT, keyword, status, page, size);
+        return service.list(WarehouseHistoryType.PURCHASE_RECEIPT, keyword, status, dateFrom, dateTo, page, size);
     }
 
     @GetMapping("/purchase-receipts/{id}")
@@ -55,9 +59,11 @@ public class WarehouseHistoryController {
     public PageResponse<WarehouseHistoryListItem> subcontractReceipts(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(WarehouseHistoryType.SUBCONTRACT_RECEIPT, keyword, status, page, size);
+        return service.list(WarehouseHistoryType.SUBCONTRACT_RECEIPT, keyword, status, dateFrom, dateTo, page, size);
     }
 
     @GetMapping("/subcontract-receipts/{id}")
@@ -79,9 +85,11 @@ public class WarehouseHistoryController {
     public PageResponse<WarehouseHistoryListItem> subcontractMaterialIssues(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(WarehouseHistoryType.SUBCONTRACT_MATERIAL_ISSUE, keyword, status, page, size);
+        return service.list(WarehouseHistoryType.SUBCONTRACT_MATERIAL_ISSUE, keyword, status, dateFrom, dateTo, page, size);
     }
 
     @GetMapping("/subcontract-material-issues/{id}")
@@ -104,9 +112,11 @@ public class WarehouseHistoryController {
     public PageResponse<WarehouseHistoryListItem> subcontractReturns(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(WarehouseHistoryType.SUBCONTRACT_RETURN, keyword, status, page, size);
+        return service.list(WarehouseHistoryType.SUBCONTRACT_RETURN, keyword, status, dateFrom, dateTo, page, size);
     }
 
     @GetMapping("/subcontract-returns/{id}")
@@ -128,9 +138,11 @@ public class WarehouseHistoryController {
     public PageResponse<WarehouseHistoryListItem> subcontractMaterialReturns(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(WarehouseHistoryType.SUBCONTRACT_MATERIAL_RETURN, keyword, status, page, size);
+        return service.list(WarehouseHistoryType.SUBCONTRACT_MATERIAL_RETURN, keyword, status, dateFrom, dateTo, page, size);
     }
 
     @GetMapping("/subcontract-material-returns/{id}")
@@ -153,9 +165,11 @@ public class WarehouseHistoryController {
     public PageResponse<WarehouseHistoryListItem> subcontractWastes(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(WarehouseHistoryType.SUBCONTRACT_WASTE, keyword, status, page, size);
+        return service.list(WarehouseHistoryType.SUBCONTRACT_WASTE, keyword, status, dateFrom, dateTo, page, size);
     }
 
     @GetMapping("/subcontract-wastes/{id}")

@@ -67,6 +67,21 @@ class ProductionGridRow extends EditableGridRow {
     if (v != qtyNotifier.value) qtyNotifier.value = v;
   }
 
+  /// 深拷贝（明细复制/粘贴用）：拷产品编号/货品/颜色/单位/排产量/备注。
+  /// 不拷 salesOrderItemId（订单↔计划行 1:1 溯源，审核时回写 planned_qty——复制行
+  /// 带旧 id 会双计）及订单带出的展示字段（订货量/订单号/客户/交期/跟单员/换算率）：
+  /// 粘贴行等同手工自建行（与「添加行」后手选货品的字段空缺一致）。
+  ProductionGridRow clone() {
+    final c = ProductionGridRow()
+      ..goods = goods
+      ..colorId = colorId
+      ..unitId = unitId;
+    c.productNo.text = productNo.text;
+    c.qty.text = qty.text;
+    c.remark.text = remark.text;
+    return c;
+  }
+
   @override
   void dispose() {
     goodsNotifier.dispose();

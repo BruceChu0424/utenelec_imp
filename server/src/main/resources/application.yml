@@ -87,6 +87,9 @@ uten:
     # 货品归属可见性（外贸按人隔离）。2026-07-31 起默认关闭：全员可见全部货品；
     # 代码保留，置 true（或环境变量 UTEN_GOODS_OWNER_SCOPE_ENABLED=true）即恢复按归属人+授权过滤。
     goods-owner-scope-enabled: ${UTEN_GOODS_OWNER_SCOPE_ENABLED:false}
+    # 工作台「系统测试·清空业务数据」运行开关（fail closed）：
+    # 默认关闭=生产/云端拒绝执行；仅 dev / internal-test profile 显式开启。
+    business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:false}
   website:
     # 官网询盘 ingest 共享密钥（fail closed：留空时 /api/website-inquiries/ingest 拒绝全部推送）。
     # 与官网 .env 的 IMP_INGEST_TOKEN 成对设置；官网侧推送地址 IMP_INGEST_URL 指向本服务。

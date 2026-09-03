@@ -607,132 +607,135 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
     final unit = task.unitName?.trim().isNotEmpty == true
         ? ' ${task.unitName!}'
         : '';
-    return AlertDialog(
-      title: Row(
-        children: [
-          UtenStatusBadge(
-            label: task.orderType.label,
-            type: task.orderType == ProcurementInboundOrderType.purchase
-                ? UtenStatusBadgeType.info
-                : UtenStatusBadgeType.accent,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              task.receiptBillNo,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+    // 到货异常详情弹窗：文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region）。
+    return SelectionArea(
+      child: AlertDialog(
+        title: Row(
+          children: [
+            UtenStatusBadge(
+              label: task.orderType.label,
+              type: task.orderType == ProcurementInboundOrderType.purchase
+                  ? UtenStatusBadgeType.info
+                  : UtenStatusBadgeType.accent,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                task.receiptBillNo,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: 720,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                decoration: BoxDecoration(
-                  color: pendingFinance
-                      ? theme.colorScheme.errorContainer
-                      : theme.colorScheme.secondaryContainer,
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      pendingFinance
-                          ? Icons.block_rounded
-                          : Icons.info_outline_rounded,
-                      color: pendingFinance
-                          ? theme.colorScheme.onErrorContainer
-                          : theme.colorScheme.onSecondaryContainer,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        task.statusLabel,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: pendingFinance
-                              ? theme.colorScheme.onErrorContainer
-                              : theme.colorScheme.onSecondaryContainer,
+          ],
+        ),
+        content: SizedBox(
+          width: 720,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  decoration: BoxDecoration(
+                    color: pendingFinance
+                        ? theme.colorScheme.errorContainer
+                        : theme.colorScheme.secondaryContainer,
+                    borderRadius: UtenRadius.mdAll,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        pendingFinance
+                            ? Icons.block_rounded
+                            : Icons.info_outline_rounded,
+                        color: pendingFinance
+                            ? theme.colorScheme.onErrorContainer
+                            : theme.colorScheme.onSecondaryContainer,
+                      ),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Expanded(
+                        child: Text(
+                          task.statusLabel,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: pendingFinance
+                                ? theme.colorScheme.onErrorContainer
+                                : theme.colorScheme.onSecondaryContainer,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: UtenSpacing.s16),
-              _DetailLine(label: '订货单', value: task.orderBillNo),
-              _DetailLine(label: '供应商', value: task.supplierName ?? '—'),
-              _DetailLine(label: '仓库', value: task.warehouseName ?? '—'),
-              _DetailLine(
-                label: '货品',
-                value: '${task.goodsCode} ${task.goodsName}'.trim(),
-              ),
-              if (task.colorName?.isNotEmpty == true)
-                _DetailLine(label: '颜色', value: task.colorName!),
-              const Divider(height: UtenSpacing.s24),
-              _DetailLine(
-                label: '实到数量',
-                value: procurementQty(task.declaredQty) + unit,
-              ),
-              _DetailLine(
-                label: '批准剩余',
-                value: procurementQty(task.approvedRemainingQty) + unit,
-              ),
-              _DetailLine(
-                label: '超量申请',
-                value: procurementQty(task.requestedExcessQty) + unit,
-              ),
-              _DetailLine(
-                label: '财务接收',
-                value: procurementQty(task.acceptedQty) + unit,
-              ),
-              _DetailLine(
-                label: '待退数量',
-                value: procurementQty(task.unacceptedQty) + unit,
-              ),
-              const Divider(height: UtenSpacing.s24),
-              _DetailLine(label: '下一步', value: _nextActionLabel(task)),
-              if (task.financeReason?.isNotEmpty == true)
-                _DetailLine(label: '财务说明', value: task.financeReason!),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                task.canStockIn
-                    ? '只会按财务批准量入库并立应付；未批准余量仍需采购退回供应商。'
-                    : '当前仅查看进度；系统不会在审批或退回闭环完成前把异常数量计入库存。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                const SizedBox(height: UtenSpacing.s16),
+                _DetailLine(label: '订货单', value: task.orderBillNo),
+                _DetailLine(label: '供应商', value: task.supplierName ?? '—'),
+                _DetailLine(label: '仓库', value: task.warehouseName ?? '—'),
+                _DetailLine(
+                  label: '货品',
+                  value: '${task.goodsCode} ${task.goodsName}'.trim(),
                 ),
-              ),
-            ],
+                if (task.colorName?.isNotEmpty == true)
+                  _DetailLine(label: '颜色', value: task.colorName!),
+                const Divider(height: UtenSpacing.s24),
+                _DetailLine(
+                  label: '实到数量',
+                  value: procurementQty(task.declaredQty) + unit,
+                ),
+                _DetailLine(
+                  label: '批准剩余',
+                  value: procurementQty(task.approvedRemainingQty) + unit,
+                ),
+                _DetailLine(
+                  label: '超量申请',
+                  value: procurementQty(task.requestedExcessQty) + unit,
+                ),
+                _DetailLine(
+                  label: '财务接收',
+                  value: procurementQty(task.acceptedQty) + unit,
+                ),
+                _DetailLine(
+                  label: '待退数量',
+                  value: procurementQty(task.unacceptedQty) + unit,
+                ),
+                const Divider(height: UtenSpacing.s24),
+                _DetailLine(label: '下一步', value: _nextActionLabel(task)),
+                if (task.financeReason?.isNotEmpty == true)
+                  _DetailLine(label: '财务说明', value: task.financeReason!),
+                const SizedBox(height: UtenSpacing.s8),
+                Text(
+                  task.canStockIn
+                      ? '只会按财务批准量入库并立应付；未批准余量仍需采购退回供应商。'
+                      : '当前仅查看进度；系统不会在审批或退回闭环完成前把异常数量计入库存。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+          if (onStockIn != null)
+            UtenButton(
+              key: ValueKey('warehouse-arrival-exception-stock-in-${task.id}'),
+              size: UtenButtonSize.large,
+              icon: Icons.inbox_outlined,
+              isLoading: stocking,
+              onPressed: stocking ? null : onStockIn,
+              child: Text('处理批准量 ${procurementQty(task.acceptedQty)}$unit'),
+            ),
+        ],
       ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('关闭'),
-        ),
-        if (onStockIn != null)
-          UtenButton(
-            key: ValueKey('warehouse-arrival-exception-stock-in-${task.id}'),
-            size: UtenButtonSize.large,
-            icon: Icons.inbox_outlined,
-            isLoading: stocking,
-            onPressed: stocking ? null : onStockIn,
-            child: Text('处理批准量 ${procurementQty(task.acceptedQty)}$unit'),
-          ),
-      ],
     );
   }
 }

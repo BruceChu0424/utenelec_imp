@@ -209,18 +209,27 @@ public class WarehouseQualityResultService {
                        LIKE :pattern ESCAPE '\\'
                   OR EXISTS (
                       SELECT 1
-                      FROM procurement_inspection_items keyword_inspection
-                      LEFT JOIN goods keyword_goods
-                        ON keyword_goods.id = keyword_inspection.goods_id
-                      WHERE keyword_inspection.receipt_type = scope.receipt_type
-                        AND keyword_inspection.receipt_id = scope.receipt_id
-                        AND keyword_inspection.status <> 'REVERSED'
-                        AND (LOWER(COALESCE(keyword_goods.code, ''))
-                                 LIKE :pattern ESCAPE '\\'
-                             OR LOWER(COALESCE(keyword_goods.name, ''))
-                                 LIKE :pattern ESCAPE '\\')
+                        FROM procurement_inspection_items keyword_inspection
+                        LEFT JOIN goods keyword_goods
+                          ON keyword_goods.id = keyword_inspection.goods_id
+                       WHERE keyword_inspection.receipt_type = scope.receipt_type
+                         AND keyword_inspection.receipt_id = scope.receipt_id
+                         AND keyword_inspection.status <> 'REVERSED'
+                         AND (LOWER(COALESCE(keyword_goods.code, ''))
+                                  LIKE :pattern ESCAPE '\\'
+                              OR LOWER(COALESCE(keyword_goods.name, ''))
+                                  LIKE :pattern ESCAPE '\\')
                   )
               )
+            """;
+
+    /**
+     * 日期范围过滤（列表专用；状态/来源分段计数不跟随日期，保持角标全量口径）。
+     * null 参数一律 CAST 后判空，见 PG 42P18 坑。
+     */
+    private static final String DATE_WHERE = """
+              AND (CAST(:date_from AS date) IS NULL OR scope.bill_date >= CAST(:date_from AS date))
+              AND (CAST(:date_to AS date) IS NULL OR scope.bill_date <= CAST(:date_to AS date))
             """;
 
     private final EntityManager em;
@@ -230,13 +239,20 @@ public class WarehouseQualityResultService {
     @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
             + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
     public PageResponse<TaskSummary> list(
-            String keyword, String receiptType, String status, int page, int size) {
+            String keyword,
+            String receiptType,
+            String status,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            int page,
+            int size) {
         int normalizedPage = Math.max(page, 1);
         int normalizedSize = Math.min(Math.max(size, 1), 100);
         String workStatus = normalizeStatus(status);
         String type = normalizeFilterType(receiptType);
         String search = normalizeSearch(keyword);
         String statusFilter = statusFilter(workStatus);
+        String filters = KEYWORD_WHERE + statusFilter + DATE_WHERE;
 
         Query data = aggregateQuery(type, search, workStatus, """
                 SELECT (%s) AS work_status,
@@ -261,8 +277,9 @@ public class WarehouseQualityResultService {
                                   scope.bill_date::timestamptz) DESC NULLS LAST,
                          scope.bill_no, scope.receipt_id
                 LIMIT :limit OFFSET :offset
-                """.formatted(STATUS_CASE, AGGREGATE_FROM, KEYWORD_WHERE + statusFilter,
-                        STATUS_CASE))
+                """.formatted(STATUS_CASE, AGGREGATE_FROM, filters, STATUS_CASE))
+                .setParameter("date_from", dateFrom)
+                .setParameter("date_to", dateTo)
                 .setParameter("limit", normalizedSize)
                 .setParameter("offset", (normalizedPage - 1) * normalizedSize);
         @SuppressWarnings("unchecked")
@@ -271,7 +288,9 @@ public class WarehouseQualityResultService {
         long total = number(aggregateQuery(type, search, workStatus, """
                 SELECT COUNT(*)
                 %s%s
-                """.formatted(AGGREGATE_FROM, KEYWORD_WHERE + statusFilter))
+                """.formatted(AGGREGATE_FROM, filters))
+                .setParameter("date_from", dateFrom)
+                .setParameter("date_to", dateTo)
                 .getSingleResult()).longValue();
         List<TaskSummary> items = rows.stream().map(row -> new TaskSummary(
                 str(row[0]), str(row[1]), uuid(row[2]), str(row[3]), localDate(row[4]),

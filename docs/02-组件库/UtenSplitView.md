@@ -1,7 +1,7 @@
 # UtenSplitView（左右分栏 + 可拖动分割线）
 
-> 路径：`lib/components/layout/uten_split_view.dart` · 测试：`test/uten_split_view_test.dart`
-> 已接入：货品资料 / 客户分类 / 供应商分类 / 模具分类 / 部门管理 / 我的部门 / 应收应付 / 权限管理
+> 路径：`lib/components/layout/uten_split_view.dart` · 测试：`test/uten_split_view_test.dart`、`test/components/uten_list_two_pane_test.dart`
+> 已接入：货品资料 / 客户分类 / 供应商分类 / 模具分类 / 部门管理 / 我的部门 / 应收应付 / 权限管理；2026-09-03 起另经 `UtenListTwoPane` 内部实现覆盖 15 个「左筛选 + 右表格」页（财务单据/对账/报表/往来/钱流/应付、生产计划与报表、where-used、采购/销售/委外/仓库报表），另有生产计划向导（步骤栏）、IQC 拒收详情（事实/流转 3:2）直接接入。**大屏左右双栏一律走本组件（或 UtenListTwoPane），禁止再写固定宽 `Row(SizedBox(width:…), Expanded)` 双栏**（准则 §2 布局统一口径）。
 
 ## 一、解决什么
 

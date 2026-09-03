@@ -191,6 +191,227 @@ class FinanceProcurementDecisionItem {
   };
 }
 
+/// 审核详情（财务专用视图，与采购/委外业务详情页分离）。
+///
+/// 投影自审批 case：订单头商业事实 + 供应商应付快照 + 明细 + 逐轮审批历史；
+/// allowedActions 仅在 case 仍为 PENDING 时由服务端按当前审核员实时资格返回。
+class FinanceProcurementApprovalReview {
+  const FinanceProcurementApprovalReview({
+    required this.caseId,
+    required this.orderId,
+    required this.orderType,
+    required this.billNo,
+    required this.status,
+    required this.attempt,
+    required this.version,
+    this.allowedActions = const <String>{},
+    this.submittedByName,
+    this.submittedAt,
+    this.billDate,
+    this.supplierName,
+    this.supplierCode,
+    this.warehouseName,
+    this.currencyName,
+    this.exchangeRate,
+    this.settlementMethodName,
+    this.taxRate,
+    this.purchaserName,
+    this.makerName,
+    this.deliverDate,
+    this.remark,
+    this.totalOriginal,
+    this.totalLocal,
+    this.supplierApBalance,
+    this.sourceApplicationCount = 0,
+    this.items = const <FinanceProcurementReviewLine>[],
+    this.history = const <FinanceProcurementReviewHistoryEntry>[],
+  });
+
+  final String caseId;
+  final String orderId;
+  final FinanceProcurementOrderType orderType;
+  final String billNo;
+  final String? status;
+  final int? attempt;
+  final int? version;
+  final Set<String> allowedActions;
+  final String? submittedByName;
+  final String? submittedAt;
+  final String? billDate;
+  final String? supplierName;
+  final String? supplierCode;
+  final String? warehouseName;
+  final String? currencyName;
+  final String? exchangeRate;
+  final String? settlementMethodName;
+  final String? taxRate;
+  final String? purchaserName;
+  final String? makerName;
+  final String? deliverDate;
+  final String? remark;
+  final String? totalOriginal;
+  final String? totalLocal;
+  final String? supplierApBalance;
+  final int sourceApplicationCount;
+  final List<FinanceProcurementReviewLine> items;
+  final List<FinanceProcurementReviewHistoryEntry> history;
+
+  bool get isPending => status == null || status == 'PENDING';
+
+  String get orderTypeLabel => switch (orderType) {
+    FinanceProcurementOrderType.purchase => '采购订货',
+    FinanceProcurementOrderType.subcontract => '委外订货',
+    FinanceProcurementOrderType.unknown => '未知订货类型',
+  };
+
+  FinanceProcurementDecisionItem? get decisionItem {
+    final currentVersion = version;
+    if (caseId.isEmpty ||
+        orderId.isEmpty ||
+        orderType == FinanceProcurementOrderType.unknown ||
+        currentVersion == null ||
+        currentVersion < 1) {
+      return null;
+    }
+    return FinanceProcurementDecisionItem(
+      caseId: caseId,
+      expectedVersion: currentVersion,
+    );
+  }
+
+  factory FinanceProcurementApprovalReview.fromJson(Map<String, dynamic> json) {
+    return FinanceProcurementApprovalReview(
+      caseId: _string(json['caseId']) ?? '',
+      orderId: _string(json['orderId']) ?? '',
+      orderType: financeProcurementOrderTypeFrom(json['orderType']),
+      billNo: _firstString([json['billNo']], fallback: '未生成单号'),
+      status: _string(json['status']),
+      attempt: _firstInt([json['attempt']]),
+      version: _firstInt([json['version']]),
+      allowedActions: _stringSet(json['allowedActions']),
+      submittedByName: _firstNullableString([
+        json['submittedByName'],
+        json['submitterName'],
+      ]),
+      submittedAt: _firstNullableString([json['submittedAt']]),
+      billDate: _firstNullableString([json['billDate']]),
+      supplierName: _firstNullableString([json['supplierName']]),
+      supplierCode: _firstNullableString([json['supplierCode']]),
+      warehouseName: _firstNullableString([json['warehouseName']]),
+      currencyName: _firstNullableString([json['currencyName']]),
+      exchangeRate: _firstNullableString([json['exchangeRate']]),
+      settlementMethodName: _firstNullableString([
+        json['settlementMethodName'],
+      ]),
+      taxRate: _firstNullableString([json['taxRate']]),
+      purchaserName: _firstNullableString([json['purchaserName']]),
+      makerName: _firstNullableString([json['makerName']]),
+      deliverDate: _firstNullableString([json['deliverDate']]),
+      remark: _string(json['remark']),
+      totalOriginal: _firstNullableString([json['totalOriginal']]),
+      totalLocal: _firstNullableString([json['totalLocal']]),
+      supplierApBalance: _firstNullableString([json['supplierApBalance']]),
+      sourceApplicationCount: _firstInt([json['sourceApplicationCount']]) ?? 0,
+      items: [
+        for (final item in (json['items'] as List? ?? const <dynamic>[]))
+          if (item is Map)
+            FinanceProcurementReviewLine.fromJson(item.cast<String, dynamic>()),
+      ],
+      history: [
+        for (final entry in (json['history'] as List? ?? const <dynamic>[]))
+          if (entry is Map)
+            FinanceProcurementReviewHistoryEntry.fromJson(
+              entry.cast<String, dynamic>(),
+            ),
+      ],
+    );
+  }
+}
+
+class FinanceProcurementReviewLine {
+  const FinanceProcurementReviewLine({
+    required this.lineNo,
+    this.goodsCode,
+    this.goodsName,
+    this.colorName,
+    this.unitName,
+    this.unitRate,
+    this.qty,
+    this.price,
+    this.amountOriginal,
+    this.amountLocal,
+    this.deliverDate,
+    this.sourceDocNo,
+  });
+
+  final int lineNo;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? colorName;
+  final String? unitName;
+  final String? unitRate;
+  final String? qty;
+  final String? price;
+  final String? amountOriginal;
+  final String? amountLocal;
+  final String? deliverDate;
+  final String? sourceDocNo;
+
+  factory FinanceProcurementReviewLine.fromJson(Map<String, dynamic> json) {
+    return FinanceProcurementReviewLine(
+      lineNo: _firstInt([json['lineNo']]) ?? 0,
+      goodsCode: _string(json['goodsCode']),
+      goodsName: _string(json['goodsName']),
+      colorName: _string(json['colorName']),
+      unitName: _string(json['unitName']),
+      unitRate: _firstNullableString([json['unitRate']]),
+      qty: _firstNullableString([json['qty']]),
+      price: _firstNullableString([json['price']]),
+      amountOriginal: _firstNullableString([json['amountOriginal']]),
+      amountLocal: _firstNullableString([json['amountLocal']]),
+      deliverDate: _firstNullableString([json['deliverDate']]),
+      sourceDocNo: _string(json['sourceDocNo']),
+    );
+  }
+}
+
+class FinanceProcurementReviewHistoryEntry {
+  const FinanceProcurementReviewHistoryEntry({
+    required this.attempt,
+    required this.eventType,
+    this.actorName,
+    this.occurredAt,
+    this.reason,
+  });
+
+  final int attempt;
+  final String eventType;
+  final String? actorName;
+  final String? occurredAt;
+  final String? reason;
+
+  String get eventLabel => switch (eventType.toUpperCase()) {
+    'SUBMITTED' => '提交财务审核',
+    'APPROVED' => '财务通过',
+    'REJECTED' => '财务驳回',
+    'CANCELED' => '提交人撤回',
+    'REASSIGNED' => '改派',
+    _ => eventType,
+  };
+
+  factory FinanceProcurementReviewHistoryEntry.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return FinanceProcurementReviewHistoryEntry(
+      attempt: _firstInt([json['attempt']]) ?? 0,
+      eventType: _string(json['eventType']) ?? '',
+      actorName: _string(json['actorName']),
+      occurredAt: _firstNullableString([json['occurredAt'], json['createdAt']]),
+      reason: _string(json['reason']),
+    );
+  }
+}
+
 class FinanceProcurementApprovalPage {
   const FinanceProcurementApprovalPage({
     required this.items,

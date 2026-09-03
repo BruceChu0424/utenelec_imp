@@ -11,6 +11,7 @@ import '../models/subcontract_doc.dart';
 import 'subcontract_business_list_pages.dart';
 import 'subcontract_doc_detail_page.dart';
 import 'subcontract_doc_edit_page.dart';
+import 'subcontract_order_edit_page.dart';
 
 /// 委外路由的显式业务页分派。
 ///
@@ -234,9 +235,8 @@ class SubcontractOrderEditorPage extends StatelessWidget {
   final List<String> applicationItemIds;
 
   @override
-  Widget build(BuildContext context) => SubcontractDocEditPage(
+  Widget build(BuildContext context) => SubcontractOrderEditPage(
     key: ValueKey('subcontract-order-editor-${id ?? 'new'}'),
-    docType: SubcontractDocType.order,
     id: id,
     applicationItemIds: applicationItemIds,
   );

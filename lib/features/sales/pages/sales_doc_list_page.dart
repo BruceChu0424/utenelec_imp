@@ -1,9 +1,15 @@
 // 销售单据列表页（按 docType 参数化）。
 //
-// 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+新建) + 状态筛选(UtenFilterToolbar 分段+搜索) + MasterDataTableView。
-// 过滤由本页自带的统一筛选工具条承担（facets 传空，表头降级为纯标签）。
-// 名称解析（客户/仓库）通过 SalesMasterNameService。编辑按 edit 权限显隐「新建」。
+// 2026-09-03 起统一「分类分段」范式（ADR-066）：
+// - 订货单：大类行 = 待生产/生产中/待发货/本月完成（原 4 张统计卡转分段卡，
+//   计数转徽章，来自后端 stats 全量口径）+ 搜索；小类行 = 草稿/已审/红冲
+//   （无「全部」段，默认不选=全部效果）+ 末尾「历史记录」（时间门控：时间段/
+//   全部，未选时间不发请求；选定后按 dateFrom/dateTo 不限阶段状态加载）。
+//   可发货置顶小开关保留。
+// - 出货/退货/报价：单行范式——草稿/已审/红冲 + 末尾历史记录 + 搜索，
+//   默认不选不发请求。
+// 大类未选（订货单）/状态未选（其他单据）时内容区显示引导占位，不发请求。
+// 名称解析（客户/仓库）通过 SalesMasterNameService；编辑按 edit 权限显隐「新建」。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,11 +21,12 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
-import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -30,6 +37,24 @@ import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_batch_ship_panel.dart';
+
+/// 小类分段值：真实单据状态（status 非空）或历史记录哨兵。
+class _SalesDocSeg {
+  const _SalesDocSeg.stage(int this.status) : history = false;
+  const _SalesDocSeg.history() : status = null, history = true;
+
+  final int? status;
+  final bool history;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _SalesDocSeg &&
+      other.status == status &&
+      other.history == history;
+
+  @override
+  int get hashCode => Object.hash(status, history);
+}
 
 class SalesDocListPage extends ConsumerStatefulWidget {
   const SalesDocListPage({super.key, required this.docType});
@@ -42,13 +67,24 @@ class SalesDocListPage extends ConsumerStatefulWidget {
 class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   SalesDocConfig get _cfg => SalesDocConfig.by(widget.docType);
   final _list = PagedListController<SalesDocListItem>();
-  int? _statusFilter; // null=全部
-  bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
-  // 订货工作台（业务链）：统计卡 + 激活卡钻取（null=不钻取）
-  SalesOrderStats? _stats;
-  String? _activeCard; // pending/production/shippable/monthDone
-  // 可发货置顶（工作台小项）：true 时后端按"有预留单排前 + 交货日升序"排序，忽略列排序
+
+  /// 大类分段（仅订货单）：pending/production/shippable/monthDone；
+  /// null = 未选择引导态（不发请求）。
+  String? _stage;
+
+  /// 小类分段：草稿/已审/红冲或历史记录；null = 未选择。
+  /// 订货单未选=全部效果（可与大类组合）；其他单据未选=引导占位。
+  _SalesDocSeg? _statusSeg;
+
+  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+
+  /// 可发货置顶（订货单工作台小项）：true 时后端按"有预留单排前 + 交货日升序"
+  /// 排序，忽略列排序。
   bool _shippableFirst = false;
+
+  /// 订货工作台统计卡口径计数（大类段徽章）；null = 尚未返回。
+  SalesOrderStats? _stats;
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
@@ -56,12 +92,24 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
 
   bool get _isOrder => widget.docType == SalesDocType.order;
 
+  bool get _isHistory => _statusSeg?.history == true;
+
+  bool get _shouldLoad {
+    if (_isOrder) {
+      if (_stage == null) return false;
+    } else {
+      if (_statusSeg == null) return false;
+    }
+    if (_isHistory && _historyTime.isNone) return false;
+    return true;
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(salesMasterNameServiceProvider).ensureLoaded();
-      _reload(1);
+      if (_isOrder) _loadStats();
     });
   }
 
@@ -84,6 +132,19 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
       _isOrder &&
       _hasPermission(Perm.salesQuoteConvert) &&
       _hasPermission(Perm.salesOrderCreate);
+
+  /// 大类段徽章计数（后端 stats 全量口径；失败保持旧值不显示变化）。
+  Future<void> _loadStats() async {
+    try {
+      final stats = await ref
+          .read(salesRepositoryProvider(widget.docType))
+          .stats();
+      if (!mounted) return;
+      setState(() => _stats = stats);
+    } catch (_) {
+      // 统计失败静默：徽章不显示，不影响列表。
+    }
+  }
 
   /// 批量发货：右滑面板勾选可发行 + 改本次数量 → 同客户合并出货草稿 → 跳出货列表。
   Future<void> _batchShip() async {
@@ -168,42 +229,45 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   }
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  /// 订货单顺带拉统计卡（失败不阻塞列表）；_stats 普通赋值，随控制器落页时的
-  /// notify 一起重建带出。
-  Future<PagedResult<SalesDocListItem>> _fetch() async {
-    final repo = ref.read(salesRepositoryProvider(widget.docType));
-    final r = await repo.list(
-      page: _list.pageNum,
-      filter: SalesDocFilter(
-        keyword: _list.normalizedKeyword,
-        status: _statusFilter,
-        chain: _cardChain(),
-        closed: _activeCard == 'monthDone' ? true : null,
-        // 「本月完成」卡口径 = is_closed 且结案在本月；钻取须带月初起，否则列表
-        // 含非本月结案单，卡数与列表数对不上。
-        dateFrom: _activeCard == 'monthDone'
-            ? DateTime.now().copyWith(day: 1).toString().substring(0, 10)
-            : null,
-      ),
-      sort: _shippableFirst ? 'shippable' : _list.sortKey,
-      order: _shippableFirst || _list.sortKey == null ? null : _list.sortOrder,
-    );
-    SalesOrderStats? stats;
-    if (_isOrder) {
-      try {
-        stats = await repo.stats(); // 统计卡失败不阻塞列表
-      } catch (_) {}
-    }
-    _stats = stats ?? _stats;
-    return r;
+  Future<PagedResult<SalesDocListItem>> _fetch() {
+    final range = _isHistory ? _historyTime.range : null;
+    return ref
+        .read(salesRepositoryProvider(widget.docType))
+        .list(
+          page: _list.pageNum,
+          filter: SalesDocFilter(
+            keyword: _list.normalizedKeyword,
+            status: _isHistory ? null : _statusSeg?.status,
+            chain: _isOrder && !_isHistory ? _cardChain() : null,
+            closed: _isOrder && _stage == 'monthDone' && !_isHistory
+                ? true
+                : null,
+            // 「本月完成」口径 = is_closed 且结案在本月；钻取须带月初起，否则列表
+            // 含非本月结案单，段计数与列表数对不上。
+            dateFrom: range != null
+                ? ChinaDateTime.formatDate(range.start)
+                : (_isOrder && _stage == 'monthDone'
+                      ? ChinaDateTime.formatDate(
+                          ChinaDateTime.today().copyWith(day: 1),
+                        )
+                      : null),
+            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+          ),
+          sort: _shippableFirst && !_isHistory ? 'shippable' : _list.sortKey,
+          order: _shippableFirst && !_isHistory || _list.sortKey == null
+              ? null
+              : _list.sortOrder,
+        );
   }
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  Future<void> _reload([int? page, bool silent = false]) {
+    if (!_shouldLoad) return Future.value();
+    return _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
+  }
 
-  /// 统计卡 → 链路状态组映射（与后端 stats 口径一致）。
+  /// 大类段 → 链路状态组映射（与后端 stats 口径一致）。
   List<int>? _cardChain() {
-    switch (_activeCard) {
+    switch (_stage) {
       case 'pending':
         return const [2, 3, 4]; // 待排产/待物料/已排产
       case 'production':
@@ -215,16 +279,29 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     }
   }
 
-  void _onCard(String card) {
-    setState(() => _activeCard = _activeCard == card ? null : card);
+  void _selectStage(String stage) {
+    if (_stage == stage) return;
+    setState(() {
+      _stage = stage;
+      _statusSeg = null;
+      _historyTime = const UtenHistoryTimeValue.none();
+    });
+    // 订货单大类选中即加载（小类默认不选=全部效果）。
     _reload(1);
   }
 
-  void _onStatus(int? s) {
+  void _selectStatusSeg(_SalesDocSeg seg) {
+    if (seg == _statusSeg) return;
     setState(() {
-      _statusFilter = s;
-      _statusFilterSelected = true;
+      _statusSeg = seg;
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
     });
+    if (!seg.history || !_historyTime.isNone) _reload(1);
+  }
+
+  void _onHistoryTime(UtenHistoryTimeValue value) {
+    if (value == _historyTime) return;
+    setState(() => _historyTime = value);
     _reload(1);
   }
 
@@ -341,77 +418,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     ];
   }
 
-  /// 订货工作台统计卡（SOP §四）：待生产/生产中/待发货/本月完成；点卡钻取，再点取消。
-  Widget _statCards(ThemeData theme) {
-    final s = _stats;
-    Widget card(String key, String label, int count, Color color) {
-      final active = _activeCard == key;
-      return Expanded(
-        child: Material(
-          color: active
-              ? color.withValues(alpha: 0.14)
-              : theme.colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => _onCard(key),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$count',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: color,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(
-        bottom: UtenSpacing.s8,
-        left: UtenSpacing.s4,
-        right: UtenSpacing.s4,
-      ),
-      child: Row(
-        children: [
-          card('pending', '待生产', s?.pendingProduction ?? 0, Colors.orange),
-          const SizedBox(width: UtenSpacing.s8),
-          card(
-            'production',
-            '生产中',
-            s?.inProduction ?? 0,
-            theme.colorScheme.primary,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          card('shippable', '待发货', s?.shippable ?? 0, Colors.green),
-          const SizedBox(width: UtenSpacing.s8),
-          card(
-            'monthDone',
-            '本月完成',
-            s?.monthDone ?? 0,
-            theme.colorScheme.onSurfaceVariant,
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -420,11 +426,34 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
     ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
       _reload();
+      if (_isOrder) _loadStats();
     });
     // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
     // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () => _reload(null, true));
+    ref.onPageResume(_myLocation!, () {
+      _reload(null, true);
+      if (_isOrder) _loadStats();
+    });
+    final seg = _statusSeg;
+    // 小类行（仅订货单渲染；搜索在大类行）。其他单据在下方自建带搜索的同行。
+    final statusRow = UtenFilterToolbar<_SalesDocSeg>(
+      segmentsKey: Key('sales-doc-status-${_cfg.type.pathSegment}'),
+      segments: [
+        for (final status in [
+          kSalesStatusDraft,
+          kSalesStatusApproved,
+          kSalesStatusReversed,
+        ])
+          UtenFilterSegment(
+            value: _SalesDocSeg.stage(status),
+            label: salesStatusLabel(status),
+          ),
+        const UtenFilterSegment(value: _SalesDocSeg.history(), label: '历史记录'),
+      ],
+      selected: seg == null ? const {} : {seg},
+      onSelectionChanged: _selectStatusSeg,
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,
@@ -435,7 +464,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
-            onPressed: () => _reload(),
+            onPressed: () {
+              _reload();
+              if (_isOrder) _loadStats();
+            },
           ),
         ],
       ),
@@ -447,14 +479,132 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
               listenable: _list,
               builder: (context, _) {
                 final total = _list.total;
-                // 与货品资料一致的「顶部折叠 + 表格吸顶内滚」：订货统计卡随上滑
-                // 收起腾出空间，标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
+                // 「顶部折叠 + 表格吸顶内滚」：分类工具条随上滑收起腾出空间，
+                // 标题行钉在表格上方常驻，表格占满剩余空间内部滚动。
                 return UtenCollapsingHeaderScrollView(
-                  // 订货工作台统计卡（仅订货单；待生产/生产中/待发货/本月完成，点卡钻取）
-                  collapsingHeader: _isOrder ? _statCards(theme) : null,
+                  collapsingHeader: Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_isOrder) ...[
+                          // 大类行（仅订货单）：待生产/生产中/待发货/本月完成 + 搜索。
+                          // 原统计卡钻取口径不变（chain/closed/本月月初）。
+                          UtenFilterToolbar<String>(
+                            segmentsKey: const Key('sales-doc-order-stages'),
+                            segments: [
+                              UtenFilterSegment(
+                                value: 'pending',
+                                label: '待生产',
+                                count: _stats?.pendingProduction,
+                              ),
+                              UtenFilterSegment(
+                                value: 'production',
+                                label: '生产中',
+                                count: _stats?.inProduction,
+                              ),
+                              UtenFilterSegment(
+                                value: 'shippable',
+                                label: '待发货',
+                                count: _stats?.shippable,
+                              ),
+                              UtenFilterSegment(
+                                value: 'monthDone',
+                                label: '本月完成',
+                                count: _stats?.monthDone,
+                              ),
+                            ],
+                            selected: _stage == null ? const {} : {_stage!},
+                            onSelectionChanged: _selectStage,
+                            searchHint: '搜索单据号 / 客户',
+                            initialSearchValue: _list.keyword,
+                            onSearchChanged: (v) {
+                              _list.keyword = v;
+                              _reload(1);
+                            },
+                          ),
+                          // 小类行：选中大类后出现（无「全部」段）。
+                          if (_stage != null) ...[
+                            const SizedBox(height: UtenSpacing.s8),
+                            statusRow,
+                          ],
+                        ] else
+                          // 其他单据：单行范式（状态 + 末尾历史记录 + 搜索）。
+                          UtenFilterToolbar<_SalesDocSeg>(
+                            segmentsKey: Key(
+                              'sales-doc-status-${_cfg.type.pathSegment}',
+                            ),
+                            segments: [
+                              for (final status in [
+                                kSalesStatusDraft,
+                                kSalesStatusApproved,
+                                kSalesStatusReversed,
+                              ])
+                                UtenFilterSegment(
+                                  value: _SalesDocSeg.stage(status),
+                                  label: salesStatusLabel(status),
+                                ),
+                              const UtenFilterSegment(
+                                value: _SalesDocSeg.history(),
+                                label: '历史记录',
+                              ),
+                            ],
+                            selected: seg == null ? const {} : {seg},
+                            onSelectionChanged: _selectStatusSeg,
+                            searchHint: '搜索单据号 / 客户',
+                            initialSearchValue: _list.keyword,
+                            onSearchChanged: (v) {
+                              _list.keyword = v;
+                              _reload(1);
+                            },
+                          ),
+                        // 历史记录段时间行。
+                        if (_isHistory) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          UtenHistoryTimeFilter(
+                            key: Key(
+                              'sales-doc-history-time-${_cfg.type.pathSegment}',
+                            ),
+                            value: _historyTime,
+                            onChanged: _onHistoryTime,
+                          ),
+                        ],
+                        // 可发货置顶（订货单工作台小项）：有预留单排前 + 交货日升序。
+                        if (_isOrder &&
+                            !_isHistory &&
+                            _stage != null &&
+                            seg != null &&
+                            !seg.history) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: ChoiceChip(
+                              label: const Text('可发货置顶'),
+                              avatar: Icon(
+                                Icons.vertical_align_top_rounded,
+                                size: 16,
+                                color: _shippableFirst
+                                    ? theme.colorScheme.primary
+                                    : null,
+                              ),
+                              selected: _shippableFirst,
+                              onSelected: (v) {
+                                setState(() => _shippableFirst = v);
+                                _reload(1);
+                              },
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                   body: Column(
                     children: [
-                      // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
+                      // 页面头：Icon + 标题 + 计数 + 动作按钮。
                       Padding(
                         padding: const EdgeInsets.only(
                           bottom: UtenSpacing.s8,
@@ -508,106 +658,57 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                           ],
                         ),
                       ),
-                      // 桌面：左筛选侧栏（统一筛选工具条）+ 右表格；手机：垂直堆叠
                       Expanded(
-                        child: UtenListTwoPane(
-                          filterPane: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: UtenSpacing.s4,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
-                                UtenFilterToolbar<int?>(
-                                  segments: const [
-                                    UtenFilterSegment(value: null, label: '全部'),
-                                    UtenFilterSegment(
-                                      value: kSalesStatusDraft,
-                                      label: '草稿',
-                                    ),
-                                    UtenFilterSegment(
-                                      value: kSalesStatusApproved,
-                                      label: '已审',
-                                    ),
-                                    UtenFilterSegment(
-                                      value: kSalesStatusReversed,
-                                      label: '红冲',
-                                    ),
-                                  ],
-                                  selected: _statusFilterSelected
-                                      ? {_statusFilter}
-                                      : const {},
-                                  onSelectionChanged: _onStatus,
-                                  searchHint: '搜索单据号 / 客户',
-                                  initialSearchValue: _list.keyword,
-                                  onSearchChanged: (v) {
-                                    _list.keyword = v;
-                                    _reload(1);
-                                  },
-                                ),
-                                // 可发货置顶（工作台小项，仅订货单）：有预留单排前 + 交货日升序
-                                if (_isOrder) ...[
-                                  const SizedBox(height: UtenSpacing.s8),
-                                  ChoiceChip(
-                                    label: const Text('可发货置顶'),
-                                    avatar: Icon(
-                                      Icons.vertical_align_top_rounded,
-                                      size: 16,
-                                      color: _shippableFirst
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.primary
-                                          : null,
-                                    ),
-                                    selected: _shippableFirst,
-                                    onSelected: (v) {
-                                      setState(() => _shippableFirst = v);
-                                      _reload(1);
-                                    },
+                        child: !_shouldLoad
+                            ? (_isHistory
+                                  ? const UtenHistoryTimePlaceholder()
+                                  : UtenFilterPlaceholder(
+                                      message: _isOrder
+                                          ? '在上方选择分类后开始浏览'
+                                          : '在上方选择状态或历史记录后开始浏览',
+                                      description: _isOrder
+                                          ? '大类默认不选中，选择后加载对应阶段订单'
+                                          : '状态默认不选中，选择后加载对应单据',
+                                    ))
+                            : MasterDataTableView<SalesDocListItem>(
+                                // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+                                primary: true,
+                                columns: _columns(names),
+                                items: _list.page?.items ?? const [],
+                                facets: _statusFacets(),
+                                nullCounts: const {},
+                                filters: _statusFilterMap,
+                                onFilterChanged: (key, value) {
+                                  // 表头筛选桶与分类行联动：清桶（null）不改分段
+                                  //（分段单选无法回退，清桶视为保持当前选择）。
+                                  if (key != 'status' || value == null) return;
+                                  final status = int.tryParse(value);
+                                  if (status != null) {
+                                    _selectStatusSeg(
+                                      _SalesDocSeg.stage(status),
+                                    );
+                                  }
+                                },
+                                sortColumn: _list.sortKey,
+                                sortAscending: _list.sortAsc,
+                                onSortChange: _onSortChange,
+                                onRowTap: (it) => context.push(
+                                  SalesRoutePath.docDetail(
+                                    _cfg.type.pathSegment,
+                                    it.id,
                                   ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          tablePane: MasterDataTableView<SalesDocListItem>(
-                            // primary:true → 表体参与「统计卡折叠 → 表格内滚」联动。
-                            primary: true,
-                            columns: _columns(names),
-                            items: _list.page?.items ?? const [],
-                            facets: _statusFacets(),
-                            nullCounts: const {},
-                            filters: _statusFilter == null
-                                ? const <String, String?>{}
-                                : <String, String?>{'status': '$_statusFilter'},
-                            onFilterChanged: (key, value) {
-                              if (key != 'status') return;
-                              setState(
-                                () => _statusFilter = value == null
-                                    ? null
-                                    : int.tryParse(value),
-                              );
-                              _reload(1);
-                            },
-                            sortColumn: _list.sortKey,
-                            sortAscending: _list.sortAsc,
-                            onSortChange: _onSortChange,
-                            onRowTap: (it) => context.push(
-                              SalesRoutePath.docDetail(
-                                _cfg.type.pathSegment,
-                                it.id,
+                                ),
+                                isLoading: _list.isLoadingFirst,
+                                loadingMore: _list.isLoadingMore,
+                                error: _list.error,
+                                onRetry: () => _reload(),
+                                emptyMessage: _isHistory
+                                    ? '该时间段内暂无${_cfg.shortLabel}单'
+                                    : '暂无${_cfg.shortLabel}单',
+                                currentPage: _list.currentPage,
+                                totalPages: _list.totalPages,
+                                onPageChange: (p) => _reload(p),
                               ),
-                            ),
-                            isLoading: _list.isLoadingFirst,
-                            loadingMore: _list.isLoadingMore,
-                            error: _list.error,
-                            onRetry: () => _reload(),
-                            emptyMessage: '暂无${_cfg.shortLabel}单',
-                            currentPage: _list.currentPage,
-                            totalPages: _list.totalPages,
-                            onPageChange: (p) => _reload(p),
-                          ),
-                        ),
                       ),
                     ],
                   ),
@@ -618,6 +719,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
         ),
       ),
     );
+  }
+
+  /// 当前表头「状态」列筛选值（历史段/未选时不过滤）。
+  Map<String, String?> get _statusFilterMap {
+    final seg = _statusSeg;
+    if (seg == null || seg.history) return const <String, String?>{};
+    return <String, String?>{'status': '${seg.status}'};
   }
 
   /// 表头「状态」列筛选桶（状态是固定枚举，前端硬编码；count=0 表示不强调计数）。

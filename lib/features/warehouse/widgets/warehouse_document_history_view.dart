@@ -25,6 +25,8 @@ class WarehouseDocumentHistoryView extends ConsumerStatefulWidget {
     this.refreshTick = 0,
     this.embedded = false,
     this.showBanner = true,
+    this.dateFrom,
+    this.dateTo,
   });
 
   final WarehouseDocumentHistoryType type;
@@ -40,6 +42,11 @@ class WarehouseDocumentHistoryView extends ConsumerStatefulWidget {
 
   /// 是否显示「仓库实物视图」提示条。
   final bool showBanner;
+
+  /// 业务日期范围（yyyy-MM-dd；「历史单据」时间门控模式下由
+  /// WarehouseHistoryGate 下发，变化即重拉）。
+  final String? dateFrom;
+  final String? dateTo;
 
   @override
   ConsumerState<WarehouseDocumentHistoryView> createState() =>
@@ -67,7 +74,9 @@ class _WarehouseDocumentHistoryViewState
   void didUpdateWidget(WarehouseDocumentHistoryView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.keyword != widget.keyword ||
-        oldWidget.refreshTick != widget.refreshTick) {
+        oldWidget.refreshTick != widget.refreshTick ||
+        oldWidget.dateFrom != widget.dateFrom ||
+        oldWidget.dateTo != widget.dateTo) {
       _keyword = widget.keyword;
       WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
     }
@@ -102,7 +111,13 @@ class _WarehouseDocumentHistoryViewState
     try {
       final result = await ref
           .read(warehouseDocumentHistoryRepositoryProvider(widget.type))
-          .list(page: page, keyword: _keyword, status: _status);
+          .list(
+            page: page,
+            keyword: _keyword,
+            status: _status,
+            dateFrom: widget.dateFrom,
+            dateTo: widget.dateTo,
+          );
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;

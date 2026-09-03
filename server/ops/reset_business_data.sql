@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空（V443–V461；保留主档、人事、权限与治理证据）
+-- 本地/测试库业务数据一键清空（V443–V466；保留主档、人事、权限与治理证据）
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -18,6 +18,11 @@
 --     V456 只接线 5 个业务页的权限面入口（扩码/退役旧面，不新增业务表），CLEAR 维持 220 张；
 --     V457/V458 不改本清单结构：V457 货品后模镶件列不新增表；V458 新增两张委外前置自制账本（CLEAR 220→222）；
 --     V459 新增兼职部门表 employee_secondary_departments（组织与权限治理数据，PRESERVE，95→96 张），CLEAR 维持 222 张；
+--     V462 只新增工作台「清空业务数据」函数 business_data_reset()（应用内运行的孪生口径，
+--     清单同步由 BusinessDataResetSqlContractTest 锁定；不新增表），CLEAR 维持 222 张；
+--     V463 新增两张订货行来源分配表 purchase_order_item_sources / subcontract_order_item_sources
+--     （CLEAR 222→224），V464 重发 business_data_reset() 孪生同步该清单；
+--     V465 只替换 ordered_qty 守卫触发器（不新增表，CLEAR 维持 224 张）；
 --     建议、任务认领和业务 outbox。
 --   · PRESERVE 96 张（V459 前为 95）：V442 的四张单位/迁移计量治理证据表明确保留；PostGIS 扩展表不进入业务策略计数；其余为主档、人事、账号/权限、系统配置、Flyway、审计日志、
 --     人事附件、导入/迁移证据、编号终身占用和单调流水。账户主档保留，
@@ -317,6 +322,7 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('production_planning_package_documents', 'CLEAR'),
 ('production_planning_packages', 'CLEAR'),
 ('production_plans', 'CLEAR'),
+('purchase_order_item_sources', 'CLEAR'),
 ('purchase_order_items', 'CLEAR'),
 ('purchase_orders', 'CLEAR'),
 ('purchase_receipt_items', 'CLEAR'),
@@ -364,6 +370,7 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('subcontract_material_return_items', 'CLEAR'),
 ('subcontract_material_returns', 'CLEAR'),
 ('subcontract_order_cost_items', 'CLEAR'),
+('subcontract_order_item_sources', 'CLEAR'),
 ('subcontract_order_items', 'CLEAR'),
 ('subcontract_orders', 'CLEAR'),
 ('subcontract_receipt_items', 'CLEAR'),
@@ -738,10 +745,15 @@ BEGIN
         (458, 420),
         (459, 421),
         (460, 422),
-        (461, 423)
+        (461, 423),
+        (462, 424),
+        (463, 425),
+        (464, 426),
+        (465, 427),
+        (466, 428)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422 或 V461/423 目录，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427 或 V466/428 目录，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -847,6 +859,10 @@ BEGIN
            OR (v446_business_table_count = 2
                 AND v447_business_table_count = 5
                 AND clear_count - v454_celebration_table_count = 221)
+           -- V463 adds two CLEAR order-item source tables (221 → 223 + celebration = 224).
+           OR (v446_business_table_count = 2
+                AND v447_business_table_count = 5
+                AND clear_count - v454_celebration_table_count = 223)
        ) THEN
         RAISE EXCEPTION
             'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V442表 %/8，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5，V454表 %/1',

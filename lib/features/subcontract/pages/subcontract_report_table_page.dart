@@ -304,6 +304,7 @@ class _SubcontractReportTablePageState
                 ),
               ),
               body: UtenListTwoPane(
+                splitPersistenceKey: 'subcontract.reportTable',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),

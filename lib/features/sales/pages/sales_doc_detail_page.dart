@@ -1107,7 +1107,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
-                    SelectionArea(child: _headerCard(theme, names)),
+                    // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
+                    // SelectionArea（准则 §3.4），无需再单独包。
+                    _headerCard(theme, names),
                     if (_cfg.type == SalesDocType.order &&
                         canViewMoneySummary) ...[
                       const SizedBox(height: UtenSpacing.s12),

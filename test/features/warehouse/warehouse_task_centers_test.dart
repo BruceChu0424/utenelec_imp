@@ -138,12 +138,18 @@ void main() {
     // 进页面不预选大类：内容区为引导空态，不加载任何分段数据。
     expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
 
-    // 切到「其它出库」：不再渲染 icon+标题分段头；小类行不预选；总结行在
+    // 切到「其它出库」：不再渲染 icon+标题分段头；小类行（草稿/已审/红冲/
+    // 历史单据）同样默认不选，内容区仍是引导空态（不发请求）；总结行在
     // 全部分类栏最下方（总数文案 + 新建按钮按 stock_doc:create 门控）。
     await tester.tap(find.text('其它出库'));
     await tester.pump();
     await tester.pump();
     expect(find.text('新建其它出库'), findsNothing);
+    expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
+    // 2026-09-03 分类范式：先选小类段（如「草稿」）才加载列表与「共 N 条」总结。
+    await tester.tap(find.text('草稿'));
+    await tester.pump();
+    await tester.pump();
     expect(find.text('共 0 条 · 双击办理'), findsOneWidget);
     // 分段切换会触达 60s 轮询计数的重建，推进时钟排空再卸载页面。
     await tester.pump(const Duration(seconds: 61));

@@ -263,23 +263,42 @@ public class SalesOrderService {
     /** 订单进度看板（订单进度查询卡）：已审订单按明细聚合 订货/已排/已产/已发/可发 + 派生生产进度与链路阶段。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
-    public PageResponse<OrderProgressRow> progress(int page, int size, String stage) {
+    public PageResponse<OrderProgressRow> progress(
+            int page, int size, String stage, String keyword, LocalDate dateFrom, LocalDate dateTo) {
         int safeSize = Math.max(1, Math.min(size, 100));
         int safePage = Math.max(1, page);
         String normalizedStage = normalizeProgressStage(stage);
+        String normalizedKeyword = keyword == null ? "" : keyword.strip().toLowerCase();
         var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
         // 阶段筛选下沉到数据库：COUNT 与列表同一谓词，分页 total 即当前阶段真实总数。
-        String stageFilter = progressStagePredicate();
+        // 日期（bill_date 为 ISO 文本，字典序与日期序一致）与关键字（单号/客户）
+        // 为可选过滤，null/'' 判空放行。
+        String stageFilter = progressStagePredicate()
+                + """
+                  AND (CAST(:date_from AS date) IS NULL OR t.bill_date >= CAST(:date_from AS text))
+                  AND (CAST(:date_to AS date) IS NULL OR t.bill_date <= CAST(:date_to AS text))
+                  AND (CAST(:keyword AS text) IS NULL OR :keyword = ''
+                       OR LOWER(COALESCE(t.bill_no, '')) LIKE :keyword_pattern
+                       OR LOWER(COALESCE(t.name, '')) LIKE :keyword_pattern)
+                """;
         var cq = em.createNativeQuery(
                 "SELECT COUNT(*) FROM (" + progressGroupedSql(ownerScope) + ") t WHERE " + stageFilter);
         ownerScope.bind(cq);
         cq.setParameter("stage", normalizedStage);
+        cq.setParameter("keyword", normalizedKeyword);
+        cq.setParameter("keyword_pattern", "%" + normalizedKeyword + "%");
+        cq.setParameter("date_from", dateFrom);
+        cq.setParameter("date_to", dateTo);
         long total = ((Number) cq.getSingleResult()).longValue();
         String rowsSql = "SELECT t.* FROM (" + progressGroupedSql(ownerScope) + ") t WHERE " + stageFilter
                 + " ORDER BY t.bill_date DESC NULLS LAST, t.bill_no DESC";
         var rq = em.createNativeQuery(rowsSql);
         ownerScope.bind(rq);
         rq.setParameter("stage", normalizedStage);
+        rq.setParameter("keyword", normalizedKeyword);
+        rq.setParameter("keyword_pattern", "%" + normalizedKeyword + "%");
+        rq.setParameter("date_from", dateFrom);
+        rq.setParameter("date_to", dateTo);
         rq.setFirstResult((safePage - 1) * safeSize).setMaxResults(safeSize);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = rq.getResultList();

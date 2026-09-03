@@ -1,26 +1,50 @@
+// 委外申请分解专页。
+//
+// 只复用服务端任务投影与 gateway；信息架构、选择守卫和动作门禁独立于采购工作台。
+// 计划申请是只读事实，本页唯一写动作是把已下达、仍待分解的申请明细带入委外订货单。
+//
+// 2026-09-03 起统一「分类分段」范式（原概览卡+阶段/异常下拉退役）：
+// UtenFilterToolbar 阶段行（无「全部阶段」；终态已完成归末尾「历史记录」段时间
+// 门控）+ 异常小类行（无「全部异常」）——两行默认都不选，内容区显示引导占位
+// 不发请求；分段挂后端全量计数徽章（进页面仅拉一次 size=1 概览）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../operations_workbench/models/operations_workbench.dart';
 import '../../operations_workbench/repositories/operations_workbench_repository.dart';
 
-/// 委外申请分解专页。
-///
-/// 只复用服务端任务投影与 gateway；信息架构、选择守卫和动作门禁独立于采购工作台。
-/// 计划申请是只读事实，本页唯一写动作是把已下达、仍待分解的申请明细带入委外订货单。
+/// 阶段分段值：真实任务阶段（code 非空）或历史记录哨兵。
+class _DecompositionSeg {
+  const _DecompositionSeg.stage(String this.code) : history = false;
+  const _DecompositionSeg.history() : code = null, history = true;
+
+  final String? code;
+  final bool history;
+  @override
+  bool operator ==(Object other) =>
+      other is _DecompositionSeg &&
+      other.code == code &&
+      other.history == history;
+
+  @override
+  int get hashCode => Object.hash(code, history);
+}
+
 class SubcontractDecompositionPage extends ConsumerStatefulWidget {
   const SubcontractDecompositionPage({super.key, this.repository});
 
@@ -39,22 +63,48 @@ class _SubcontractDecompositionPageState
   int _page = 1;
   int _requestId = 0;
   String _keyword = '';
-  String? _status;
+
+  /// 当前选中阶段分段；null = 未选择引导态（内容不加载）。
+  _DecompositionSeg? _seg;
+
+  /// 异常小类；null = 未选择（不附加过滤）。
   String? _exception;
+
+  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+
   final Set<String> _selectedIds = <String>{};
+
+  /// 阶段行分段（不含终态——已完成归入历史记录）。
+  static const _stages = <({String code, String label})>[
+    (code: 'WAITING_ORDER', label: '申请待分解'),
+    (code: 'ORDER_PENDING_APPROVAL', label: '等待财务审核'),
+    (code: 'FINANCE_APPROVED', label: '财务已通过'),
+    (code: 'FINANCE_REJECTED', label: '财务驳回'),
+  ];
 
   OperationsWorkbenchGateway get _repository =>
       widget.repository ?? ref.read(operationsWorkbenchRepositoryProvider);
 
+  bool get _shouldLoad {
+    final seg = _seg;
+    if (seg == null) return false;
+    if (seg.history && _historyTime.isNone) return false;
+    return true;
+  }
+
   @override
   void initState() {
     super.initState();
-    Future<void>.microtask(_load);
+    // 默认不选阶段：内容不加载；仅拉一次 size=1 概览获取阶段/异常计数徽章。
+    Future<void>.microtask(() => _load(page: 1));
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page, int size = 50}) async {
     if (!mounted) return;
     final requestId = ++_requestId;
+    final seg = _seg;
+    final range = seg?.history == true ? _historyTime.range : null;
     setState(() {
       _loading = true;
       _error = null;
@@ -62,10 +112,14 @@ class _SubcontractDecompositionPageState
     try {
       final next = await _repository.load(
         department: OperationsWorkbenchDepartment.subcontract,
-        page: _page,
+        page: page ?? _page,
+        // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数。
+        size: _shouldLoad ? size : 1,
         keyword: _keyword,
-        status: _status,
-        exception: _exception,
+        status: seg == null || seg.history ? null : seg.code,
+        exception: seg == null || seg.history ? null : _exception,
+        dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
+        dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
       );
       if (!mounted || requestId != _requestId) return;
       final visibleIds = next.items.map((item) => item.id).toSet();
@@ -84,17 +138,45 @@ class _SubcontractDecompositionPageState
     }
   }
 
-  void _applyFilter({String? keyword, String? status, String? exception}) {
+  void _selectSeg(_DecompositionSeg seg) {
+    if (seg == _seg) return;
     setState(() {
-      if (keyword != null) _keyword = keyword;
-      if (status != null) _status = status.isEmpty ? null : status;
-      if (exception != null) {
-        _exception = exception.isEmpty ? null : exception;
-      }
+      _seg = seg;
+      _exception = null;
+      _page = 1;
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      _selectedIds.clear();
+    });
+    if (!seg.history || !_historyTime.isNone) {
+      _load(page: 1);
+    }
+  }
+
+  void _selectException(String code) {
+    if (_exception == code) return;
+    setState(() {
+      _exception = code;
       _page = 1;
       _selectedIds.clear();
     });
-    _load();
+    _load(page: 1);
+  }
+
+  void _onHistoryTime(UtenHistoryTimeValue value) {
+    if (value == _historyTime) return;
+    setState(() {
+      _historyTime = value;
+      _page = 1;
+      _selectedIds.clear();
+    });
+    _load(page: 1);
+  }
+
+  void _applyKeyword(String value) {
+    final normalized = value.trim();
+    if (normalized == _keyword) return;
+    _keyword = normalized;
+    _load(page: 1);
   }
 
   List<OperationsWorkbenchTask> get _selectedTasks {
@@ -127,8 +209,7 @@ class _SubcontractDecompositionPageState
     if (selected.isEmpty) return '请先选择待分解的申请明细';
     if (selected.any(
       (task) =>
-          task.actionDocument == null ||
-          (task.actionDocItemId?.trim().isEmpty ?? true),
+          task.actionDocument == null || _applicationItemIdsOf(task).isEmpty,
     )) {
       return '所选任务缺少不可变的委外申请明细来源，请刷新后重试';
     }
@@ -151,10 +232,22 @@ class _SubcontractDecompositionPageState
     return null;
   }
 
+  /// 归组行（一行=一张委外申请）的明细 id 集：整单带入订货分解，
+  /// 订货单编辑页内仍可删减行。
+  List<String> _applicationItemIdsOf(OperationsWorkbenchTask task) {
+    final single = task.actionDocItemId?.trim();
+    if (single?.isNotEmpty == true) return [single!];
+    return task.actionItemIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList();
+  }
+
   String _orderRoute() {
-    final ids = _selectedTasks
-        .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
-        .join(',');
+    final ids = [
+      for (final task in _selectedTasks)
+        ..._applicationItemIdsOf(task).map((id) => Uri.encodeComponent(id)),
+    ].join(',');
     return '/subcontract/orders/new?applicationItemIds=$ids';
   }
 
@@ -192,7 +285,7 @@ class _SubcontractDecompositionPageState
         actions: [
           IconButton(
             tooltip: '刷新委外申请',
-            onPressed: _loading ? null : _load,
+            onPressed: _loading ? null : () => _load(),
             icon: const Icon(Icons.refresh_rounded),
           ),
           const SizedBox(width: UtenSpacing.s8),
@@ -249,26 +342,76 @@ class _SubcontractDecompositionPageState
         message: '无法加载委外申请',
         description: _error,
         actionLabel: '重试',
-        onAction: _load,
+        onAction: () => _load(),
       );
     }
     final data = _data;
     if (data == null) {
-      return UtenEmpty.error(actionLabel: '重试', onAction: _load);
+      return UtenEmpty.error(actionLabel: '重试', onAction: () => _load());
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final desktop = constraints.maxWidth >= 840;
+        final seg = _seg;
+        final statusCounts = data.summary.statusCounts;
+        final exceptionCounts = data.summary.exceptionCounts;
+        final exceptionOptions = data.exceptionOptions;
         final header = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildMetrics(data),
+            // 阶段行：真实阶段（无「全部阶段」；终态归历史记录）+ 末尾历史记录。
+            UtenFilterToolbar<_DecompositionSeg>(
+              segmentsKey: const Key('subcontract-decomposition-stages'),
+              segments: [
+                for (final stage in _stages)
+                  UtenFilterSegment(
+                    value: _DecompositionSeg.stage(stage.code),
+                    label: stage.label,
+                    count: statusCounts[stage.code],
+                  ),
+                const UtenFilterSegment(
+                  value: _DecompositionSeg.history(),
+                  label: '历史记录',
+                ),
+              ],
+              selected: seg == null ? const {} : {seg},
+              onSelectionChanged: _selectSeg,
+              searchHint: '搜索计划号、申请号、货品编码或名称',
+              initialSearchValue: _keyword,
+              onSearchInputChanged: (_) => _requestId++,
+              onSearchChanged: _applyKeyword,
+            ),
+            // 异常小类行：选中阶段后出现；无「全部异常」，默认不选=不附加过滤。
+            if (seg != null && !seg.history && exceptionOptions.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              UtenFilterToolbar<String>(
+                segmentsKey: const Key('subcontract-decomposition-exceptions'),
+                segments: [
+                  for (final option in exceptionOptions)
+                    UtenFilterSegment(
+                      value: option.value,
+                      label: option.label,
+                      count: exceptionCounts[option.value],
+                    ),
+                ],
+                selected: _exception == null ? const {} : {_exception!},
+                onSelectionChanged: _selectException,
+              ),
+            ],
+            if (seg?.history == true) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              UtenHistoryTimeFilter(
+                key: const Key('subcontract-decomposition-history-time'),
+                value: _historyTime,
+                onChanged: _onHistoryTime,
+              ),
+            ],
             const SizedBox(height: UtenSpacing.s12),
-            _buildFilters(data, desktop: desktop),
-            const SizedBox(height: UtenSpacing.s12),
-            _buildSelectionSummary(),
-            const SizedBox(height: UtenSpacing.s12),
+            if (_shouldLoad) ...[
+              _buildSelectionSummary(),
+              const SizedBox(height: UtenSpacing.s12),
+            ],
           ],
         );
 
@@ -277,7 +420,16 @@ class _SubcontractDecompositionPageState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               header,
-              Expanded(child: _buildTable(data)),
+              Expanded(
+                child: seg == null
+                    ? const UtenFilterPlaceholder(
+                        message: '在上方选择阶段后开始办理',
+                        description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
+                      )
+                    : seg.history && _historyTime.isNone
+                    ? const UtenHistoryTimePlaceholder()
+                    : _buildTable(data),
+              ),
             ],
           );
         }
@@ -286,15 +438,25 @@ class _SubcontractDecompositionPageState
           padding: const EdgeInsets.only(bottom: 96),
           children: [
             header,
-            if (data.items.isEmpty)
+            if (seg == null)
+              const SizedBox(
+                height: 280,
+                child: UtenFilterPlaceholder(
+                  message: '在上方选择阶段后开始办理',
+                  description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
+                ),
+              )
+            else if (seg.history && _historyTime.isNone)
+              const SizedBox(height: 280, child: UtenHistoryTimePlaceholder())
+            else if (data.items.isEmpty)
               SizedBox(
                 height: 280,
                 child: UtenEmpty(
                   icon: Icons.task_alt_rounded,
-                  message: _status == null ? '当前没有委外任务' : '当前阶段没有委外任务',
-                  description: _status == null
-                      ? '后续物料分析下达、订货、财务、委外和回厂任务会在这里统一显示。'
-                      : '可切换“全部阶段”查看其它委外记录。',
+                  message: seg.history ? '该时间段内暂无委外任务' : '当前阶段没有委外任务',
+                  description: seg.history
+                      ? '可调整时间段或改用「全部」后重试。'
+                      : '可切换其它阶段或调整异常筛选后重试。',
                 ),
               )
             else
@@ -318,156 +480,13 @@ class _SubcontractDecompositionPageState
               loading: _loading,
               onPageChanged: (page) {
                 setState(() => _page = page);
-                _load();
+                _load(page: page);
               },
             ),
           ],
         );
       },
     );
-  }
-
-  Widget _buildMetrics(OperationsWorkbenchData data) {
-    final theme = Theme.of(context);
-    final summary = data.summary;
-    final facts = <(String, num, IconData)>[
-      (
-        '待分解',
-        summary.statusCounts['WAITING_ORDER'] ?? 0,
-        Icons.call_split_rounded,
-      ),
-      ('未下单数量', summary.openQty, Icons.inventory_2_outlined),
-      (
-        '等待财务',
-        summary.statusCounts['ORDER_PENDING_APPROVAL'] ?? 0,
-        Icons.account_balance_outlined,
-      ),
-      ('逾期 / 异常', summary.overdueTasks, Icons.warning_amber_rounded),
-    ];
-    return Wrap(
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s8,
-      children: [
-        for (final fact in facts)
-          Container(
-            constraints: const BoxConstraints(minWidth: 156, minHeight: 64),
-            padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s12,
-              vertical: UtenSpacing.s8,
-            ),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: UtenRadius.mdAll,
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(fact.$3, size: 20, color: theme.colorScheme.primary),
-                const SizedBox(width: UtenSpacing.s8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(fact.$1, style: theme.textTheme.labelMedium),
-                    Text(
-                      _number(fact.$2),
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildFilters(OperationsWorkbenchData data, {required bool desktop}) {
-    final statusOptions = <OperationsWorkbenchFilterOption>[
-      const OperationsWorkbenchFilterOption(value: '', label: '全部阶段'),
-      ...data.statusOptions,
-    ];
-    final exceptionOptions = <OperationsWorkbenchFilterOption>[
-      const OperationsWorkbenchFilterOption(value: '', label: '全部异常'),
-      ...data.exceptionOptions,
-    ];
-    final children = <Widget>[
-      SizedBox(
-        width: desktop ? 320 : double.infinity,
-        child: UtenSearchBar(
-          key: const Key('subcontract-decomposition-search'),
-          hint: '搜索计划号、申请号、货品编码或名称',
-          initialValue: _keyword,
-          onChanged: (value) => _applyFilter(keyword: value),
-        ),
-      ),
-      SizedBox(
-        width: desktop ? 210 : double.infinity,
-        child: DropdownButtonFormField<String>(
-          key: const Key('subcontract-decomposition-status'),
-          initialValue: _status ?? '',
-          decoration: const InputDecoration(labelText: '业务阶段'),
-          items: [
-            for (final option in _ensureSelected(statusOptions, _status))
-              DropdownMenuItem(value: option.value, child: Text(option.label)),
-          ],
-          onChanged: _loading
-              ? null
-              : (value) => _applyFilter(status: value ?? ''),
-        ),
-      ),
-      SizedBox(
-        width: desktop ? 210 : double.infinity,
-        child: DropdownButtonFormField<String>(
-          key: const Key('subcontract-decomposition-exception'),
-          initialValue: _exception ?? '',
-          decoration: const InputDecoration(labelText: '异常'),
-          items: [
-            for (final option in _ensureSelected(exceptionOptions, _exception))
-              DropdownMenuItem(value: option.value, child: Text(option.label)),
-          ],
-          onChanged: _loading
-              ? null
-              : (value) => _applyFilter(exception: value ?? ''),
-        ),
-      ),
-    ];
-    return desktop
-        ? Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: children,
-          )
-        : Column(
-            children: [
-              for (var i = 0; i < children.length; i++) ...[
-                children[i],
-                if (i != children.length - 1)
-                  const SizedBox(height: UtenSpacing.s8),
-              ],
-            ],
-          );
-  }
-
-  List<OperationsWorkbenchFilterOption> _ensureSelected(
-    List<OperationsWorkbenchFilterOption> options,
-    String? selected,
-  ) {
-    if (selected == null ||
-        selected.isEmpty ||
-        options.any((o) => o.value == selected)) {
-      return options;
-    }
-    return [
-      ...options,
-      OperationsWorkbenchFilterOption(
-        value: selected,
-        label: operationsWorkbenchStatusLabel(selected),
-      ),
-    ];
   }
 
   Widget _buildSelectionSummary() {
@@ -515,31 +534,48 @@ class _SubcontractDecompositionPageState
           value: (t) => t.planNo,
         ),
         MasterColumnDef(
+          // ADR-065 修订：行=当前执行单据；归组行（多货品合并申请）显示
+          // 物料规模摘要，双击进申请详情看逐货品明细。
+          key: 'docNo',
+          label: '委外申请号',
+          width: 160,
+          value: (t) => t.actionDocumentRestricted
+              ? '—'
+              : (t.actionDocument?.number ?? '—'),
+        ),
+        MasterColumnDef(
           key: 'goods',
           label: '委外目标件',
           width: 240,
-          value: (t) => '${t.goodsCode} ${t.goodsName}'.trim(),
+          value: (t) => t.isDocumentGrouped
+              ? t.goodsSummaryLabel
+              : '${t.goodsCode} ${t.goodsName}'.trim(),
         ),
         MasterColumnDef(
           key: 'spec',
           label: '规格 / 颜色',
           width: 180,
-          value: (t) =>
-              [t.spec, t.colorName].where((v) => v.isNotEmpty).join(' / '),
+          value: (t) => t.isDocumentGrouped
+              ? '—'
+              : [t.spec, t.colorName].where((v) => v.isNotEmpty).join(' / '),
         ),
         MasterColumnDef(
           key: 'requiredQty',
           label: '需求量',
           width: 110,
           type: 'number',
-          value: (t) => '${_number(t.requiredQty)} ${t.unitName}'.trim(),
+          value: (t) => t.isDocumentGrouped
+              ? '—'
+              : '${_number(t.requiredQty)} ${t.unitName}'.trim(),
         ),
         MasterColumnDef(
           key: 'openQty',
           label: '待下单量',
           width: 120,
           type: 'number',
-          value: (t) => '${_number(t.openQty)} ${t.unitName}'.trim(),
+          value: (t) => t.isDocumentGrouped
+              ? '${t.openLineCount} 行'
+              : '${_number(t.openQty)} ${t.unitName}'.trim(),
         ),
         MasterColumnDef(
           key: 'needDate',
@@ -584,13 +620,13 @@ class _SubcontractDecompositionPageState
       }),
       isLoading: _loading,
       error: _error,
-      onRetry: _load,
-      emptyMessage: '当前筛选下没有委外申请任务',
+      onRetry: () => _load(),
+      emptyMessage: _seg?.history == true ? '该时间段内暂无委外申请任务' : '当前筛选下没有委外申请任务',
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (page) {
         setState(() => _page = page);
-        _load();
+        _load(page: page);
       },
     );
   }
@@ -624,8 +660,7 @@ class _SubcontractDemandCard extends StatelessWidget {
     return Semantics(
       container: true,
       selected: selected,
-      label:
-          '${task.goodsCode} ${task.goodsName}，待下单 ${task.quantityText}，${task.statusLabel}',
+      label: '${task.title}，待下单 ${task.quantityText}，${task.statusLabel}',
       child: Card(
         margin: EdgeInsets.zero,
         color: selected ? theme.colorScheme.primaryContainer : null,
@@ -651,17 +686,28 @@ class _SubcontractDemandCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${task.goodsCode} ${task.goodsName}'.trim(),
+                          task.isDocumentGrouped
+                              ? task.goodsSummaryLabel
+                              : '${task.goodsCode} ${task.goodsName}'.trim(),
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        if (task.spec.isNotEmpty || task.colorName.isNotEmpty)
+                        if (!task.isDocumentGrouped &&
+                            (task.spec.isNotEmpty || task.colorName.isNotEmpty))
                           Text(
                             [
                               task.spec,
                               task.colorName,
                             ].where((v) => v.isNotEmpty).join(' · '),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        if (!task.isDocumentGrouped &&
+                            task.actionDocument?.number.isNotEmpty == true)
+                          Text(
+                            task.actionDocument!.number,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -682,9 +728,10 @@ class _SubcontractDemandCard extends StatelessWidget {
                 runSpacing: UtenSpacing.s4,
                 children: [
                   Text('来源计划 ${task.planNo}'),
-                  Text(
-                    '需求 ${_SubcontractDecompositionPageState._number(task.requiredQty)} ${task.unitName}',
-                  ),
+                  if (!task.isDocumentGrouped)
+                    Text(
+                      '需求 ${_SubcontractDecompositionPageState._number(task.requiredQty)} ${task.unitName}',
+                    ),
                   Text('待下单 ${task.quantityText}'),
                   Text('需求日 ${task.needDate ?? '—'}'),
                 ],

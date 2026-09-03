@@ -1,17 +1,27 @@
+// 委外业务列表页族（8 页共用 _SubcontractBusinessListPage，按 _ListPresentation 参数化）。
+//
+// 2026-09-03 起统一「分类分段」范式（原 ChoiceChip 状态行退役）：
+// UtenFilterToolbar 阶段分段（草稿/已审/红冲，无「全部」段；申请页为
+// 尚未下达/计划已下达/红冲）+ 末尾「历史记录」段——默认不选不发请求；
+// 徽章只挂待处理段（申请页=计划已下达待分解，其余=草稿；历史兼容页不挂）；
+// 订货页结案状态转小类行（执行中/已结案，无「全部结案状态」，选中阶段后出现）；
+// 历史记录段时间门控（UtenHistoryTimeFilter，未选时间不发请求）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -283,22 +293,65 @@ class _SubcontractBusinessListPage extends ConsumerStatefulWidget {
       _SubcontractBusinessListPageState();
 }
 
+/// 状态分段值：真实单据状态（status 非空）或历史记录哨兵。
+class _BizSeg {
+  const _BizSeg.stage(int this.status) : history = false;
+  const _BizSeg.history() : status = null, history = true;
+
+  final int? status;
+  final bool history;
+  @override
+  bool operator ==(Object other) =>
+      other is _BizSeg && other.status == status && other.history == history;
+
+  @override
+  int get hashCode => Object.hash(status, history);
+}
+
 class _SubcontractBusinessListPageState
     extends ConsumerState<_SubcontractBusinessListPage> {
   final _controller = _BusinessPagedController();
-  int? _status;
+
+  /// 当前选中分段；null = 未选择引导态（不发请求）。
+  _BizSeg? _seg;
+
+  /// 订货页结案状态小类（执行中/已结案）；null = 未选择（不附加过滤）。
   bool? _closed;
+
+  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+
+  /// 待处理段徽章计数；null = 加载中（不显示徽章）。
+  int? _actionableCount;
+
   String? _location;
 
   _ListPresentation get _p => widget.presentation;
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(_p.type);
+
+  bool get _isApplication => _p.type == SubcontractDocType.application;
+
+  /// 待处理段：申请页=计划已下达（待分解）；其余=草稿（待提交/待审）。
+  /// 历史兼容页（历史发料/询价）无待办语义，不挂徽章。
+  int? get _actionableStatus => switch (_p.type) {
+    SubcontractDocType.application => 1,
+    SubcontractDocType.materialIssue || SubcontractDocType.inquiry => null,
+    _ => 0,
+  };
+
+  bool get _shouldLoad {
+    final seg = _seg;
+    if (seg == null) return false;
+    if (seg.history && _historyTime.isNone) return false;
+    return true;
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(mn.masterNameServiceProvider).ensureLoaded();
-      _reload(1);
+      _loadBadge();
     });
   }
 
@@ -308,19 +361,64 @@ class _SubcontractBusinessListPageState
     super.dispose();
   }
 
-  Future<PagedResult<SubcontractDocListItem>> _fetch() => ref
-      .read(subcontractRepositoryProvider(_p.type))
-      .list(
-        page: _controller.page,
-        filter: SubcontractDocFilter(
-          keyword: _controller.keyword.trim(),
-          status: _status,
-          closed: _closed,
-        ),
-      );
+  Future<PagedResult<SubcontractDocListItem>> _fetch() {
+    final seg = _seg!;
+    final range = seg.history ? _historyTime.range : null;
+    return ref
+        .read(subcontractRepositoryProvider(_p.type))
+        .list(
+          page: _controller.page,
+          filter: SubcontractDocFilter(
+            keyword: _controller.keyword.trim(),
+            status: seg.history ? null : seg.status,
+            closed: seg.history ? null : _closed,
+            dateFrom: range == null
+                ? null
+                : ChinaDateTime.formatDate(range.start),
+            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+          ),
+        );
+  }
 
-  Future<void> _reload([int? page, bool silent = false]) =>
-      _controller.load(page ?? _controller.page, silent: silent, fetch: _fetch);
+  Future<void> _reload([int? page, bool silent = false]) {
+    if (!_shouldLoad) return Future.value();
+    return _controller.load(
+      page ?? _controller.page,
+      silent: silent,
+      fetch: _fetch,
+    );
+  }
+
+  void _selectSeg(_BizSeg seg) {
+    if (seg == _seg) return;
+    setState(() {
+      _seg = seg;
+      _closed = null;
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+    });
+    if (!seg.history || !_historyTime.isNone) _reload(1);
+  }
+
+  void _onHistoryTime(UtenHistoryTimeValue value) {
+    if (value == _historyTime) return;
+    setState(() => _historyTime = value);
+    _reload(1);
+  }
+
+  /// 待处理段计数（list size=1 取 total；失败保持 null 不显示徽章）。
+  Future<void> _loadBadge() async {
+    final status = _actionableStatus;
+    if (status == null) return;
+    try {
+      final r = await ref
+          .read(subcontractRepositoryProvider(_p.type))
+          .list(size: 1, filter: SubcontractDocFilter(status: status));
+      if (!mounted) return;
+      setState(() => _actionableCount = r.total);
+    } catch (_) {
+      // 计数失败静默：徽章不显示，不影响列表。
+    }
+  }
 
   bool _canUse(_PageAction action) {
     if (ref.read(isSuperAdminProvider)) return true;
@@ -336,9 +434,18 @@ class _SubcontractBusinessListPageState
   @override
   Widget build(BuildContext context) {
     _location ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_location!, () => _reload(null, true));
-    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) => _reload());
+    ref.onPageResume(_location!, () {
+      _reload(null, true);
+      _loadBadge();
+    });
+    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
+      _reload();
+      _loadBadge();
+    });
     final names = ref.watch(mn.masterNameServiceProvider);
+    final seg = _seg;
+    final draftLabel = _isApplication ? '尚未下达' : '草稿';
+    final approvedLabel = _isApplication ? '计划已下达' : '已审';
     return Scaffold(
       appBar: UtenAppBar(
         title: _p.title,
@@ -349,7 +456,12 @@ class _SubcontractBusinessListPageState
         actions: [
           IconButton(
             tooltip: '刷新',
-            onPressed: _controller.loading ? null : _reload,
+            onPressed: _controller.loading
+                ? null
+                : () {
+                    _reload();
+                    _loadBadge();
+                  },
             icon: const Icon(Icons.refresh_rounded),
           ),
           const SizedBox(width: UtenSpacing.s8),
@@ -380,126 +492,107 @@ class _SubcontractBusinessListPageState
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                 ],
-                _buildFilters(),
+                // 主分类行：阶段分段（无「全部」）+ 末尾「历史记录」；默认不选。
+                UtenFilterToolbar<_BizSeg>(
+                  segmentsKey: Key('subcontract-biz-segments-${_p.type.name}'),
+                  segments: [
+                    UtenFilterSegment(
+                      value: const _BizSeg.stage(0),
+                      label: draftLabel,
+                      count: _actionableStatus == 0 ? _actionableCount : null,
+                    ),
+                    UtenFilterSegment(
+                      value: const _BizSeg.stage(1),
+                      label: approvedLabel,
+                      count: _actionableStatus == 1 ? _actionableCount : null,
+                    ),
+                    const UtenFilterSegment(
+                      value: _BizSeg.stage(-1),
+                      label: '红冲',
+                    ),
+                    const UtenFilterSegment(
+                      value: _BizSeg.history(),
+                      label: '历史记录',
+                    ),
+                  ],
+                  selected: seg == null ? const {} : {seg},
+                  onSelectionChanged: _selectSeg,
+                  searchHint: '搜索单据号',
+                  initialSearchValue: _controller.keyword,
+                  onSearchChanged: (value) {
+                    _controller.keyword = value;
+                    _reload(1);
+                  },
+                ),
+                // 订货页结案状态小类行：选中阶段后出现（无「全部结案状态」，默认不选）。
+                if (_p.showClosedFilter && seg != null && !seg.history) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  UtenFilterToolbar<bool>(
+                    segmentsKey: Key('subcontract-biz-closed-${_p.type.name}'),
+                    segments: const [
+                      UtenFilterSegment(value: false, label: '执行中'),
+                      UtenFilterSegment(value: true, label: '已结案'),
+                    ],
+                    selected: _closed == null ? const <bool>{} : {_closed!},
+                    onSelectionChanged: (value) {
+                      setState(() => _closed = value);
+                      _reload(1);
+                    },
+                  ),
+                ],
+                if (seg?.history == true) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  UtenHistoryTimeFilter(
+                    key: Key('subcontract-biz-history-time-${_p.type.name}'),
+                    value: _historyTime,
+                    onChanged: _onHistoryTime,
+                  ),
+                ],
                 const SizedBox(height: UtenSpacing.s12),
                 Expanded(
-                  child: MasterDataTableView<SubcontractDocListItem>(
-                    columns: _p.columns(
-                      names,
-                      _canViewCommercial &&
-                          !(_controller.result?.items.any(
-                                (row) => row.priceMasked,
-                              ) ??
-                              false),
-                    ),
-                    items: _controller.result?.items ?? const [],
-                    facets: const {},
-                    nullCounts: const {},
-                    filters: const {},
-                    onFilterChanged: (_, _) {},
-                    onRowTap: (row) => context.push(
-                      SubcontractRoute.detail(_p.type.pathSegment, row.id),
-                    ),
-                    isLoading:
-                        _controller.loading && _controller.result == null,
-                    loadingMore:
-                        _controller.loading && _controller.result != null,
-                    error: _controller.error,
-                    onRetry: _reload,
-                    emptyMessage: _p.emptyMessage,
-                    currentPage: _controller.page,
-                    totalPages: _controller.result?.totalPages ?? 1,
-                    onPageChange: _reload,
-                  ),
+                  child: seg == null
+                      ? const UtenFilterPlaceholder()
+                      : seg.history && _historyTime.isNone
+                      ? const UtenHistoryTimePlaceholder()
+                      : MasterDataTableView<SubcontractDocListItem>(
+                          columns: _p.columns(
+                            names,
+                            _canViewCommercial &&
+                                !(_controller.result?.items.any(
+                                      (row) => row.priceMasked,
+                                    ) ??
+                                    false),
+                          ),
+                          items: _controller.result?.items ?? const [],
+                          facets: const {},
+                          nullCounts: const {},
+                          filters: const {},
+                          onFilterChanged: (_, _) {},
+                          onRowTap: (row) => context.push(
+                            SubcontractRoute.detail(
+                              _p.type.pathSegment,
+                              row.id,
+                            ),
+                          ),
+                          isLoading:
+                              _controller.loading && _controller.result == null,
+                          loadingMore:
+                              _controller.loading && _controller.result != null,
+                          error: _controller.error,
+                          onRetry: _reload,
+                          emptyMessage: seg.history
+                              ? '该时间段内暂无记录'
+                              : _p.emptyMessage,
+                          currentPage: _controller.page,
+                          totalPages: _controller.result?.totalPages ?? 1,
+                          onPageChange: (p) => _reload(p),
+                        ),
                 ),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildFilters() {
-    final theme = Theme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 720;
-        final search = SizedBox(
-          width: compact ? double.infinity : 320,
-          child: UtenSearchBar(
-            hint: '搜索单据号',
-            initialValue: _controller.keyword,
-            onChanged: (value) {
-              _controller.keyword = value;
-              _reload(1);
-            },
-          ),
-        );
-        final status = Wrap(
-          spacing: UtenSpacing.s4,
-          runSpacing: UtenSpacing.s4,
-          children: [
-            for (final option in <(String, int?)>[
-              ('全部', null),
-              (_p.type == SubcontractDocType.application ? '尚未下达' : '草稿', 0),
-              (_p.type == SubcontractDocType.application ? '计划已下达' : '已审', 1),
-              ('红冲', -1),
-            ])
-              ChoiceChip(
-                label: Text(option.$1, style: theme.textTheme.labelMedium),
-                selected: _status == option.$2,
-                onSelected: (_) {
-                  setState(() => _status = option.$2);
-                  _reload(1);
-                },
-              ),
-          ],
-        );
-        final closed = _p.showClosedFilter
-            ? Wrap(
-                spacing: UtenSpacing.s4,
-                children: [
-                  for (final option in <(String, bool?)>[
-                    ('全部结案状态', null),
-                    ('执行中', false),
-                    ('已结案', true),
-                  ])
-                    ChoiceChip(
-                      label: Text(
-                        option.$1,
-                        style: theme.textTheme.labelMedium,
-                      ),
-                      selected: _closed == option.$2,
-                      onSelected: (_) {
-                        setState(() => _closed = option.$2);
-                        _reload(1);
-                      },
-                    ),
-                ],
-              )
-            : null;
-        if (compact) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              search,
-              const SizedBox(height: UtenSpacing.s8),
-              status,
-              if (closed != null) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                closed,
-              ],
-            ],
-          );
-        }
-        return Wrap(
-          spacing: UtenSpacing.s12,
-          runSpacing: UtenSpacing.s8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [search, status, ?closed],
-        );
-      },
     );
   }
 }

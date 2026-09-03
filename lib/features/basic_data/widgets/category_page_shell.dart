@@ -581,7 +581,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
               ),
             )
           : null,
-      body: SafeArea(child: body),
+      // 页面级局部 SelectionArea：分类树/详情面板/空态文字可框选复制（准则 §3.4）。
+      // 内嵌 MasterDataTableView 自带更深层 region，嵌套各管各的；AppBar 不进选择区。
+      body: SafeArea(child: SelectionArea(child: body)),
     );
   }
 }

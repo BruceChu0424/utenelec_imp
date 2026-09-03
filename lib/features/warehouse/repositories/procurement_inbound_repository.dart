@@ -47,6 +47,13 @@ abstract interface class ProcurementInboundRepository {
   /// 订货单权威修复表头币族（老草稿），再走同一审核链路；仓库不进采购/委外单据页。
   Future<WarehouseArrivalRegistration> completeArrival(String receiptId);
 
+  /// 预计到货「批量继续送检」：一个事务逐张草稿收货单完成送检；单张超量隔离
+  /// 不回滚其他单；同幂等键重试时已处理单按既有事实安全重放。
+  Future<WarehouseArrivalBatchCompleteResult> batchCompleteArrivals({
+    required List<String> receiptIds,
+    required String idempotencyKey,
+  });
+
   /// 货品资料「学习」回写：登记到货保存成功后回写库位号/系列/编码，返回 (updated, skipped)。
   Future<({int updated, int skipped})> saveGoodsProfileHints(
     List<Map<String, dynamic>> hints,
@@ -215,6 +222,18 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
       ApiEndpoints.warehouseInboundArrivalComplete(receiptId),
     );
     return WarehouseArrivalRegistration.fromJson(json);
+  }
+
+  @override
+  Future<WarehouseArrivalBatchCompleteResult> batchCompleteArrivals({
+    required List<String> receiptIds,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.warehouseInboundArrivalBatchComplete,
+      body: {'receiptIds': receiptIds, 'idempotencyKey': idempotencyKey},
+    );
+    return WarehouseArrivalBatchCompleteResult.fromJson(json);
   }
 
   @override

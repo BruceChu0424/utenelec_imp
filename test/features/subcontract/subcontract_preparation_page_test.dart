@@ -84,6 +84,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 2026-09-03 分类范式：来源行默认不选（不发请求），先 tap「订货来源」
+      // 才加载 /subcontract-preparations 列表（深链参数原样下发）。
+      await tester.tap(find.text('订货来源·前置自制'));
+      await tester.pumpAndSettle();
+
       final listRequest = requests.singleWhere(
         (request) =>
             request.path.endsWith('/subcontract-preparations') &&
@@ -122,7 +127,8 @@ void main() {
     (tester) async {
       final requests = <RequestOptions>[];
       final api = _api(requests, allowedActions: const ['START_PREPARATION']);
-      tester.view.physicalSize = const Size(1200, 900);
+      // 1440 宽：订货来源状态分段行（7 段，无「全部状态」段）在桌面一行排开。
+      tester.view.physicalSize = const Size(1440, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -141,6 +147,10 @@ void main() {
           child: const MaterialApp(home: SubcontractPreparationPage()),
         ),
       );
+      await tester.pumpAndSettle();
+
+      // 来源行默认不选：先 tap「订货来源」再断言桌面表格与行级菜单。
+      await tester.tap(find.text('订货来源·前置自制'));
       await tester.pumpAndSettle();
 
       expect(
@@ -200,6 +210,10 @@ void main() {
           child: MaterialApp.router(routerConfig: router),
         ),
       );
+      await tester.pumpAndSettle();
+
+      // 来源行默认不选：先 tap「订货来源」加载任务卡，再点「打开物料分析」。
+      await tester.tap(find.text('订货来源·前置自制'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('打开物料分析'));

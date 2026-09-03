@@ -434,7 +434,8 @@ class _PagePermissionSettingsPageState
               : null,
           showPagePermissionAction: false,
         ),
-        body: _body(wide),
+        // 局部 SelectionArea：页面权限设置文字可框选复制（准则 §3.4）。
+        body: SelectionArea(child: _body(wide)),
       ),
     );
   }

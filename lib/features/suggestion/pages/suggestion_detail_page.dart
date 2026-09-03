@@ -54,182 +54,175 @@ class _Content extends ConsumerWidget {
     final theme = Theme.of(context);
 
     // 详情页全断点窄版收敛（1120），避免宽屏正文被拉得过长。
-    // 包局部 SelectionArea：建议正文可框选复制（局部规避全局 SelectableRegion CME，见
-    // docs 02 §3.4、记忆 selectionarea-overlay-ancestor）。
+    // 正文可框选复制：UtenContentContainer 默认已包局部 SelectionArea（准则 §3.4）。
     return UtenContentContainer.narrow(
-      child: SelectionArea(
-        child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-          children: [
-            // 类别 + 状态
-            Row(
-              children: [
-                Container(
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        children: [
+          // 类别 + 状态
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s12,
+                  vertical: UtenSpacing.s4,
+                ),
+                decoration: BoxDecoration(
+                  color: suggestion.category.color.withValues(alpha: 0.12),
+                  borderRadius: UtenRadius.mdAll,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      suggestion.category.icon,
+                      size: 14,
+                      color: suggestion.category.color,
+                    ),
+                    const SizedBox(width: UtenSpacing.s4),
+                    Text(
+                      suggestion.category.label,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: suggestion.category.color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              UtenStatusBadge(
+                label: suggestion.status.label,
+                type: _statusBadge(suggestion.status),
+                size: UtenStatusBadgeSize.small,
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          // 标题
+          Text(
+            suggestion.title,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          // 提交人
+          Row(
+            children: [
+              Icon(
+                Icons.account_circle_rounded,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: UtenSpacing.s4),
+              Text(
+                suggestion.displayName,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s12),
+              Text(
+                _fmt(suggestion.submittedAt),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          // 正文
+          UtenCard(
+            child: SelectableText(
+              suggestion.content,
+              style: theme.textTheme.bodyLarge?.copyWith(height: 1.7),
+            ),
+          ),
+
+          if (ref
+              .watch(currentPermissionsProvider)
+              .contains(Perm.suggestionReply)) ...[
+            const SizedBox(height: UtenSpacing.s24),
+            _ReplyComposer(suggestion: suggestion),
+          ],
+
+          // 回复
+          if (suggestion.replies.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s24),
+            UtenSectionHeader(
+              title: '官方回复 (${suggestion.replies.length})',
+              icon: Icons.forum_outlined,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            for (final reply in suggestion.replies) ...[
+              _ReplyCard(reply: reply),
+              const SizedBox(height: UtenSpacing.s12),
+            ],
+          ],
+
+          const SizedBox(height: UtenSpacing.s16),
+          // 点赞行
+          Center(
+            child: Material(
+              type: MaterialType.transparency,
+              borderRadius: UtenRadius.pillAll,
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () async {
+                  try {
+                    await toggleSuggestionLike(ref, suggestion.id);
+                  } catch (error) {
+                    if (context.mounted) {
+                      UtenNotify.apiError(context, error, fallback: '点赞失败，请重试');
+                    }
+                  }
+                },
+                borderRadius: UtenRadius.pillAll,
+                child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s12,
-                    vertical: UtenSpacing.s4,
+                    horizontal: UtenSpacing.s24,
+                    vertical: UtenSpacing.s12,
                   ),
                   decoration: BoxDecoration(
-                    color: suggestion.category.color.withValues(alpha: 0.12),
-                    borderRadius: UtenRadius.mdAll,
+                    color: suggestion.likedByMe
+                        ? UtenColors.error.withValues(alpha: 0.1)
+                        : theme.colorScheme.surfaceContainerLow,
+                    borderRadius: UtenRadius.pillAll,
+                    border: Border.all(
+                      color: suggestion.likedByMe
+                          ? UtenColors.error
+                          : theme.colorScheme.outlineVariant,
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        suggestion.category.icon,
-                        size: 14,
-                        color: suggestion.category.color,
+                        suggestion.likedByMe
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        size: 18,
+                        color: suggestion.likedByMe
+                            ? UtenColors.error
+                            : theme.colorScheme.onSurfaceVariant,
                       ),
-                      const SizedBox(width: UtenSpacing.s4),
+                      const SizedBox(width: UtenSpacing.s8),
                       Text(
-                        suggestion.category.label,
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: suggestion.category.color,
+                        '${suggestion.likes} 人赞同',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: suggestion.likedByMe
+                              ? UtenColors.error
+                              : theme.colorScheme.onSurface,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const Spacer(),
-                UtenStatusBadge(
-                  label: suggestion.status.label,
-                  type: _statusBadge(suggestion.status),
-                  size: UtenStatusBadgeSize.small,
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s16),
-            // 标题
-            Text(
-              suggestion.title,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            // 提交人
-            Row(
-              children: [
-                Icon(
-                  Icons.account_circle_rounded,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: UtenSpacing.s4),
-                Text(
-                  suggestion.displayName,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                Text(
-                  _fmt(suggestion.submittedAt),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s16),
-            // 正文
-            UtenCard(
-              child: SelectableText(
-                suggestion.content,
-                style: theme.textTheme.bodyLarge?.copyWith(height: 1.7),
-              ),
-            ),
-
-            if (ref
-                .watch(currentPermissionsProvider)
-                .contains(Perm.suggestionReply)) ...[
-              const SizedBox(height: UtenSpacing.s24),
-              _ReplyComposer(suggestion: suggestion),
-            ],
-
-            // 回复
-            if (suggestion.replies.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s24),
-              UtenSectionHeader(
-                title: '官方回复 (${suggestion.replies.length})',
-                icon: Icons.forum_outlined,
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              for (final reply in suggestion.replies) ...[
-                _ReplyCard(reply: reply),
-                const SizedBox(height: UtenSpacing.s12),
-              ],
-            ],
-
-            const SizedBox(height: UtenSpacing.s16),
-            // 点赞行
-            Center(
-              child: Material(
-                type: MaterialType.transparency,
-                borderRadius: UtenRadius.pillAll,
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: () async {
-                    try {
-                      await toggleSuggestionLike(ref, suggestion.id);
-                    } catch (error) {
-                      if (context.mounted) {
-                        UtenNotify.apiError(
-                          context,
-                          error,
-                          fallback: '点赞失败，请重试',
-                        );
-                      }
-                    }
-                  },
-                  borderRadius: UtenRadius.pillAll,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s24,
-                      vertical: UtenSpacing.s12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: suggestion.likedByMe
-                          ? UtenColors.error.withValues(alpha: 0.1)
-                          : theme.colorScheme.surfaceContainerLow,
-                      borderRadius: UtenRadius.pillAll,
-                      border: Border.all(
-                        color: suggestion.likedByMe
-                            ? UtenColors.error
-                            : theme.colorScheme.outlineVariant,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          suggestion.likedByMe
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
-                          size: 18,
-                          color: suggestion.likedByMe
-                              ? UtenColors.error
-                              : theme.colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Text(
-                          '${suggestion.likes} 人赞同',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: suggestion.likedByMe
-                                ? UtenColors.error
-                                : theme.colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

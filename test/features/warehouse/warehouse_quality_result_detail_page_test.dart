@@ -126,14 +126,13 @@ void main() {
       // 单据信息 + 合并明细表（一张表：判定 + 放行切片同场）。
       expect(find.text('PR-001'), findsOneWidget);
       expect(find.text('检查结果与待入库明细'), findsOneWidget);
-      // 精确表头（无必填星标）。
+      // 精确表头（无必填星标）。检验状态列已并入判定结果（2026-09-03 表头清理）。
       for (final header in const [
         '判定结果',
         '货品名称',
-        '收货数量',
-        '合格数量',
-        '不合格数量',
-        '检验状态',
+        '收货总量',
+        '合格总量',
+        '不合格总量',
         '放行信息',
       ]) {
         expect(find.text(header), findsOneWidget, reason: '缺列 $header');
@@ -540,6 +539,8 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
+    String? dateFrom,
+    String? dateTo,
   }) async => throw StateError('unexpected list');
 }
 

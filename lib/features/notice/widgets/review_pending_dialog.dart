@@ -1,45 +1,63 @@
-// ReviewPendingDialog —— 审核待办居中弹窗（V459/ADR-063 第二轮：用户口径修订）
+// ReviewPendingDialog —— 审核待办居中弹窗（V459/ADR-063；2026-09-03 第四轮口径）
 //
-// 一个待审事件的三种提醒形态并存：通知中心条目 + 顶部通知条 + 本居中弹窗。
+// 一个待审事件的三种提醒形态并存：通知中心条目 + 顶部通知条（纯显示）+ 本居中弹窗。
 // 本弹窗承载主交互：
 // - 登录检查（ReviewPendingLoginGate）与在线到达（dispatchReviewCard）共用；
+// - 在线多事件同到：先弹一条，后续待办**并入同一弹窗**（「一共有 N 项」），不再丢弃；
 // - 弹窗内实时显示「是否有人在处理」（30s 心跳 pending-review-status：
 //   他人认领 → 「XX 正在审核」黄色 chip；办结 → 条目自动移除，清空则弹窗自关）；
-// - 【去审核】：标已读 → 跳 actionRoute（域专属审核页）→ 关弹窗；
+// - 【去工作台处理】（2026-09-03 第四轮：不再直达单据详情）：全部待办同域 →
+//   该域任务工作台；跨域混合 → 待审收件台 /reviews/inbox。点单条条目 →
+//   该条所属域的工作台。去工作台 = 提醒已响应，弹窗内条目全部标已读；
 // - 【稍后再看】：全部条目标已读 + 服务端 snooze 15 分钟（跨设备一致，
 //   到点未办结下次登录/到达再弹）；
 // - 右上 X：仅关闭本次（不 snooze——「每次登录检查、有待办就弹」的产品口径）。
 // 文档：docs/02-组件库/ReviewPendingDialog.md
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 import '../repositories/notice_repository.dart';
-import '../providers/notice_route_read_bridge.dart';
 
-/// 居中弹窗单例守卫：已打开时不再叠新弹窗（在线多事件同到/登录检查与
-/// 到达链竞争时只保一层；新待办由已开弹窗的心跳与收件台兜底）。
+/// sourceEvent → 该域任务工作台（汇总列表）。主按钮不再直达单据详情
+/// （2026-09-03 第四轮口径：弹窗只做提醒汇总，处理在工作台做）。
+String workbenchRouteFor(String? sourceEvent) => switch (sourceEvent) {
+  'SALES_ORDER_PENDING_FINANCE_CONFIRM' => '/finance/sales-order-confirmations',
+  'PROCUREMENT_FINANCE_SUBMITTED' => '/finance/procurement-approvals',
+  'PROCUREMENT_IQC_PENDING' => RouteName.qualityTaskCenter,
+  'SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP' => RouteName.salesOrderProgress,
+  // 未注册事件兜底：待审收件台按域聚合展示全部待审。
+  _ => RouteName.reviewsInbox,
+};
+
+/// 居中弹窗单例守卫：已打开时新待办并入当前弹窗（在线多事件同到
+/// 「一共有 N 项」；登录检查与到达链竞争时只保一层）。
 bool _reviewPendingDialogOpen = false;
+_ReviewPendingDialogState? _openDialogState;
 
 /// 仅测试用：重置单例守卫（widget 测试间隔离）。
 @visibleForTesting
 void resetReviewPendingDialogForTest() {
   _reviewPendingDialogOpen = false;
+  _openDialogState = null;
 }
 
 /// 弹出居中审核待办弹窗。[pending] 非空（调用方保证）；全空由心跳自然自关。
-/// 弹窗已打开时本次调用为空操作（返回已完成 Future）。
+/// 弹窗已打开时把 [pending] 并入当前弹窗（按 id 去重）。
 Future<void> showReviewPendingDialog(
   BuildContext context, {
   required List<Notice> pending,
 }) {
   if (_reviewPendingDialogOpen) {
+    _openDialogState?.addPendingItems(pending);
     return Future<void>.value();
   }
   _reviewPendingDialogOpen = true;
@@ -73,6 +91,7 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
   void initState() {
     super.initState();
     _items = List.of(widget.pending);
+    _openDialogState = this;
     _refreshStatus();
     _heartbeat = Timer.periodic(
       const Duration(seconds: 30),
@@ -83,7 +102,20 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
   @override
   void dispose() {
     _heartbeat?.cancel();
+    if (_openDialogState == this) _openDialogState = null;
     super.dispose();
+  }
+
+  /// 在线新到待办并入当前弹窗（按 id 去重）——多事件同到合成
+  /// 「一共有 N 项」一个弹窗，而不是每条各弹一层。
+  void addPendingItems(List<Notice> items) {
+    if (!mounted || items.isEmpty) return;
+    final fresh = items
+        .where((n) => !_items.any((e) => e.id == n.id))
+        .toList(growable: false);
+    if (fresh.isEmpty) return;
+    setState(() => _items.addAll(fresh));
+    _refreshStatus();
   }
 
   Future<void> _refreshStatus() async {
@@ -108,28 +140,33 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
     }
   }
 
-  Future<void> _openReview(Notice notice) async {
+  /// 主按钮落点：全部待办同域 → 该域任务工作台；跨域混合 → 待审收件台。
+  String get _primaryTarget {
+    final routes = {for (final n in _items) workbenchRouteFor(n.sourceEvent)};
+    return routes.length == 1 ? routes.first : RouteName.reviewsInbox;
+  }
+
+  /// 去任务工作台（2026-09-03 第四轮：不再直达单据详情）。
+  /// [only] 为空 = 主按钮：跳综合落点（同域工作台/收件台），弹窗内全部
+  /// 条目标已读（提醒已响应）；指定条目 = 点列表行：跳该条所属域工作台，
+  /// 仅该条标已读。
+  Future<void> _openWorkbench({Notice? only}) async {
     if (_busy) return;
     _busy = true;
     final container = ProviderScope.containerOf(context, listen: false);
-    markNoticeReadContainer(container, notice.id).ignore();
-    container.read(noticeTargetRoutesProvider.notifier).recordRoutes([
-      notice.actionRoute,
-    ]);
+    final targets = only == null ? _items : [only];
+    for (final n in targets) {
+      markNoticeReadContainer(container, n.id).ignore();
+    }
+    final target = only == null
+        ? _primaryTarget
+        : workbenchRouteFor(only.sourceEvent);
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
     try {
-      final target = noticeActionTarget(notice);
-      if (target != null) {
-        final router = GoRouter.of(context);
-        final match = router.configuration.findMatch(Uri.parse(target));
-        if (!match.isError) {
-          router.go(target);
-          return;
-        }
-      }
+      GoRouter.of(context).go(target);
     } catch (_) {
-      // 历史脏路由回退：无操作（通知中心仍可进详情）。
+      // 工作台路由为前端常量（app_router 必注册）；异常仅见于测试环境。
     }
   }
 
@@ -150,12 +187,15 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final single = _items.length == 1;
+    // 高度完全随内容自适应；封顶 min(60% 屏高, 560)——积压多条时列表内部
+    // 滚动，弹窗保持正常卡片比例，不再被拉到接近全屏。
+    final maxHeight = math.min(MediaQuery.sizeOf(context).height * 0.6, 560.0);
     return Dialog(
       backgroundColor: scheme.surface,
       elevation: 12,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
+        constraints: BoxConstraints(maxWidth: 480, maxHeight: maxHeight),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
           child: Column(
@@ -170,7 +210,7 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
                         theme: theme,
                         notice: _items.first,
                         status: _statusById[_items.first.id],
-                        onTap: () => _openReview(_items.first),
+                        onTap: () => _openWorkbench(),
                       )
                     : ListView(
                         shrinkWrap: true,
@@ -184,7 +224,7 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
                                 theme: theme,
                                 notice: item,
                                 status: _statusById[item.id],
-                                onTap: () => _openReview(item),
+                                onTap: () => _openWorkbench(only: item),
                               ),
                             ),
                         ],
@@ -193,9 +233,8 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
               const SizedBox(height: UtenSpacing.s16),
               _Actions(
                 theme: theme,
-                single: single,
                 busy: _busy,
-                onReview: () => _openReview(_items.first),
+                onReview: () => _openWorkbench(),
                 onSnooze: _snoozeAll,
                 onClose: () => Navigator.of(context, rootNavigator: true).pop(),
               ),
@@ -309,6 +348,9 @@ class _LargeItemCard extends StatelessWidget {
           ),
         ),
         child: Column(
+          // 不写 min 会在外层 Flexible 的 loose 约束下占满剩余高度，
+          // 单条时卡片下方出现大片空白（2026-09-03 修复）。
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -466,7 +508,6 @@ class _ClaimChip extends StatelessWidget {
 class _Actions extends StatelessWidget {
   const _Actions({
     required this.theme,
-    required this.single,
     required this.busy,
     required this.onReview,
     required this.onSnooze,
@@ -474,7 +515,6 @@ class _Actions extends StatelessWidget {
   });
 
   final ThemeData theme;
-  final bool single;
   final bool busy;
   final VoidCallback onReview;
   final VoidCallback onSnooze;
@@ -488,7 +528,9 @@ class _Actions extends StatelessWidget {
           child: FilledButton.icon(
             onPressed: busy ? null : onReview,
             icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-            label: Text(single ? '去审核' : '去处理第一条'),
+            // 第四轮口径：一律去任务工作台（同域→域工作台，混合→收件台），
+            // 不再直达第一条的详情页。
+            label: const Text('去工作台处理'),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(46),
               textStyle: theme.textTheme.titleSmall?.copyWith(
@@ -504,7 +546,7 @@ class _Actions extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(46),
             ),
-            child: Text(single ? '稍后再看' : '全部稍后再看'),
+            child: const Text('全部稍后再看'),
           ),
         ),
       ],

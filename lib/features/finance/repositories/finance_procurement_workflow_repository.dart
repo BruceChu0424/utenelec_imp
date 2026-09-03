@@ -17,7 +17,13 @@ abstract interface class FinanceProcurementWorkflowRepository {
   /// 待审任务按订货类型计数（全部/采购/委外筛选卡的全量口径）：{PURCHASE: n, ...}。
   Future<Map<String, int>> approvalTypeCounts();
 
-  Future<void> approveOrdersBatch(List<FinanceProcurementDecisionItem> items);
+  /// 审核详情（财务专用视图）：订单头 + 供应商应付快照 + 明细 + 审批历史。
+  Future<FinanceProcurementApprovalReview> review(String caseId);
+
+  Future<void> approveOrdersBatch(
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+  });
 
   Future<void> rejectOrdersBatch(
     List<FinanceProcurementDecisionItem> items,
@@ -81,13 +87,25 @@ class DioFinanceProcurementWorkflowRepository
   }
 
   @override
+  Future<FinanceProcurementApprovalReview> review(String caseId) async {
+    final json = await api.get(
+      ApiEndpoints.financeProcurementApprovalReview(
+        Uri.encodeComponent(caseId),
+      ),
+    );
+    return FinanceProcurementApprovalReview.fromJson(json);
+  }
+
+  @override
   Future<void> approveOrdersBatch(
-    List<FinanceProcurementDecisionItem> items,
-  ) async {
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+  }) async {
     await api.post(
       ApiEndpoints.financeProcurementApprovalBatchApprove,
       body: {
         'items': [for (final item in items) item.toJson()],
+        if (remark != null && remark.trim().isNotEmpty) 'remark': remark.trim(),
       },
     );
   }

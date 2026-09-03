@@ -370,6 +370,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
               ),
               // 桌面：左筛选侧栏（搜索 + 方向/状态 Chip）+ 右表格；手机：垂直堆叠
               body: UtenListTwoPane(
+                splitPersistenceKey: 'finance.arAp',
                 filterPane: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: UtenSpacing.s4,

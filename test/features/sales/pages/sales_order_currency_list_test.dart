@@ -44,6 +44,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // 分类分段范式（ADR-066）：大类默认不选不发请求（内容区是引导占位），
+    // 先点「待生产」大类段——大类选中即加载（小类默认不选=全部效果）。
+    await tester.tap(find.text('待生产'));
+    await tester.pumpAndSettle();
+
     final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
       find.byWidgetPredicate(
         (widget) => widget is MasterDataTableView<SalesDocListItem>,
@@ -91,6 +96,11 @@ void main() {
         child: MaterialApp.router(routerConfig: router),
       ),
     );
+    await tester.pumpAndSettle();
+
+    // 分类分段范式（ADR-066）：出货单状态默认不选不发请求，
+    // 先点「草稿」状态段才加载列表。
+    await tester.tap(find.text('草稿'));
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<SalesDocListItem>>(

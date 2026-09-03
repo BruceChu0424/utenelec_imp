@@ -163,14 +163,11 @@ public class MaterialAnalysisSupplyProgressService {
                 splitDetail, requestNos.isEmpty() ? null : requestNos,
                 iso(actionAt), actorName));
 
-        // ② 下单：申请明细 → 订货明细 → 订货单。
-        String orderItemSource = purchase ? "request_item_id" : "application_item_id";
-        List<Object[]> orderRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT DISTINCT ord.id, ord.bill_no, ord.status, ord.is_closed, ord.created_at,
-                       ord.maker_id, order_item.id
-                FROM %s order_item
-                JOIN %s ord ON ord.id = order_item.order_id
-                WHERE order_item.%s IN (
+        // ② 下单：申请明细 → 订货明细（V463 起经来源分配行，合并行对每个来源可见）→ 订货单。
+        String sourceJoin = purchase
+                ? """
+                  JOIN purchase_order_item_sources src
+                    ON src.request_item_id IN (
                       SELECT allocation.external_item_id
                       FROM preplan_supply_action_allocations allocation
                       WHERE allocation.action_id = :supplyActionId
@@ -180,13 +177,33 @@ public class MaterialAnalysisSupplyProgressService {
                       FROM preplan_supply_actions action
                       WHERE action.id = :supplyActionId
                         AND action.safety_external_item_id IS NOT NULL)
+                  """
+                : """
+                  JOIN subcontract_order_item_sources src
+                    ON src.application_item_id IN (
+                      SELECT allocation.external_item_id
+                      FROM preplan_supply_action_allocations allocation
+                      WHERE allocation.action_id = :supplyActionId
+                        AND allocation.external_item_id IS NOT NULL
+                      UNION
+                      SELECT action.safety_external_item_id
+                      FROM preplan_supply_actions action
+                      WHERE action.id = :supplyActionId
+                        AND action.safety_external_item_id IS NOT NULL)
+                  """;
+        List<Object[]> orderRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT DISTINCT ord.id, ord.bill_no, ord.status, ord.is_closed, ord.created_at,
+                       ord.maker_id, order_item.id
+                FROM %s order_item
+                JOIN %s ord ON ord.id = order_item.order_id
+                %s
                   AND order_item.is_deleted = FALSE
                   AND ord.is_deleted = FALSE
                 ORDER BY ord.created_at, ord.id, order_item.id
                 """.formatted(
                 purchase ? "purchase_order_items" : "subcontract_order_items",
                 purchase ? "purchase_orders" : "subcontract_orders",
-                orderItemSource))
+                sourceJoin))
                 .setParameter("supplyActionId", supplyActionId));
 
         if (orderRows.isEmpty()) {

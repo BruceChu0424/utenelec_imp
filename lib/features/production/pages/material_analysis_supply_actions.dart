@@ -368,8 +368,8 @@ abstract class _MaterialAnalysisSupplyActionsState
       group.actionable &&
       _routeDraft[group.key] == route &&
       !_dirtyRouteGroups.contains(group.key) &&
-      !(route == MaterialSupplyRoute.make &&
-          group.representative.lowerLevelPending) &&
+      // V458/ADR-062：MAKE 与有子层 SUBCONTRACT 同构——下层未齐套不可勾选下达。
+      !group.representative.lowerLevelPending &&
       !_routeBlockedBySafetyGap(group, route) &&
       _hasSupplySubmitQty(group, route);
 
@@ -851,7 +851,7 @@ abstract class _MaterialAnalysisSupplyActionsState
         MaterialRequirementState.delegatedToMakeChild) {
       return null;
     }
-    final child = _makeChildProductOf(material);
+    final child = _taskChildProductOf(material);
     if (child == null) return null;
     final executionStage = _productExecutionStage(child);
     if (executionStage != null) return executionStage.label;
@@ -1039,8 +1039,12 @@ abstract class _MaterialAnalysisSupplyActionsState
       context.appInfo('请先点右侧“采用${route.label}”确认路线，再勾选加入批量下达');
       return;
     }
-    if (route == MaterialSupplyRoute.make && material.lowerLevelPending) {
-      context.appInfo('下层物料未齐套，暂不能安排生产，请先处理下层缺料');
+    if (material.lowerLevelPending) {
+      context.appInfo(
+        route == MaterialSupplyRoute.subcontract
+            ? '下层物料未齐套，暂不能下达委外，请先处理下层缺料'
+            : '下层物料未齐套，暂不能安排生产，请先处理下层缺料',
+      );
       return;
     }
     context.appInfo('当前节点暂不可选择，请展开节点详情查看原因');
@@ -1115,6 +1119,70 @@ abstract class _MaterialAnalysisSupplyActionsState
       if (readySelected > 0) '$readySelected 个已进入填写数量，核对后点「安排子件生产」提交计划单',
       if (waiting > 0) '$waiting 个待下层齐套后继续备料',
       if (refreshing > 0) '$refreshing 个子件分析正在刷新，稍后从本页继续',
+      if (needPermission > 0) '请由有生产计划权限的员工继续填写计划单',
+    ];
+    context.appSuccess(parts.join('；'));
+  }
+
+  /// V458/ADR-062 修订一②：有子层级委外件与自制完全同构的第二段——「下达委外」
+  /// 建 SUBCONTRACT_MAKE 前置自制任务后**留在本页**，已可生产的委外子件自动
+  /// 勾选并预填「最多可生产量」，员工核对后点底部「安排子件生产」进入计划
+  /// 向导；同批无子层委外件仍由服务端立即合并生成委外申请并通知委外部。
+  Future<void> _arrangeSubcontractProduction() async {
+    final analysis = _analysis;
+    if (analysis == null || !_canNotify || _notifyingRoute != null) return;
+    final groups = _executableSupplyGroups(MaterialSupplyRoute.subcontract)
+        .where(
+          (group) => _selectedSupplyGroups[MaterialSupplyRoute.subcontract]!
+              .contains(group.key),
+        )
+        .toList(growable: false);
+    if (groups.isEmpty) {
+      context.appInfo('请先勾选要下达的委外件');
+      return;
+    }
+    final view = await _notifyRoute(
+      MaterialSupplyRoute.subcontract,
+      onlyGroupKeys: {for (final group in groups) group.key},
+    );
+    if (!mounted || view == null) return;
+    final requestedLineIds = {
+      for (final group in groups) group.representative.materialLineId,
+    };
+    var created = 0;
+    var readySelected = 0;
+    var waiting = 0;
+    var needPermission = 0;
+    setState(() {
+      for (final material in view.materials) {
+        if (!requestedLineIds.contains(material.materialLineId)) continue;
+        // 无子层委外件没有子件任务：已直接合并生成委外申请，不进入两段式。
+        final child = _subcontractMakeChildProductOf(material);
+        if (child == null) continue;
+        created++;
+        if (!_canSelectProduct(child)) {
+          waiting++;
+          continue;
+        }
+        if (!_canGenerate) {
+          needPermission++;
+          continue;
+        }
+        _selectedPlanLineIds.add(child.analysisLineId);
+        final controller = _batchQtyControllers[child.analysisLineId];
+        if (controller != null && controller.text.trim().isEmpty) {
+          controller.text = _qty(child.readyNowQty);
+        }
+        readySelected++;
+      }
+      _planPreview = null;
+    });
+    // 全部为无子层时 _notifyRoute 的「合并为 N 张委外申请」提示已足够。
+    if (created == 0) return;
+    final parts = <String>[
+      '已创建 $created 个委外子件任务',
+      if (readySelected > 0) '$readySelected 个已进入填写数量，核对后点「安排子件生产」提交计划单',
+      if (waiting > 0) '$waiting 个待下层齐套后继续备料',
       if (needPermission > 0) '请由有生产计划权限的员工继续填写计划单',
     ];
     context.appSuccess(parts.join('；'));

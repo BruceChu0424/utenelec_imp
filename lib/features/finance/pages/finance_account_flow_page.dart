@@ -264,6 +264,7 @@ class _FinanceAccountFlowPageState
                 ),
               ),
               body: UtenListTwoPane(
+                splitPersistenceKey: 'finance.accountFlow',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),

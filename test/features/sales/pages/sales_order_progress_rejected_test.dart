@@ -27,6 +27,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 分类分段范式（ADR-066）：阶段行默认不选（内容区是引导占位，不发
+      // progress 请求），先点「财务驳回」段才按 stage=REJECTED 加载。
+      await tester.tap(find.text('财务驳回'));
+      await tester.pumpAndSettle();
+
       expect(find.text('财务驳回'), findsWidgets);
       expect(
         find.byKey(const ValueKey('sales-order-progress-finance-rejected')),

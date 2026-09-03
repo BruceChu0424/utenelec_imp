@@ -48,6 +48,7 @@ import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
 import '../../features/finance/payables/pages/finance_payables_page.dart';
+import '../../features/finance/pages/finance_procurement_approval_review_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
 import '../../features/finance/pages/finance_sales_order_confirmation_page.dart';
 import '../../features/finance/pages/finance_sales_order_review_page.dart';
@@ -70,6 +71,7 @@ import '../../features/purchase/pages/purchase_doc_detail_page.dart';
 import '../../features/purchase/pages/purchase_doc_edit_page.dart';
 import '../../features/purchase/pages/purchase_doc_list_page.dart';
 import '../../features/purchase/pages/purchase_hub_page.dart';
+import '../../features/purchase/pages/purchase_order_edit_page.dart';
 import '../../features/purchase/pages/purchase_report_page.dart';
 import '../../features/purchase/pages/purchase_report_table_page.dart';
 import '../../features/purchase/config/purchase_report_config.dart';
@@ -88,6 +90,7 @@ import '../../features/warehouse/pages/warehouse_quality_result_detail_page.dart
 import '../../features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_document_history_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_document_history_list_page.dart';
+import '../../features/warehouse/pages/production_finished_arrival_batch_registration_page.dart';
 import '../../features/warehouse/pages/production_finished_arrival_registration_page.dart';
 import '../../features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import '../../features/quality/pages/quality_task_center_page.dart';
@@ -748,12 +751,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               kind: PurchaseReportKind.byName(s.pathParameters['kind']!),
             ),
           ),
+          // 采购订货单专属编辑页（2026-09 行级商业条款）：字面量路由优先于 :doc 通配。
           GoRoute(
-            path: '/purchase/:doc/new',
-            name: 'purchase-doc-new',
-            redirect: _rejectUnknownPurchaseDoc,
-            builder: (_, s) => PurchaseDocEditPage(
-              docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
+            path: '/purchase/orders/new',
+            name: 'purchase-order-new',
+            builder: (_, s) => PurchaseOrderEditPage(
               sourceRequestId: s.uri.queryParameters['requestId'],
               sourceRequestItemIds:
                   s.uri.queryParameters['requestItemIds']
@@ -761,6 +763,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                       .where((id) => id.trim().isNotEmpty)
                       .toList() ??
                   const [],
+            ),
+          ),
+          GoRoute(
+            path: '/purchase/orders/:id/edit',
+            name: 'purchase-order-edit',
+            builder: (_, s) =>
+                PurchaseOrderEditPage(id: s.pathParameters['id']),
+          ),
+          GoRoute(
+            path: '/purchase/:doc/new',
+            name: 'purchase-doc-new',
+            redirect: _rejectUnknownPurchaseDoc,
+            builder: (_, s) => PurchaseDocEditPage(
+              docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
               receiptPrefill: s.extra is ProcurementReceiptPrefill
                   ? s.extra! as ProcurementReceiptPrefill
                   : null,
@@ -909,6 +925,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseProductionFinishedInboundTasks,
             name: 'warehouse-production-finished-inbound-tasks',
             builder: (_, _) => const ProductionFinishedInboundTasksPage(),
+          ),
+          GoRoute(
+            // 多单汇总登记页须先于 :reportId 声明（GoRouter 按声明顺序匹配同前缀）。
+            path: RouteName.warehouseProductionFinishedArrivalBatchRegistration,
+            name: 'warehouse-production-finished-arrival-batch-registration',
+            builder: (_, state) =>
+                ProductionFinishedArrivalBatchRegistrationPage(
+                  reportIds: (state.uri.queryParameters['reportIds'] ?? '')
+                      .split(',')
+                      .map((id) => id.trim())
+                      .where((id) => id.isNotEmpty)
+                      .toList(growable: false),
+                  returnTo: state.uri.queryParameters['returnTo'],
+                ),
           ),
           GoRoute(
             path: RouteName.warehouseProductionFinishedArrivalRegistration,
@@ -1246,6 +1276,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/finance/procurement-approvals',
             name: 'finance-procurement-approvals',
             builder: (_, _) => const FinanceProcurementApprovalTasksPage(),
+          ),
+          GoRoute(
+            path: '/finance/procurement-approvals/:caseId',
+            name: 'finance-procurement-approval-review',
+            builder: (_, state) => FinanceProcurementApprovalReviewPage(
+              caseId: state.pathParameters['caseId']!,
+            ),
           ),
           GoRoute(
             path: '/finance/sales-order-confirmations',

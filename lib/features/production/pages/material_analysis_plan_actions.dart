@@ -594,7 +594,11 @@ abstract class _MaterialAnalysisPlanActionsState
         )
         .toList(growable: false);
     final childCount = selected
-        .where((product) => product.sourceType == 'MAKE_COMPONENT')
+        .where(
+          (product) =>
+              product.sourceType == 'MAKE_COMPONENT' ||
+              product.sourceType == 'SUBCONTRACT_MAKE',
+        )
         .length;
     if (childCount == selected.length) return '安排子件生产';
     if (childCount == 0) return '生成总装计划';
@@ -602,6 +606,9 @@ abstract class _MaterialAnalysisPlanActionsState
   }
 
   /// 底部悬浮动作区的按钮集合（按需出现，见 §3.5）。
+  /// 2026-09-03：可点击的主动作统一 danger（红底白字）——出现在悬浮区即表示
+  /// 当前有可执行的下一步，用最强的视觉权重把员工视线引到唯一动作上；
+  /// 置灰/加载态由 UtenButton 自行呈现。
   List<Widget> _bottomActionButtons() {
     if (_isFqcReplenishmentOnly) return const <Widget>[];
     return <Widget>[
@@ -609,7 +616,7 @@ abstract class _MaterialAnalysisPlanActionsState
         if (_canNotify && _selectedExecutableCount(route) > 0)
           UtenButton(
             key: Key('material-analysis-notify-${route.wireName}'),
-            type: UtenButtonType.tonal,
+            type: UtenButtonType.danger,
             size: UtenButtonSize.large,
             icon: Icons.notifications_active_outlined,
             isLoading: _notifyingRoute == route,
@@ -617,13 +624,15 @@ abstract class _MaterialAnalysisPlanActionsState
                 ? null
                 : route == MaterialSupplyRoute.make
                 ? () => _arrangeMakeProduction()
+                : route == MaterialSupplyRoute.subcontract
+                ? () => _arrangeSubcontractProduction()
                 : () => _notifyRoute(route),
             child: Text(_notifyLabel(route)),
           ),
       if (_canRoute && _unconfirmedSuggestedRouteCount > 0)
         UtenButton(
           key: const Key('material-analysis-accept-routes'),
-          type: UtenButtonType.success,
+          type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           isLoading: _savingRoutes,
           onPressed: _busy ? null : _acceptAllSuggestedRoutes,
@@ -631,7 +640,7 @@ abstract class _MaterialAnalysisPlanActionsState
         ),
       if (_dirtyRouteGroups.isNotEmpty)
         UtenButton(
-          type: UtenButtonType.tonal,
+          type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.rule_folder_outlined,
           isLoading: _savingRoutes,
@@ -641,6 +650,7 @@ abstract class _MaterialAnalysisPlanActionsState
       if (_selectedPlanLineIds.isNotEmpty)
         UtenButton(
           key: const Key('material-analysis-generate'),
+          type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.description_outlined,
           isLoading: _generating || _previewingPlan,

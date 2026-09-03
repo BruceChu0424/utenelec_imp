@@ -53,6 +53,38 @@ class DailyGridRow extends EditableGridRow {
     };
   }
 
+  /// 深拷贝（明细复制/粘贴用）：整行拷贝，含来源子任务引用与可报上限——日报保存
+  /// 强制每行有精确来源，且按来源聚合校验「累计申报 ≤ 可报量」，拷引用不会放大申报。
+  /// 仅 isFinal 重置：粘贴行是新一次申报，不继承上一行的「完结」标记
+  /// （FQC 恢复行本就禁止完结，重置后口径一致）。
+  DailyGridRow clone() {
+    final c = DailyGridRow()
+      ..planItemId = planItemId
+      ..executionSegmentId = executionSegmentId
+      ..executionSegmentSalesAllocationId = executionSegmentSalesAllocationId
+      ..executionSegmentCode = executionSegmentCode
+      ..executionSegmentVersion = executionSegmentVersion
+      ..fqcRecoveryAuthorizationId = fqcRecoveryAuthorizationId
+      ..fqcRecoveryDispositionCode = fqcRecoveryDispositionCode
+      ..fqcSourceReportNo = fqcSourceReportNo
+      ..salesOrderItemId = salesOrderItemId
+      ..salesOrderNo = salesOrderNo
+      ..clientName = clientName
+      ..unitRate = unitRate
+      ..orderQty = orderQty
+      ..maxReportQty = maxReportQty
+      ..legacyManual = legacyManual
+      ..goods = goods
+      ..colorId = colorId
+      ..unitId = unitId
+      ..isFinal = false;
+    c.qty.text = qty.text;
+    c.weight.text = weight.text;
+    c.planNo.text = planNo.text;
+    c.remark.text = remark.text;
+    return c;
+  }
+
   /// 颜色/单位（选货品后自动回填；单元格只读显示）。
   final colorIdNotifier = ValueNotifier<String?>(null);
   String? get colorId => colorIdNotifier.value;

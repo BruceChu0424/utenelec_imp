@@ -264,8 +264,9 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
   /// 支持自定义 [icon] 与点击动作 [onTap]，用于「微信式消息弹条」场景：
   /// 顶部滑入一条新消息，点击跳转详情，不阻塞当前操作。
   ///
-  /// V459：[actions]（操作按钮区）与 [statusLine]（动态状态行）供审核待办卡
-  /// 使用；返回入队后的卡片 id，供外部（办结心跳）精确 dismiss。
+  /// V459 曾用 [actions]（操作按钮区）与 [statusLine]（动态状态行）承载审核待办
+  /// 卡交互；2026-09-03 口径修订后顶部审核条纯显示，能力保留备将来需要
+  /// 按钮的顶部卡使用。返回入队后的卡片 id，供外部精确 dismiss。
   String showMessage(
     String message, {
     String? title,

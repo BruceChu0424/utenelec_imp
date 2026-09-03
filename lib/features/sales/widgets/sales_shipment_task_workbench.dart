@@ -195,21 +195,25 @@ class _SalesShipmentTaskWorkbenchState
               ]
             : null,
       ),
-      body: SafeArea(
-        child: !allowed
-            ? UtenEmpty.error(
-                message: '无权查看$_title',
-                description: '请在本页权限中授予 $_requiredPermission。',
-              )
-            : _loading && _result == null
-            ? const UtenSkeletonList()
-            : _error != null && _result == null
-            ? UtenEmpty.error(
-                message: _error,
-                actionLabel: '重新加载',
-                onAction: () => _load(1),
-              )
-            : _body(),
+      // 局部 SelectionArea：销售发货审核工作台文字可框选复制（准则 §3.4；
+      // 仅搜索防抖无周期轮询，可包）。
+      body: SelectionArea(
+        child: SafeArea(
+          child: !allowed
+              ? UtenEmpty.error(
+                  message: '无权查看$_title',
+                  description: '请在本页权限中授予 $_requiredPermission。',
+                )
+              : _loading && _result == null
+              ? const UtenSkeletonList()
+              : _error != null && _result == null
+              ? UtenEmpty.error(
+                  message: _error,
+                  actionLabel: '重新加载',
+                  onAction: () => _load(1),
+                )
+              : _body(),
+        ),
       ),
     );
   }

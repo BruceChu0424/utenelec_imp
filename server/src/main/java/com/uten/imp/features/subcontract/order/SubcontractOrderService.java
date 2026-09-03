@@ -149,9 +149,51 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private OrderDetail assembleDetail(SubcontractOrder r) {
-        List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(r.getId()).stream()
-                .map(this::toItemDto).toList();
-        return toDetail(r, items);
+        List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(r.getId());
+        Map<UUID, List<Object[]>> sources = orderItemSources(
+                items.stream().map(SubcontractOrderItem::getId).toList());
+        List<OrderItemDto> itemDtos = items.stream()
+                .map(it -> toItemDto(it, sourceApplicationDocs(
+                        sources.getOrDefault(it.getId(), List.of()))))
+                .toList();
+        return toDetail(r, itemDtos);
+    }
+
+    /** sources 原始行 → 结构化来源申请引用（明细 id + 申请单 id + 单号）。 */
+    private static List<OrderItemDto.SourceApplicationDoc> sourceApplicationDocs(
+            List<Object[]> rows) {
+        return rows.stream()
+                .map(row -> new OrderItemDto.SourceApplicationDoc(
+                        (UUID) row[1], (UUID) row[4], row[2] == null ? null : row[2].toString()))
+                .toList();
+    }
+
+    /**
+     * 订货行 → 来源分配行（order_item_id → [order_item_id, 来源申请明细 id,
+     * 申请单号, alloc_qty, 申请单 id]，按 line_no/id 稳定排序）。V463 多来源锚定的统一读取入口。
+     */
+    private Map<UUID, List<Object[]>> orderItemSources(List<UUID> orderItemIds) {
+        if (orderItemIds == null || orderItemIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT src.order_item_id, src.application_item_id,
+                               application.bill_no, src.alloc_qty,
+                               application.id AS application_id
+                        FROM subcontract_order_item_sources src
+                        JOIN subcontract_application_items item
+                          ON item.id = src.application_item_id
+                        LEFT JOIN subcontract_applications application
+                          ON application.id = item.application_id
+                        WHERE src.order_item_id IN (:ids)
+                        ORDER BY src.order_item_id, src.line_no, src.id
+                        """).setParameter("ids", orderItemIds));
+        Map<UUID, List<Object[]>> out = new java.util.HashMap<>();
+        for (Object[] row : rows) {
+            out.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>()).add(row);
+        }
+        return out;
     }
 
     /** 查询订货单的 BOM 成本子表（只读；前端按 bom_level + parent_cost_item_id 渲染树）。 */
@@ -169,6 +211,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         requireDecompositionAuthorityIfNeeded(req);
         tx.bind();
         requireRowsMatchHeaderSupplier(req);
+        requireRowsMatchHeaderCommercial(req);
         SubcontractOrder r = new SubcontractOrder();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -180,18 +223,69 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     /**
-     * 按明细级委外商拆单创建（保留「一张订货单一个委外商」归集）：每行 supplierId 为空时回落表头
-     * supplierId，按委外商分组在同一事务内生成 N 张订货单（多数情况 1 张）。返回按分组顺序的明细。
+     * 按明细级「委外商+商业条款」组合拆单创建（保留「一张订货单一个委外商一套条款」
+     * 归集）：每行各字段为空时回落表头，按组合分组在同一事务内生成 N 张订货单
+     * （多数情况 1 张），每组条款写入该张单的头字段。返回按分组顺序的明细。
      */
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:create')")
     public List<OrderDetail> createBatch(OrderSaveRequest req) {
         requireDecompositionAuthorityIfNeeded(req);
         tx.bind();
+        Map<CommercialGroupKey, List<OrderItemLine>> groups = groupByCommercial(req);
+        List<OrderDetail> created = new ArrayList<>();
+        for (Map.Entry<CommercialGroupKey, List<OrderItemLine>> entry : groups.entrySet()) {
+            CommercialGroupKey key = entry.getKey();
+            OrderSaveRequest sub = new OrderSaveRequest();
+            sub.setBillDate(req.getBillDate());
+            sub.setSupplierId(key.supplierId());
+            sub.setWarehouseId(req.getWarehouseId());
+            sub.setCurrencyId(key.currencyId());
+            sub.setExchangeRate(key.exchangeRate());
+            sub.setTaxRate(key.taxRate());
+            // 拆单必须携带结算方式，否则生成的订货单无法通过 applyHeader 的必填校验
+            sub.setSettlementMethodId(key.settlementMethodId());
+            sub.setPurchaserId(req.getPurchaserId());
+            sub.setDeliverDate(req.getDeliverDate());
+            sub.setRemark(req.getRemark());
+            sub.setItems(entry.getValue());
+            created.add(create(sub));
+        }
+        return created;
+    }
+
+    /** 商业拆单分组键：委外商 + 结算方式 + 币种 + 汇率 + 税率（数值按值等价，2.0 与 2 同组）。 */
+    record CommercialGroupKey(
+            UUID supplierId,
+            UUID settlementMethodId,
+            UUID currencyId,
+            BigDecimal exchangeRate,
+            BigDecimal taxRate) {
+        CommercialGroupKey {
+            exchangeRate = normalizeDecimal(exchangeRate);
+            taxRate = normalizeDecimal(taxRate);
+        }
+
+        private static BigDecimal normalizeDecimal(BigDecimal value) {
+            if (value == null) return null;
+            BigDecimal stripped = value.stripTrailingZeros();
+            if (stripped.signum() == 0) return BigDecimal.ZERO;
+            // toPlainString 消除 stripTrailingZeros 产生的负 scale（如 2E+1），保证 equals 语义稳定
+            return new BigDecimal(stripped.toPlainString());
+        }
+    }
+
+    /**
+     * 行级商业条款分组（包内可见，供单测锁定拆单口径）：每行字段为空回落表头，
+     * 按「委外商+结算方式+币种+汇率+税率」组合分组（LinkedHashMap 保序）。
+     * 逐行校验组合完整性：委外商/结算方式/币种必填，汇率大于 0，税率 0-100。
+     * 业务上订货允许超过申请剩余量（2026-09 放开超委外），此处不做数量上限校验。
+     */
+    static Map<CommercialGroupKey, List<OrderItemLine>> groupByCommercial(OrderSaveRequest req) {
         if (req.getItems() == null || req.getItems().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
         }
-        Map<UUID, List<OrderItemLine>> groups = new LinkedHashMap<>();
+        Map<CommercialGroupKey, List<OrderItemLine>> groups = new LinkedHashMap<>();
         for (OrderItemLine item : req.getItems()) {
             UUID supplier = item.getSupplierId() != null
                     ? item.getSupplierId()
@@ -201,26 +295,43 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         ErrorCode.VALIDATION_FAILED,
                         "每一行都必须指定委外商(明细级或表头)");
             }
-            groups.computeIfAbsent(supplier, k -> new ArrayList<>()).add(item);
+            UUID settlement = item.getSettlementMethodId() != null
+                    ? item.getSettlementMethodId()
+                    : req.getSettlementMethodId();
+            if (settlement == null) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "每一行都必须指定结算方式(明细级或表头)");
+            }
+            UUID currency = item.getCurrencyId() != null
+                    ? item.getCurrencyId()
+                    : req.getCurrencyId();
+            if (currency == null) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "每一行都必须指定币种(明细级或表头)");
+            }
+            BigDecimal rate = item.getExchangeRate() != null
+                    ? item.getExchangeRate()
+                    : req.getExchangeRate();
+            if (rate == null || rate.signum() <= 0) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "每一行的汇率必须大于 0(明细级或表头)");
+            }
+            BigDecimal tax = item.getTaxRate() != null
+                    ? item.getTaxRate()
+                    : req.getTaxRate();
+            if (tax == null || tax.signum() < 0 || tax.compareTo(BigDecimal.valueOf(100)) > 0) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "每一行的税率必须在 0 至 100 之间(明细级或表头)");
+            }
+            groups.computeIfAbsent(
+                    new CommercialGroupKey(supplier, settlement, currency, rate, tax),
+                    k -> new ArrayList<>()).add(item);
         }
-        List<OrderDetail> created = new ArrayList<>();
-        for (Map.Entry<UUID, List<OrderItemLine>> entry : groups.entrySet()) {
-            OrderSaveRequest sub = new OrderSaveRequest();
-            sub.setBillDate(req.getBillDate());
-            sub.setSupplierId(entry.getKey());
-            sub.setWarehouseId(req.getWarehouseId());
-            sub.setCurrencyId(req.getCurrencyId());
-            sub.setExchangeRate(req.getExchangeRate());
-            sub.setTaxRate(req.getTaxRate());
-            // 拆单必须携带结算方式，否则生成的订货单无法通过 applyHeader 的必填校验
-            sub.setSettlementMethodId(req.getSettlementMethodId());
-            sub.setPurchaserId(req.getPurchaserId());
-            sub.setDeliverDate(req.getDeliverDate());
-            sub.setRemark(req.getRemark());
-            sub.setItems(entry.getValue());
-            created.add(create(sub));
-        }
-        return created;
+        return groups;
     }
 
     /**
@@ -240,6 +351,34 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         return result;
     }
 
+    /**
+     * 货品 → 最近一次委外订货商业条款（行级条款「学习预填」：同一货品下次建单自动
+     * 带出上次的委外商/结算方式/币种/汇率/税率）。批量一次查询；无历史返回空 Map。
+     * 委外商是否可用（停用/内部车间已过滤）由前端在回填时判断。
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, LastTermsPerGoods> lastTermsPerGoods(
+            java.util.Collection<UUID> goodsIds) {
+        if (goodsIds == null || goodsIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, LastTermsPerGoods> result = new LinkedHashMap<>();
+        for (Object[] row : itemRepo.findLastTermsPerGoods(goodsIds)) {
+            result.put((UUID) row[0], new LastTermsPerGoods(
+                    (UUID) row[1], (UUID) row[2], (UUID) row[3],
+                    (BigDecimal) row[4], (BigDecimal) row[5]));
+        }
+        return result;
+    }
+
+    /** 行级条款学习记忆视图（/last-terms 返回体；金额口径字段见 subcontract_orders 头）。 */
+    public record LastTermsPerGoods(
+            UUID supplierId,
+            UUID settlementMethodId,
+            UUID currencyId,
+            BigDecimal exchangeRate,
+            BigDecimal taxRate) {}
+
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
@@ -251,6 +390,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         approvalProjection.requireMutable(orderType(), id);
         requireRowsMatchHeaderSupplier(req);
+        requireRowsMatchHeaderCommercial(req);
         applyHeader(req, r);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -332,20 +472,33 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 SubcontractGoodsSnapshot.MASTER_AT_APPROVAL,
                 OffsetDateTime.now());
         productionSupply.onSubcontractOrderApproved(id);
+        // V463：ordered_qty 按来源分配份额回写（合并行的数量分摊到各申请行）；
+        // 手工行（无来源且无主锚点）不回写。
+        Map<UUID, List<Object[]>> sourceRows = orderItemSources(
+                items.stream().map(SubcontractOrderItem::getId).toList());
+        java.util.Set<UUID> closedApplicationItems = new java.util.LinkedHashSet<>();
         for (SubcontractOrderItem item : items) {
-            if (item.getApplicationItemId() == null) {
-                continue; // 手工行无申请来源，不回写 ordered_qty
+            List<Object[]> sources = sourceRows.getOrDefault(item.getId(), List.of());
+            if (sources.isEmpty()) {
+                if (item.getApplicationItemId() == null) {
+                    continue; // 手工行无申请来源，不回写 ordered_qty
+                }
+                sources = List.<Object[]>of(new Object[]{
+                        item.getId(), item.getApplicationItemId(), null, item.getQty()});
             }
-            em.createNativeQuery("""
-                    UPDATE subcontract_application_items
-                    SET ordered_qty = COALESCE(ordered_qty, 0) + :qty
-                    WHERE id = :id
-                    """)
-                    .setParameter("qty", item.getQty())
-                    .setParameter("id", item.getApplicationItemId())
-                    .executeUpdate();
-            recalcApplicationClosed(item.getApplicationItemId());
+            for (Object[] source : sources) {
+                em.createNativeQuery("""
+                        UPDATE subcontract_application_items
+                        SET ordered_qty = COALESCE(ordered_qty, 0) + :qty
+                        WHERE id = :id
+                        """)
+                        .setParameter("qty", (BigDecimal) source[3])
+                        .setParameter("id", (UUID) source[1])
+                        .executeUpdate();
+                closedApplicationItems.add((UUID) source[1]);
+            }
         }
+        closedApplicationItems.forEach(this::recalcApplicationClosed);
         order.setStatus(STATUS_APPROVED);
         order.setApproverId(approverEmployeeId);
         orderRepo.save(order);
@@ -378,20 +531,33 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     "委外订货仍有已审核发料/退料/损耗单，请先红冲下游单据");
         }
         materialPlanService.requireOrderReversalAllowed(id);
+        // V463：红冲按来源分配份额对称扣回（与审批回写同口径）。
+        Map<UUID, List<Object[]>> reverseSources = orderItemSources(
+                items.stream().map(SubcontractOrderItem::getId).toList());
         sourceIntegrity.lockSubcontractApplicationItemsForReversal(
-                items.stream().map(SubcontractOrderItem::getApplicationItemId)
-                        .filter(java.util.Objects::nonNull).toList());
+                reverseSources.values().stream().flatMap(List::stream)
+                        .map(row -> (UUID) row[1]).distinct().toList());
         productionSupply.onSubcontractOrderReversed(id);
+        java.util.Set<UUID> reopenedApplicationItems = new java.util.LinkedHashSet<>();
         for (SubcontractOrderItem it : items) {
-            if (it.getApplicationItemId() != null) {
+            List<Object[]> sources = reverseSources.getOrDefault(it.getId(), List.of());
+            if (sources.isEmpty()) {
+                if (it.getApplicationItemId() == null) {
+                    continue;
+                }
+                sources = List.<Object[]>of(new Object[]{
+                        it.getId(), it.getApplicationItemId(), null, it.getQty()});
+            }
+            for (Object[] source : sources) {
                 em.createNativeQuery(
                         "UPDATE subcontract_application_items SET ordered_qty = COALESCE(ordered_qty,0) - :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getApplicationItemId())
+                        .setParameter("q", (BigDecimal) source[3])
+                        .setParameter("id", (UUID) source[1])
                         .executeUpdate();
-                recalcApplicationClosed(it.getApplicationItemId());
+                reopenedApplicationItems.add((UUID) source[1]);
             }
         }
+        reopenedApplicationItems.forEach(this::recalcApplicationClosed);
         arrivalControl.cancelForOrderReversal(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         // V304：软删未审出仓草稿 + 发料计划置 CANCELED（已审出仓由上方守卫先行拦截）。
@@ -418,18 +584,30 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     private void lockAndValidateSourcesIncludingPending(
             SubcontractOrder order, List<SubcontractOrderItem> items) {
-        // 手工行（无申请来源）不参与申请来源校验。
-        List<SubcontractOrderItem> sourcedItems = items.stream()
-                .filter(item -> item.getApplicationItemId() != null)
-                .toList();
-        if (sourcedItems.isEmpty()) {
+        // V463：来源校验按「来源分配行」逐条进行（合并行的每个来源申请行都必须
+        // 已下达、委外商一致且维度一致）；手工行（无来源）不参与申请来源校验。
+        Map<UUID, List<Object[]>> sourceRows = orderItemSources(
+                items.stream().map(SubcontractOrderItem::getId).toList());
+        record SourceRef(SubcontractOrderItem item, UUID applicationItemId, BigDecimal qty) {}
+        List<SourceRef> refs = new ArrayList<>();
+        for (SubcontractOrderItem item : items) {
+            List<Object[]> sources = sourceRows.getOrDefault(item.getId(), List.of());
+            if (sources.isEmpty()) {
+                if (item.getApplicationItemId() == null) {
+                    continue; // 手工行无申请来源
+                }
+                sources = List.<Object[]>of(new Object[]{
+                        item.getId(), item.getApplicationItemId(), null, item.getQty()});
+            }
+            for (Object[] source : sources) {
+                refs.add(new SourceRef(item, (UUID) source[1], (BigDecimal) source[3]));
+            }
+        }
+        if (refs.isEmpty()) {
             return;
         }
-        Map<UUID, BigDecimal> submittedBySource = sourcedItems.stream()
-                .collect(Collectors.toMap(
-                        SubcontractOrderItem::getApplicationItemId,
-                        SubcontractOrderItem::getQty,
-                        BigDecimal::add));
+        List<UUID> sourceIds = refs.stream()
+                .map(SourceRef::applicationItemId).distinct().sorted().toList();
         List<?> lockedSources = em.createNativeQuery("""
                         SELECT source.id
                         FROM subcontract_application_items source
@@ -441,9 +619,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         ORDER BY source.id
                         FOR UPDATE OF source, application
                         """)
-                .setParameter("sourceIds", submittedBySource.keySet())
+                .setParameter("sourceIds", sourceIds)
                 .getResultList();
-        if (lockedSources.size() != submittedBySource.size()) {
+        if (lockedSources.size() != sourceIds.size()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "委外申请来源已变化，请刷新后重试");
@@ -456,23 +634,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                                source.color_id,
                                source.unit_id,
                                COALESCE(source.unit_rate, 1),
-                               source.qty,
-                               COALESCE(source.ordered_qty, 0),
-                               application.status,
-                               COALESCE((
-                                   SELECT SUM(pending_item.qty)
-                                   FROM procurement_order_approval_cases approval_case
-                                   JOIN subcontract_order_items pending_item
-                                     ON pending_item.order_id = approval_case.order_id
-                                    AND pending_item.is_deleted = FALSE
-                                   JOIN subcontract_orders pending_order
-                                     ON pending_order.id = pending_item.order_id
-                                    AND pending_order.is_deleted = FALSE
-                                   WHERE approval_case.order_type = 'SUBCONTRACT'
-                                     AND approval_case.status = 'PENDING'
-                                     AND approval_case.order_id <> :orderId
-                                     AND pending_item.application_item_id = source.id
-                               ), 0)
+                               application.status
                         FROM subcontract_application_items source
                         JOIN subcontract_applications application
                           ON application.id = source.application_id
@@ -482,17 +644,16 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         ORDER BY source.id
                         FOR UPDATE OF source, application
                         """)
-                        .setParameter("orderId", order.getId())
-                        .setParameter("sourceIds", submittedBySource.keySet()));
-        if (rows.size() != submittedBySource.size()) {
+                        .setParameter("sourceIds", sourceIds));
+        if (rows.size() != sourceIds.size()) {
             throw new ApiException(ErrorCode.CONFLICT, "委外申请来源已变化，请刷新后重试");
         }
         Map<UUID, Object[]> bySource = rows.stream()
                 .collect(Collectors.toMap(row -> (UUID) row[0], row -> row));
-        for (SubcontractOrderItem item : sourcedItems) {
-            Object[] source = bySource.get(item.getApplicationItemId());
+        for (SourceRef ref : refs) {
+            Object[] source = bySource.get(ref.applicationItemId());
             if (source == null
-                    || !(source[8] instanceof Number status)
+                    || !(source[6] instanceof Number status)
                     || status.shortValue() != STATUS_APPROVED) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
@@ -505,27 +666,18 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         ErrorCode.CONFLICT,
                         "委外商与来源申请单不一致");
             }
-            if (!Objects.equals(item.getGoodsId(), source[2])
-                    || !Objects.equals(item.getColorId(), source[3])
-                    || !Objects.equals(item.getUnitId(), source[4])
-                    || !sameDecimal(item.getUnitRate(), decimal(source[5]))) {
+            if (!Objects.equals(ref.item().getGoodsId(), source[2])
+                    || !Objects.equals(ref.item().getColorId(), source[3])
+                    || !Objects.equals(ref.item().getUnitId(), source[4])
+                    || !sameDecimal(ref.item().getUnitRate(), decimal(source[5]))) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "委外订货明细与来源申请明细不一致");
             }
         }
-        for (Object[] source : rows) {
-            UUID sourceId = (UUID) source[0];
-            BigDecimal capacity = decimal(source[6]);
-            BigDecimal effective = decimal(source[7]);
-            BigDecimal pending = decimal(source[9]);
-            if (effective.add(pending).add(submittedBySource.get(sourceId))
-                    .compareTo(capacity) > 0) {
-                throw new ApiException(
-                        ErrorCode.CONFLICT,
-                        "委外订货量连同其它待财务审核订单已超过申请剩余量");
-            }
-        }
+        // 2026-09 起订货允许超过申请剩余量（超委外备货是业务口径）：不再校验
+        // ordered + 待审 + 本次 <= 申请量；ordered_qty 超出时剩余量为负、申请照常结案。
+        // 来源锁定（FOR UPDATE）与已下达/委外商一致/维度一致校验保留。
     }
 
     private void requireActiveSettlementMethod(UUID settlementMethodId, String subject) {
@@ -739,22 +891,68 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
     }
 
+    /**
+     * 单张创建/编辑：行级商业条款（若携带）必须与表头一致——一张订货单只落一套条款
+     * （保存到单头）。行值为空表示回落表头（合法）；行级多条款拆单只发生在批量创建
+     * （{@link #groupByCommercial}）。
+     */
+    static void requireRowsMatchHeaderCommercial(OrderSaveRequest req) {
+        if (req.getItems() == null) return;
+        for (OrderItemLine line : req.getItems()) {
+            boolean carriesCommercial = line.getSettlementMethodId() != null
+                    || line.getCurrencyId() != null
+                    || line.getExchangeRate() != null
+                    || line.getTaxRate() != null;
+            if (!carriesCommercial) continue;
+            boolean same = matchesHeader(line.getSettlementMethodId(), req.getSettlementMethodId())
+                    && matchesHeader(line.getCurrencyId(), req.getCurrencyId())
+                    && matchesHeaderDecimal(line.getExchangeRate(), req.getExchangeRate())
+                    && matchesHeaderDecimal(line.getTaxRate(), req.getTaxRate());
+            if (!same) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "既有委外订货单必须保持一套商业条款；多条款新单请使用批量拆单接口");
+            }
+        }
+    }
+
+    private static boolean matchesHeader(UUID lineValue, UUID headerValue) {
+        return lineValue == null || java.util.Objects.equals(lineValue, headerValue);
+    }
+
+    private static boolean matchesHeaderDecimal(BigDecimal lineValue, BigDecimal headerValue) {
+        return lineValue == null
+                || (headerValue != null && lineValue.compareTo(headerValue) == 0);
+    }
+
     private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
+        // V463 同货品合并行：行数量按各申请行剩余量 FIFO 拆分到 sources
+        //（末位来源吸收超额）；application_item_id 落首来源（主锚点）。
+        Map<OrderItemLine, List<SourceSplit>> splits = planSourceSplits(lines);
+        // 前置谱系守卫：合并行不得包含「先做后审（前置自制已完成）」来源——
+        // V458 的准备/出仓谱线（preparedLineage/sourceLineage）按单一来源设计，
+        // 合并会在财务批准/准备启动深处 409；提前到保存时给出可操作指引。
+        requireMergeSourcesWithoutMakeTaskLineage(lines, splits);
         // V304：applicationItemId 允许为空 = 委外自建手工行（无申请来源）；
         // 快照回落货品主档（preferred 对空来源行自动走 master）。
         Map<UUID, SubcontractGoodsSnapshot> upstream =
                 SubcontractGoodsSnapshot.fromApplicationItems(
                         em,
-                        lines.stream().map(OrderItemLine::getApplicationItemId).toList(),
+                        splits.values().stream().flatMap(List::stream)
+                                .map(SourceSplit::applicationItemId).distinct().toList(),
                         SubcontractGoodsSnapshot.APPLICATION_ITEM_AT_SAVE);
         Map<UUID, SubcontractGoodsSnapshot> master =
                 SubcontractGoodsSnapshot.fromMaster(
                         em,
                         lines.stream().map(OrderItemLine::getGoodsId).toList(),
                         SubcontractGoodsSnapshot.MASTER_AT_SAVE);
+        UUID actorId = currentUser.requireId();
         int autoLine = 1;
         for (OrderItemLine l : lines) {
+            List<SourceSplit> lineSplits = splits.getOrDefault(l, List.of());
+            UUID primarySource = lineSplits.isEmpty()
+                    ? null : lineSplits.getFirst().applicationItemId();
             SubcontractOrderItem it = new SubcontractOrderItem();
             it.setOrderId(r.getId());
             it.setBillNo(r.getBillNo());
@@ -765,7 +963,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     it,
                     SubcontractGoodsSnapshot.preferred(
                             upstream,
-                            l.getApplicationItemId(),
+                            primarySource,
                             master,
                             l.getGoodsId(),
                             "委外订单明细"),
@@ -780,16 +978,177 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());
             it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
-            it.setApplicationItemId(l.getApplicationItemId());
+            it.setApplicationItemId(primarySource);
             it.setDeliverDate(l.getDeliverDate());
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
-            out.add(toItemDto(it));
+            itemRepo.flush();
+            int sourceLine = 1;
+            for (SourceSplit split : lineSplits) {
+                em.createNativeQuery("""
+                        INSERT INTO subcontract_order_item_sources (
+                            order_item_id, application_item_id, alloc_qty, line_no, created_by)
+                        VALUES (:orderItemId, :applicationItemId, :allocQty, :lineNo, :actorId)
+                        """)
+                        .setParameter("orderItemId", it.getId())
+                        .setParameter("applicationItemId", split.applicationItemId())
+                        .setParameter("allocQty", split.allocQty())
+                        .setParameter("lineNo", sourceLine++)
+                        .setParameter("actorId", actorId)
+                        .executeUpdate();
+            }
+            out.add(toItemDto(it, List.of()));
             autoLine++;
         }
         return out;
+    }
+
+    /** V463 合并行来源分配结果：applicationItemId + 归属本行的数量份额。 */
+    record SourceSplit(UUID applicationItemId, BigDecimal allocQty) {}
+
+    /**
+     * 前置谱系守卫（V463）：多来源合并行只要包含任一「先做后审（V458 前置自制
+     * 已完成、申请行挂 make 任务批次）」来源即拒绝——该类需求的准备权益/出仓
+     * 谱系按单一来源设计，合并会让财务批准（createPlanOnApproval→preparedLineage）
+     * 或准备启动（sourceLineage）在深处 409。保存时拦截并给出可操作指引。
+     */
+    private void requireMergeSourcesWithoutMakeTaskLineage(
+            List<OrderItemLine> lines,
+            Map<OrderItemLine, List<SourceSplit>> splits) {
+        Map<UUID, OrderItemLine> mergedSources = new java.util.LinkedHashMap<>();
+        for (OrderItemLine line : lines) {
+            List<SourceSplit> lineSplits = splits.getOrDefault(line, List.of());
+            if (lineSplits.size() <= 1) {
+                continue;
+            }
+            for (SourceSplit split : lineSplits) {
+                mergedSources.putIfAbsent(split.applicationItemId(), line);
+            }
+        }
+        if (mergedSources.isEmpty()) {
+            return;
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT batch.application_item_id, application.bill_no
+                        FROM preplan_subcontract_make_task_batches batch
+                        JOIN preplan_subcontract_make_tasks task
+                          ON task.id = batch.task_id
+                         AND task.status = 'ACTIVE'
+                        JOIN subcontract_application_items item
+                          ON item.id = batch.application_item_id
+                         AND item.is_deleted = FALSE
+                        LEFT JOIN subcontract_applications application
+                          ON application.id = item.application_id
+                        WHERE batch.application_item_id IN (:ids)
+                        ORDER BY batch.application_item_id
+                        """).setParameter("ids", mergedSources.keySet()));
+        if (rows.isEmpty()) {
+            return;
+        }
+        UUID blockedSource = (UUID) rows.getFirst()[0];
+        OrderItemLine line = mergedSources.get(blockedSource);
+        String billNo = rows.getFirst()[1] == null ? "" : rows.getFirst()[1].toString();
+        throw new ApiException(
+                ErrorCode.VALIDATION_FAILED,
+                "第 " + (line.getLineNo() != null ? line.getLineNo() : "?")
+                        + " 行包含「前置自制已完成」的委外申请来源"
+                        + (billNo.isEmpty() ? "" : "（" + billNo + "）")
+                        + "：该类需求的准备/出仓谱系只支持单一来源，不能与其它申请合并，"
+                        + "请去掉该来源后分开生成订货单");
+    }
+
+    /**
+     * 同货品合并行的来源 FIFO 拆分（采购侧对称）：按各申请行当前剩余量
+     *（qty - ordered_qty - 待财务审核订货占用）在「需求日期升序、id 升序」
+     * 稳定顺序上先到先得，末位来源吸收超额；份额为 0 的来源丢弃。
+     * 手工行（无来源）与单来源行退化为 alloc = 行数量（与历史单锚一致）。
+     */
+    private Map<OrderItemLine, List<SourceSplit>> planSourceSplits(List<OrderItemLine> lines) {
+        List<UUID> allIds = lines.stream()
+                .flatMap(line -> line.resolvedApplicationItemIds().stream())
+                .distinct().toList();
+        Map<OrderItemLine, List<SourceSplit>> result = new java.util.LinkedHashMap<>();
+        if (allIds.isEmpty()) {
+            return result;
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT item.id,
+                               GREATEST(COALESCE(item.qty, 0) - COALESCE(item.ordered_qty, 0)
+                                        - COALESCE(pending.pending_qty, 0), 0) AS remaining_qty
+                        FROM subcontract_application_items item
+                        JOIN subcontract_applications application
+                          ON application.id = item.application_id
+                        LEFT JOIN (
+                            SELECT src.application_item_id,
+                                   SUM(COALESCE(src.alloc_qty, 0)) AS pending_qty
+                            FROM procurement_order_approval_cases approval
+                            JOIN subcontract_orders so
+                              ON approval.order_type = 'SUBCONTRACT'
+                             AND approval.order_id = so.id
+                             AND approval.status = 'PENDING'
+                            JOIN subcontract_order_items oi ON oi.order_id = so.id
+                            JOIN subcontract_order_item_sources src
+                              ON src.order_item_id = oi.id
+                            WHERE so.status = 0
+                              AND so.is_deleted = FALSE
+                              AND oi.is_deleted = FALSE
+                              AND src.application_item_id IN (:ids)
+                            GROUP BY src.application_item_id
+                        ) pending ON pending.application_item_id = item.id
+                        WHERE item.id IN (:ids)
+                        ORDER BY application.need_date NULLS LAST, item.id
+                        """).setParameter("ids", allIds));
+        Map<UUID, BigDecimal> remaining = new java.util.HashMap<>();
+        List<UUID> stableOrder = new ArrayList<>();
+        for (Object[] row : rows) {
+            UUID id = (UUID) row[0];
+            remaining.put(id, decimal(row[1]));
+            stableOrder.add(id);
+        }
+        for (OrderItemLine line : lines) {
+            List<UUID> resolved = line.resolvedApplicationItemIds();
+            if (resolved.isEmpty()) {
+                result.put(line, List.of());
+                continue;
+            }
+            if (line.getQty() == null || line.getQty().signum() <= 0) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED, "委外订货明细数量必须大于 0");
+            }
+            List<UUID> ordered = resolved.stream()
+                    .sorted(java.util.Comparator.comparing(
+                            id -> stableOrder.contains(id)
+                                    ? stableOrder.indexOf(id)
+                                    : Integer.MAX_VALUE))
+                    .toList();
+            BigDecimal budget = line.getQty();
+            List<SourceSplit> splits = new ArrayList<>();
+            for (int index = 0; index < ordered.size(); index++) {
+                UUID sourceId = ordered.get(index);
+                boolean last = index == ordered.size() - 1;
+                BigDecimal take = last
+                        ? budget.max(BigDecimal.ZERO)
+                        : budget.min(remaining.getOrDefault(sourceId, BigDecimal.ZERO))
+                                .max(BigDecimal.ZERO);
+                if (take.signum() <= 0) {
+                    continue;
+                }
+                splits.add(new SourceSplit(sourceId, take));
+                budget = budget.subtract(take);
+                if (budget.signum() <= 0 && !last) {
+                    break;
+                }
+            }
+            if (splits.isEmpty()) {
+                splits.add(new SourceSplit(resolved.getFirst(), line.getQty()));
+            }
+            result.put(line, splits);
+        }
+        return result;
     }
 
     private void captureGoodsSnapshots(
@@ -878,13 +1237,21 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private OrderItemDto toItemDto(SubcontractOrderItem it) {
+        return toItemDto(it, List.of());
+    }
+
+    /** V463：明细同时暴露全部来源申请（合并行多来源展示/编辑回显）。 */
+    private OrderItemDto toItemDto(
+            SubcontractOrderItem it,
+            List<OrderItemDto.SourceApplicationDoc> sourceApplications) {
         return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReceivedQty(), it.getReturnedQty(), it.getIssuedQty(),
                 it.getMaterialReturnedQty(), it.getApplicationItemId(), it.getDeliverDate(),
-                it.getWeight(), it.getSourceDocNo(), it.getRemark());
+                it.getWeight(), it.getSourceDocNo(), it.getRemark(),
+                sourceApplications);
     }
 
     private OrderCostItemDto toCostItemDto(SubcontractOrderCostItem c) {
@@ -950,13 +1317,19 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
                 it.getQty(), null, null, null, it.getReceivedQty(), it.getReturnedQty(),
                 it.getIssuedQty(), it.getMaterialReturnedQty(), it.getApplicationItemId(),
-                it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark());
+                it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
+                it.getSourceApplications());
     }
 
-    /** 全部明细同属一张委外申请时返回该申请 (id, billNo)；否则 null。 */
+    /** 全部明细（含 V463 合并行全部来源）同属一张委外申请时返回该申请 (id, billNo)；否则 null。 */
     private OrderSourceRef singleApplicationSource(List<OrderItemDto> items) {
         List<UUID> applicationItemIds = items.stream()
-                .map(OrderItemDto::getApplicationItemId).filter(id -> id != null).distinct().toList();
+                .flatMap(it -> it.getSourceApplications() != null
+                        && !it.getSourceApplications().isEmpty()
+                        ? it.getSourceApplications().stream()
+                                .map(OrderItemDto.SourceApplicationDoc::applicationItemId)
+                        : java.util.stream.Stream.of(it.getApplicationItemId()))
+                .filter(id -> id != null).distinct().toList();
         if (applicationItemIds.isEmpty()) return null;
         List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""

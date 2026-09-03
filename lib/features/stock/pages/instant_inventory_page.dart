@@ -494,14 +494,17 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(
-            top: UtenSpacing.s8,
-            left: UtenSpacing.s8,
-            right: UtenSpacing.s8,
+      // 局部 SelectionArea：即时库存文字可框选复制（准则 §3.4；表体自带更深 region）。
+      body: SelectionArea(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(
+              top: UtenSpacing.s8,
+              left: UtenSpacing.s8,
+              right: UtenSpacing.s8,
+            ),
+            child: _buildTablePane(),
           ),
-          child: _buildTablePane(),
         ),
       ),
     );

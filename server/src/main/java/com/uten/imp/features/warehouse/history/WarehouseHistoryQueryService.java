@@ -39,6 +39,8 @@ public class WarehouseHistoryQueryService {
             WarehouseHistoryType type,
             String keyword,
             Short status,
+            LocalDate dateFrom,
+            LocalDate dateTo,
             int page,
             int size) {
         PageRequest pageable = Pageables.of(page, size);
@@ -50,7 +52,9 @@ public class WarehouseHistoryQueryService {
                 entityManager.createNativeQuery(
                         WarehouseHistoryQueries.countSql(type)),
                 normalizedKeyword,
-                status);
+                status,
+                dateFrom,
+                dateTo);
         long total = number(countQuery.getSingleResult()).longValue();
         if (total == 0) {
             return new PageResponse<>(List.of(), safePage, safeSize, 0, 0);
@@ -60,7 +64,9 @@ public class WarehouseHistoryQueryService {
                 entityManager.createNativeQuery(
                         WarehouseHistoryQueries.listSql(type)),
                 normalizedKeyword,
-                status)
+                status,
+                dateFrom,
+                dateTo)
                 .setParameter("limit", safeSize)
                 .setParameter("offset", pageable.getOffset());
         Map<UUID, String> employeeCache = new HashMap<>();
@@ -110,10 +116,13 @@ public class WarehouseHistoryQueryService {
                 lines);
     }
 
-    private Query bindFilters(Query query, String keyword, Short status) {
+    private Query bindFilters(
+            Query query, String keyword, Short status, LocalDate dateFrom, LocalDate dateTo) {
         return query.setParameter("keyword", keyword)
                 .setParameter("keyword_pattern", "%" + keyword.toLowerCase() + "%")
-                .setParameter("status", status);
+                .setParameter("status", status)
+                .setParameter("date_from", dateFrom)
+                .setParameter("date_to", dateTo);
     }
 
     private WarehouseHistoryListItem toListItem(

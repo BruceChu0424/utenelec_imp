@@ -67,37 +67,42 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
      * Moves the production-covered part of each real request item to its
      * approved order item. General purchase quantity with no production peg is
      * intentionally left outside the production ledger.
+     * V463：合并订货行按来源分配行（order_item × request_item，预算 = alloc_qty）
+     * 逐来源转移，transfer 子账本本就逐申请行记录，回放按来源过滤。
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void onPurchaseOrderApproved(UUID orderId) {
         UUID actorId = currentUser.requireId();
         Set<UUID> touched = new LinkedHashSet<>();
-        List<Object[]> orderItems = NativeQueryResults.objectArrayRows(
+        List<Object[]> orderItemSources = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT i.id, i.request_item_id,
-                                       i.qty * COALESCE(i.unit_rate, 1),
+                                SELECT i.id, src.request_item_id,
+                                       src.alloc_qty * COALESCE(i.unit_rate, 1),
                                        i.deliver_date
                                 FROM purchase_order_items i
+                                JOIN purchase_order_item_sources src
+                                  ON src.order_item_id = i.id
                                 WHERE i.order_id = :orderId
                                   AND i.is_deleted = FALSE
-                                  AND i.request_item_id IS NOT NULL
-                                ORDER BY i.request_item_id, i.id
+                                ORDER BY src.request_item_id, i.id, src.line_no
                                 FOR UPDATE
                                 """)
                         .setParameter("orderId", orderId));
 
-        for (Object[] orderItem : orderItems) {
-            UUID orderItemId = uuid(orderItem[0]);
-            UUID requestItemId = uuid(orderItem[1]);
-            BigDecimal orderedBase = decimal(orderItem[2]);
-            LocalDate expectedDate = localDate(orderItem[3]);
+        for (Object[] orderItemSource : orderItemSources) {
+            UUID orderItemId = uuid(orderItemSource[0]);
+            UUID requestItemId = uuid(orderItemSource[1]);
+            BigDecimal orderedBase = decimal(orderItemSource[2]);
+            LocalDate expectedDate = localDate(orderItemSource[3]);
             BigDecimal replayed = decimal(em.createNativeQuery("""
                             SELECT COALESCE(SUM(transferred_qty), 0)
                             FROM production_material_peg_transfers
                             WHERE order_item_id = :orderItemId
+                              AND request_item_id = :requestItemId
                               AND status = 'EFFECTIVE'
                             """)
                     .setParameter("orderItemId", orderItemId)
+                    .setParameter("requestItemId", requestItemId)
                     .getSingleResult());
             BigDecimal remaining = orderedBase.subtract(replayed);
             if (remaining.signum() <= 0) {
@@ -182,7 +187,10 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                         .setParameter("expectedDate", expectedDate)
                         .setParameter(
                                 "key",
-                                demandId + ":PURCHASE_ORDER_ITEM:" + orderItemId)
+                                // V463：合并行同一订货行可能经多条申请行转入同一需求，
+                                // 幂等键必须含 request_item_id 才不冲突。
+                                demandId + ":PURCHASE_ORDER_ITEM:"
+                                        + orderItemId + ":" + requestItemId)
                         .setParameter("actorId", actorId)
                         .executeUpdate();
 

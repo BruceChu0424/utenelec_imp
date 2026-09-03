@@ -145,10 +145,13 @@ public class ProcurementFinanceApprovalService {
     /**
      * 批量通过使用一个事务和稳定的订货类型/UUID 顺序。任一项的 case、版本、
      * 快照或副作用失败都会回滚整批，禁止客户端循环单笔接口形成半批事实。
+     * remark 为选填审批备注，写入通过事件快照留痕（可空）。
      */
     @Transactional
     @PreAuthorize("hasAuthority('finance_order_approval:approve')")
-    public BatchDecisionResponse approveBatch(List<BatchDecisionItem> rawItems) {
+    public BatchDecisionResponse approveBatch(
+            List<BatchDecisionItem> rawItems,
+            String remark) {
         tx.bind();
         requireEligibleReviewer();
         List<ResolvedBatchItem> items = resolveBatchItems(rawItems);
@@ -158,7 +161,8 @@ public class ProcurementFinanceApprovalService {
                     item.orderType(),
                     item.orderId(),
                     item.expectedVersion(),
-                    item.caseId()));
+                    item.caseId(),
+                    normalizeOptionalRemark(remark)));
         }
         return new BatchDecisionResponse(decisions.size(), decisions);
     }
@@ -167,7 +171,8 @@ public class ProcurementFinanceApprovalService {
             String rawOrderType,
             UUID orderId,
             long expectedVersion,
-            UUID expectedCaseId) {
+            UUID expectedCaseId,
+            String remark) {
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         ProcurementOrderApprovalPort port = requirePort(orderType);
         OrderSnapshot currentSnapshot =
@@ -205,7 +210,7 @@ public class ProcurementFinanceApprovalService {
                 null,
                 null,
                 null,
-                Map.of("snapshotHash", approvalCase.snapshotHash()));
+                approvedEventSnapshot(approvalCase, remark));
         createInboundExpectation(approvalCase.caseId(), currentSnapshot, actorUser);
         publish(
                 EVENT_APPROVED,
@@ -446,6 +451,250 @@ public class ProcurementFinanceApprovalService {
             counts.put(rs.getString(1), rs.getLong(2));
         });
         return counts;
+    }
+
+    /**
+     * 审核详情（财务专用视图）：以审批 case 为入口，投影订单头商业事实、明细、
+     * 供应商应付快照与逐轮审批历史。与业务详情页分离——本接口只按
+     * finance_order_approval:view 开放，不授予采购/委外业务查看或编辑；
+     * 动作按钮（allowedActions）仅在 case 仍为 PENDING 时按当前审核员
+     * 实时资格计算，历史 case 只读。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
+    public ProcurementApprovalContracts.ApprovalReview review(UUID caseId) {
+        List<Object[]> headers = jdbc.query("""
+                SELECT c.id, c.order_type, c.order_id, c.bill_no_snapshot,
+                       c.status, c.attempt, c.version, c.submitted_at,
+                       submitter.full_name AS submitted_by_name,
+                       COALESCE(po.bill_date, so.bill_date) AS bill_date,
+                       COALESCE(po.deliver_date, so.deliver_date) AS deliver_date,
+                       COALESCE(po.remark, so.remark) AS remark,
+                       COALESCE(po.total_original, so.total_original) AS total_original,
+                       COALESCE(po.total_local, so.total_local) AS total_local,
+                       COALESCE(po.exchange_rate, so.exchange_rate) AS exchange_rate,
+                       COALESCE(po.tax_rate, so.tax_rate) AS tax_rate,
+                       supplier.name AS supplier_name,
+                       supplier.code AS supplier_code,
+                       warehouse.name AS warehouse_name,
+                       currency.name AS currency_name,
+                       sm.name AS settlement_method_name,
+                       purchaser.full_name AS purchaser_name,
+                       maker.full_name AS maker_name,
+                       COALESCE(ap.bal, 0) AS ap_balance
+                FROM procurement_order_approval_cases c
+                LEFT JOIN purchase_orders po
+                  ON c.order_type = 'PURCHASE' AND po.id = c.order_id
+                LEFT JOIN subcontract_orders so
+                  ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
+                LEFT JOIN suppliers supplier
+                  ON supplier.id = COALESCE(po.supplier_id, so.supplier_id)
+                LEFT JOIN warehouses warehouse
+                  ON warehouse.id = COALESCE(po.warehouse_id, so.warehouse_id)
+                LEFT JOIN currencies currency
+                  ON currency.id = COALESCE(po.currency_id, so.currency_id)
+                LEFT JOIN settlement_methods sm
+                  ON sm.id = COALESCE(po.settlement_method_id, so.settlement_method_id)
+                LEFT JOIN employees submitter
+                  ON submitter.id = c.submitted_by_employee_id
+                LEFT JOIN employees purchaser
+                  ON purchaser.id = COALESCE(po.purchaser_id, so.purchaser_id)
+                LEFT JOIN employees maker
+                  ON maker.id = COALESCE(po.maker_id, so.maker_id)
+                LEFT JOIN (SELECT supplier_id, SUM(amount_balance) AS bal
+                           FROM ar_ap_ledger
+                           WHERE direction = 'AP' AND is_deleted = FALSE AND status = 1
+                           GROUP BY supplier_id) ap
+                  ON ap.supplier_id = COALESCE(po.supplier_id, so.supplier_id)
+                WHERE c.id = ?
+                """,
+                (rs, rowNum) -> new Object[]{
+                        rs.getObject("id", UUID.class),
+                        rs.getString("order_type"),
+                        rs.getObject("order_id", UUID.class),
+                        rs.getString("bill_no_snapshot"),
+                        rs.getString("status"),
+                        rs.getInt("attempt"),
+                        rs.getLong("version"),
+                        rs.getObject("submitted_at", OffsetDateTime.class),
+                        rs.getString("submitted_by_name"),
+                        rs.getObject("bill_date", LocalDate.class),
+                        rs.getObject("deliver_date", LocalDate.class),
+                        rs.getString("remark"),
+                        rs.getBigDecimal("total_original"),
+                        rs.getBigDecimal("total_local"),
+                        rs.getBigDecimal("exchange_rate"),
+                        rs.getBigDecimal("tax_rate"),
+                        rs.getString("supplier_name"),
+                        rs.getString("supplier_code"),
+                        rs.getString("warehouse_name"),
+                        rs.getString("currency_name"),
+                        rs.getString("settlement_method_name"),
+                        rs.getString("purchaser_name"),
+                        rs.getString("maker_name"),
+                        rs.getBigDecimal("ap_balance")},
+                caseId);
+        if (headers.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "审批任务不存在或已被清理");
+        }
+        Object[] h = headers.getFirst();
+        String orderType = ProcurementApprovalProjectionQuery.requireOrderType(
+                (String) h[1]);
+        UUID orderId = (UUID) h[2];
+        String status = (String) h[4];
+
+        List<ProcurementApprovalContracts.ReviewLine> items = loadReviewLines(
+                orderType, orderId);
+        List<ProcurementApprovalContracts.ReviewHistoryEntry> history =
+                loadReviewHistory(orderType, orderId);
+        java.util.Set<String> sourceDocNos = new java.util.HashSet<>();
+        for (ProcurementApprovalContracts.ReviewLine line : items) {
+            if (line.sourceDocNo() != null && !line.sourceDocNo().isBlank()) {
+                // V463 合并行来源单号以顿号聚合，计数按单号拆开。
+                for (String docNo : line.sourceDocNo().split("、")) {
+                    if (!docNo.isBlank()) {
+                        sourceDocNos.add(docNo);
+                    }
+                }
+            }
+        }
+
+        List<String> allowedActions = "PENDING".equals(status)
+                ? currentReviewerActions()
+                : List.of();
+        return new ProcurementApprovalContracts.ApprovalReview(
+                (UUID) h[0],
+                orderType,
+                orderId,
+                (String) h[3],
+                status,
+                (Integer) h[5],
+                (Long) h[6],
+                allowedActions,
+                (String) h[8],
+                (OffsetDateTime) h[7],
+                (LocalDate) h[9],
+                (String) h[16],
+                (String) h[17],
+                (String) h[18],
+                (String) h[19],
+                (BigDecimal) h[14],
+                (String) h[20],
+                (BigDecimal) h[15],
+                (String) h[21],
+                (String) h[22],
+                (LocalDate) h[10],
+                (String) h[11],
+                (BigDecimal) h[12],
+                (BigDecimal) h[13],
+                (BigDecimal) h[23],
+                sourceDocNos.size(),
+                items,
+                history);
+    }
+
+    private List<ProcurementApprovalContracts.ReviewLine> loadReviewLines(
+            String orderType, UUID orderId) {
+        boolean purchase = "PURCHASE".equals(orderType);
+        String itemTable = purchase ? "purchase_order_items" : "subcontract_order_items";
+        // V463：订货行多来源锚定——来源申请单号按 sources 逐来源聚合
+        //（同申请去重；合并行显示多张来源单号，顿号分隔）。
+        String sourceJoin = purchase
+                ? """
+                  LEFT JOIN LATERAL (
+                      SELECT string_agg(DISTINCT src_request.bill_no, '、') AS bill_no
+                      FROM purchase_order_item_sources pis
+                      JOIN purchase_request_items pri ON pri.id = pis.request_item_id
+                      LEFT JOIN purchase_requests src ON src.id = pri.request_id
+                      WHERE pis.order_item_id = i.id
+                  ) src ON TRUE
+                  """
+                : """
+                  LEFT JOIN LATERAL (
+                      SELECT string_agg(DISTINCT src_application.bill_no, '、') AS bill_no
+                      FROM subcontract_order_item_sources sis
+                      JOIN subcontract_application_items sai ON sai.id = sis.application_item_id
+                      LEFT JOIN subcontract_applications src_application
+                        ON src_application.id = sai.application_id
+                      WHERE sis.order_item_id = i.id
+                  ) src ON TRUE
+                  """;
+        String sql = """
+                SELECT i.line_no,
+                       COALESCE(g.code, '') AS goods_code,
+                       COALESCE(g.name, '') AS goods_name,
+                       COALESCE(col.name, '') AS color_name,
+                       COALESCE(u.name, '') AS unit_name,
+                       i.unit_rate, i.qty, i.price,
+                       i.amount_original, i.amount_local, i.deliver_date,
+                       src.bill_no AS source_doc_no
+                FROM %s i
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units u ON u.id = i.unit_id
+                %s
+                WHERE i.order_id = ? AND i.is_deleted = FALSE
+                ORDER BY i.line_no NULLS LAST, i.id
+                """.formatted(itemTable, sourceJoin);
+        return jdbc.query(sql,
+                (rs, rowNum) -> new ProcurementApprovalContracts.ReviewLine(
+                        rs.getObject("line_no") == null
+                                ? rowNum + 1
+                                : rs.getInt("line_no"),
+                        rs.getString("goods_code"),
+                        rs.getString("goods_name"),
+                        rs.getString("color_name"),
+                        rs.getString("unit_name"),
+                        rs.getBigDecimal("unit_rate"),
+                        rs.getBigDecimal("qty"),
+                        rs.getBigDecimal("price"),
+                        rs.getBigDecimal("amount_original"),
+                        rs.getBigDecimal("amount_local"),
+                        rs.getObject("deliver_date", LocalDate.class),
+                        rs.getString("source_doc_no")),
+                orderId);
+    }
+
+    private List<ProcurementApprovalContracts.ReviewHistoryEntry> loadReviewHistory(
+            String orderType, UUID orderId) {
+        return jdbc.query("""
+                SELECT c.attempt, e.event_type,
+                       COALESCE(emp.full_name, '') AS actor_name,
+                       e.created_at, e.reason
+                FROM procurement_order_approval_cases c
+                JOIN procurement_order_approval_events e ON e.case_id = c.id
+                LEFT JOIN employees emp ON emp.id = e.actor_employee_id
+                WHERE c.order_type = ? AND c.order_id = ?
+                ORDER BY c.attempt, e.created_at, e.id
+                """,
+                (rs, rowNum) -> new ProcurementApprovalContracts.ReviewHistoryEntry(
+                        rs.getInt("attempt"),
+                        rs.getString("event_type"),
+                        rs.getString("actor_name"),
+                        rs.getObject("created_at", OffsetDateTime.class),
+                        rs.getString("reason")),
+                orderType, orderId);
+    }
+
+    /** 通过事件快照：快照哈希 + 可选审批备注（无备注时保持旧形，便于历史一致性比对）。 */
+    private static Map<String, Object> approvedEventSnapshot(
+            ApprovalCase approvalCase, String remark) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("snapshotHash", approvalCase.snapshotHash());
+        if (remark != null) {
+            snapshot.put("remark", remark);
+        }
+        return snapshot;
+    }
+
+    private static String normalizeOptionalRemark(String raw) {
+        String remark = raw == null ? "" : raw.trim();
+        if (remark.length() > 500) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "审批备注不能超过500字");
+        }
+        return remark.isEmpty() ? null : remark;
     }
 
     /** 订货类型筛选值：空 = 全部；只允许 PURCHASE/SUBCONTRACT，其余 fail-closed。 */

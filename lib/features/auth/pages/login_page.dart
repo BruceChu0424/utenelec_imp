@@ -151,47 +151,51 @@ class _LoginPageState extends ConsumerState<LoginPage>
       backgroundColor: isCompact
           ? theme.scaffoldBackgroundColor
           : (isDark ? UtenColors.darkBackground : UtenColors.teal50),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Center(
-                  child: FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: SlideTransition(
-                      position: _slideAnimation,
-                      child: isCompact
-                          // 全屏洁净布局：表单直通背景
-                          ? Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: UtenSpacing.s24,
-                              ),
-                              child: _buildLoginForm(l10n, theme),
-                            )
-                          // 居中登录卡（maxWidth 440）
-                          : Padding(
-                              padding: const EdgeInsets.all(UtenSpacing.s24),
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 440,
+      // 局部 SelectionArea：登录卡文字（标题/版本号/版权等）可框选复制（准则 §3.4）。
+      // 登录路由在 ShellRoute 之外，选择区不含外壳轮询，无 CME 风险。
+      body: SelectionArea(
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Center(
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: SlideTransition(
+                        position: _slideAnimation,
+                        child: isCompact
+                            // 全屏洁净布局：表单直通背景
+                            ? Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: UtenSpacing.s24,
                                 ),
-                                child: UtenCard(
-                                  padding: const EdgeInsets.all(
-                                    UtenSpacing.s32,
+                                child: _buildLoginForm(l10n, theme),
+                              )
+                            // 居中登录卡（maxWidth 440）
+                            : Padding(
+                                padding: const EdgeInsets.all(UtenSpacing.s24),
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 440,
                                   ),
-                                  borderRadius: UtenRadius.xl,
-                                  child: _buildLoginForm(l10n, theme),
+                                  child: UtenCard(
+                                    padding: const EdgeInsets.all(
+                                      UtenSpacing.s32,
+                                    ),
+                                    borderRadius: UtenRadius.xl,
+                                    child: _buildLoginForm(l10n, theme),
+                                  ),
                                 ),
                               ),
-                            ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );

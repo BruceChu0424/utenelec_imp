@@ -176,7 +176,7 @@ class _FinanceSalesOrderReviewPageState
       if (!mounted) return;
       context.appSuccess('已确认通过，计划部已可接手排产');
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
-      context.pop(true);
+      _closeAfterDecision();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -187,6 +187,20 @@ class _FinanceSalesOrderReviewPageState
   }
 
   String get widgetSafeBillNo => _review?.billNo ?? '';
+
+  /// 决策（确认/驳回）完成后的落点：
+  /// - 从确认列表 push 进来 → 带 true 返回值 pop，列表刷新；
+  /// - 从 V459 审核弹窗「去审核」router.go 直达 / 深链 → 路由栈空，
+  ///   直接 pop 会抛 GoError 并被外层 catch 误报「确认失败」（v2026.09.03-1
+  ///   实际已确认成功）——改跳回确认列表页。
+  void _closeAfterDecision() {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop(true);
+    } else {
+      context.go('/finance/sales-order-confirmations');
+    }
+  }
 
   Future<void> _reject() async {
     if (!_canConfirm) {
@@ -263,7 +277,7 @@ class _FinanceSalesOrderReviewPageState
       if (!mounted) return;
       context.appSuccess('已驳回，归属销售将收到修正通知');
       ref.invalidate(salesOrderFinanceConfirmationCountProvider);
-      context.pop(true);
+      _closeAfterDecision();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {

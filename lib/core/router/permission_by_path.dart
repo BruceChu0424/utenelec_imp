@@ -110,7 +110,10 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/payroll/slip' || location.startsWith('/payroll/slip/')) {
     return const [Perm.payrollViewSelf, Perm.payrollViewAll];
   }
-  if (location == '/finance/procurement-approvals') {
+  if (location == '/finance/procurement-approvals' ||
+      location.startsWith('/finance/procurement-approvals/')) {
+    // 列表与专用审核详情页共用 finance_order_approval:view（同销售确认范式）；
+    // 批准/驳回动作由服务端 approve/reject 独立分权 + 实时审核资格。
     return const [Perm.financeOrderApprovalView];
   }
   if (location == '/finance/sales-order-confirmations' ||
@@ -171,7 +174,9 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.rdTaskView];
   }
   // HR 任务中心（转正/生日/周年/新入职提醒；权限与员工档案查看一致）。
-  if (location == RouteName.hrTaskCenter) {
+  // 子页深链（/hr/tasks/:type）同样受控——深链不可绕过守卫（2026-09-03 审计补口）。
+  if (location == RouteName.hrTaskCenter ||
+      location.startsWith('${RouteName.hrTaskCenter}/')) {
     return const [Perm.employeeView];
   }
   // 采购管理（PMC 运营部；view 全员、edit 归 PMC）

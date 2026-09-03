@@ -13,7 +13,10 @@ enum WarehouseQualityLineVerdict {
   rejected('不合格'),
 
   /// 待检：尚无任何结论 → 蓝色沙漏。
-  waiting('待检');
+  waiting('待检'),
+
+  /// 已撤销：收货单红冲，冻结行的结论量已清零 → 灰色撤销。
+  revoked('已撤销');
 
   const WarehouseQualityLineVerdict(this.label);
 
@@ -283,8 +286,12 @@ class WarehouseQualityInspectionLine {
       lineStatus.trim().toUpperCase() == 'PENDING' ||
       lineStatus.trim().toUpperCase() == 'PARTIAL';
 
-  /// 逐行判定：不合格优先看有无合格量；有合格但仍有待检/不合格 → 部分。
+  /// 逐行判定：收货红冲行（结论量已清零）直接判已撤销；其余不合格优先看
+  /// 有无合格量；有合格但仍有待检/不合格 → 部分。
   WarehouseQualityLineVerdict get verdict {
+    if (lineStatus.trim().toUpperCase() == 'REVERSED') {
+      return WarehouseQualityLineVerdict.revoked;
+    }
     if (failedBaseQty > 0 && passedBaseQty <= 0) {
       return WarehouseQualityLineVerdict.rejected;
     }
@@ -294,14 +301,6 @@ class WarehouseQualityInspectionLine {
     if (passedBaseQty > 0) return WarehouseQualityLineVerdict.passed;
     return WarehouseQualityLineVerdict.waiting;
   }
-
-  String get lineStatusLabel => switch (lineStatus.trim().toUpperCase()) {
-    'PENDING' => '待检',
-    'PARTIAL' => '部分处置',
-    'RESOLVED' => '已结案',
-    'REVERSED' => '已撤销',
-    _ => lineStatus.trim().isEmpty ? '待检' : lineStatus.trim(),
-  };
 
   factory WarehouseQualityInspectionLine.fromJson(Map<String, dynamic> json) =>
       WarehouseQualityInspectionLine(

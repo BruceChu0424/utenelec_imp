@@ -122,9 +122,10 @@ public class SubcontractApplicationService {
                                 FROM subcontract_application_items i
                                 JOIN subcontract_applications a ON a.id = i.application_id
                                 LEFT JOIN (
-                                    SELECT oi.application_item_id,
-                                           SUM(COALESCE(oi.qty, 0)) AS pending_qty
-                                    FROM subcontract_order_items oi
+                                    SELECT src.application_item_id,
+                                           SUM(COALESCE(src.alloc_qty, 0)) AS pending_qty
+                                    FROM subcontract_order_item_sources src
+                                    JOIN subcontract_order_items oi ON oi.id = src.order_item_id
                                     JOIN subcontract_orders o ON o.id = oi.order_id
                                     JOIN (
                                         SELECT DISTINCT order_id
@@ -133,10 +134,9 @@ public class SubcontractApplicationService {
                                           AND status = 'PENDING'
                                     ) pending_case ON pending_case.order_id = o.id
                                     WHERE oi.is_deleted = FALSE
-                                      AND oi.application_item_id IS NOT NULL
                                       AND o.status = 0
                                       AND o.is_deleted = FALSE
-                                    GROUP BY oi.application_item_id
+                                    GROUP BY src.application_item_id
                                 ) pending ON pending.application_item_id = i.id
                                 WHERE i.id IN (:itemIds)
                                   AND i.is_deleted = FALSE

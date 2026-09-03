@@ -224,13 +224,26 @@ public class SalesOrderTimelineService {
         return found;
     }
 
-    /** purchase=true 走采购链（request_item_id），false 走委外链（application_item_id）。 */
+    /** purchase=true 走采购链（sources.request_item_id），false 走委外链（sources.application_item_id）。 */
     private boolean addSupplyOrderEvents(
             List<UUID> analysisIds, boolean purchase, List<OrderProgressTimelineEvent> events) {
         String routeLabel = purchase ? "采购" : "委外";
+        // V463：订货行多来源锚定——按来源分配行展开（同货品合并行对每个来源申请行可见）。
         String orderItemJoin = purchase
-                ? "JOIN purchase_order_items oi ON oi.request_item_id = al.external_item_id"
-                : "JOIN subcontract_order_items oi ON oi.application_item_id = al.external_item_id";
+                ? """
+                  JOIN purchase_order_item_sources pis
+                    ON pis.request_item_id = al.external_item_id
+                  JOIN purchase_order_items oi
+                    ON oi.id = pis.order_item_id
+                   AND oi.is_deleted = FALSE
+                  """
+                : """
+                  JOIN subcontract_order_item_sources sis
+                    ON sis.application_item_id = al.external_item_id
+                  JOIN subcontract_order_items oi
+                    ON oi.id = sis.order_item_id
+                   AND oi.is_deleted = FALSE
+                  """;
         String orderTable = purchase ? "purchase_orders" : "subcontract_orders";
         List<Object[]> rows = objectRows(em.createNativeQuery("""
                 SELECT DISTINCT ord.id, ord.bill_no, ord.status, ord.created_at, ord.maker_id

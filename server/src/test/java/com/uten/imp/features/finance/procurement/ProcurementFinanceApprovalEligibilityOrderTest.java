@@ -34,7 +34,7 @@ class ProcurementFinanceApprovalEligibilityOrderTest {
         ApiException denied = assertThrows(
                 ApiException.class,
                 () -> fixture.service().approveBatch(List.of(
-                        new BatchDecisionItem(UUID.randomUUID(), 1L))));
+                        new BatchDecisionItem(UUID.randomUUID(), 1L)), null));
 
         assertEquals(ErrorCode.FORBIDDEN, denied.getCode());
         verify(fixture.eligibility()).findEligible(fixture.actorId());

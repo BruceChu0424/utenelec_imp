@@ -6,6 +6,7 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/layout/uten_split_view.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -338,33 +339,35 @@ class _ProductionPlanWizardPageState
           ),
         ],
       ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final desktop = constraints.maxWidth >= 900;
-            final paper = _paper(theme, draft);
-            return Column(
-              children: [
-                LinearProgressIndicator(
-                  value: (_index + 1) / _drafts.length,
-                  minHeight: 4,
-                ),
-                Expanded(
-                  child: desktop
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            SizedBox(width: 260, child: _stepRail(theme)),
-                            const VerticalDivider(width: 1),
-                            Expanded(child: paper),
-                          ],
-                        )
-                      : paper,
-                ),
-                _bottomBar(desktop),
-              ],
-            );
-          },
+      // 局部 SelectionArea：计划向导文字可框选复制（准则 §3.4；无周期轮询，可包）。
+      body: SelectionArea(
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final desktop = constraints.maxWidth >= 900;
+              final paper = _paper(theme, draft);
+              return Column(
+                children: [
+                  LinearProgressIndicator(
+                    value: (_index + 1) / _drafts.length,
+                    minHeight: 4,
+                  ),
+                  Expanded(
+                    child: desktop
+                        ? UtenSplitView(
+                            // 大屏双栏统一可拖拽分栏（2026-09-03）：步骤栏宽可拖调。
+                            persistenceKey: 'production.planWizard',
+                            initialLeadingWidth: 260,
+                            leading: _stepRail(theme),
+                            trailing: paper,
+                          )
+                        : paper,
+                  ),
+                  _bottomBar(desktop),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );

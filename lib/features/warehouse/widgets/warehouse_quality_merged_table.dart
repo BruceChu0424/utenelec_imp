@@ -42,10 +42,13 @@ class WarehouseQualityMergedRow extends EditableGridRow {
 
 /// 品质检查结果详情的合并明细表（原「检查结果明细」+「品质放行待入库明细」两表合一）。
 ///
-/// 列序：勾选 | 判定结果 | 货品名称 | 货品库位 | 收货数量 | 合格数量 | 不合格数量 |
-/// 待入库余量（可办理行内嵌本次实收输入）| 检验状态 | 放行信息。
-/// 行底色随判定：合格绿 / 部分合格黄 / 不合格红 / 待检蓝；不合格数量 > 0 时该列
-/// 数字标红加粗。选中真值源在 [WarehouseQualitySliceDraft.selected]（外部受控）。
+/// 列序：勾选 | 判定结果 | 货品名称 | 货品库位 | 收货总量 | 合格总量 | 不合格总量 |
+/// 待入库余量（可办理行内嵌本次实收输入）| 放行信息。
+/// 三个总量列是明细行级口径（多放行切片行各自重复展示同一行总量，切片 i/n 已标注）；
+/// 判定结果已覆盖原「检验状态」列的待检/部分/结案语义（红冲行显示已撤销），2026-09-03
+/// 表头清理后不再单列。行底色随判定：合格绿 / 部分合格黄 / 不合格红 / 待检蓝 /
+/// 已撤销灰；不合格数量 > 0 时该列数字标红加粗。选中真值源在
+/// [WarehouseQualitySliceDraft.selected]（外部受控）。
 class WarehouseQualityMergedTable extends StatelessWidget {
   const WarehouseQualityMergedTable({
     super.key,
@@ -92,7 +95,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         width: 108,
         cellBuilder: (context, row) {
           final verdict = row.line.verdict;
-          final color = _verdictColor(verdict);
+          final color = _verdictColor(context, verdict);
           return Semantics(
             label: '${row.line.goodsLabel} 判定 ${verdict.label}',
             child: Row(
@@ -170,7 +173,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       ),
       EditableGridColumn(
         key: 'received',
-        label: '收货数量',
+        label: '收货总量',
         width: 112,
         numeric: true,
         cellBuilder: (context, row) =>
@@ -178,7 +181,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       ),
       EditableGridColumn(
         key: 'passed',
-        label: '合格数量',
+        label: '合格总量',
         width: 112,
         numeric: true,
         cellBuilder: (context, row) =>
@@ -186,7 +189,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       ),
       EditableGridColumn(
         key: 'failed',
-        label: '不合格数量',
+        label: '不合格总量',
         width: 116,
         numeric: true,
         cellBuilder: (context, row) {
@@ -195,7 +198,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           // 不合格数量 > 0：数字标红加粗（整行另有浅红底色，颜色不是唯一表达）。
           return Text(
             _qty(failed, row.unitName),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: UtenColors.error,
               fontWeight: FontWeight.w700,
             ),
@@ -209,12 +212,6 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         numeric: true,
         required: editable,
         cellBuilder: (context, row) => _remainingCell(context, row),
-      ),
-      EditableGridColumn(
-        key: 'status',
-        label: '检验状态',
-        width: 104,
-        cellBuilder: (context, row) => Text(row.line.lineStatusLabel),
       ),
       EditableGridColumn(
         key: 'release',
@@ -316,19 +313,26 @@ class WarehouseQualityMergedTable extends StatelessWidget {
 
 // ———————————————————— 判定口径（图标 / 颜色 / 行底色） ————————————————————
 
-/// 判定 → 前导图标：合格绿对勾、不合格红禁止、部分合格黄警告、待检蓝沙漏。
+/// 判定 → 前导图标：合格绿对勾、不合格红禁止、部分合格黄警告、待检蓝沙漏、
+/// 已撤销灰 undo。
 IconData _verdictIcon(WarehouseQualityLineVerdict verdict) => switch (verdict) {
   WarehouseQualityLineVerdict.passed => Icons.check_circle,
   WarehouseQualityLineVerdict.partial => Icons.warning_amber_rounded,
   WarehouseQualityLineVerdict.rejected => Icons.block,
   WarehouseQualityLineVerdict.waiting => Icons.hourglass_top_outlined,
+  WarehouseQualityLineVerdict.revoked => Icons.undo,
 };
 
-Color _verdictColor(WarehouseQualityLineVerdict verdict) => switch (verdict) {
+Color _verdictColor(
+  BuildContext context,
+  WarehouseQualityLineVerdict verdict,
+) => switch (verdict) {
   WarehouseQualityLineVerdict.passed => UtenColors.success,
   WarehouseQualityLineVerdict.partial => UtenColors.warning,
   WarehouseQualityLineVerdict.rejected => UtenColors.error,
   WarehouseQualityLineVerdict.waiting => UtenColors.info,
+  // 已撤销用中性轮廓色（浅深色主题各自适配，不用语义红绿）。
+  WarehouseQualityLineVerdict.revoked => Theme.of(context).colorScheme.outline,
 };
 
 /// 判定 → 整行浅底色（与列表页作业状态行色同语义、更轻；选中行由表格统一高亮覆盖）。
@@ -350,6 +354,8 @@ Color? _verdictRowColor(
       dark ? UtenColors.error.withValues(alpha: 0.10) : const Color(0xFFFDEEEC),
     WarehouseQualityLineVerdict.waiting =>
       dark ? UtenColors.info.withValues(alpha: 0.10) : const Color(0xFFEDF4FE),
+    WarehouseQualityLineVerdict.revoked =>
+      dark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF2F3F5),
   };
 }
 

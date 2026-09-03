@@ -42,6 +42,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 分类分段范式（ADR-066）：大类行默认不选（引导占位，不发请求），
+      // 先点「待排产」段加载缺口表格。
+      await tester.tap(find.text('待排产'));
+      await tester.pumpAndSettle();
+
       expect(find.text('可生产量'), findsOneWidget);
       expect(find.text('3(30%)'), findsOneWidget);
       expect(find.text('未分析'), findsWidgets);
@@ -133,6 +138,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 分类分段范式（ADR-066）：先点「待排产」段加载缺口表格。
+      await tester.tap(find.text('待排产'));
+      await tester.pumpAndSettle();
+
       final checkboxes = find.byType(Checkbox);
       expect(checkboxes, findsNWidgets(3));
       await tester.tap(checkboxes.at(1));
@@ -156,6 +165,103 @@ void main() {
       await tester.tap(find.text('联合分析所选 1 项'));
       await tester.pumpAndSettle();
       expect(find.text('analysis=analysis-a;sources=0;'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'double-clicking an analyzed row resumes its joint analysis directly',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final requests = <RequestOptions>[];
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionPlanRepositoryProvider.overrideWithValue(
+              _repository(requests, activeFirst: true),
+            ),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionMaterialAnalysisCreate,
+              Perm.productionMaterialAnalysisRefresh,
+            }),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 分类分段范式（ADR-066）：先点「待排产」段加载缺口表格。
+      await tester.tap(find.text('待排产'));
+      await tester.pumpAndSettle();
+
+      // 双击已分析行 = 直接恢复它所属的物料分析（多销售单联合分析时，
+      // 每一行都带同一张分析 id，点谁都是进那张合并分析页）；
+      // 单击仍只切换勾选，不导航。
+      final analyzedCell = find.text('SO-A');
+      await tester.tap(analyzedCell);
+      await tester.pump();
+      expect(find.textContaining('analysis='), findsNothing);
+
+      await tester.tap(analyzedCell);
+      await tester.pumpAndSettle();
+      expect(find.text('analysis=analysis-a;sources=0;'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'double-clicking an unanalyzed row shows guidance instead of silence',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final requests = <RequestOptions>[];
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+
+      // 默认夹具（activeFirst=false）：SO-A 无活动分析。
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionPlanRepositoryProvider.overrideWithValue(
+              _repository(requests),
+            ),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionMaterialAnalysisCreate,
+              Perm.productionMaterialAnalysisRefresh,
+            }),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 分类分段范式（ADR-066）：先点「待排产」段加载缺口表格。
+      await tester.tap(find.text('待排产'));
+      await tester.pumpAndSettle();
+
+      // 双击未分析行必须有反馈（引导提示），不能无反应，也不导航。
+      final cell = find.text('SO-A');
+      await tester.tap(cell);
+      await tester.pump();
+      await tester.tap(cell);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('analysis='), findsNothing);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionBoardPage)),
+      );
+      expect(
+        container.read(appNotificationProvider).last.message,
+        '该行尚未分析；请勾选后点右下角「联合分析所选 N 项」',
+      );
     },
   );
 }

@@ -11,6 +11,8 @@ abstract interface class WarehouseDocumentHistoryGateway {
     int size = 20,
     String? keyword,
     String? status,
+    String? dateFrom,
+    String? dateTo,
   });
 
   Future<WarehouseDocumentHistoryDetail> detail(String id);
@@ -31,6 +33,8 @@ class WarehouseDocumentHistoryRepository
     int size = 20,
     String? keyword,
     String? status,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     final safePage = page < 1 ? 1 : page;
     final safeSize = size.clamp(1, 100);
@@ -43,6 +47,8 @@ class WarehouseDocumentHistoryRepository
     if (safeStatus != null) {
       query['status'] = safeStatus;
     }
+    if (_trimmed(dateFrom) case final value?) query['dateFrom'] = value;
+    if (_trimmed(dateTo) case final value?) query['dateTo'] = value;
     final json = await api.get(_basePath, query: query);
     return PagedResult<WarehouseDocumentHistorySummary>.fromJson(
       json,

@@ -8,6 +8,9 @@ import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteItemResult;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterResult;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -23,6 +26,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -134,13 +138,87 @@ public class WarehouseArrivalRegistrationService {
     public WarehouseArrivalRegisterResult complete(UUID receiptId) {
         tx.bind();
         DraftReceipt draft = requireDraft(receiptId);
+        return completeDraft(draft);
+    }
+
+    /**
+     * 预计到货「批量继续送检」：一个事务逐张完成中断的送检步骤（复用
+     * {@link #complete} 的权威修复+审核链路）。单张超量隔离不回滚其他单；
+     * 同幂等键重试时，已不再是草稿的收货单按既有事实安全重放（alreadyCompleted），
+     * 不重复审核。真正不存在/已删除的收货单仍整批报错回滚。
+     */
+    @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
+    public WarehouseArrivalBatchCompleteResult completeBatch(
+            WarehouseArrivalBatchCompleteRequest request) {
+        tx.bind();
+        if (request == null || request.idempotencyKey() == null
+                || request.receiptIds() == null || request.receiptIds().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量送检请求不能为空");
+        }
+        String key = normalizeIdempotencyKey(request.idempotencyKey());
+        if (request.receiptIds().size() > 100) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多批量送检 100 张收货单");
+        }
+        LinkedHashSet<UUID> distinct = new LinkedHashSet<>();
+        for (UUID id : request.receiptIds()) {
+            if (id == null || !distinct.add(id)) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "批量送检收货单清单无效或存在重复");
+            }
+        }
+        UUID makerId = currentUser.requireEmployeeId();
+        jdbc.queryForObject(
+                "SELECT pg_advisory_xact_lock(hashtextextended(?, 0)) IS NULL",
+                Boolean.class,
+                "WAREHOUSE_ARRIVAL_BATCH_COMPLETE|" + makerId + "|" + key);
+
+        List<WarehouseArrivalBatchCompleteItemResult> results = new ArrayList<>();
+        for (UUID receiptId : distinct) {
+            DraftReceipt draft = findDraft(receiptId);
+            if (draft == null) {
+                results.add(replayCompletedReceipt(receiptId));
+                continue;
+            }
+            WarehouseArrivalRegisterResult result = completeDraft(draft);
+            results.add(new WarehouseArrivalBatchCompleteItemResult(
+                    receiptId, result.receiptBillNo(), result.outcome(),
+                    result.exceptionId(), false));
+        }
+        return new WarehouseArrivalBatchCompleteResult(results.size(), results);
+    }
+
+    /** 草稿收货单送检（complete 的共享内核）：商业快照修复 + 统一送检审核。 */
+    private WarehouseArrivalRegisterResult completeDraft(DraftReceipt draft) {
         OrderHeader header = resolveOrderHeader(
                 draft.orderType(), draft.orderItemIds(), null);
         if (SUBCONTRACT.equals(draft.orderType())) {
             requireSubcontractOutboundReleased(draft.orderItemIds());
         }
         alignDraftHeader(draft, header);
-        return approveAsArrival(draft.orderType(), receiptId, draft.billNo());
+        return approveAsArrival(draft.orderType(), draft.receiptId(), draft.billNo());
+    }
+
+    /**
+     * 同键重试时已完成（不再是草稿）的收货单：按既有事实派生结果——
+     * 仍有 PENDING_FINANCE 异常即当时被隔离，否则视为已送检。查无此单则报错。
+     */
+    private WarehouseArrivalBatchCompleteItemResult replayCompletedReceipt(UUID receiptId) {
+        for (String orderType : List.of(PURCHASE, SUBCONTRACT)) {
+            String receiptTable = PURCHASE.equals(orderType)
+                    ? "purchase_receipts" : "subcontract_receipts";
+            List<String> billNos = jdbc.queryForList(
+                    "SELECT bill_no FROM %s WHERE id = ? AND is_deleted = FALSE"
+                            .formatted(receiptTable),
+                    String.class, receiptId);
+            if (billNos.isEmpty()) continue;
+            UUID exceptionId = latestPendingExceptionId(receiptId);
+            String outcome = exceptionId != null
+                    ? OUTCOME_QUARANTINED : OUTCOME_INSPECTED;
+            return new WarehouseArrivalBatchCompleteItemResult(
+                    receiptId, billNos.getFirst(), outcome, exceptionId, true);
+        }
+        throw new ApiException(ErrorCode.NOT_FOUND,
+                "收货单不存在或已删除：" + receiptId);
     }
 
     /** 统一的送检审核：正常转 IQC；实到超量翻译为 EXCESS_QUARANTINED（草稿+异常已提交）。 */
@@ -166,8 +244,8 @@ public class WarehouseArrivalRegistrationService {
                 OUTCOME_INSPECTED, receiptId, billNo, null);
     }
 
-    /** 待审核草稿定位：先采购后委外；不存在或非草稿（含已删/已审/红冲）一律 NOT_FOUND。 */
-    private DraftReceipt requireDraft(UUID receiptId) {
+    /** 待审核草稿定位：先采购后委外；不存在或非草稿（含已删/已审/红冲）返回 null。 */
+    private DraftReceipt findDraft(UUID receiptId) {
         for (String orderType : List.of(PURCHASE, SUBCONTRACT)) {
             String receiptTable = PURCHASE.equals(orderType)
                     ? "purchase_receipts" : "subcontract_receipts";
@@ -188,7 +266,15 @@ public class WarehouseArrivalRegistrationService {
             }
             return new DraftReceipt(receiptId, orderType, billNos.getFirst(), orderItemIds);
         }
-        throw new ApiException(ErrorCode.NOT_FOUND, "收货单不存在或不是待审核草稿");
+        return null;
+    }
+
+    private DraftReceipt requireDraft(UUID receiptId) {
+        DraftReceipt draft = findDraft(receiptId);
+        if (draft == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "收货单不存在或不是待审核草稿");
+        }
+        return draft;
     }
 
     /** 商业快照权威修复（仅草稿态）：按来源订货单覆盖供应商/币种/汇率/税率/结算方式。 */

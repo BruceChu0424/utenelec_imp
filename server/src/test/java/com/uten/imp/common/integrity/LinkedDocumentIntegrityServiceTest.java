@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -51,7 +52,8 @@ class LinkedDocumentIntegrityServiceTest {
     }
 
     @Test
-    void purchaseOrderRejectsAllocationBeyondRequestRemainder() {
+    void purchaseOrderAllowsAllocationBeyondRequestRemainder() {
+        // 2026-09 起订货允许超采：超出申请剩余量不再拦截（已审/未中止/维度一致仍校验）。
         UUID requestItem = UUID.randomUUID();
         UUID goods = UUID.randomUUID();
         UUID unit = UUID.randomUUID();
@@ -67,7 +69,7 @@ class LinkedDocumentIntegrityServiceTest {
                 false
         }));
 
-        assertThrows(ApiException.class, () -> service.validatePurchaseOrder(
+        assertDoesNotThrow(() -> service.validatePurchaseOrder(
                 List.of(new LinkedDocumentIntegrityService.QuantityLinkedLine(
                         requestItem,
                         goods,
@@ -104,36 +106,6 @@ class LinkedDocumentIntegrityServiceTest {
                         goods,
                         null,
                         unit,
-                        BigDecimal.ONE))));
-    }
-
-    @Test
-    void subcontractOrderRejectsApplicationFromAnotherSupplier() {
-        UUID applicationItem = UUID.randomUUID();
-        UUID requestedSupplier = UUID.randomUUID();
-        UUID sourceSupplier = UUID.randomUUID();
-        UUID goods = UUID.randomUUID();
-        UUID unit = UUID.randomUUID();
-        when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[] {
-                applicationItem,
-                sourceSupplier,
-                goods,
-                null,
-                unit,
-                BigDecimal.ONE,
-                new BigDecimal("100"),
-                BigDecimal.ZERO,
-                (short) 1
-        }));
-
-        assertThrows(ApiException.class, () -> service.validateSubcontractOrder(
-                requestedSupplier,
-                List.of(new LinkedDocumentIntegrityService.QuantityLinkedLine(
-                        applicationItem,
-                        goods,
-                        null,
-                        unit,
-                        BigDecimal.ONE,
                         BigDecimal.ONE))));
     }
 
@@ -226,35 +198,6 @@ class LinkedDocumentIntegrityServiceTest {
                         null,
                         unit,
                         BigDecimal.ONE))));
-    }
-
-    @Test
-    void subcontractOrderRejectsChangedUnitRate() {
-        UUID applicationItem = UUID.randomUUID();
-        UUID supplier = UUID.randomUUID();
-        UUID goods = UUID.randomUUID();
-        UUID unit = UUID.randomUUID();
-        when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[] {
-                applicationItem,
-                supplier,
-                goods,
-                null,
-                unit,
-                new BigDecimal("10"),
-                new BigDecimal("100"),
-                BigDecimal.ZERO,
-                (short) 1
-        }));
-
-        assertThrows(ApiException.class, () -> service.validateSubcontractOrder(
-                supplier,
-                List.of(new LinkedDocumentIntegrityService.QuantityLinkedLine(
-                        applicationItem,
-                        goods,
-                        null,
-                        unit,
-                        BigDecimal.ONE,
-                        BigDecimal.TEN))));
     }
 
     @Test

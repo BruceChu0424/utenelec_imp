@@ -80,6 +80,72 @@ class ProductionFinishedRememberPlacesResult {
   );
 }
 
+/// 多报工单汇总登记结果：一次提交逐单登记送检（每单一份 FQC）。
+class ProductionFinishedBatchRegistrationResult {
+  const ProductionFinishedBatchRegistrationResult({
+    required this.registeredCount,
+    required this.reports,
+  });
+
+  final int registeredCount;
+  final List<ProductionFinishedRegisteredReport> reports;
+
+  factory ProductionFinishedBatchRegistrationResult.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionFinishedBatchRegistrationResult(
+    registeredCount: (json['registeredCount'] as num?)?.toInt() ?? 0,
+    reports:
+        (json['reports'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(ProductionFinishedRegisteredReport.fromJson)
+            .toList(growable: false) ??
+        const [],
+  );
+}
+
+class ProductionFinishedRegisteredReport {
+  const ProductionFinishedRegisteredReport({
+    required this.reportId,
+    this.reportNo,
+    this.warehouseId,
+    this.warehouseName,
+  });
+
+  final String reportId;
+  final String? reportNo;
+  final String? warehouseId;
+  final String? warehouseName;
+
+  factory ProductionFinishedRegisteredReport.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionFinishedRegisteredReport(
+    reportId: json['reportId'] as String? ?? '',
+    reportNo: json['reportNo'] as String?,
+    warehouseId: json['warehouseId'] as String?,
+    warehouseName: json['warehouseName'] as String?,
+  );
+}
+
+/// 当前用户最近一次成品送检登记所用成品仓（下次进入自动预选）。
+class ProductionFinishedLastWarehouse {
+  const ProductionFinishedLastWarehouse({
+    required this.warehouseId,
+    this.warehouseCode,
+    this.warehouseName,
+  });
+
+  final String warehouseId;
+  final String? warehouseCode;
+  final String? warehouseName;
+
+  factory ProductionFinishedLastWarehouse.fromJson(Map<String, dynamic> json) =>
+      ProductionFinishedLastWarehouse(
+        warehouseId: json['warehouseId'] as String? ?? '',
+        warehouseCode: json['warehouseCode'] as String?,
+        warehouseName: json['warehouseName'] as String?,
+      );
+}
+
 class ProductionFinishedInboundTask {
   const ProductionFinishedInboundTask({
     required this.taskStage,

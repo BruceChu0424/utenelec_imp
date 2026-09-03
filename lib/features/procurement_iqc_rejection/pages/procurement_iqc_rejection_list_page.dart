@@ -449,14 +449,14 @@ class _ProcurementIqcRejectionListPageState
     ),
     MasterColumnDef(
       key: 'failedQty',
-      label: '拒收数量',
+      label: '不合格数量',
       width: 130,
       type: 'number',
       value: (item) => '${item.failedQty ?? '—'} ${item.unitName ?? ''}'.trim(),
     ),
     MasterColumnDef(
       key: 'amount',
-      label: '冻结本币金额',
+      label: '不合格金额(本币)',
       width: 150,
       type: 'money',
       value: (item) => item.amountLabel(item.failedAmountLocal),
@@ -469,7 +469,7 @@ class _ProcurementIqcRejectionListPageState
     ),
     MasterColumnDef(
       key: 'holdReason',
-      label: '阻断 / 下一步',
+      label: '异常原因 / 下一步',
       width: 280,
       value: (item) =>
           item.financeExceptionMessage ??
@@ -508,7 +508,7 @@ class _IqcRejectionTaskCard extends StatelessWidget {
     return Semantics(
       button: true,
       label:
-          '${item.receiptType?.label ?? ''} ${item.receiptBillNo ?? ''}，${item.goodsLabel}，拒收 ${item.failedQty ?? '—'} ${item.unitName ?? ''}，${item.status.label}',
+          '${item.receiptType?.label ?? ''} ${item.receiptBillNo ?? ''}，${item.goodsLabel}，不合格 ${item.failedQty ?? '—'} ${item.unitName ?? ''}，${item.status.label}',
       child: Card(
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
@@ -547,7 +547,7 @@ class _IqcRejectionTaskCard extends StatelessWidget {
                       Text('订货 ${item.orderBillNo ?? '—'}'),
                       Text('供应商 ${item.supplierName ?? '—'}'),
                       Text(
-                        '拒收 ${item.failedQty ?? '—'} ${item.unitName ?? ''}'
+                        '不合格 ${item.failedQty ?? '—'} ${item.unitName ?? ''}'
                             .trim(),
                       ),
                       Text('金额 ${item.amountLabel(item.failedAmountLocal)}'),

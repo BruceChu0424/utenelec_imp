@@ -1,18 +1,23 @@
 // 出库任务中心（/warehouse/tasks/outbound）——仓库出库方向的一站式工作台。
 //
-// 大类分段：销售出库（待拣/拣货/已拣/异常/已出库历史，仓库不能自建销售出库单，
-// 任务来自财务放行的销售出货）｜委外出库（待出仓任务 + 出仓历史）｜其它出库
-// （新建/历史）｜产成品出库（新建/历史）。徽章口径：只挂真实待办——销售 =
-// 未交接出库的放行单、委外 = 待出仓任务（小类行「待出仓任务」段同数）；
+// 大类分段：销售出库（待拣/拣货/已拣/异常/已出库 + 历史单据，仓库不能自建销售
+// 出库单，任务来自财务放行的销售出货）｜委外出库（待出仓任务 + 历史单据）｜
+// 其它出库（新建/历史）｜产成品出库（新建/历史）。徽章口径：只挂真实待办——
+// 销售 = 未交接出库的放行单、委外 = 待出仓任务（小类行「待出仓任务」段同数）；
 // 通用单据分段只有草稿与历史（草稿不计入待办数）不挂。进页面不预选大类
 //（未选时显示引导空态）。角标与 hub「出库任务中心」卡/工作台仓库卡一致
 //（WarehouseOutboundTaskBadge）。
+//
+// 2026-09-03 统一范式：各小类行同样默认不选（未选不发请求）；
+// 「历史单据」段一律时间门控（WarehouseHistoryGate：时间段/全部，
+// 未选时间显示引导占位不加载）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../models/stock_doc.dart';
@@ -20,6 +25,7 @@ import '../providers/warehouse_count_refresh.dart';
 import '../providers/warehouse_sales_outbound_count_provider.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart'
     show warehouseSubcontractOutboundCountProvider;
+import '../widgets/warehouse_history_gate.dart';
 import '../widgets/warehouse_stock_doc_segment.dart';
 import '../widgets/warehouse_subcontract_outbound_workbench.dart';
 import '../widgets/warehouse_document_history_view.dart';
@@ -109,7 +115,7 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
   }
 }
 
-/// 委外出库分段：待出仓任务（仓库执行目标件拣货出仓）｜出仓历史（实物视图）。
+/// 委外出库分段：待出仓任务（仓库执行目标件拣货出仓）｜历史单据（时间门控实物视图）。
 class _SubcontractOutboundSegment extends StatefulWidget {
   const _SubcontractOutboundSegment({
     required this.keyword,
@@ -134,11 +140,15 @@ class _SubcontractOutboundSegment extends StatefulWidget {
 
 class _SubcontractOutboundSegmentState
     extends State<_SubcontractOutboundSegment> {
-  late int _mode = widget.canTasks ? 0 : 1;
+  static const _tasksMode = 0;
+  static const _historyMode = 1;
+
+  /// null = 未选择引导态（2026-09-03 统一范式：小类默认不选，不发请求）。
+  int? _mode;
 
   @override
   Widget build(BuildContext context) {
-    // 分段无待办/历史语义冲突：小类行始终有选中项（视图切换工具条）。
+    final mode = _mode;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -153,33 +163,47 @@ class _SubcontractOutboundSegmentState
             segments: [
               if (widget.canTasks)
                 UtenFilterSegment(
-                  value: 0,
+                  value: _tasksMode,
                   label: '待出仓任务',
                   count: widget.taskCount,
                 ),
               if (widget.canHistory)
-                const UtenFilterSegment(value: 1, label: '出仓历史'),
+                const UtenFilterSegment(value: _historyMode, label: '历史单据'),
             ],
-            selected: {_mode},
+            selected: mode == null ? const {} : {mode},
             onSelectionChanged: (value) => setState(() => _mode = value),
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
         Expanded(
-          child: _mode == 0
-              ? WarehouseSubcontractOutboundWorkbench(
-                  keyword: widget.keyword,
-                  refreshTick: widget.refreshTick,
-                  embedded: true,
-                  showHintBanner: false,
-                )
-              : WarehouseDocumentHistoryView(
-                  type: WarehouseDocumentHistoryType.subcontractMaterialIssue,
-                  keyword: widget.keyword,
-                  refreshTick: widget.refreshTick,
-                  embedded: true,
-                  showBanner: false,
-                ),
+          child: switch (mode) {
+            _tasksMode => WarehouseSubcontractOutboundWorkbench(
+              keyword: widget.keyword,
+              refreshTick: widget.refreshTick,
+              embedded: true,
+              showHintBanner: false,
+            ),
+            _historyMode => WarehouseHistoryGate(
+              timeKey: const Key('subcontract-outbound-history-time'),
+              builder: (time) => WarehouseDocumentHistoryView(
+                type: WarehouseDocumentHistoryType.subcontractMaterialIssue,
+                keyword: widget.keyword,
+                refreshTick: widget.refreshTick,
+                embedded: true,
+                showBanner: false,
+                dateFrom: time.range == null
+                    ? null
+                    : ChinaDateTime.formatDate(time.range!.start),
+                dateTo: time.range == null
+                    ? null
+                    : ChinaDateTime.formatDate(time.range!.end),
+              ),
+            ),
+            _ => const UtenFilterPlaceholder(
+              message: '在上方选择分类后开始办理',
+              description: '小类默认不选中；历史单据需先选时间段或「全部」',
+            ),
+          },
         ),
       ],
     );

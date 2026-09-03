@@ -286,8 +286,10 @@ public class SubcontractMaterialPlanService
                 JOIN subcontract_order_items order_item
                   ON order_item.id = plan_item.order_item_id
                  AND order_item.is_deleted = FALSE
+                JOIN subcontract_order_item_sources src
+                  ON src.order_item_id = order_item.id
                 JOIN subcontract_application_items application_item
-                  ON application_item.id = order_item.application_item_id
+                  ON application_item.id = src.application_item_id
                  AND application_item.is_deleted = FALSE
                 JOIN preplan_subcontract_make_task_batches batch
                   ON batch.application_item_id = application_item.id
@@ -361,8 +363,10 @@ public class SubcontractMaterialPlanService
                 SELECT task.id, task.warehouse_id,
                        task.analysis_id, task.preparation_item_id
                 FROM subcontract_order_items order_item
+                JOIN subcontract_order_item_sources src
+                  ON src.order_item_id = order_item.id
                 JOIN subcontract_application_items application_item
-                  ON application_item.id = order_item.application_item_id
+                  ON application_item.id = src.application_item_id
                  AND application_item.is_deleted = FALSE
                 JOIN preplan_subcontract_make_task_batches batch
                   ON batch.application_item_id = application_item.id

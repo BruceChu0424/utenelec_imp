@@ -67,8 +67,10 @@ public class SubcontractPreparationTaskAdapter
                          'SUBCONTRACT_APPLICATION'
                     WHERE source_allocation.analysis_id = ?
                       AND source_allocation.analysis_material_id = ?
-                      AND source_allocation.external_item_id =
-                          order_item.application_item_id
+                      AND source_allocation.external_item_id IN (
+                          SELECT src.application_item_id
+                          FROM subcontract_order_item_sources src
+                          WHERE src.order_item_id = order_item.id)
                 )
                 """;
         String base = """
@@ -109,8 +111,10 @@ public class SubcontractPreparationTaskAdapter
                      AND source_application_item.application_id =
                          source_action.external_document_id
                      AND source_application_item.is_deleted = FALSE
-                    WHERE source_allocation.external_item_id =
-                          order_item.application_item_id
+                    WHERE source_allocation.external_item_id IN (
+                          SELECT src.application_item_id
+                          FROM subcontract_order_item_sources src
+                          WHERE src.order_item_id = order_item.id)
                 ) source_link ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT handoff.id AS handoff_id,
@@ -527,8 +531,10 @@ public class SubcontractPreparationTaskAdapter
                        source_analysis.warehouse_id, source_analysis.version,
                        source_analysis.fingerprint
                 FROM subcontract_order_items order_item
+                JOIN subcontract_order_item_sources src
+                  ON src.order_item_id = order_item.id
                 JOIN subcontract_application_items application_item
-                  ON application_item.id = order_item.application_item_id
+                  ON application_item.id = src.application_item_id
                  AND application_item.is_deleted = FALSE
                 JOIN preplan_supply_action_allocations source_allocation
                   ON source_allocation.external_item_id = application_item.id

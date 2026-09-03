@@ -31,7 +31,8 @@ final List<RouteBase> productionRoutes = [
   GoRoute(
     path: RouteName.productionSchedule,
     name: 'production-schedule',
-    builder: (_, _) => const ProductionBoardPage(),
+    // 深链预选「待排产」大类段（2026-09-03 分类范式：默认不选，路由偏好例外）。
+    builder: (_, _) => const ProductionBoardPage(initialTab: 0),
   ),
   GoRoute(
     path: RouteName.productionProgress,

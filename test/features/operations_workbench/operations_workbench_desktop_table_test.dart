@@ -45,6 +45,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // 新范式：默认不选阶段，内容区只有引导占位不发列表请求；
+    // 点「申请待分解」段后表格才加载。
+    expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
+    await tester.tap(find.text('申请待分解'));
+    await tester.pumpAndSettle();
+
     expect(tester.takeException(), isNull);
     // 桌面表格路径（expanded 断点）
     expect(
@@ -78,6 +84,8 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     String? keyword,
     String? status,
     String? exception,
+    String? dateFrom,
+    String? dateTo,
   }) async => data;
 }
 

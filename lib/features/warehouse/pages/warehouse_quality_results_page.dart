@@ -9,12 +9,14 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -29,12 +31,35 @@ import '../widgets/warehouse_quality_slice_table.dart';
 /// 与预计到货任务中心同款表格工作台——列表按收货单聚合作业状态（等待检查结果 /
 /// 全部合格待入库 / 部分合格 / 全部不合格需退回 / 已完结），行按状态着色；
 /// 可多选批量入库（整批同事务），双击行进入完整详情页办理入库或登记退回。
+///
+/// 2026-09-03 分类范式收口：来源大类行不再有「全部来源」段，状态小类行不再有
+/// 「全部」段；两行默认都不选（不加载，引导占位），末尾新增「历史记录」段
+///（时间段/全部时间门控，未选时间不请求）。
 class WarehouseQualityResultsPage extends ConsumerStatefulWidget {
   const WarehouseQualityResultsPage({super.key});
 
   @override
   ConsumerState<WarehouseQualityResultsPage> createState() =>
       _WarehouseQualityResultsPageState();
+}
+
+/// 状态小类分段值：真实作业状态或历史记录哨兵。
+class _QStatusSeg {
+  const _QStatusSeg.stage(WarehouseQualityWorkStatus this.status)
+    : history = false;
+  const _QStatusSeg.history() : status = null, history = true;
+
+  final WarehouseQualityWorkStatus? status;
+  final bool history;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _QStatusSeg &&
+      other.status == status &&
+      other.history == history;
+
+  @override
+  int get hashCode => Object.hash(status, history);
 }
 
 class _WarehouseQualityResultsPageState
@@ -44,12 +69,13 @@ class _WarehouseQualityResultsPageState
   String? _error;
   int _requestVersion = 0;
 
-  // 分类层级：来源类型=大类（上）、作业状态=小类（下）。进页面两行都不选
-  //（数据等价于不过滤）；选中来源后状态行才解锁。
+  // 分类层级：来源类型=大类（上）、作业状态=小类（下）。两行都没有「全部」段，
+  // 默认都不选（不加载）；选中来源后状态行才解锁，状态行末尾是历史记录段。
   WarehouseIqcStockInReceiptType? _receiptType;
-  bool _receiptTypeSelected = false;
-  WarehouseQualityWorkStatus? _workStatus;
-  bool _workStatusSelected = false;
+  _QStatusSeg? _statusSeg;
+
+  /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
   String _keyword = '';
 
   /// 状态分段计数（后端全量口径）；null = 尚未返回，分段显示 '—'。
@@ -59,6 +85,14 @@ class _WarehouseQualityResultsPageState
   Set<String> _selectedIds = {};
 
   bool get _isSuperAdmin => ref.read(isSuperAdminProvider);
+
+  bool get _shouldLoad {
+    if (_receiptType == null) return false;
+    final seg = _statusSeg;
+    if (seg == null) return false;
+    if (seg.history && _historyTime.isNone) return false;
+    return true;
+  }
 
   /// 入库确认：与旧 IQC 待入库详情同口径——查看 + 确认双权限。
   bool get _canConfirmStockIn {
@@ -79,26 +113,32 @@ class _WarehouseQualityResultsPageState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    // 默认不选分类：进页面不发列表请求，等用户选来源+状态（或历史+时间）。
   }
 
-  void _selectStatus(WarehouseQualityWorkStatus? status) {
+  void _selectStatus(_QStatusSeg seg) {
     // 状态行是来源（大类）未选时的锁定态；防御性兜底，正常不可点。
-    if (!_receiptTypeSelected) return;
-    if (_workStatus == status && _workStatusSelected) return;
+    if (_receiptType == null) return;
+    if (seg == _statusSeg) return;
     setState(() {
-      _workStatus = status;
-      _workStatusSelected = true;
+      _statusSeg = seg;
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
     });
-    _load(1);
+    if (!seg.history || !_historyTime.isNone) _load(1);
   }
 
-  void _selectType(WarehouseIqcStockInReceiptType? type) {
-    if (_receiptType == type && _receiptTypeSelected) return;
+  void _selectType(WarehouseIqcStockInReceiptType type) {
+    if (_receiptType == type) return;
     setState(() {
       _receiptType = type;
-      _receiptTypeSelected = true;
+      _statusSeg = null;
+      _historyTime = const UtenHistoryTimeValue.none();
     });
+  }
+
+  void _onHistoryTime(UtenHistoryTimeValue value) {
+    if (value == _historyTime) return;
+    setState(() => _historyTime = value);
     _load(1);
   }
 
@@ -110,6 +150,7 @@ class _WarehouseQualityResultsPageState
   }
 
   Future<void> _load(int page) async {
+    if (!_shouldLoad) return;
     final version = ++_requestVersion;
     setState(() {
       _loading = true;
@@ -117,11 +158,15 @@ class _WarehouseQualityResultsPageState
     });
     try {
       final repo = ref.read(warehouseQualityResultRepositoryProvider);
+      final seg = _statusSeg!;
+      final range = seg.history ? _historyTime.range : null;
       final result = await repo.list(
         page: page,
         receiptType: _receiptType,
-        workStatus: _workStatus,
+        workStatus: seg.history ? null : seg.status,
         keyword: _keyword.isEmpty ? null : _keyword,
+        dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
+        dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
       );
       // 状态计数失败不阻断列表（分段按钮降级为 '—'）。
       repo
@@ -307,34 +352,41 @@ class _WarehouseQualityResultsPageState
                 ],
                 const SizedBox(height: UtenSpacing.s12),
                 Expanded(
-                  child: MasterDataTableView<WarehouseQualityResultTask>(
-                    key: const Key('warehouse-quality-result-table'),
-                    columns: _columns,
-                    items: result.items,
-                    facets: const {},
-                    nullCounts: const {},
-                    filters: const {},
-                    onFilterChanged: (_, _) {},
-                    selectable: true,
-                    idOf: _taskId,
-                    rowKeyOf: _taskId,
-                    selectedIds: _selectedIds,
-                    onSelectedIdsChanged: (next) =>
-                        setState(() => _selectedIds = next),
-                    batchActionsBuilder: _batchActions,
-                    rowColor: (task) =>
-                        _statusRowColor(context, task.workStatus),
-                    onRowTap: _openDetail,
-                    rowMenuBuilder: _rowMenu,
-                    isLoading: _loading && _result == null,
-                    loadingMore: _loading && _result != null,
-                    error: result.items.isEmpty ? _error : null,
-                    onRetry: () => _load(result.page),
-                    emptyMessage: _emptyMessage,
-                    currentPage: result.page,
-                    totalPages: result.totalPages,
-                    onPageChange: _load,
-                  ),
+                  child: !_shouldLoad
+                      ? (_statusSeg != null && _statusSeg!.history
+                            ? const UtenHistoryTimePlaceholder()
+                            : const UtenFilterPlaceholder(
+                                message: '在上方选择来源和状态后开始办理',
+                                description: '来源与状态都默认不选中，选择后才加载对应任务',
+                              ))
+                      : MasterDataTableView<WarehouseQualityResultTask>(
+                          key: const Key('warehouse-quality-result-table'),
+                          columns: _columns,
+                          items: result.items,
+                          facets: const {},
+                          nullCounts: const {},
+                          filters: const {},
+                          onFilterChanged: (_, _) {},
+                          selectable: true,
+                          idOf: _taskId,
+                          rowKeyOf: _taskId,
+                          selectedIds: _selectedIds,
+                          onSelectedIdsChanged: (next) =>
+                              setState(() => _selectedIds = next),
+                          batchActionsBuilder: _batchActions,
+                          rowColor: (task) =>
+                              _statusRowColor(context, task.workStatus),
+                          onRowTap: _openDetail,
+                          rowMenuBuilder: _rowMenu,
+                          isLoading: _loading && _result == null,
+                          loadingMore: _loading && _result != null,
+                          error: result.items.isEmpty ? _error : null,
+                          onRetry: () => _load(result.page),
+                          emptyMessage: _emptyMessage,
+                          currentPage: result.page,
+                          totalPages: result.totalPages,
+                          onPageChange: _load,
+                        ),
                 ),
               ],
             ),
@@ -346,7 +398,8 @@ class _WarehouseQualityResultsPageState
 
   String get _emptyMessage {
     if (_keyword.isNotEmpty) return '没有匹配“$_keyword”的检查结果任务';
-    return switch (_workStatus) {
+    if (_statusSeg?.history == true) return '该时间段内暂无检查结果记录';
+    return switch (_statusSeg?.status) {
       WarehouseQualityWorkStatus.waitingInspection => '没有等待检查结果的收货单',
       WarehouseQualityWorkStatus.allPassed => '没有全部合格待入库的任务',
       WarehouseQualityWorkStatus.partialPassed => '没有部分合格的任务',
@@ -397,16 +450,16 @@ class _WarehouseQualityResultsPageState
     final typeCounts = ref
         .watch(warehouseQualityResultTypeCountsProvider)
         .valueOrNull;
+    final seg = _statusSeg;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 第一条（大类）：来源类型分段 + 搜索框。进页面不预选（不过滤）。
-        // 「全部来源」不挂徽章；各来源段挂未完结计数。
-        UtenFilterToolbar<WarehouseIqcStockInReceiptType?>(
+        // 第一条（大类）：来源类型分段 + 搜索框。进页面不预选；无「全部来源」段，
+        // 各来源段挂未完结计数。
+        UtenFilterToolbar<WarehouseIqcStockInReceiptType>(
           segmentsKey: const Key('warehouse-quality-result-type'),
           searchKey: const Key('warehouse-quality-result-search'),
           segments: [
-            const UtenFilterSegment(value: null, label: '全部来源'),
             for (final type in WarehouseIqcStockInReceiptType.values)
               UtenFilterSegment(
                 value: type,
@@ -414,7 +467,7 @@ class _WarehouseQualityResultsPageState
                 count: typeCounts?[type],
               ),
           ],
-          selected: _receiptTypeSelected ? {_receiptType} : const {},
+          selected: _receiptType == null ? const {} : {_receiptType!},
           onSelectionChanged: _selectType,
           searchHint: '搜索收货单 / 供应商 / 仓库 / 货品',
           initialSearchValue: _keyword,
@@ -432,25 +485,36 @@ class _WarehouseQualityResultsPageState
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        // 第二条（小类）：作业状态分段（每个状态一种颜色口径，计数为后端全量），
-        // 选中来源后解锁；进页面不预选。
+        // 第二条（小类）：作业状态分段（计数为后端全量），选中来源后解锁；
+        // 无「全部」段，末尾是「历史记录」段；进页面不预选。
         // 徽章口径：只挂在需要仓库下一步操作的分段——「等待结果」由品质部
-        // 推进但仓库需预判工作量，保留数量；「全部」「已完结」不挂徽章。
-        UtenFilterToolbar<WarehouseQualityWorkStatus?>(
+        // 推进但仓库需预判工作量，保留数量；「已完结」「历史记录」不挂徽章。
+        UtenFilterToolbar<_QStatusSeg>(
           segmentsKey: const Key('warehouse-quality-result-status'),
-          enabled: _receiptTypeSelected,
+          enabled: _receiptType != null,
           segments: [
-            const UtenFilterSegment(value: null, label: '全部'),
             for (final status in WarehouseQualityWorkStatus.values)
               UtenFilterSegment(
-                value: status,
+                value: _QStatusSeg.stage(status),
                 label: status.shortLabel,
                 count: status.isCompleted ? null : _statusCount(status),
               ),
+            const UtenFilterSegment(
+              value: _QStatusSeg.history(),
+              label: '历史记录',
+            ),
           ],
-          selected: _workStatusSelected ? {_workStatus} : const {},
+          selected: seg == null ? const {} : {seg},
           onSelectionChanged: _selectStatus,
         ),
+        if (seg?.history == true) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          UtenHistoryTimeFilter(
+            key: const Key('warehouse-quality-result-history-time'),
+            value: _historyTime,
+            onChanged: _onHistoryTime,
+          ),
+        ],
       ],
     );
   }
@@ -501,7 +565,7 @@ class _WarehouseQualityResultsPageState
     ),
     MasterColumnDef(
       key: 'pendingSliceCount',
-      label: '待入库批次',
+      label: '待入库切片',
       width: 110,
       type: 'number',
       value: (task) =>
@@ -509,8 +573,8 @@ class _WarehouseQualityResultsPageState
     ),
     MasterColumnDef(
       key: 'pendingReturnCount',
-      label: '待退回',
-      width: 90,
+      label: '待退回笔数',
+      width: 104,
       type: 'number',
       value: (task) =>
           task.pendingReturnCount > 0 ? '${task.pendingReturnCount} 笔' : '—',

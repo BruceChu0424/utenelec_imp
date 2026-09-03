@@ -1118,12 +1118,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
           ),
         ),
         // 表头：横向跟随表体同步（无可见滚动条），竖向固定（sticky）。
-        Material(
-          color: theme.colorScheme.surfaceContainerHigh,
-          child: SingleChildScrollView(
-            controller: _headerH,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(width: total, child: _buildHeaderRow(theme)),
+        // 表头整体 SelectionContainer.disabled：表头有「按住拖拽隐藏列」「拖拽调宽」
+        // 手势，与文字拖选打架（准则 §3.4：表头不进选择区）；disabled 同时挡住外层
+        // 页面级 SelectionArea（UtenContentContainer）渗入，保证手势稳定。
+        SelectionContainer.disabled(
+          child: Material(
+            color: theme.colorScheme.surfaceContainerHigh,
+            child: SingleChildScrollView(
+              controller: _headerH,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(width: total, child: _buildHeaderRow(theme)),
+            ),
           ),
         ),
         Divider(
@@ -1285,13 +1290,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     );
   }
 
-  /// selectable 模式（任务中心批量勾选）下不包 SelectionArea：批量勾选场景不需要
-  /// 文本复制，且勾选/拖选同处一表会增加 SelectionRegistrar 的 CME 风险（FM2）。
+  /// selectable 模式（任务中心批量勾选）下整表 SelectionContainer.disabled：批量勾选
+  /// 场景不需要文本复制，且勾选/拖选同处一表会增加 SelectionRegistrar 的 CME 风险
+  /// （FM2）。disabled 同时把表体与外层页面级 SelectionArea（UtenContentContainer
+  /// 默认包裹）隔开——勾选行为不受页面选择区影响。
   /// 注：2026-08-11 查明 selectable 表整片空白的真正根因是 stretch 行在无界高度下
-  /// 布局崩溃（见 [_selectableCross]），并非 SelectionArea；此处跳过仅按上述理由保留。
-  /// 非 selectable 表保留文本复制。
-  Widget _maybeSelectionArea(Widget child) =>
-      widget.selectable ? child : SelectionArea(child: child);
+  /// 布局崩溃（见 [_selectableCross]），并非 SelectionArea；此处隔离仅按上述理由保留。
+  /// 非 selectable 表保留自身文本复制（表体局部 SelectionArea）。
+  Widget _maybeSelectionArea(Widget child) => widget.selectable
+      ? SelectionContainer.disabled(child: child)
+      : SelectionArea(child: child);
 
   /// 选择摘要：已选 N 项 + 清除。业务动作在右下悬浮区，不再塞进表头工具条。
   Widget _buildBatchBar(ThemeData theme) {

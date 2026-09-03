@@ -522,7 +522,7 @@ class _WarehouseQualityResultDetailPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle('不合格实物退回', '核对拒收货品后登记真实退回凭证、日期与说明。'),
+        _sectionTitle('不合格实物退回', '核对该批不合格货品后登记真实退回凭证、日期与说明。'),
         const SizedBox(height: UtenSpacing.s8),
         for (final rejection in detail.rejections)
           Card(
@@ -554,7 +554,7 @@ class _WarehouseQualityResultDetailPageState
                         const SizedBox(height: UtenSpacing.s4),
                         Text(
                           [
-                            '拒收 ${_qty(rejection.failedQty, rejection.unitName)}',
+                            '不合格 ${_qty(rejection.failedQty, rejection.unitName)}',
                             if (rejection.returnReference?.isNotEmpty == true)
                               '凭证 ${rejection.returnReference}',
                             if (rejection.returnDate?.isNotEmpty == true)
@@ -916,7 +916,7 @@ class _RecordReturnDialogState extends State<_RecordReturnDialog> {
               children: [
                 Text('货品：${widget.rejection.goodsLabel}'),
                 Text(
-                  '拒收数量：${_qty(widget.rejection.failedQty, widget.rejection.unitName)}',
+                  '不合格数量：${_qty(widget.rejection.failedQty, widget.rejection.unitName)}',
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 TextFormField(

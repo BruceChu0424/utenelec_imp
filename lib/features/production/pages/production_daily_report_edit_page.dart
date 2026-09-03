@@ -723,6 +723,7 @@ class _ProductionDailyReportEditPageState
                           unitEntries: names.unitEntries,
                         ),
                         createBlankRow: () => DailyGridRow(),
+                        cloneRow: (r) => r.clone(),
                       ),
                     ],
                   ),

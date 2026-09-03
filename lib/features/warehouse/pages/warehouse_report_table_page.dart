@@ -292,6 +292,7 @@ class _WarehouseReportTablePageState
                 ),
               ),
               body: UtenListTwoPane(
+                splitPersistenceKey: 'warehouse.reportTable',
                 filterPane: _buildFilterPane(theme),
                 tablePane: _buildTable(),
               ),

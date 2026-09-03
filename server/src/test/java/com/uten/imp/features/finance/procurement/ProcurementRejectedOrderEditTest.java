@@ -62,6 +62,18 @@ class ProcurementRejectedOrderEditTest {
         when(em.find(PurchaseOrder.class, orderId, LockModeType.PESSIMISTIC_WRITE))
                 .thenReturn(order);
         when(sourceGuard.isPurchaseOrderLinked(orderId)).thenReturn(true);
+        // 结账方式随请求携带（2026-09 起 @NotNull 改 service 运行时校验）→
+        // applyHeader 走 UUID resolver 查 settlement_methods，按同款范式 stub 一行有效映射。
+        UUID settlementMethodId = UUID.randomUUID();
+        Query settlementQuery = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("FROM settlement_methods method"))))
+                .thenReturn(settlementQuery);
+        when(settlementQuery.setParameter(anyString(), any())).thenReturn(settlementQuery);
+        when(settlementQuery.setMaxResults(org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(settlementQuery);
+        when(settlementQuery.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{settlementMethodId, 1, "CASH", "现金", null}));
         when(unitPolicy.normalizeAndValidate(
                 goodsId, unitId, BigDecimal.ONE, 1))
                 .thenReturn(new PurchaseLineUnitPolicy.ResolvedUnit(
@@ -89,6 +101,8 @@ class ProcurementRejectedOrderEditTest {
         com.uten.imp.features.purchase.order.dto.OrderSaveRequest request =
                 new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 3));
+        // 编辑单据必须携带结账方式（2026-09 起 @NotNull 改为 service 运行时校验）。
+        request.setSettlementMethodId(settlementMethodId);
         request.setItems(List.of(purchaseLine(goodsId, unitId, requestItemId)));
 
         var detail = service.update(orderId, request);
@@ -260,6 +274,27 @@ class ProcurementRejectedOrderEditTest {
         when(masterQuery.setParameter(anyString(), any())).thenReturn(masterQuery);
         when(masterQuery.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{goodsId, goodsId, "G-NEW", "当前货品"}));
+
+        // V463：同货品合并行来源拆分（剩余量查询 3 列）与 sources 落库 INSERT。
+        // Mockito 后配的匹配桩优先于上面宽泛的 requestQuery 桩。
+        Query remainingQuery = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("remaining_qty")
+                        && sql.contains("FROM purchase_request_items"))))
+                .thenReturn(remainingQuery);
+        when(remainingQuery.setParameter(anyString(), any()))
+                .thenReturn(remainingQuery);
+        when(remainingQuery.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{requestItemId, BigDecimal.TEN,
+                        LocalDate.of(2026, 9, 1)}));
+        Query sourceInsert = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null
+                        && sql.contains("INSERT INTO purchase_order_item_sources"))))
+                .thenReturn(sourceInsert);
+        when(sourceInsert.setParameter(anyString(), any()))
+                .thenReturn(sourceInsert);
+        when(sourceInsert.executeUpdate()).thenReturn(1);
     }
 
     private static com.uten.imp.features.subcontract.order.dto.OrderItemLine subcontractLine(
@@ -302,5 +337,24 @@ class ProcurementRejectedOrderEditTest {
         when(masterQuery.setParameter(anyString(), any())).thenReturn(masterQuery);
         when(masterQuery.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{goodsId, goodsId, "G-NEW", "当前货品"}));
+
+        // V463：同货品合并行来源拆分（剩余量查询 2 列）与 sources 落库 INSERT。
+        Query remainingQuery = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null && sql.contains("remaining_qty")
+                        && sql.contains("FROM subcontract_application_items"))))
+                .thenReturn(remainingQuery);
+        when(remainingQuery.setParameter(anyString(), any()))
+                .thenReturn(remainingQuery);
+        when(remainingQuery.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{applicationItemId, BigDecimal.TEN}));
+        Query sourceInsert = mock(Query.class);
+        when(em.createNativeQuery(argThat(sql ->
+                sql != null
+                        && sql.contains("INSERT INTO subcontract_order_item_sources"))))
+                .thenReturn(sourceInsert);
+        when(sourceInsert.setParameter(anyString(), any()))
+                .thenReturn(sourceInsert);
+        when(sourceInsert.executeUpdate()).thenReturn(1);
     }
 }

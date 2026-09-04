@@ -8,6 +8,8 @@
 > **手把手版（含阿里云/GitHub 控制台逐步截图位与验收清单）见
 > [新库上线与首装操作指引](../../docs/99-项目治理/2026-09-01-新库上线与首装操作指引.md)。**
 > 日常发版 = 打 tag 推 GitHub，其余全自动；只有含数据库迁移的版本需要一次 SSH。
+> **占位符约定**：文中 `<服务器IP>` 等尖括号占位符代表真实环境值（不入库防泄露），
+> 操作时替换为本机 Tailscale IP / 真实账号等。
 
 ## 架构一览
 
@@ -132,7 +134,7 @@ git tag v2026.09.01-1 && git push origin v2026.09.01-1
 
 ### 0. 前提
 
-- Tailscale 通：`ssh utenelec@100.109.196.17` 免密可登
+- Tailscale 通：`ssh utenelec@<服务器IP>` 免密可登
 - 本地库容器在跑：`docker ps --filter name=uten-imp-postgres`
 - 若本地库 Flyway 版本**高于**服务器发布版本：先确认新迁移对现行后端透明（纯新增表/索引），
   否则先走第四节发版再灌数据
@@ -149,15 +151,15 @@ docker exec uten-imp-postgres pg_dump -U uten -Fc uten_imp > ~/uten_imp-dev-V<�
 ### 2. 传输并校验（两端 md5 一致才继续）
 
 ```bash
-scp ~/uten_imp-dev-V*.dump utenelec@100.109.196.17:/tmp/
+scp ~/uten_imp-dev-V*.dump utenelec@<服务器IP>:/tmp/
 md5sum ~/uten_imp-dev-V*.dump
-ssh utenelec@100.109.196.17 'md5sum /tmp/uten_imp-dev-V*.dump'
+ssh utenelec@<服务器IP> 'md5sum /tmp/uten_imp-dev-V*.dump'
 ```
 
 ### 3. 服务器执行（整段贴入，逐步有输出）
 
 ```bash
-ssh utenelec@100.109.196.17 'bash -s' <<'REMOTE'
+ssh utenelec@<服务器IP> 'bash -s' <<'REMOTE'
 set -e
 echo "== 1. 备份现有库（保后悔药）"
 sudo -u postgres pg_dump -Fc uten_imp > ~/db-before-refresh-$(date +%Y%m%d-%H%M).dump
@@ -193,10 +195,10 @@ REMOTE
 
 1. **引导账号撞库（会崩溃循环）**：应用启动时确保 `BOOTSTRAP_ADMIN_LOGIN`
    （`/etc/uten-imp/server.env`）在库中存在，不存在就新建并可能撞 employees 唯一约束。
-   **灌库后该值必须是库中已有账号**（当前=17665410007）。修复：
+   **灌库后该值必须是库中已有账号**（当前=〈管理员手机号，见本地密码记录〉）。修复：
 
    ```bash
-   ssh utenelec@100.109.196.17
+   ssh utenelec@<服务器IP>
    sudo sed -i 's/^BOOTSTRAP_ADMIN_LOGIN=.*/BOOTSTRAP_ADMIN_LOGIN=<库中已有账号>/' /etc/uten-imp/server.env
    sudo systemctl reset-failed uten-imp && sudo systemctl start uten-imp   # StartLimit 卡死必须先 reset
    ```

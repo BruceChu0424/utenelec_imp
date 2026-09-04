@@ -325,7 +325,7 @@ Nginx 模板必须先在非激活路径替换全部占位符。变量只允许 D
 
 ```bash
 UTEN_CLOUD_DOMAIN='imp.example.com'
-UTEN_OSS_PUBLIC_HOST='company-attachments.oss-cn-hangzhou.aliyuncs.com'
+UTEN_OSS_PUBLIC_HOST='company-attachments.__REGION__.aliyuncs.com'
 UTEN_TLS_CERT_PATH='/etc/nginx/tls/cloud-fullchain.pem'
 UTEN_TLS_KEY_PATH='/etc/nginx/tls/cloud-privkey.pem'
 
@@ -373,7 +373,7 @@ sudo install -m 0644 deploy/systemd/uten-imp.service.example \
 UTEN_LOCAL_DOMAIN='imp-lan.example.internal'
 UTEN_OFFICE_CIDR='10.20.0.0/24'
 UTEN_VPN_CIDR='10.30.0.0/24'
-UTEN_OSS_PUBLIC_HOST='company-attachments.oss-cn-hangzhou.aliyuncs.com'
+UTEN_OSS_PUBLIC_HOST='company-attachments.__REGION__.aliyuncs.com'
 UTEN_TLS_CERT_PATH='/etc/nginx/tls/local-fullchain.pem'
 UTEN_TLS_KEY_PATH='/etc/nginx/tls/local-privkey.pem'
 

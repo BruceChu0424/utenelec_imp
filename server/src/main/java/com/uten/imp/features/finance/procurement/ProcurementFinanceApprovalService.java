@@ -605,7 +605,7 @@ public class ProcurementFinanceApprovalService {
                       SELECT string_agg(DISTINCT src_request.bill_no, '、') AS bill_no
                       FROM purchase_order_item_sources pis
                       JOIN purchase_request_items pri ON pri.id = pis.request_item_id
-                      LEFT JOIN purchase_requests src ON src.id = pri.request_id
+                      LEFT JOIN purchase_requests src_request ON src_request.id = pri.request_id
                       WHERE pis.order_item_id = i.id
                   ) src ON TRUE
                   """

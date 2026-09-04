@@ -1,6 +1,7 @@
 package com.uten.imp.features.admin.systemtest;
 
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.Trigger;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -26,6 +27,7 @@ import java.util.concurrent.ScheduledFuture;
  * {@link BusinessDataResetDrainFilter} 负责。</p>
  */
 @Component
+@Profile("!cloud")
 public class DrainAwareTaskScheduler implements TaskScheduler, DisposableBean {
 
     private final BusinessDataResetDrainGate drainGate;

@@ -3741,10 +3741,15 @@ void main() {
     'MAKE lowerLevelPending explains the gate and cannot create a task',
     (tester) async {
       final json = _makeTreeAnalysisJson();
-      final material =
-          (json['flatMaterials'] as List<dynamic>).first
-              as Map<String, dynamic>;
-      material['lowerLevelPending'] = true;
+      // 一段式：进页会自动为「路线已确认且齐套」的自制/委外件建子件任务。
+      // 本用例聚焦 make-path-1 的齐套门禁提示，另一条同样可自动创建的
+      // make-path-2 也置为待齐套，保证「无任何 notify 请求」的断言只
+      // 考察门禁本身。
+      for (final material
+          in (json['flatMaterials'] as List<dynamic>)
+              .cast<Map<String, dynamic>>()) {
+        material['lowerLevelPending'] = true;
+      }
       final harness = await _pumpPage(
         tester,
         size: const Size(1400, 1000),
@@ -3810,11 +3815,21 @@ void main() {
   );
 
   testWidgets(
-    'pending MAKE create stays on page for quantities, then wizard on arrange',
+    'one-stage auto-creates confirmed MAKE child with prefilled quantity',
     (tester) async {
       final initial = _makeTreeAnalysisJson()
         ..['allowedActions'] = const ['NOTIFY_SUPPLY', 'GENERATE_PLAN'];
       final notified = _makeReadyChildAnalysisJson();
+      // 只保留 make-path-1 一个可自动创建的组：make-path-2 在两个快照里都
+      // 置为不可行动，notify 载荷与本页断言才聚焦单组两段式第二步。
+      for (final view in [initial, notified]) {
+        (view['flatMaterials']! as List<dynamic>)
+            .cast<Map<String, dynamic>>()
+            .singleWhere(
+              (material) => material['materialLineId'] == 'make-path-2',
+            )
+            .addAll(const {'actionable': false, 'shortageQty': 0});
+      }
       final harness = await _pumpPage(
         tester,
         size: const Size(1400, 1000),
@@ -3829,24 +3844,9 @@ void main() {
             request.path.endsWith('/notify') ? notified : null,
       );
 
-      final candidate = find.byKey(
-        const ValueKey('material-analysis-pending-make-make-path-1'),
-      );
-      expect(
-        find.descendant(of: candidate, matching: find.text('全部 8 个')),
-        findsOneWidget,
-      );
-      // 两段式第一步：勾选候选卡 → 底部「创建子件并填写生产数量」。
-      final checkbox = find.byKey(
-        const ValueKey('material-analysis-pending-make-select-make-path-1'),
-      );
-      expect(checkbox, findsOneWidget);
-      await tester.tap(checkbox);
-      await tester.pumpAndSettle();
-      final createButton = find.text('创建子件并填写生产数量(1)');
-      expect(createButton, findsOneWidget);
-      await tester.ensureVisible(createButton);
-      await tester.tap(createButton);
+      // 一段式（2026-09-04）：进页即对「路线已确认且下层齐套」的自制件自动
+      // 创建子件任务（全量剩余需求、不弹数量确认框）——不再先勾选、再点
+      // 「创建子件并填写生产数量」。
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('supply-quantity-dialog')), findsNothing);
 
@@ -3867,7 +3867,7 @@ void main() {
           },
         ],
       });
-      // 创建后不跳计划单：留在本页，子件已勾选并预填数量。
+      // 自动创建后不跳计划单：留在本页，子件已勾选并预填数量。
       expect(find.text('填写生产计划单'), findsNothing);
       expect(
         find.byKey(const Key('batch-qty-make-child-ready-1')),
@@ -3923,8 +3923,90 @@ void main() {
         ),
         isEmpty,
       );
+      // 收敛守卫：同一分析版本内自动创建只打一次 notify，不重复下达。
+      expect(
+        harness.requests
+            .where((request) => request.path.endsWith('/notify'))
+            .length,
+        1,
+      );
     },
   );
+
+  testWidgets(
+    'one-stage skips groups whose route is only a suggestion, not adopted',
+    (tester) async {
+      // 用户拍板的一段式边界：只有「采用」过路线（确认 MAKE/SUBCONTRACT）的
+      // 节点才自动创建子件任务；仍是建议路线的不动，等计划员显式采用。
+      final json = _makeTreeAnalysisJson();
+      (json['flatMaterials']! as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .singleWhere(
+            (material) => material['materialLineId'] == 'make-path-1',
+          )
+          .addAll(const {'sourceConfirmed': null, 'routeConfirmed': false});
+      (json['flatMaterials']! as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .singleWhere(
+            (material) => material['materialLineId'] == 'make-path-2',
+          )
+          .addAll(const {'actionable': false, 'shortageQty': 0});
+      final harness = await _pumpPage(
+        tester,
+        size: const Size(1400, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: json,
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        harness.requests.where((request) => request.path.endsWith('/notify')),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets('one-stage never auto-notifies a childless subcontract leaf', (
+    tester,
+  ) async {
+    // 无子层委外件一下达就生成委外申请并通知委外部，必须保持显式点击，
+    // 不在自动创建范围。行内「下达委外准备」按钮照常保留。
+    final json = _makeTreeAnalysisJson();
+    final materials = (json['flatMaterials']! as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    materials
+        .singleWhere((material) => material['materialLineId'] == 'make-path-1')
+        .addAll(const {
+          'sourceSuggestion': 'SUBCONTRACT',
+          'sourceConfirmed': 'SUBCONTRACT',
+        });
+    materials
+        .singleWhere((material) => material['materialLineId'] == 'make-path-2')
+        .addAll(const {'actionable': false, 'shortageQty': 0});
+    materials.removeWhere(
+      (material) => material['materialLineId'] == 'buy-child',
+    );
+    final harness = await _pumpPage(
+      tester,
+      size: const Size(1400, 1000),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisNotify,
+      },
+      analysisJson: json,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(
+      harness.requests.where((request) => request.path.endsWith('/notify')),
+      isEmpty,
+    );
+  });
 
   testWidgets('MAKE row shows server execution status and latest plan link', (
     tester,

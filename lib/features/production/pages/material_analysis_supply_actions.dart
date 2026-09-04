@@ -1188,6 +1188,171 @@ abstract class _MaterialAnalysisSupplyActionsState
     context.appSuccess(parts.join('；'));
   }
 
+  /// 一段式（2026-09-04 用户拍板）：进入物料分析准备页后，凡路线已确认
+  /// （「采用」过）且下层齐套、尚无子件任务的自制/委外件，自动创建子件
+  /// 任务并预填「最多可生产量」——计划员直接落在第二阶段（核对数量 →
+  /// 安排子件生产）。未确认路线的节点不自动建（采用路线保存后由
+  /// [_applyAnalysis] 的挂点随即补建）；无下达权限、路线有未保存修改或
+  /// 页面正忙时静默跳过。无子层委外件不自动建：它一下达就生成委外申请
+  /// 并通知委外部，必须保持显式点击。
+  void _scheduleAutoCreateChildTasks() {
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => unawaited(_autoCreateChildTasks()),
+    );
+  }
+
+  Future<void> _autoCreateChildTasks() async {
+    if (!mounted || _autoCreateInFlight) return;
+    final analysis = _analysis;
+    if (analysis == null ||
+        _booting ||
+        _isFqcReplenishmentOnly ||
+        !_canNotify ||
+        _busy ||
+        _dirtyRouteGroups.isNotEmpty) {
+      return;
+    }
+    // 收敛守卫：同一分析的同一版本里，每个操作组只自动尝试一次——
+    // 通知成功后服务端会给出 child 指针（自然出局），失败/无变化也不
+    // 会在后续帧里反复打接口；版本前进（服务端事实变化）才重置重试。
+    final epoch = '${analysis.analysisId}|${analysis.version}';
+    if (epoch != _autoCreateAttemptedEpoch) {
+      _autoCreateAttemptedEpoch = epoch;
+      _autoCreateAttemptedGroupKeys.clear();
+    }
+    final pending = <MaterialSupplyRoute, List<_MaterialGroup>>{};
+    for (final route in const [
+      MaterialSupplyRoute.make,
+      MaterialSupplyRoute.subcontract,
+    ]) {
+      final groups = _executableSupplyGroups(route)
+          .where(
+            (group) =>
+                !_autoCreateAttemptedGroupKeys.contains(group.key) &&
+                _taskChildProductOf(group.representative) == null &&
+                // 委外只有「有子层级」才走前置自制两段式；无子层叶子
+                // 通知即生成委外申请，不属于自动创建范围。
+                (route == MaterialSupplyRoute.make ||
+                    _analysisMaterialHasChildren(group.representative)),
+          )
+          .toList(growable: false);
+      if (groups.isNotEmpty) pending[route] = groups;
+    }
+    if (pending.isEmpty) return;
+    _autoCreateInFlight = true;
+    try {
+      var created = 0;
+      var readySelected = 0;
+      var waiting = 0;
+      for (final entry in pending.entries) {
+        for (final group in entry.value) {
+          _autoCreateAttemptedGroupKeys.add(group.key);
+        }
+        final requestedLineIds = {
+          for (final group in entry.value) group.representative.materialLineId,
+        };
+        final view = await _notifyRoute(
+          entry.key,
+          onlyGroupKeys: {for (final group in entry.value) group.key},
+          auto: true,
+        );
+        if (!mounted) return;
+        if (view == null) continue;
+        final counts = _selectDelegatedChildren(
+          view,
+          requestedLineIds,
+          entry.key == MaterialSupplyRoute.make
+              ? _makeChildProductOf
+              : _subcontractMakeChildProductOf,
+        );
+        created += counts.created;
+        readySelected += counts.readySelected;
+        waiting += counts.waiting;
+      }
+      if (!mounted || created == 0) return;
+      final parts = <String>[
+        '已按确认路线自动创建 $created 个子件任务',
+        if (readySelected > 0) '$readySelected 个已预填数量，核对后点「安排子件生产」',
+        if (waiting > 0) '$waiting 个待下层齐套后继续备料',
+      ];
+      context.appSuccess(parts.join('；'));
+    } finally {
+      _autoCreateInFlight = false;
+    }
+  }
+
+  /// 通知返回后把新子件任务勾选进待安排区并预填数量（与手动两段式第一步
+  /// 之后的落位完全一致）。返回计数供调用方汇总提示。
+  ({
+    int created,
+    int readySelected,
+    int waiting,
+    int needPermission,
+    int refreshing,
+  })
+  _selectDelegatedChildren(
+    ProductionMaterialAnalysisView view,
+    Set<String> requestedLineIds,
+    ProductionMaterialAnalysisProduct? Function(
+      ProductionMaterialAnalysisMaterial material,
+    )
+    childOf,
+  ) {
+    var created = 0;
+    var readySelected = 0;
+    var waiting = 0;
+    var needPermission = 0;
+    var refreshing = 0;
+    setState(() {
+      for (final material in view.materials) {
+        if (!requestedLineIds.contains(material.materialLineId)) continue;
+        final child = childOf(material);
+        if (child == null) {
+          refreshing++;
+          continue;
+        }
+        created++;
+        if (!_canSelectProduct(child)) {
+          waiting++;
+          continue;
+        }
+        if (!_canGenerate) {
+          needPermission++;
+          continue;
+        }
+        _selectedPlanLineIds.add(child.analysisLineId);
+        final controller = _batchQtyControllers[child.analysisLineId];
+        if (controller != null && controller.text.trim().isEmpty) {
+          controller.text = _qty(child.readyNowQty);
+        }
+        readySelected++;
+      }
+      _planPreview = null;
+    });
+    return (
+      created: created,
+      readySelected: readySelected,
+      waiting: waiting,
+      needPermission: needPermission,
+      refreshing: refreshing,
+    );
+  }
+
+  /// 该分析节点在当前快照内是否还有下层节点（与服务端「有子层级委外件」
+  /// 的 BOM 分流同向：分析节点来自货品 BOM，节点有子 ⇒ 货品必有活动子层，
+  /// 不会把无子层叶子误当两段式自动下达）。
+  bool _analysisMaterialHasChildren(
+    ProductionMaterialAnalysisMaterial material,
+  ) {
+    final analysis = _analysis;
+    final nodeKey = material.nodeKey;
+    if (analysis == null || nodeKey == null || nodeKey.isEmpty) return false;
+    for (final other in analysis.materials) {
+      if (other.parentNodeKey == nodeKey) return true;
+    }
+    return false;
+  }
+
   List<_SupplyNotificationTarget> _notificationTargetsForGroups(
     Iterable<_MaterialGroup> groups,
   ) {
@@ -1220,6 +1385,7 @@ abstract class _MaterialAnalysisSupplyActionsState
   Future<ProductionMaterialAnalysisView?> _notifyRoute(
     MaterialSupplyRoute route, {
     Set<String>? onlyGroupKeys,
+    bool auto = false,
   }) async {
     final analysis = _analysis;
     if (analysis == null || !_canNotify || _notifyingRoute != null) {
@@ -1233,18 +1399,19 @@ abstract class _MaterialAnalysisSupplyActionsState
         })
         .toList(growable: false);
     if (groups.isEmpty) {
-      context.appInfo('请先勾选要提交的${route.label}缺料');
+      if (!auto) context.appInfo('请先勾选要提交的${route.label}缺料');
       return null;
     }
     if (_dirtyRouteGroups.isNotEmpty) {
-      context.appWarning('请先确认路线，再通知对应部门');
+      if (!auto) context.appWarning('请先确认路线，再通知对应部门');
       return null;
     }
     final targets = _notificationTargetsForGroups(groups);
     // BUY/SUBCONTRACT 允许按余量分批提交；MAKE 当前只有节点级 child
     // ownership，没有父件输出层 delegated_qty，必须全量创建 child，真正
-    // 的本批生产数量在 child 返回后的计划向导中填写。
-    final quantities = route == MaterialSupplyRoute.make
+    // 的本批生产数量在 child 返回后的计划向导中填写。auto（一段式自动
+    // 创建）与 MAKE 同理：任务接管全部剩余需求，本批数量留给第二阶段填。
+    final quantities = route == MaterialSupplyRoute.make || auto
         ? _fullResidualSupplyQuantities(route, targets)
         : await _promptSupplyQuantities(route, targets);
     if (quantities == null || !mounted) return null;
@@ -1332,7 +1499,8 @@ abstract class _MaterialAnalysisSupplyActionsState
               '${batches.length} 张委外申请并通知委外部；有子层已转前置自制，入库后自动通知',
         MaterialSupplyRoute.make => '自制备料任务已创建（${groups.length} 条）',
       };
-      context.appSuccess(message);
+      // auto 模式由调用方汇总一段式提示，不重复弹提交流程文案。
+      if (!auto) context.appSuccess(message);
       return current;
     } catch (error) {
       if (!mounted) return null;

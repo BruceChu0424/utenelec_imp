@@ -109,6 +109,9 @@ abstract class _MaterialAnalysisPageBase
   final _manualReason = TextEditingController();
   Timer? _analysisPollTimer;
   bool _silentAnalysisReloadInFlight = false;
+  bool _autoCreateInFlight = false;
+  String? _autoCreateAttemptedEpoch;
+  final Set<String> _autoCreateAttemptedGroupKeys = {};
   GoodsListItem? _manualGoods;
   bool _manualSourceExpanded = false;
   String? _manualSourceType;
@@ -1176,6 +1179,15 @@ abstract class _MaterialAnalysisPageBase
 /// 继承链的最终实现类：保持测试与 createState 引用的原私有名。
 class _ProductionMaterialAnalysisPageState
     extends _MaterialAnalysisSubcontractMakeState {
+  /// 一段式挂点：任何路径装上新分析快照（boot/路由保存/静默轮询/通知返回）
+  /// 之后，都尝试为「路线已确认且下层齐套」的自制/委外件自动创建子件任务。
+  /// 基类 [_applyAnalysis] 无法引用子类混入的创建逻辑，故在最终实现类重写。
+  @override
+  void _applyAnalysis(ProductionMaterialAnalysisView view) {
+    super._applyAnalysis(view);
+    _scheduleAutoCreateChildTasks();
+  }
+
   @override
   Widget build(BuildContext context) {
     // 返回即刷新（须与 ref.listen 同位置=build 内注册）：采购/委外到货、IQC 合格放行

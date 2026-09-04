@@ -213,6 +213,18 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 "('SUBCONTRACT', 'SUBCONTRACT_MAKE', 'SUBCONTRACT_MAKE_TASK')");
         assertThat(entitlements).contains(
                 "parent_material.confirmed_route = action.route");
+        // V467 事故复盘：Java 侧放开双路线后，V337 头触发器仍写死 MAKE 形状，
+        // 真库 INSERT 被 23514 拒绝（源码断言测不到 DB 触发器，行为锁定在
+        // SubcontractMakeDelegationRouteGuardPostgresTest）。此处锁迁移文件
+        // 必须与 Java 配对口径一致，防止再出现「代码改了、守卫没跟」。
+        String guard = migrationSource(
+                "V467__subcontract_make_delegation_guard_route.sql");
+        assertThat(guard).contains("WHEN 'SUBCONTRACT' THEN 'SUBCONTRACT_MAKE_TASK'");
+        assertThat(guard).contains("WHEN 'SUBCONTRACT' THEN 'SUBCONTRACT_MAKE'");
+        assertThat(guard).contains(
+                "parent_material.confirmed_route IS DISTINCT FROM action.route");
+        assertThat(guard).doesNotContain(
+                "confirmed_route IS DISTINCT FROM 'MAKE'");
     }
 
     @Test
@@ -417,5 +429,11 @@ class ProductionMaterialAnalysisWorkflowContractTest {
 
     private static String source(String relative) throws Exception {
         return Files.readString(JAVA.resolve(relative), StandardCharsets.UTF_8);
+    }
+
+    private static String migrationSource(String fileName) throws Exception {
+        return Files.readString(
+                Path.of("src/main/resources/db/migration").resolve(fileName),
+                StandardCharsets.UTF_8);
     }
 }

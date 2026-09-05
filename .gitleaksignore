@@ -5,3 +5,12 @@ bc39d41fb20bc9b82a61e43eda0b10fc313a7d56:server/src/test/java/com/uten/imp/featu
 bc39d41fb20bc9b82a61e43eda0b10fc313a7d56:server/src/test/java/com/uten/imp/features/measurement/MeasurementLearningPolicyTest.java:generic-api-key:63
 68dd3e9fab366cd6e9b41a8e4339454a35227e45:test/features/production/repositories/production_material_analysis_repository_test.dart:generic-api-key:375
 68dd3e9fab366cd6e9b41a8e4339454a35227e45:test/features/production/repositories/production_material_analysis_repository_test.dart:generic-api-key:391
+a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:41
+a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:86
+a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:131
+a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:177
+a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:223
+a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:269
+a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:315
+a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:361
+a0c7668dc49c85c2184c8d65207961ed4e50378e:test/features/production/fixtures/analysis_freeze_repro.json:generic-api-key:407

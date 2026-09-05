@@ -101,6 +101,14 @@ class ProductionExecutionPackageCommandStatusTest {
                 .hasMessageContaining("缺少可审计的合法原因");
     }
 
+    @Test
+    void materialAnalysisPlansKeepSupplyOwnershipInPreplanActions() {
+        assertThat(ProductionExecutionPackageCommandService
+                .packageOwnsSupply(null)).isTrue();
+        assertThat(ProductionExecutionPackageCommandService
+                .packageOwnsSupply(UUID.randomUUID())).isFalse();
+    }
+
     private static CompleteKitAllocator.ProductLine zeroLine(
             String reason,
             UUID analysisId,

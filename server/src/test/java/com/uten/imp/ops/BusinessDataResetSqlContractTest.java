@@ -17,9 +17,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 工作台「系统测试 · 清空业务数据」三处事实的同步锁：
  * <ol>
- *   <li>ops/reset_business_data.sql（psql 停机版）的 320 表 CLEAR/PRESERVE 分类；</li>
- *   <li>迁移函数 business_data_reset()（应用内运行的孪生；V464 为最新重发版，
- *       V462 为历史首版）的同一份分类；</li>
+ *   <li>ops/reset_business_data.sql（psql 停机版）的全量 CLEAR/PRESERVE 分类；</li>
+ *   <li>迁移函数 business_data_reset()（应用内运行的孪生；V464 为最新整函数重发版，
+ *       V462 为历史首版）的同一份分类。V474 起经运行时补丁插入
+ *       {@link #RUNTIME_RESET_EXTENSIONS} 登记的扩展行（已应用的 V464 字节不可改）；</li>
  *   <li>BusinessDataResetService 只做编排（绑定 actor + 调函数），不内联清空 SQL。</li>
  * </ol>
  * 迁移新增表后必须同步两份清单，否则本测试失败关闭；运行时未知表同样拒绝执行。
@@ -29,9 +30,17 @@ class BusinessDataResetSqlContractTest {
     private static final Pattern POLICY_ROW = Pattern.compile(
             "(?m)^\\s*\\('([^']+)'\\s*,\\s*'(CLEAR|PRESERVE)'\\)[,;]?$");
 
+    /**
+     * V474 起经「读取已安装函数定义 + 失败关闭锚点替换」插入孪生函数的扩展行。
+     * 表名 -> 引入迁移版本号；新增扩展时同步登记，并保持 ops 脚本与补丁锚点一致。
+     */
+    private static final Map<String, Integer> RUNTIME_RESET_EXTENSIONS = Map.of(
+            "preplan_public_supply_events", 474);
+
     private String opsScript;
     private String migrationSql;
     private String serviceSource;
+    private String extensionSql;
 
     @BeforeEach
     void loadSources() throws IOException {
@@ -42,6 +51,11 @@ class BusinessDataResetSqlContractTest {
                         "V464__reset_twin_order_item_sources.sql"),
                 Path.of("server", "src", "main", "resources", "db", "migration",
                         "V464__reset_twin_order_item_sources.sql"));
+        extensionSql = read(
+                Path.of("src", "main", "resources", "db", "migration",
+                        "V474__preplan_public_supply_and_inbound_allocation.sql"),
+                Path.of("server", "src", "main", "resources", "db", "migration",
+                        "V474__preplan_public_supply_and_inbound_allocation.sql"));
         serviceSource = read(
                 Path.of("src", "main", "java", "com", "uten", "imp", "features", "admin",
                         "systemtest", "BusinessDataResetService.java"),
@@ -54,14 +68,35 @@ class BusinessDataResetSqlContractTest {
         Map<String, String> opsPolicy = policy(opsScript);
         Map<String, String> twinPolicy = policy(migrationSql);
 
-        assertThat(opsPolicy).hasSize(320);
+        assertThat(opsPolicy).hasSize(320 + RUNTIME_RESET_EXTENSIONS.size());
         assertThat(opsPolicy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(224);
+                .isEqualTo(224 + RUNTIME_RESET_EXTENSIONS.size());
         assertThat(opsPolicy.values().stream().filter("PRESERVE"::equals).count())
                 .isEqualTo(96);
 
-        // 双胞胎逐表一致：任何一侧漂移（新增/删除/改分类）都失败关闭。
-        assertThat(twinPolicy).isEqualTo(opsPolicy);
+        // V464 基础清单逐表一致：任何一侧漂移（新增/删除/改分类）都失败关闭。
+        Map<String, String> opsBase = new LinkedHashMap<>(opsPolicy);
+        RUNTIME_RESET_EXTENSIONS.keySet().forEach(opsBase::remove);
+        assertThat(twinPolicy).isEqualTo(opsBase);
+        // 扩展行必须全部 CLEAR：追加式运行时事件账随系统测试一并清空。
+        RUNTIME_RESET_EXTENSIONS.keySet().forEach(table ->
+                assertThat(opsPolicy.get(table))
+                        .as(table + " runtime reset extension must be CLEAR")
+                        .isEqualTo("CLEAR"));
+    }
+
+    @Test
+    void runtimeResetExtensionsPatchTheTwinFunctionFailClosed() {
+        // V474 的补丁构件：读取已安装定义、锚点替换插入、锚点缺失即失败关闭。
+        assertThat(extensionSql)
+                .contains("pg_get_functiondef('business_data_reset()'::regprocedure)")
+                .contains("RAISE EXCEPTION 'V474 cannot extend business_data_reset policy safely'")
+                .contains("(''preplan_supply_actions'', ''CLEAR'')");
+        for (String table : RUNTIME_RESET_EXTENSIONS.keySet()) {
+            assertThat(extensionSql)
+                    .as(table + " must be inserted by the runtime reset patch")
+                    .contains("(''" + table + "'', ''CLEAR'')");
+        }
     }
 
     @Test

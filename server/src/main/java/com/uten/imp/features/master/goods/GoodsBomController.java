@@ -30,9 +30,9 @@ import java.util.UUID;
  * 货品组装信息（BOM）API（基础资料-货品资料 → 详情「组装信息」页签）。
  *
  * - GET    /api/master/goods/{id}/bom              → 组件清单（含组件展示信息 + hasChildren）
- * - POST   /api/master/goods/{id}/bom              → 添加组件（goods:edit，同成品下组件 UUID 唯一）
- * - PUT    /api/master/goods/{id}/bom/{itemId}     → 编辑组件行（goods:edit）
- * - DELETE /api/master/goods/{id}/bom/{itemId}     → 删除组件行（goods:edit，软删）
+ * - POST   /api/master/goods/{id}/bom              → 添加组件（goods:bom:create，同成品下组件 UUID 唯一）
+ * - PUT    /api/master/goods/{id}/bom/{itemId}     → 编辑组件行（goods:bom:edit）
+ * - DELETE /api/master/goods/{id}/bom/{itemId}     → 删除组件行（goods:bom:delete，软删）
  * - POST   /api/master/goods/{id}/bom/export       → 产品配件清单加密 Excel（goods:export）
  *
  * 组装树的子级由前端对组件 id 再调 GET list 懒加载（组件自身也是货品）。

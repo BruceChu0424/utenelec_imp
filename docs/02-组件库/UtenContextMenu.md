@@ -45,11 +45,14 @@ UtenContextMenuRegion(
     ),
   ],
   onMenuOpening: () => _selectRow(),// 菜单弹出前同步调用（先把该行置为选中）
+  onActionCompleted: _clearSelection,// 可用条目的同步/异步动作结束后调用
   child: row,
 )
 ```
 
 也可脱离包裹组件直接 `showUtenContextMenu(context, globalPosition: ..., entries: ...)`。
+其 Future 在菜单真正关闭后完成：点外部返回 `dismissed`；选择可用条目时先关菜单，
+再等待条目的同步/异步回调结束并返回 `actionCompleted`。
 
 ---
 
@@ -68,6 +71,8 @@ MasterDataTableView<GoodsListItem>(
 
 - 右击/长按一行 → **先把该行置为选中态**再弹菜单（多选模式下：该行未勾选则选择集
   替换为仅该行，已勾选则保留多选——标准文件管理器行为）。
+- 选择可用条目后，`MasterDataTableView` 会等待该动作(含后续确认框/异步回执)结束，再清空
+  单选或受控多选；只点外部取消菜单时保留当前选择，避免误清用户主动勾选的多行。
 - 条目在每次手势时重新构建，可按行数据（状态=使用/禁用）、权限（`Perm.goodsEdit` 等）、
   剪贴板（`goodsClipboardProvider`）实时决定 label 与 `enabled`。
 - 触屏无右键 → 长按出菜单；菜单首项通常是「查看详情」，弥补触屏双击打开不直观的短板。
@@ -90,10 +95,19 @@ MasterDataTableView<GoodsListItem>(
 编辑页明细表（销售/采购/委外/钱流/库存/生产计划/生产日报 7 页共用）的行级菜单由
 **grid 组件内置**（`_rowCellOrMenuRegion`），页面无需自己包 Region：
 
-- 仅可编辑模式（`showAddRow=true`）挂菜单；「只选不编」任务办理表（到货登记/收货等
-  明细由上游固定带入）不挂。
+- 可编辑模式(`showAddRow=true`)使用复制、粘贴、插入和删除的内置菜单；「只选不编」任务
+  办理表默认不挂。只有页面显式提供 `onRemoveRows` 时，任务表才显示选择操作条并挂定制
+  “移出本次操作”菜单，避免把上游来源行误解释成持久化删除。
+- `canSelectRow=false` 的任务行既不能勾选，也不挂右键/长按移出菜单；两者必须共用同一
+  业务资格。保存或提交期间传 `selectionEnabled:false`，组件保留布局但统一禁用表头全选、
+  行复选、批量动作和行菜单，避免请求快照与选择集漂移。
 - 右键/长按行 → 先选中归位（未勾选则选择集替换为仅该行，已勾选保留多选——与
   MasterDataTableView 同一文件管理器语义），再弹菜单作用于整组。
+- 选择菜单条目后等待该动作完成并统一 `clearSelection()`；只关闭菜单不清，操作条主动
+  选择也不受影响。
+- 任务表的 `removeRowsActionLabel`、`removeRowsDialogTitle`、`removeRowsConfirmLabel`、
+  `removeRowsMessageBuilder` 必须准确说明副作用。例如到货登记使用“移出本次登记”，确认文案
+  明示来源单、报工、FQC、库存和历史都未删除；真正业务删除必须另走服务端权限与审计 API。
 - 条目：复制选中 / 粘贴 / 批量粘贴 / 在上方插入空行 / 删除选中，全部复用操作条同一套
   `UtenEditableGridController` 逻辑与确认弹窗；粘贴统一追加表尾。
 - 复制粘贴组仅在页面提供 `cloneRow`（行深拷贝）时显示；缓冲为空时粘贴置灰不隐藏。
@@ -106,4 +120,4 @@ MasterDataTableView<GoodsListItem>(
 
 ---
 
-**最后更新**：2026-09-03 · 新增第五章：UtenEditableGrid 行级操作菜单接入（7 个单据编辑页）。初版 2026-08-12（基础资料五个主档页接入：货品/颜色/客户/供应商/模具）。
+**最后更新**：2026-09-04 · 菜单 Future 改为真实生命周期结果；统一表格在菜单动作完成后清选，纯取消保留选择；显式 `onRemoveRows` 支持到货等任务表安全“移出本次操作”；`canSelectRow` 同时约束任务行菜单，`selectionEnabled` 统一冻结选择派生交互。前序 2026-09-03：UtenEditableGrid 行级操作菜单接入(7 个单据编辑页)。初版 2026-08-12(基础资料五个主档页接入：货品/颜色/客户/供应商/模具)。

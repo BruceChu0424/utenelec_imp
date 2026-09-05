@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -326,6 +327,7 @@ class _ProductionFqcDecisionDialogState
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return AlertDialog(
       title: const Text('登记生产成品质检决定'),
       content: ConstrainedBox(
@@ -366,10 +368,12 @@ class _ProductionFqcDecisionDialogState
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: '本次合格数量',
-                    // uten-field-message-exception: raw-message - AlertDialog intrinsic sizing rejects LayoutBuilder helper widgets.
-                    helperText: '合格数量会生成仓库待点收任务，尚不直接增加库存。',
+                  decoration: InputDecoration(
+                    label: fieldLabel(
+                      '本次合格数量',
+                      theme,
+                      info: '合格数量会生成仓库待点收任务，尚不直接增加库存。',
+                    ),
                   ),
                 ),
               if (_decision != 'PASS') ...[
@@ -402,10 +406,12 @@ class _ProductionFqcDecisionDialogState
                   enabled: !_saving,
                   minLines: 2,
                   maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: '不合格原因',
-                    // uten-field-message-exception: raw-message - AlertDialog intrinsic sizing rejects LayoutBuilder helper widgets.
-                    helperText: '至少 2 个字，保留为不可变质量决定证据。',
+                  decoration: InputDecoration(
+                    label: fieldLabel(
+                      '不合格原因',
+                      theme,
+                      info: '至少 2 个字，保留为不可变质量决定证据。',
+                    ),
                   ),
                 ),
               ],

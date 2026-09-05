@@ -359,7 +359,9 @@ void main() {
     final detailColumnKeys = {
       for (final column in detailTable.columns) column.key,
     };
-    expect(detailColumnKeys, containsAll(<String>{'qty', 'weight'}));
+    // 2026-09-04 口径：实际重量列已下线（单位已表达重量），进仓单仍无价格列。
+    expect(detailColumnKeys, containsAll(<String>{'qty'}));
+    expect(detailColumnKeys, isNot(contains('weight')));
     expect(detailColumnKeys, isNot(contains('price')));
     expect(detailColumnKeys, isNot(contains('amount')));
     expect(find.text('币种'), findsNothing);

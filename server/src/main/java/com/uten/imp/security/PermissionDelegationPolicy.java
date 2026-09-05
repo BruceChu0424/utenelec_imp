@@ -34,7 +34,6 @@ public class PermissionDelegationPolicy {
             "attachment:reconcile:view",
             "attachment:reconcile:approve_delete",
             "payroll:export",
-            "viewcontext:scoped",
             "dashboard:finance-sensitive:view");
 
     private static final Map<String, String> REASONS = Map.ofEntries(

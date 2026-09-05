@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
+import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -48,8 +49,12 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          productionPlanRepositoryProvider.overrideWithValue(
-            _repository(onProgressRead: () => progressReads++),
+          productionPlanRepositoryProvider.overrideWithValue(_repository()),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            _workbenchRepository(
+              onRead: () => progressReads++,
+              reportable: true,
+            ),
           ),
           currentPermissionsProvider.overrideWithValue(const <String>{}),
           sharedPreferencesProvider.overrideWithValue(preferences),
@@ -59,11 +64,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('物料已齐 6 / 10(1/2 段) · 部分段待派工/发料'), findsOneWidget);
-    await tester.tap(find.text('子计划 1 张(点开展示进度)'));
+    expect(find.text('联合分析 SO-A / SO-B'), findsOneWidget);
+    expect(find.text('SEG-PARENT / SEG-CHILD'), findsOneWidget);
+    await _doubleTapRow(tester, find.text('联合分析 SO-A / SO-B'));
     await tester.pumpAndSettle();
-    expect(find.text('物料待齐套(0/1 段)'), findsOneWidget);
-    await tester.tap(find.text('SJ-CHILD'));
+    expect(find.text('工单与进度'), findsOneWidget);
+    expect(find.text('SEG-CHILD'), findsOneWidget);
+    final parentRow = find
+        .ancestor(of: find.text('父产品'), matching: find.byType(Row))
+        .first;
+    expect(
+      find.descendant(of: parentRow, matching: find.byType(Checkbox)),
+      findsNothing,
+    );
+    expect(find.textContaining('批量报工('), findsNothing);
+    await _doubleTapRow(tester, find.text('SEG-CHILD'));
     await tester.pumpAndSettle();
 
     expect(find.text('已打开计划 child-plan-1'), findsOneWidget);
@@ -102,6 +117,9 @@ void main() {
       ProviderScope(
         overrides: [
           productionPlanRepositoryProvider.overrideWithValue(_repository()),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            _workbenchRepository(),
+          ),
           currentPermissionsProvider.overrideWithValue(const <String>{}),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
@@ -119,43 +137,91 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    final expand = find.text('子计划 1 张(点开展示进度)');
-    await tester.ensureVisible(expand);
-    final boardScroll = find.ancestor(
-      of: expand,
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is Scrollable && widget.axisDirection == AxisDirection.down,
-      ),
-    );
-    expect(boardScroll, findsOneWidget);
-    await tester.drag(boardScroll, const Offset(0, -120));
-    await tester.pumpAndSettle();
-    expect(expand.hitTestable(), findsOneWidget);
-    await tester.tap(expand);
+    final root = find.text('联合分析 SO-A / SO-B');
+    await tester.ensureVisible(root);
+    expect(root.hitTestable(), findsOneWidget);
+    await _doubleTapRow(tester, root);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    expect(find.text('已报工 2'), findsOneWidget);
-    expect(find.text('已入库 1 / 排产 5'), findsOneWidget);
-    expect(find.text('物料待齐套(0/1 段)'), findsOneWidget);
-    final childBill = find.text('SJ-CHILD');
-    await tester.ensureVisible(childBill);
-    await tester.drag(boardScroll, const Offset(0, -80));
-    await tester.pumpAndSettle();
-    final childRow = find.ancestor(
-      of: childBill,
-      matching: find.byType(InkWell),
-    );
-    expect(childRow, findsOneWidget);
-    expect(tester.widget<InkWell>(childRow).onTap, isNotNull);
-    expect(tester.getSize(childRow).height, greaterThanOrEqualTo(56));
-
-    await tester.tap(childBill);
+    expect(find.text('SEG-CHILD'), findsOneWidget);
+    expect(find.text('物料不齐套 · 备料中'), findsWidgets);
+    // Compact tables keep the status columns fixed at the left edge while the
+    // work-order number may be horizontally off-screen. Double-click the exact
+    // WAITING status cell to exercise the same row-open contract.
+    await _doubleTapRow(tester, find.text('待料'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('已打开计划 child-plan-1'), findsOneWidget);
   });
+
+  testWidgets('ongoing analysis detail supports direct batch reporting', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) => const ProductionBoardPage(initialTab: 1),
+        ),
+        GoRoute(
+          path: '/production/daily-reports/new',
+          builder: (_, state) => Scaffold(
+            body: Text(
+              '批量报工 ${state.uri.queryParameters['executionSegmentId'] ?? state.uri.queryParameters['executionSegmentIds']}',
+            ),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionPlanRepositoryProvider.overrideWithValue(_repository()),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            _workbenchRepository(reportable: true),
+          ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+            Perm.productionDailyReportView,
+            Perm.productionDailyReportCreate,
+          }),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _doubleTapRow(tester, find.text('联合分析 SO-A / SO-B'));
+    await tester.pumpAndSettle();
+
+    final parentRow = find
+        .ancestor(of: find.text('父产品'), matching: find.byType(Row))
+        .first;
+    final checkbox = find
+        .descendant(of: parentRow, matching: find.byType(Checkbox))
+        .first;
+    await tester.tap(checkbox);
+    await tester.pump();
+    await tester.tap(find.text('批量报工(1)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('批量报工 segment-parent'), findsOneWidget);
+  });
+}
+
+Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
+  await tester.tap(finder);
+  await tester.pump(const Duration(milliseconds: 50));
+  await tester.tap(finder);
+  await tester.pump();
 }
 
 ProductionPlanRepository _repository({VoidCallback? onProgressRead}) {
@@ -230,3 +296,121 @@ ProductionPlanRepository _repository({VoidCallback? onProgressRead}) {
   );
   return ProductionPlanRepository(ApiClient(dio));
 }
+
+ProductionExecutionWorkbenchRepository _workbenchRepository({
+  VoidCallback? onRead,
+  bool reportable = false,
+}) {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (request, handler) {
+        onRead?.call();
+        final data = switch (request.path) {
+          '/production/execution-workbench' => {
+            'items': [_workbenchRootJson()],
+            'page': 1,
+            'size': 50,
+            'total': 1,
+            'totalPages': 1,
+          },
+          '/production/execution-workbench/ANALYSIS/analysis-root-1/work-orders' =>
+            {
+              'items': [
+                _workOrderJson(
+                  segmentId: 'segment-parent',
+                  planId: 'parent-plan-1',
+                  planNo: 'SJ-PARENT',
+                  segmentCode: 'SEG-PARENT',
+                  productName: '父产品',
+                  materialReady: true,
+                  canReport: reportable,
+                ),
+                _workOrderJson(
+                  segmentId: 'segment-child',
+                  planId: 'child-plan-1',
+                  planNo: 'SJ-CHILD',
+                  segmentCode: 'SEG-CHILD',
+                  productName: '自制子件',
+                  materialReady: false,
+                ),
+              ],
+              'page': 1,
+              'size': 30,
+              'total': 2,
+              'totalPages': 1,
+            },
+          _ => <String, dynamic>{},
+        };
+        handler.resolve(
+          Response<dynamic>(
+            requestOptions: request,
+            statusCode: 200,
+            data: data,
+          ),
+        );
+      },
+    ),
+  );
+  return ProductionExecutionWorkbenchRepository(ApiClient(dio));
+}
+
+Map<String, dynamic> _workbenchRootJson() => {
+  'rootType': 'ANALYSIS',
+  'rootId': 'analysis-root-1',
+  'rootLabel': '联合分析 SO-A / SO-B',
+  'status': 'PREPARING',
+  'salesOrderPreview': 'SO-A / SO-B',
+  'salesOrderCount': 2,
+  'workOrderPreview': 'SEG-PARENT / SEG-CHILD',
+  'workOrderCount': 2,
+  'workshopPreview': '装配一车间',
+  'workshopCount': 1,
+  'productCodePreview': 'P-001 / C-001',
+  'productNamePreview': '父产品 / 自制子件',
+  'productColorPreview': '本色',
+  'productCount': 2,
+  'quantitySummary': '件: 计划 15 / 报工 2 / 实收 1',
+  'executionUnitCount': 1,
+  'planCount': 2,
+  'segmentCount': 2,
+  'waitingCount': 1,
+  'readyCount': 1,
+};
+
+Map<String, dynamic> _workOrderJson({
+  required String segmentId,
+  required String planId,
+  required String planNo,
+  required String segmentCode,
+  required String productName,
+  required bool materialReady,
+  bool canReport = false,
+}) => {
+  'segmentId': segmentId,
+  'planId': planId,
+  'planNo': planNo,
+  'segmentCode': segmentCode,
+  'salesOrderNos': 'SO-A',
+  'workshopDepartmentId': 'workshop-1',
+  'workshopName': '装配一车间',
+  'responsibleEmployeeName': '车间负责人',
+  'productCode': materialReady ? 'P-001' : 'C-001',
+  'productName': productName,
+  'productColorName': '本色',
+  'productUnitName': '件',
+  'plannedQty': materialReady ? 10 : 5,
+  'reportedQty': materialReady ? 2 : 0,
+  'remainingReportQty': materialReady ? 8 : 5,
+  'inboundQty': materialReady ? 1 : 0,
+  'segmentStatus': materialReady ? 'READY' : 'WAITING',
+  'materialStatus': materialReady ? 'KIT_READY' : 'KIT_SHORT',
+  'preparationStatus': 'PREPARING',
+  'materialReady': materialReady,
+  'warehouseReady': materialReady,
+  'issued': false,
+  'canReport': canReport,
+  'canBatchReport': canReport,
+  'blockedReason': materialReady ? '仓库尚未完成全部备料出库' : '物料尚未齐套',
+  'lockVersion': 1,
+};

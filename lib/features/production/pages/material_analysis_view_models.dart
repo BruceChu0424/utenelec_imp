@@ -51,6 +51,7 @@ final class _MaterialAnalysisIndexes {
     required this.materialsByProduct,
     required this.groups,
     required this.groupsByLine,
+    required this.childrenByParentNodeKey,
   });
 
   final Map<String, ProductionMaterialAnalysisProduct> productsById;
@@ -58,6 +59,15 @@ final class _MaterialAnalysisIndexes {
   materialsByProduct;
   final List<_MaterialGroup> groups;
   final Map<String, _MaterialGroup> groupsByLine;
+
+  /// (analysisLineId, parentNodeKey) → 直接子节点。nodeKey 只在单个分析项内
+  /// 唯一（V234 唯一键同样是 analysis_item_id + node_key）；若只按 nodeKey
+  /// 建桶，同款 BOM 的多订单行会落进同一大桶，候选查询仍退化成 O(产品²)。
+  final Map<
+    ({String? analysisLineId, String parentNodeKey}),
+    List<ProductionMaterialAnalysisMaterial>
+  >
+  childrenByParentNodeKey;
 }
 
 final class _BomFilterProjection {
@@ -72,38 +82,6 @@ final class _BomFilterProjection {
   final int visibleNodeCount;
 }
 
-sealed class _BomTreeEntry {
-  const _BomTreeEntry();
-}
-
-final class _BomEmptyEntry extends _BomTreeEntry {
-  const _BomEmptyEntry();
-}
-
-final class _BomProductEntry extends _BomTreeEntry {
-  const _BomProductEntry(this.product);
-
-  final ProductionMaterialAnalysisProduct product;
-}
-
-final class _BomOrphanEntry extends _BomTreeEntry {
-  const _BomOrphanEntry();
-}
-
-final class _BomLoadMoreEntry extends _BomTreeEntry {
-  const _BomLoadMoreEntry(this.remainingProducts);
-
-  final int remainingProducts;
-}
-
-final class _BomMaterialEntry extends _BomTreeEntry {
-  const _BomMaterialEntry(this.material, this.group, this.hasChildren);
-
-  final ProductionMaterialAnalysisMaterial material;
-  final _MaterialGroup group;
-  final bool hasChildren;
-}
-
 class _OffTargetWarehousePeg {
   const _OffTargetWarehousePeg({
     required this.materialLabel,
@@ -116,24 +94,6 @@ class _OffTargetWarehousePeg {
   final String warehouseLabel;
   final double qty;
   final String? unitName;
-}
-
-class _HorizontalProgressClipper extends CustomClipper<Rect> {
-  const _HorizontalProgressClipper(this.progress);
-
-  final double progress;
-
-  @override
-  Rect getClip(Size size) => Rect.fromLTWH(
-    0,
-    0,
-    size.width * progress.clamp(0.0, 1.0).toDouble(),
-    size.height,
-  );
-
-  @override
-  bool shouldReclip(_HorizontalProgressClipper oldClipper) =>
-      oldClipper.progress != progress;
 }
 
 class _ProductExecutionStage {

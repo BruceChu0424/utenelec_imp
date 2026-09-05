@@ -46,7 +46,8 @@
   弹出 [UtenContextMenu](UtenContextMenu.md) 自绘小框；弹出前组件自动把该行置为选中态
   （多选模式下该行未勾选则选择集替换为仅该行）。条目在手势触发那一刻构建，可按行数据/
   权限/剪贴板实时决定可用性；受限或无菜单的行用 `canShowRowMenu(item)` 返回 false，不能只靠
-  builder 返回空数组，否则页面级菜单配置仍会给该行留下伪手势。
+  builder 返回空数组，否则页面级菜单配置仍会给该行留下伪手势。选择可用条目后会等待其
+  同步/异步动作完成再清空单选或受控多选；只点外部取消菜单时保留选择。
 - **不占布局的无障碍打开入口**：非 embedded 且该行允许打开时，组件除双击外还提供读屏
   自定义动作“打开详情”；业务工作台可再用 `rowMenuBuilder` 提供右键/长按“打开关联单据”。
 - **受控多选 + 表头三态全选 + 右下悬浮批量动作**：列表页可设 `selectable:true`，组件在首列显示
@@ -58,9 +59,14 @@
   由 `AbsorbPointer` 拦截；表体同时预留底部滚动空间，末行不会被遮挡。
   多选表体整体 `SelectionContainer.disabled`——勾选场景不需要文本复制，也挡住页面级
   SelectionArea（UtenContentContainer 默认包裹）渗入（2026-09-03，准则 §3.4）。
-- **文字框选（2026-09-03 全站口径，准则 §3.4）**：表体自带局部 `SelectionArea`（跨格框选 +
-  复制，页面 region 嵌套时各管各的）；**表头整体 `SelectionContainer.disabled`**——表头有
-  「按住拖拽隐藏列/拖拽调宽」手势，与拖选隔离，且挡住页面级 SelectionArea 渗入。
+- **成功空态保留业务工具条**：主数据与前导分组都为空时仍渲染调用方的 `toolbarActions`
+  (例如空 BOM 的“添加组件”)，再显示空态说明；初始加载和错误态不开放这组写动作，先完成
+  数据确认或重试。
+- **文字框选(2026-09-03 全站口径，准则 §3.4)**：只读表体默认自带局部
+  `SelectionArea`(跨格框选 + 复制，页面 region 嵌套时各管各的)；**表头整体
+  `SelectionContainer.disabled`**——表头有「按住拖拽隐藏列/拖拽调宽」手势，与拖选隔离，
+  且挡住页面级 SelectionArea 渗入。自动刷新或同时具有横向同步、纵向滚动、分页、行手势的
+  重交互大表应传 `enableTextSelection:false`，显式隔离整个表格；这不改变行多选语义。
 - **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。
 - **空/错/加载态**：内置 `UtenEmpty` / loading / 重试。
 - **`toolbarActions`、批量悬浮动作与全屏**：`toolbarActions` 的按钮排在工具条
@@ -77,7 +83,7 @@
 
 ```dart
 MasterDataTableView<T>(
-  columns: <MasterColumnDef<T>>,        // 列定义（key/label/width/value/type/sortable）
+  columns: <MasterColumnDef<T>>,        // 列定义(含可选 cellBuilder)
   items: <T>,                           // 行数据
   facets: {colKey: [MasterFacetBucket]},// 列头 autofilter 桶（后端 facets）
   nullCounts: {colKey: int},            // 各列空值档计数
@@ -88,10 +94,12 @@ MasterDataTableView<T>(
   onSortChange: (colKey?, ascending) {},// 排序回调（colKey=null 取消排序）
   onRowTap: (item) {},                  // 行「打开」操作（列表页=双击触发；embedded=单击）
   onSelectionChanged: (item)?,         // 可选：单击选中行上抛（BOM 据此定"添加组件"默认父级）
+  onSelectionCleared: () {},           // 可选：菜单动作完成后同步清理页面外部单选状态
   isSelected: (item)?,                 // 可选：外部受控选中判定（item 重建场景用，按业务键比较）
   rowMenuBuilder: (item) => [...],     // 可选：行右键/长按菜单条目（UtenContextMenuEntry）
   batchActionsBuilder: (ctx, ids) => [...], // 可选：右下悬浮批量动作；选择摘要仍在表头上方
   selectable: true,                    // 列表页受控多选；embedded/picker/明细表禁止开启
+  enableTextSelection: true,           // 只读表体文字框选；重交互/自动刷新大表可显式 false
   idOf: (item) => item.id,             // 多选业务键；无单一 id 时传稳定复合键
   selectedIds: selectedIds,            // 调用方持有的唯一选中真值
   onSelectedIdsChanged: (next) {},     // 行勾选与表头三态全选统一回交新 Set
@@ -106,7 +114,7 @@ MasterDataTableView<T>(
 )
 ```
 
-`MasterColumnDef<T>`：`key`（与后端 query/排序参数对齐）、`label`（列头）、`width`（**仅作初始参考**；默认按内容自动适配，见 §二，已不直接用于布局）、`value`（单元格取值）、`type`（`text`/`date`/`number`/`money`/`bool`，对齐后端 `ReportColumn.type`）、`sortable`（日期/金额/数量列置 true）。
+`MasterColumnDef<T>`：`key`(与后端 query/排序参数对齐)、`label`(列头)、`width`(**仅作初始参考**；默认按内容自动适配，见 §二，已不直接用于布局)、`value`(文本真值，继续用于列宽测算/排序/稳定行键/无障碍标签回退)、`cellBuilder`(可选自定义单元格；外层仍管列宽、内边距、网格线和选中底色，builder 只管内部内容)、`type`(`text`/`date`/`number`/`money`/`bool`，对齐后端 `ReportColumn.type`)、`sortable`(日期/金额/数量列置 true)、`cellColor`(单元格语义底色，列级；**深色底自动切白字**——`ThemeData.estimateBrightnessForColor` 判定，缺口列传 `colorScheme.error` 即得红底白字，浅色底如 `errorContainer` 半透明保持默认前景色，2026-09-04 起)。
 
 ---
 
@@ -170,8 +178,17 @@ return MasterDataTableView<Map<String, dynamic>>(
 ## 七、实现要点 / 避坑
 
 - **多选只用于列表页**：`selectable:true` 必须同时提供 `idOf` 和 `onSelectedIdsChanged`，且不能与 `embedded:true` 共用。`selectedIds` 是只读输入，回调收到的是复制后的新集合；调用方不得依赖 item 引用相等。表头全选只作用于当前页可勾选行，已有的其他页选择保持不变。
+- **文字框选与业务多选是两个开关**：`selectable` 只控制行复选框；`enableTextSelection`
+  只控制只读表体是否创建局部 `SelectionArea`，默认 true 以保留复制。设置 false 或开启
+  `selectable:true` 时整表使用 `SelectionContainer.disabled`；不要为了关闭文字框选把只读表
+  伪装成可勾选表。
 - **纯展示表不要传空回调**：没有真实详情/源单据可打开时省略 `onRowTap`，禁止用 `onRowTap: (_) {}` 占位；空回调会制造鼠标、选中与读屏都像可操作但实际无响应的假入口。
+- **仅选择也是真交互**：页面只传 `onSelectionChanged`、不传 `onRowTap` 时，整行仍可
+  单击选中，但不暴露“打开详情”的无障碍动作。BOM 将展开/折叠放进树单元格后使用此模式。
 - **单选和多选语义互斥**：多选开启后，`isSelected`、`onSelectionChanged` 和内部单选高亮不再参与选择；单击行 = 切换勾选（与点勾选框等价），双击行 = `onRowTap` 打开详情。已选行双击时，第一次点击虽会即时切换，第二击识别为双击后必须补回勾选，保证打开详情不会让批量/悬浮主操作意外变灰。
+- **右键选择是动作上下文，不是动作完成态**：菜单条目回调结束后组件清空选择；页面另有
+  外部单选动作状态时传 `onSelectionCleared` 同步清理。点外部取消不清选，避免破坏用户
+  右键前已有的多选。异步条目必须返回其 Future，不能在回调里无等待地另起任务。
 - **双击打开不用 `DoubleTapGestureRecognizer`（FM2 防线，勿回退）**：双击判定是 onTap 内的手动时间窗比对（350ms，行键优先 `idOf`、无 idOf 回落全列可见文本——**不能用 `identityHashCode`**：单击选中触发重建后 item 引用已换，如 BOM `_BomRow` 每次 build 重建）。系统双击识别器会在首次点击后 hold 手势竞技场（~300ms）：① 单击高亮被迫延迟；② 拖住 `SelectionArea` 的 TapAndPan 解析，大表拖选+自动滚动时 selection 子树访问已销毁行 → "Cannot get renderObject of inactive element"（FM2 defunct 崩溃，2026-08-12 实测）。手动判定单击立即生效、文本拖选零影响；widget 测试里 `package:clock` 的 fake clock 随 pump 推进，双击用「tap + pump(50ms) + tap」驱动。
 - **`embedded:true` 保留单击直达**：picker/滑窗内明细表的单击语义是「选中这条」而非「打开页面」，不参与单选双开契约（utn_goods_picker 等选择器弹窗双击会严重碍事）。
 - **横滚同步**：表头/表体各一个横向 `ScrollController` + 互听 + `_syncing` 防回环（Flutter 3.44 移除了 `LinkedScrollControllerGroup`）。
@@ -206,7 +223,7 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 ---
 
-**最后更新**：2026-08-17 · `primary` 联动折叠模式接入范围扩大：任务工作台（采购 / 委外 / 仓库，expanded 断点）与采购 / 仓库 / 销售（订货单）单据列表页的表格均传 `primary: true`，配合 `UtenCollapsingHeaderScrollView` 收起顶部指标 / KPI 卡；订单进度查询用 `ListView(primary: true)` 实现同款联动。单据列表页表格经 `UtenListTwoPane` 嵌入 `body`，桌面左筛选侧栏 / 窄屏堆叠形态不受影响。
+**最后更新**：2026-09-04 · 行菜单动作完成后统一清选，纯取消保留选择；成功空态保留业务工具条；`MasterColumnDef.cellBuilder` 支持行内按钮等自定义内容，同时保留 `value` 的数据与无障碍语义。前序 2026-08-17：`primary` 联动折叠模式接入范围扩大。
 此前：2026-08-14 · 新增 `primary` 联动折叠模式（配合 [`UtenCollapsingHeaderScrollView`](UtenCollapsingHeaderScrollView.md)：大屏列表页顶部卡上滑收起、表格内滚；联动模式下 `shrinkWrap` 为 false，默认 / `embedded` 路径仍 true）。货品 / 模具 / 客户 / 供应商 四个分类详情页接入。
 
 **2026-08-13**：批量操作条改为**常驻**（selectable 且配置 `batchActionsBuilder` 时固定显示，不再"选中才出现"），未选中任何行时整条灰色禁用（`AbsorbPointer` 拦截 + Opacity 变淡 + 边框/文字降级中性灰）；生产计划列表页自绘批量条废弃，统一接入 `batchActionsBuilder`，与货品资料等主档页一致。生产物料分析当前仅完成本地/隔离克隆验证，目标库与真实岗位 UAT 仍为 NO-GO。

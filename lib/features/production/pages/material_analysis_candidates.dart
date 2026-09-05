@@ -245,6 +245,11 @@ abstract class _MaterialAnalysisCandidatesState
       context.appWarning('请先选择分析仓库');
       return;
     }
+    final warehouseIds = _warehouseIds.toList()..sort();
+    if (!warehouseIds.contains(warehouseId)) {
+      context.appWarning('参与仓库必须包含主领料仓');
+      return;
+    }
     if (_sources.isEmpty) {
       context.appWarning('请至少选择一个待分析产品');
       return;
@@ -261,6 +266,7 @@ abstract class _MaterialAnalysisCandidatesState
         _analysis?.analysisId ?? widget.seed.analysisId ?? 'NEW',
         _analysis?.version ?? widget.seed.analysisVersion ?? 0,
         warehouseId,
+        warehouseIds.join(','),
         for (final source in canonicalSources)
           '${source.canonicalKey}:${source.requestedQty}:${source.sourceReason ?? ''}',
       ].join('|'),
@@ -277,6 +283,7 @@ abstract class _MaterialAnalysisCandidatesState
             expectedVersion: _analysis?.version ?? widget.seed.analysisVersion,
             analysisFingerprint: _analysis?.fingerprint,
             warehouseId: warehouseId,
+            warehouseIds: warehouseIds,
             idempotencyKey: key,
             sources: canonicalSources,
           );
@@ -590,9 +597,11 @@ abstract class _MaterialAnalysisCandidatesState
                           decimal: true,
                         ),
                         decoration: InputDecoration(
-                          labelText:
-                              _selectedCandidateLabels[entry.key] ?? '所选产品',
-                          helper: const UtenFieldMessage.helper('本次分析数量'),
+                          label: fieldLabel(
+                            _selectedCandidateLabels[entry.key] ?? '所选产品',
+                            Theme.of(sheetContext),
+                            info: '本次分析数量',
+                          ),
                         ),
                       ),
                     );
@@ -713,10 +722,14 @@ abstract class _MaterialAnalysisCandidatesState
                     key: const Key('manual-source-ref'),
                     controller: _manualSourceRef,
                     maxLength: 200,
-                    decoration: const InputDecoration(
-                      labelText: '需求编号 *',
+                    decoration: InputDecoration(
+                      label: fieldLabel(
+                        '需求编号',
+                        theme,
+                        required: true,
+                        info: '同一需求请始终使用同一个编号',
+                      ),
                       hintText: '例：RW-20260808-001',
-                      helper: UtenFieldMessage.helper('同一需求请始终使用同一个编号'),
                     ),
                   ),
                 ),
@@ -839,17 +852,210 @@ abstract class _MaterialAnalysisCandidatesState
 
   Widget _warehouseField() {
     final entries = ref.watch(masterNameServiceProvider).warehouseEntries;
-    return DropdownButtonFormField<String>(
+    final primary = _warehouseId;
+    final primaryName = primary == null ? null : entries[primary];
+    return InkWell(
       key: const Key('material-analysis-warehouse'),
-      initialValue: entries.containsKey(_warehouseId) ? _warehouseId : null,
-      isExpanded: true,
-      decoration: const InputDecoration(labelText: '分析仓库'),
-      items: [
-        for (final entry in entries.entries)
-          DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-      ],
-      onChanged: _busy ? null : _changeWarehouse,
+      onTap: _busy || entries.isEmpty ? null : _pickWarehouses,
+      borderRadius: UtenRadius.smAll,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: '仓库范围',
+          suffixIcon: const Icon(Icons.unfold_more_rounded),
+          enabled: !_busy && entries.isNotEmpty,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              primaryName == null ? '点击选择主领料仓' : '主仓：$primaryName',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              '已勾选 ${_warehouseIds.length} 个仓；其它仓只作可调拨参考',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  Future<void> _pickWarehouses() async {
+    final names = ref.read(masterNameServiceProvider);
+    final entries = names.warehouseEntries;
+    if (entries.isEmpty || _busy) return;
+    // V476：主领料仓/参与仓必须是具体叶子仓（齐套、预留、DRAW 落到具体仓）；
+    // 主仓库（父仓）只进列表当分组说明行，不可勾选。兜底主仓也取第一个叶子仓
+    //（warehouseEntries 按编号排序，第一项恰是主仓 001，直接取会被后端拒绝）。
+    final hierarchy = names.warehouseHierarchy;
+    final parentIds = hierarchy
+        .map((e) => e.parentId)
+        .whereType<String>()
+        .toSet();
+    final leafs = hierarchy.where((e) => !parentIds.contains(e.id)).toList();
+    if (leafs.isEmpty) return;
+    var primary = _warehouseId;
+    final selected = Set<String>.of(_warehouseIds);
+    if (primary == null ||
+        !entries.containsKey(primary) ||
+        parentIds.contains(primary)) {
+      primary = leafs.first.id;
+    }
+    selected.add(primary);
+    final result = await showDialog<({String primary, Set<String> selected})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('选择参与仓与主领料仓'),
+          content: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '主领料仓是齐套、正式预留和 DRAW 的唯一仓库真值。'
+                  '其它勾选仓只显示可调拨量，不会直接提高可生产数量。'
+                  '点击仓库行勾选参与范围，使用右侧单选按钮设置主仓。',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 440),
+                    child: RadioGroup<String>(
+                      groupValue: primary,
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() {
+                          primary = value;
+                          selected.add(value);
+                        });
+                      },
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: hierarchy.length,
+                        itemBuilder: (_, index) {
+                          final entry = hierarchy[index];
+                          // 主仓库（父仓）：分组说明行——仅汇总查询用，不参与分析。
+                          if (parentIds.contains(entry.id)) {
+                            return ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              title: Text(
+                                entry.name,
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                              subtitle: Text(
+                                '主仓库 · 汇总查询用，分析请勾选其子仓库',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                              enabled: false,
+                            );
+                          }
+                          final checked = selected.contains(entry.id);
+                          final isPrimary = primary == entry.id;
+                          return Semantics(
+                            selected: checked,
+                            label:
+                                '${entry.name}，${isPrimary
+                                    ? '主领料仓'
+                                    : checked
+                                    ? '已参与'
+                                    : '未参与'}',
+                            child: ListTile(
+                              minVerticalPadding: UtenSpacing.s8,
+                              contentPadding: const EdgeInsets.only(
+                                left: 24,
+                                right: 16,
+                              ),
+                              leading: Checkbox(
+                                key: ValueKey(
+                                  'material-analysis-warehouse-check-${entry.id}',
+                                ),
+                                value: checked,
+                                onChanged: isPrimary
+                                    ? null
+                                    : (value) => setDialogState(() {
+                                        if (value == true) {
+                                          selected.add(entry.id);
+                                        } else if (selected.length > 1) {
+                                          selected.remove(entry.id);
+                                        }
+                                      }),
+                              ),
+                              title: Text(entry.name),
+                              subtitle: Text(
+                                isPrimary
+                                    ? '主领料仓 · 参与仓不可取消'
+                                    : checked
+                                    ? '参与库存参考；需先调拨到主仓才能齐套'
+                                    : '不参与本次分析参考',
+                              ),
+                              trailing: Radio<String>(
+                                key: ValueKey(
+                                  'material-analysis-warehouse-primary-${entry.id}',
+                                ),
+                                value: entry.id,
+                              ),
+                              onTap: isPrimary
+                                  ? null
+                                  : () => setDialogState(() {
+                                      if (checked) {
+                                        selected.remove(entry.id);
+                                      } else {
+                                        selected.add(entry.id);
+                                      }
+                                    }),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              key: const Key('material-analysis-warehouse-confirm'),
+              onPressed: selected.isNotEmpty && selected.contains(primary)
+                  ? () => Navigator.pop(dialogContext, (
+                      primary: primary!,
+                      selected: Set<String>.of(selected),
+                    ))
+                  : null,
+              child: const Text('确认仓库范围'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    _applyWarehouseSelection(result.primary, result.selected);
   }
 
   List<MasterColumnDef<MaterialAnalysisSalesCandidateLine>>
@@ -1052,8 +1258,11 @@ abstract class _MaterialAnalysisCandidatesState
                       decimal: true,
                     ),
                     decoration: InputDecoration(
-                      labelText: _selectedCandidateLabels[entry.key] ?? '所选产品',
-                      helper: const UtenFieldMessage.helper('本次分析数量'),
+                      label: fieldLabel(
+                        _selectedCandidateLabels[entry.key] ?? '所选产品',
+                        theme,
+                        info: '本次分析数量',
+                      ),
                     ),
                   ),
                 );

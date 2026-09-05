@@ -54,11 +54,10 @@ void main() {
     expect(src.currencyId, 'cny');
   });
 
-  test('clone 不拷上游引用、来源谱系与到货门控', () {
+  test('clone 不拷上游引用、来源谱系与数量门控', () {
     final src = PurchaseGridRow(sourceLocked: true)
       ..upstreamItemId = 'up-1'
       ..maxQty = 10
-      ..approvedQty = 8
       ..sourceDocNo = 'PO-1'
       ..sourceRequestNo = 'REQ-1'
       ..sourceRequestId = 'req-id';
@@ -67,10 +66,16 @@ void main() {
     final c = src.clone();
     expect(c.upstreamItemId, isNull);
     expect(c.maxQty, isNull);
-    expect(c.approvedQty, isNull);
     expect(c.sourceDocNo, isNull);
     expect(c.sourceRequestNo, isNull);
     expect(c.sourceRequestId, isNull);
     expect(c.sourceLocked, isFalse);
+  });
+
+  test('列序契约：数量之后紧跟单位，实际重量列已下线（2026-09-04）', () {
+    final columns = purchaseGridColumns((_) async {});
+    final keys = columns.map((column) => column.key).toList();
+    expect(keys, isNot(contains('weight')));
+    expect(keys.indexOf('unit'), keys.indexOf('qty') + 1);
   });
 }

@@ -1,5 +1,8 @@
 import 'warehouse_iqc_stock_in.dart'
-    show WarehouseIqcStockInConfirmItem, WarehouseIqcStockInReceiptType;
+    show
+        WarehouseInboundAllocation,
+        WarehouseIqcStockInConfirmItem,
+        WarehouseIqcStockInReceiptType;
 
 /// 检查明细行的逐行判定（详情页表格前导图标口径）。
 enum WarehouseQualityLineVerdict {
@@ -348,6 +351,7 @@ class WarehouseQualityReleasedSlice {
     this.releaseNote,
     this.releasedBy,
     this.releasedAt,
+    this.expectedAllocations = const [],
   });
 
   final String passEventId;
@@ -372,6 +376,7 @@ class WarehouseQualityReleasedSlice {
   final String? releaseNote;
   final String? releasedBy;
   final String? releasedAt;
+  final List<WarehouseInboundAllocation> expectedAllocations;
 
   String get goodsLabel => [
     goodsCode,
@@ -406,6 +411,7 @@ class WarehouseQualityReleasedSlice {
         releaseNote: _text(json['releaseNote']),
         releasedBy: _text(json['releasedBy']),
         releasedAt: _text(json['releasedAt']),
+        expectedAllocations: _allocationList(json['expectedAllocations']),
       );
 }
 
@@ -426,6 +432,7 @@ class WarehouseQualityStockInHistoryItem {
     this.weightUnitName,
     this.confirmedBy,
     this.confirmedAt,
+    this.actualAllocations = const [],
   });
 
   final String stockInItemId;
@@ -442,6 +449,7 @@ class WarehouseQualityStockInHistoryItem {
   final String place;
   final String? confirmedBy;
   final String? confirmedAt;
+  final List<WarehouseInboundAllocation> actualAllocations;
 
   String get goodsLabel => [
     goodsCode,
@@ -466,6 +474,7 @@ class WarehouseQualityStockInHistoryItem {
     place: _text(json['place']) ?? '—',
     confirmedBy: _text(json['confirmedBy']),
     confirmedAt: _text(json['confirmedAt']),
+    actualAllocations: _allocationList(json['actualAllocations']),
   );
 }
 
@@ -610,6 +619,7 @@ class WarehouseQualityBatchConfirmEntryResult {
     required this.batchId,
     required this.replayed,
     required this.confirmedCount,
+    this.allocations = const [],
   });
 
   final String receiptType;
@@ -617,6 +627,7 @@ class WarehouseQualityBatchConfirmEntryResult {
   final String batchId;
   final bool replayed;
   final int confirmedCount;
+  final List<WarehouseInboundAllocation> allocations;
 
   factory WarehouseQualityBatchConfirmEntryResult.fromJson(
     Map<String, dynamic> json,
@@ -626,6 +637,7 @@ class WarehouseQualityBatchConfirmEntryResult {
     batchId: _text(json['batchId']) ?? '',
     replayed: json['replayed'] == true,
     confirmedCount: _integer(json['confirmedCount']),
+    allocations: _allocationList(json['allocations']),
   );
 }
 
@@ -667,3 +679,10 @@ Set<String> _stringSet(Object? value) {
   if (value is! List) return const {};
   return {for (final item in value) ?_text(item)};
 }
+
+List<WarehouseInboundAllocation> _allocationList(Object? value) => value is List
+    ? [
+        for (final row in value.whereType<Map<Object?, Object?>>())
+          WarehouseInboundAllocation.fromJson(Map<String, dynamic>.from(row)),
+      ]
+    : const [];

@@ -157,6 +157,12 @@ class DocumentActionPermissionContractTest {
                 "issue", authority("stock_doc:issue"));
         assertGate(type("com.uten.imp.features.stock.StockDocService"),
                 "issue", authority("stock_doc:issue"));
+        String approveAndIssue = authority("stock_doc:approve")
+                + " and " + authority("stock_doc:issue");
+        assertGate(type("com.uten.imp.features.stock.StockDocController"),
+                "approveAndIssue", approveAndIssue);
+        assertGate(type("com.uten.imp.features.stock.StockDocService"),
+                "approveAndIssue", approveAndIssue);
         assertGate(type("com.uten.imp.features.stock.StockDocController"),
                 "reverseIssue", authority("stock_doc:reverse_issue"));
         assertGate(type("com.uten.imp.features.stock.StockDocService"),

@@ -81,7 +81,7 @@ public final class ProductionFinishedArrivalContracts {
         }
     }
 
-    /** 多张报工单一次性汇总登记：一次提交逐单复用同一登记事务（每单一份 FQC）。 */
+    /** 多张报工单一次性汇总登记：每张可提交其待办行的非空子集并逐行创建 FQC。 */
     public record BatchArrivalRegistrationRequest(
             @NotBlank
             @Size(min = 8, max = 128)
@@ -113,6 +113,7 @@ public final class ProductionFinishedArrivalContracts {
     }
 
     public record RegisteredReportView(
+            UUID registrationId,
             UUID reportId,
             String reportNo,
             UUID warehouseId,

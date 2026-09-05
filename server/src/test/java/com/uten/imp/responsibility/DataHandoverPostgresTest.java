@@ -257,13 +257,21 @@ class DataHandoverPostgresTest {
 
         Staff emptySource = staff("zero-a", department, "active", false, true);
         Staff emptyTarget = staff("zero-b", department, "active", false, true);
+        // V471 起主仓库必填（含已删除行），夹具补一个合规仓库。
+        UUID zeroWarehouseId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO warehouses(id, code, name, status)
+                VALUES (?, ?, '交接零影响测试仓', '使用')
+                """, zeroWarehouseId, "WH-ZERO-" + zeroWarehouseId);
         jdbc.update("""
                 INSERT INTO production_material_analyses(
                     id,fingerprint,initial_idempotency_key,maker_id,
+                    warehouse_id,participating_warehouse_ids,
                     is_deleted,deleted_at)
-                VALUES (?,? ,?,?,true,now())
+                VALUES (?,? ,?,?,?,ARRAY[?]::UUID[],true,now())
                 """, UUID.randomUUID(), "a".repeat(64),
-                "deleted-only-" + UUID.randomUUID(), emptySource.employeeId());
+                "deleted-only-" + UUID.randomUUID(), emptySource.employeeId(),
+                zeroWarehouseId, zeroWarehouseId);
         var deletedOnly = handovers.preview(
                 emptySource.employeeId(), emptyTarget.employeeId(),
                 Set.of("production_plan"));

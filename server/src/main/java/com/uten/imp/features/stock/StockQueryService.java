@@ -50,14 +50,40 @@ public class StockQueryService {
     private final EntityManager em;
     private final StockCostMasker costMasker;
 
+    /**
+     * warehouseId → 查询范围（V476：自身+全部未软删后代；叶子仓=精确单仓旧行为）。
+     * 递归 CTE 直查而不注入 master 侧组件——stock→master 是 ArchitectureBoundary
+     * 未放行的新依赖边（ADR-017）。锚点查不到（未知/已软删仓）退化为精确单仓。
+     */
+    private Set<UUID> warehouseScopeOf(UUID warehouseId) {
+        if (warehouseId == null) {
+            return null;
+        }
+        @SuppressWarnings("unchecked")
+        List<UUID> ids = em.createNativeQuery("""
+                WITH RECURSIVE wh AS (
+                    SELECT id FROM warehouses WHERE id = :rootId AND is_deleted = false
+                    UNION ALL
+                    SELECT w.id FROM warehouses w JOIN wh ON w.parent_id = wh.id
+                    WHERE w.is_deleted = false
+                )
+                SELECT id FROM wh
+                """)
+                .setParameter("rootId", warehouseId)
+                .getResultList();
+        return ids.isEmpty() ? Set.of(warehouseId) : Set.copyOf(ids);
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<BalanceRow> balances(UUID warehouseId, UUID goodsId, int page, int size,
                                              String sort, String order) {
+        // V476：选父仓=自身+全部后代聚合；叶子仓为单元素集合，等价旧精确匹配。
+        Set<UUID> warehouseScope = warehouseScopeOf(warehouseId);
         Specification<StockBalance> spec = (Root<StockBalance> root,
                                             jakarta.persistence.criteria.CriteriaQuery<?> q,
                                             CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            if (warehouseId != null) ps.add(cb.equal(root.get("warehouseId"), warehouseId));
+            if (warehouseScope != null) ps.add(root.get("warehouseId").in(warehouseScope));
             if (goodsId != null) ps.add(cb.equal(root.get("goodsId"), goodsId));
             return cb.and(ps.toArray(new Predicate[0]));
         };
@@ -73,11 +99,13 @@ public class StockQueryService {
     public PageResponse<MovementRow> movements(UUID warehouseId, UUID goodsId, Short movementType,
                                                OffsetDateTime dateFrom, OffsetDateTime dateTo,
                                                int page, int size, String sort, String order) {
+        // V476：同 balances——父仓查询按子树聚合。
+        Set<UUID> warehouseScope = warehouseScopeOf(warehouseId);
         Specification<StockMovement> spec = (Root<StockMovement> root,
-                                             jakarta.persistence.criteria.CriteriaQuery<?> q,
-                                             CriteriaBuilder cb) -> {
+                                            jakarta.persistence.criteria.CriteriaQuery<?> q,
+                                            CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            if (warehouseId != null) ps.add(cb.equal(root.get("warehouseId"), warehouseId));
+            if (warehouseScope != null) ps.add(root.get("warehouseId").in(warehouseScope));
             if (goodsId != null) ps.add(cb.equal(root.get("goodsId"), goodsId));
             if (movementType != null) ps.add(cb.equal(root.get("movementType"), movementType));
             if (dateFrom != null) ps.add(cb.greaterThanOrEqualTo(root.get("transactionDate"), dateFrom));
@@ -120,8 +148,9 @@ public class StockQueryService {
      * （避免 native query null 参数类型推断问题，也让执行计划更干净）。
      *
      * @param categoryId 货品分类 id（含全部后代，递归 CTE）；null=全部
-     * @param warehouseId 仓库 id；null=全部（仅 is_accountable 参与核算仓库）
-     * @param includeDefective 是否含不良品仓（仅仓库=全部时生效，默认 true=老系统口径）
+     * @param warehouseId 仓库 id；null=全部（仅 is_accountable 参与核算仓库）；
+     *                    V476 起选父仓=自身+全部子仓聚合（核算/不良仓口径同「全部」）
+     * @param includeDefective 是否含不良品仓（仓库=全部**或父仓聚合**时生效，默认 true=老系统口径）
      * @param keyword 名称/编号/型号/客户型号 模糊；null=不筛
      */
     @Transactional(readOnly = true)
@@ -143,10 +172,22 @@ public class StockQueryService {
         StringBuilder balWhere = new StringBuilder(" WHERE 1=1");
         StringBuilder iqcWhere = new StringBuilder();
         StringBuilder stockInWhere = new StringBuilder();
-        if (warehouseId != null) {
+        // V476：warehouseId 展开成查询范围——叶子仓=精确单仓（旧行为），父仓=子树聚合。
+        Set<UUID> warehouseScope = warehouseScopeOf(warehouseId);
+        if (warehouseScope != null && warehouseScope.size() == 1) {
             balWhere.append(" AND b.warehouse_id = :warehouseId");
             iqcWhere.append(" AND i.warehouse_id = :warehouseId");
             stockInWhere.append(" AND i.warehouse_id = :warehouseId");
+        } else if (warehouseScope != null) {
+            balWhere.append(" AND b.warehouse_id IN (:scopeIds) AND w.is_accountable");
+            iqcWhere.append(" AND i.warehouse_id IN (:scopeIds) AND w.is_accountable");
+            stockInWhere.append(" AND i.warehouse_id IN (:scopeIds) AND w.is_accountable");
+            // 父仓聚合与「全部」同口径：开关关掉则剔除不良品子仓。
+            if (!includeDefective) {
+                balWhere.append(" AND NOT w.is_defective");
+                iqcWhere.append(" AND NOT w.is_defective");
+                stockInWhere.append(" AND NOT w.is_defective");
+            }
         } else {
             // 仓库=全部：只统计参与库存核算的仓库（老库 B_Storage.IsCal=0 口径）。
             balWhere.append(" AND w.is_accountable");
@@ -269,7 +310,12 @@ public class StockQueryService {
                 core + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
         var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + core + ") t");
         for (var q : List.of(dataQ, countQ)) {
-            if (warehouseId != null) q.setParameter("warehouseId", warehouseId);
+            if (warehouseScope != null && warehouseScope.size() == 1) {
+                q.setParameter("warehouseId", warehouseId);
+            }
+            if (warehouseScope != null && warehouseScope.size() > 1) {
+                q.setParameter("scopeIds", warehouseScope);
+            }
             if (categoryId != null) q.setParameter("categoryId", categoryId);
             if (keyword != null && !keyword.isBlank()) q.setParameter("kw", "%" + keyword.trim() + "%");
         }

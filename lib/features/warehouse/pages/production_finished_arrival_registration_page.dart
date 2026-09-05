@@ -22,6 +22,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
@@ -64,6 +65,7 @@ class _ProductionFinishedArrivalRegistrationPageState
   bool _rememberPlaces = true;
   bool _suggestionsLoading = false;
   bool _registrationCompletedThisSession = false;
+  int _removedLineCount = 0;
   int _suggestionGeneration = 0;
   String? _suggestionError;
   String? _rememberError;
@@ -113,6 +115,7 @@ class _ProductionFinishedArrivalRegistrationPageState
       setState(() {
         _detail = detail;
         _warehouseId = detail.warehouseId;
+        _removedLineCount = 0;
         _loading = false;
         _validationError = null;
         _suggestionError = null;
@@ -196,6 +199,21 @@ class _ProductionFinishedArrivalRegistrationPageState
     for (final row in _grid.rows) {
       row.clearAutomaticSuggestion();
     }
+  }
+
+  /// 本页删除是“暂不纳入本批送检”，不删除已审核报工明细。
+  /// V469 后服务端只登记提交的 UUID；移出行保持仓库待登记且不产生 FQC/库存事实。
+  void _removeFromThisRegistration(
+    List<_FinishedArrivalRegistrationGridRow> rows,
+  ) {
+    if (_saving || !_canRegister || rows.isEmpty) return;
+    _grid.removeRows(rows);
+    if (!mounted) return;
+    setState(() {
+      _removedLineCount += rows.length;
+      _validationError = null;
+    });
+    context.appInfo('已从本批送检移出 ${rows.length} 行；报工事实未删除，仍留在待登记送检');
   }
 
   void _resetPlacesForWarehouseChange({required bool warehouseSelected}) {
@@ -344,7 +362,10 @@ class _ProductionFinishedArrivalRegistrationPageState
     try {
       final result = await ref
           .read(productionFinishedInboundTaskRepositoryProvider)
-          .rememberPlaces(widget.reportId);
+          .rememberPlaces(
+            widget.reportId,
+            registrationId: _detail?.registrationId,
+          );
       if (!mounted) return;
       setState(() => _remembering = false);
       final suffix = result.warnings.isEmpty
@@ -479,7 +500,8 @@ class _ProductionFinishedArrivalRegistrationPageState
                                     const SizedBox(width: UtenSpacing.s8),
                                     Expanded(
                                       child: Text(
-                                        '表格可左右滑动；报工数量只读，库位来源会在输入框下方标明。',
+                                        '表格可左右滑动；可勾选或右键/长按明细移出本批送检。'
+                                        '报工数量只读，库位来源会在输入框下方标明。',
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(
                                               color: theme
@@ -510,11 +532,26 @@ class _ProductionFinishedArrivalRegistrationPageState
                             throw UnsupportedError('成品到货登记明细由已审核报工固定带入'),
                         showAddRow: false,
                         showRowDelete: false,
+                        selectable: _canRegister,
+                        selectionEnabled: !_saving && !_remembering,
+                        onRemoveRows: _canRegister
+                            ? _removeFromThisRegistration
+                            : null,
+                        removeRowsActionLabel: '移出本批送检',
+                        removeRowsDialogTitle: '移出本批送检',
+                        removeRowsConfirmLabel: '确认移出',
+                        removeRowsMessageBuilder: (count) =>
+                            '确认从本批送检移出选中的 $count 行？'
+                            '报工明细不会删除，也不会产生 FQC、入库或库存事实；'
+                            '返回任务中心后仍保持待登记送检。',
                         emptyMessage: '该报工单没有可登记明细，请返回任务中心刷新',
                         footer: Padding(
                           padding: const EdgeInsets.all(UtenSpacing.s12),
                           child: Text(
-                            _canRegister
+                            _removedLineCount > 0
+                                ? '已移出 $_removedLineCount 行（仅本批）；未选行仍在待登记送检，'
+                                      '本次只提交表内剩余行。'
+                                : _canRegister
                                 ? _rememberPlaces
                                       ? '将按所选成品仓记住默认库位；不改变历史登记和库存事实。'
                                       : '仅保存本次到货库位快照，不更新以后默认建议。'
@@ -564,7 +601,8 @@ class _ProductionFinishedArrivalRegistrationPageState
                         size: UtenButtonSize.large,
                         icon: Icons.fact_check_outlined,
                         isLoading: _saving,
-                        onPressed: _saving || _suggestionsLoading
+                        onPressed:
+                            _saving || _suggestionsLoading || _grid.isEmpty
                             ? null
                             : _save,
                         onDisabledTap: _suggestionsLoading
@@ -799,9 +837,10 @@ class _ProductionFinishedArrivalRegistrationPageState
               allowClear: false,
               enabled: _canRegister && !_saving,
               value: _warehouseId,
+              // V476：主/子层级（父仓置灰分组，实收落具体仓）；
+              // 孤儿仓值（仓库已删但单据仍引用）仍回显名称。
               items: [
-                for (final entry in names.warehouseEntries.entries)
-                  UtenDropdownItem(value: entry.key, label: entry.value),
+                ...warehouseHierarchyItems(names.warehouseHierarchy),
                 if (_warehouseId != null &&
                     !names.warehouseEntries.containsKey(_warehouseId))
                   UtenDropdownItem(

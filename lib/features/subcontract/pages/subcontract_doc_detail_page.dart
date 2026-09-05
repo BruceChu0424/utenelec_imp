@@ -627,14 +627,7 @@ class _SubcontractDocDetailPageState
                     : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
               ),
             ],
-            if (_cfg.itemHasWeight)
-              MasterColumnDef(
-                key: 'weight',
-                label: '实际重量',
-                width: 90,
-                type: 'number',
-                value: (it) => it.weight?.toStringAsFixed(2),
-              ),
+            // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
             if (_cfg.showReceived)
               MasterColumnDef(
                 key: 'received',

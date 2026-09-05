@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/api_exception.dart';
@@ -779,9 +780,13 @@ class _AccountBalanceReconciliationDialogState
       maxLines: 4,
       maxLength: 500,
       decoration: InputDecoration(
-        labelText: '核对原因 *',
+        label: fieldLabel(
+          '核对原因',
+          Theme.of(context),
+          required: true,
+          info: '原因会写入不可变调整批次和账户流水。',
+        ),
         hintText: '例如：新系统上线前按银行对账单和现金盘点结果重录余额',
-        helper: const UtenFieldMessage.helper('原因会写入不可变调整批次和账户流水。'),
         error: _reasonError == null
             ? null
             : UtenFieldMessage.error(_reasonError!),
@@ -1129,9 +1134,8 @@ class _AccountBalanceReconciliationDialogState
       return InputDecorator(
         decoration: InputDecoration(
           isDense: true,
-          labelText: compact ? '本位币调账额（仅总账）' : null,
-          helper: compact
-              ? const UtenFieldMessage.helper('人民币账户由系统自动取原币差额')
+          label: compact
+              ? fieldLabel('本位币调账额（仅总账）', theme, info: '人民币账户由系统自动取原币差额')
               : null,
         ),
         child: const Text('自动同原币差额'),
@@ -1141,8 +1145,9 @@ class _AccountBalanceReconciliationDialogState
       return InputDecorator(
         decoration: InputDecoration(
           isDense: true,
-          labelText: compact ? '本位币调账额（仅总账）' : null,
-          helper: compact ? const UtenFieldMessage.helper('原币余额不变时无需填写') : null,
+          label: compact
+              ? fieldLabel('本位币调账额（仅总账）', theme, info: '原币余额不变时无需填写')
+              : null,
         ),
         child: Text(
           delta == null ? '先输入有效目标余额' : '原币无变化，无需填写',
@@ -1170,11 +1175,15 @@ class _AccountBalanceReconciliationDialogState
         },
         decoration: InputDecoration(
           isDense: true,
-          labelText: compact
-              ? '本位币调账额（仅总账） *'
-              : '$accountName ${_currencyLabel(account)} 本位币调账额 *',
+          label: fieldLabel(
+            compact
+                ? '本位币调账额（仅总账）'
+                : '$accountName ${_currencyLabel(account)} 本位币调账额',
+            theme,
+            required: true,
+            info: '只用于总账，不改变账户原币余额',
+          ),
           hintText: '财务填写',
-          helper: const UtenFieldMessage.helper('只用于总账，不改变账户原币余额'),
           error: _localDeltaErrors[account.id] == null
               ? null
               : UtenFieldMessage.error(_localDeltaErrors[account.id]!),

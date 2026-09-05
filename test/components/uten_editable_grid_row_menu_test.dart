@@ -4,7 +4,8 @@
 // - 菜单条目与操作条同一套 controller 逻辑：复制选中/粘贴（追加表尾）/
 //   批量粘贴（份数对话框）/在上方插入空行/删除选中（确认弹窗）；
 // - 缓冲为空时粘贴置灰；cloneRow 未提供时不显复制粘贴组；
-// - 只选/任务模式（showAddRow=false）不挂菜单。
+// - 只选/任务模式默认不挂菜单；显式 onRemoveRows 时才提供安全移出菜单/操作条。
+// - 选择可用菜单动作后，等待该动作(含确认弹窗)完成再清空选中；仅点外部取消菜单保留选择。
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,7 @@ class _Row extends EditableGridRow {
   _Row(this.name);
 
   final String name;
+  bool selected = false;
 
   @override
   void dispose() {}
@@ -24,6 +26,10 @@ UtenEditableGrid<_Row> _grid(
   bool showAddRow = true,
   bool selectable = false,
   bool withClone = true,
+  void Function(List<_Row>)? onRemoveRows,
+  bool controlledSelection = false,
+  bool selectionEnabled = true,
+  bool Function(_Row row)? canSelectRow,
 }) {
   return UtenEditableGrid<_Row>(
     controller: c,
@@ -39,6 +45,19 @@ UtenEditableGrid<_Row> _grid(
     cloneRow: withClone ? (r) => _Row(r.name) : null,
     showAddRow: showAddRow,
     selectable: selectable,
+    selectionEnabled: selectionEnabled,
+    canSelectRow: canSelectRow,
+    selectedOf: controlledSelection ? (row) => row.selected : null,
+    onRowSelect: controlledSelection
+        ? (row, next) => row.selected = next
+        : null,
+    onRemoveRows: onRemoveRows,
+    removeRowsActionLabel: onRemoveRows == null ? '删除选中' : '移出本次登记',
+    removeRowsDialogTitle: onRemoveRows == null ? '批量删除' : '移出本次登记',
+    removeRowsConfirmLabel: onRemoveRows == null ? '删除' : '确认移出',
+    removeRowsMessageBuilder: onRemoveRows == null
+        ? null
+        : (count) => '移出 $count 行但不删除来源',
   );
 }
 
@@ -74,6 +93,7 @@ void main() {
     // 关菜单（点外部）。
     await tester.tapAt(const Offset(10, 10));
     await tester.pump();
+    expect(c.isSelected(r2), isTrue);
 
     // 勾选两行后长按其中一行：保留多选，菜单计数为整组（2）。
     c.selectAll();
@@ -111,6 +131,7 @@ void main() {
     await tester.tap(find.text('复制选中 (1)').last);
     await tester.pump();
     expect(c.hasBuffer, isTrue);
+    expect(c.selectedCount, 0);
 
     await tester.longPress(find.text('行1'));
     await tester.pump();
@@ -121,6 +142,7 @@ void main() {
     expect(c[0], same(r1));
     expect(c[1].name, '行1');
     expect(c[1], isNot(same(r1)));
+    expect(c.selectedCount, 0);
   });
 
   testWidgets('批量粘贴：份数对话框一次贴 N 份', (tester) async {
@@ -136,10 +158,12 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('批量粘贴'));
     await tester.pumpAndSettle();
+    expect(c.selectedCount, 1);
     await tester.enterText(find.byType(TextField), '3');
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     expect(c.length, 4); // 1 原行 + 3 份
+    expect(c.selectedCount, 0);
   });
 
   testWidgets('在上方插入空行：新空行落在右键行的下标处', (tester) async {
@@ -155,6 +179,7 @@ void main() {
     expect(c.length, 3);
     expect(c[1].name, '新行');
     expect(c[2].name, '行2');
+    expect(c.selectedCount, 0);
   });
 
   testWidgets('删除选中：确认弹窗确认后才删', (tester) async {
@@ -171,10 +196,20 @@ void main() {
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(c.length, 2);
+    expect(c.selectedCount, 0);
+    expect(find.text('删除选中 (1)'), findsNothing);
 
     await tester.longPress(find.text('行2'));
     await tester.pump();
-    await tester.tap(find.text('删除选中 (1)'));
+    expect(c.selectedCount, 1);
+    expect(find.text('删除选中 (1)'), findsOneWidget);
+    expect(find.text('删除选中 (1)').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('删除选中 (1)').hitTestable());
+    await tester.pump();
+    await tester.pump();
+    expect(c.selectedCount, 1);
+    expect(find.text('删除选中 (1)'), findsNothing);
+    expect(find.text('批量删除'), findsOneWidget);
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
@@ -204,5 +239,141 @@ void main() {
     await tester.longPress(find.text('行1'));
     await tester.pump();
     expect(find.text('删除选中 (1)'), findsNothing);
+  });
+
+  testWidgets('任务模式显式移出：复选批量与右键单行共用确认，完成后清空选择', (tester) async {
+    final r1 = _Row('待登记1');
+    final r2 = _Row('待登记2');
+    final c = UtenEditableGridController<_Row>(initial: [r1, r2]);
+    await tester.pumpWidget(
+      _wrap(
+        _grid(
+          c,
+          showAddRow: false,
+          selectable: true,
+          onRemoveRows: c.removeRows,
+        ),
+      ),
+    );
+
+    expect(find.text('移出本次登记 (0)'), findsOneWidget);
+    await _rightClick(tester, find.text('待登记2'));
+    expect(find.text('移出本次登记 (1)').last, findsOneWidget);
+    await tester.tap(find.text('移出本次登记 (1)').last);
+    await tester.pumpAndSettle();
+    expect(find.text('移出 1 行但不删除来源'), findsOneWidget);
+    await tester.tap(find.text('确认移出'));
+    await tester.pumpAndSettle();
+
+    expect(c.rows.map((row) => row.name), ['待登记1']);
+    expect(c.selectedCount, 0);
+  });
+
+  testWidgets('任务模式勾选多行可从操作条一次移出', (tester) async {
+    final r1 = _Row('待登记1');
+    final r2 = _Row('待登记2');
+    final c = UtenEditableGridController<_Row>(initial: [r1, r2]);
+    await tester.pumpWidget(
+      _wrap(
+        _grid(
+          c,
+          showAddRow: false,
+          selectable: true,
+          onRemoveRows: c.removeRows,
+        ),
+      ),
+    );
+
+    c.selectAll();
+    await tester.pump();
+    await tester.tap(find.text('移出本次登记 (2)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认移出'));
+    await tester.pumpAndSettle();
+
+    expect(c.rows, isEmpty);
+    expect(c.selectedCount, 0);
+  });
+
+  testWidgets('任务移出会清掉已离开 controller 的外部受控选择快照', (tester) async {
+    final row = _Row('受控待登记');
+    final c = UtenEditableGridController<_Row>(initial: [row]);
+    await tester.pumpWidget(
+      _wrap(
+        _grid(
+          c,
+          showAddRow: false,
+          selectable: true,
+          controlledSelection: true,
+          onRemoveRows: c.removeRows,
+        ),
+      ),
+    );
+
+    await _rightClick(tester, find.text('受控待登记'));
+    expect(row.selected, isTrue);
+    await tester.tap(find.text('移出本次登记 (1)').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认移出'));
+    await tester.pumpAndSettle();
+
+    expect(c.rows, isEmpty);
+    expect(row.selected, isFalse);
+  });
+
+  testWidgets('任务右键与复选共用 canSelectRow 门控', (tester) async {
+    final blocked = _Row('已登记');
+    final pending = _Row('待登记');
+    final c = UtenEditableGridController<_Row>(initial: [blocked, pending]);
+    await tester.pumpWidget(
+      _wrap(
+        _grid(
+          c,
+          showAddRow: false,
+          selectable: true,
+          onRemoveRows: c.removeRows,
+          canSelectRow: (row) => identical(row, pending),
+        ),
+      ),
+    );
+
+    await _rightClick(tester, find.text('已登记'));
+    expect(c.selectedCount, 0);
+    expect(find.text('移出本次登记 (1)'), findsNothing);
+
+    await _rightClick(tester, find.text('待登记'));
+    expect(c.isSelected(pending), isTrue);
+    expect(find.text('移出本次登记 (1)').last, findsOneWidget);
+  });
+
+  testWidgets('selectionEnabled=false 保留布局但禁用复选批量动作和右键菜单', (tester) async {
+    final row = _Row('保存中的明细');
+    final c = UtenEditableGridController<_Row>(initial: [row])..selectAll();
+    await tester.pumpWidget(
+      _wrap(
+        _grid(
+          c,
+          showAddRow: false,
+          selectable: true,
+          onRemoveRows: c.removeRows,
+          selectionEnabled: false,
+        ),
+      ),
+    );
+
+    final checkboxes = tester.widgetList<Checkbox>(find.byType(Checkbox));
+    expect(checkboxes, isNotEmpty);
+    expect(checkboxes.every((checkbox) => checkbox.onChanged == null), isTrue);
+    final removeButton = tester.widget<TextButton>(
+      find.ancestor(
+        of: find.text('移出本次登记 (1)'),
+        matching: find.byType(TextButton),
+      ),
+    );
+    expect(removeButton.onPressed, isNull);
+
+    await _rightClick(tester, find.text('保存中的明细'));
+    expect(find.text('移出本次登记 (1)'), findsOneWidget);
+    expect(find.text('确认移出'), findsNothing);
   });
 }

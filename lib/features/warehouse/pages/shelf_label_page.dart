@@ -27,6 +27,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../stock/repositories/stock_query_repository.dart';
 
 class ShelfLabelPage extends ConsumerStatefulWidget {
@@ -161,20 +162,13 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                   children: [
                     SizedBox(
                       width: 200,
-                      child: DropdownButtonFormField<String?>(
-                        initialValue: _warehouseId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          labelText: '抬头仓库(打印标题)', // TODO(l10n): 补 arb
-                        ),
-                        items: [
-                          for (final e in names.warehouseEntries.entries)
-                            DropdownMenuItem<String?>(
-                              value: e.key,
-                              child: Text(e.value),
-                            ),
-                        ],
+                      // V476 层级下拉。此处「抬头仓库」只是打印标题文本——清单本身
+                      // 不按仓过滤（按库行/关键字），选主仓库=全厂口径抬头，父仓可选。
+                      child: WarehouseHierarchyDropdown(
+                        entries: names.warehouseHierarchy,
+                        value: _warehouseId,
+                        labelText: '抬头仓库(打印标题)', // TODO(l10n): 补 arb
+                        allowParent: true,
                         onChanged: (v) => setState(() => _warehouseId = v),
                       ),
                     ),

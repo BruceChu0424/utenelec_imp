@@ -161,10 +161,6 @@ class _ProductionPlanDetailPageState
       _hasPermission(Perm.productionExecutionAssign);
   bool get _canReleaseExecutionDefer =>
       _hasPermission(Perm.productionExecutionReleaseDefer);
-  bool get _canDispatchExecution =>
-      _hasPermission(Perm.productionExecutionDispatch);
-  bool get _canStartExecution => _hasPermission(Perm.productionExecutionStart);
-
   bool get _canReport {
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.productionDailyReportView) &&
@@ -232,7 +228,8 @@ class _ProductionPlanDetailPageState
 
   Future<void> _approve() async {
     const confirm =
-        '审核会按关联物料分析重新校验本计划的子层级物料：有子层级时，只有整套齐全才会形成执行子计划与领料单；'
+        '审核即下达执行：有子层级时按当前物料齐套情况生成执行段——未齐套的段为「物料不齐套 · 备料中」'
+        '（零预留、暂无领料单，子料到仓验收合格后自动齐套并生成领料单）；'
         '无下层物料时按直接自制下达，不生成生产领料单。审核与执行下达在同一事务完成，'
         '任一步失败都会整体回滚。确认继续？';
     await _doAction(
@@ -668,7 +665,7 @@ class _ProductionPlanDetailPageState
                     ),
                     subtitle: Text(
                       segment.status == 'READY'
-                          ? '已齐套待派工/发料 · 已按该执行段锁料 · 点击查看详情'
+                          ? '物料已齐套 · 已按该工单锁料，等待仓库备料/出库 · 点击查看详情'
                           : '待料或人工暂缓 · 当前零锁料 · 点击查看详情',
                     ),
                     trailing: const Icon(Icons.chevron_right_rounded),
@@ -1072,8 +1069,6 @@ class _ProductionPlanDetailPageState
                       planId: widget.id,
                       canAssign: _canAssignExecution,
                       canReleaseDefer: _canReleaseExecutionDefer,
-                      canDispatch: _canDispatchExecution,
-                      canStart: _canStartExecution,
                       canReport: _canReport,
                       initialSegmentId: _focusedExecutionSegmentId,
                       onChanged: _loadSubplans,

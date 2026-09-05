@@ -386,8 +386,10 @@ class SubcontractMakeDelegationRouteGuardPostgresTest {
                 statement.setString(2, warehouseCode);
                 statement.executeUpdate();
             }
+            // replica 模式禁用触发器，V471 的 participating 自动回填不会执行，
+            // CHECK 约束仍生效——夹具必须显式带上参与仓库集合。
             try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO production_material_analyses(id, warehouse_id, status, fingerprint, initial_idempotency_key, maker_id, created_by, updated_by) VALUES (?,?,'ACTIVE',?,?,?,?,?)")) {
+                    "INSERT INTO production_material_analyses(id, warehouse_id, status, fingerprint, initial_idempotency_key, maker_id, created_by, updated_by, participating_warehouse_ids) VALUES (?,?,'ACTIVE',?,?,?,?,?, ARRAY[?]::UUID[])")) {
                 statement.setObject(1, analysisId);
                 statement.setObject(2, warehouseId);
                 statement.setString(3, fingerprint);
@@ -395,6 +397,7 @@ class SubcontractMakeDelegationRouteGuardPostgresTest {
                 statement.setObject(5, employeeId);
                 statement.setObject(6, userId);
                 statement.setObject(7, userId);
+                statement.setObject(8, warehouseId);
                 statement.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement(

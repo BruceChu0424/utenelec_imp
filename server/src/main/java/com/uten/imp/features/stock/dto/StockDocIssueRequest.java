@@ -14,8 +14,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * DRAW 领料单分轮出库/反出库请求。
- * 每行：itemId + 本次数量（出库须 ≤ qty−issued_qty；反出库须 ≤ issued_qty）。
+ * DRAW 领料单分轮出库/取消出库请求（取消沿兼容 reverse API）。
+ * 每行：itemId + 本次数量（出库须 ≤ qty−issued_qty；取消出库须 ≤ issued_qty）。
  */
 @Getter
 @Setter
@@ -29,6 +29,10 @@ public class StockDocIssueRequest {
     @NotNull
     @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
     private List<Line> lines;
+
+    /** Required by the cancellation endpoint; ignored for a forward issue. */
+    @Size(max = 1000)
+    private String reason;
 
     @Getter
     @Setter

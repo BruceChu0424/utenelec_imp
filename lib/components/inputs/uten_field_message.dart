@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/uten_colors.dart';
+
 /// A compact message that discloses its full text only when it really overflows.
 ///
 /// The visible text stays on [maxLines]. When it no longer fits, an anchored
@@ -161,16 +163,10 @@ class _UtenOverflowMessageState extends State<UtenOverflowMessage> {
   }
 }
 
-enum UtenFieldMessageKind { helper, error }
+enum UtenFieldMessageKind { error, autofill }
 
-/// Nullable adapters keep call sites compact while ensuring that every
+/// Nullable adapter keeps call sites compact while ensuring that every
 /// InputDecoration uses the same overflow and accessibility behavior.
-Widget? utenFieldHelper(String? message, {int maxLines = 1}) {
-  return message == null
-      ? null
-      : UtenFieldMessage.helper(message, maxLines: maxLines);
-}
-
 Widget? utenFieldError(String? message, {int maxLines = 1}) {
   return message == null
       ? null
@@ -182,14 +178,16 @@ Widget utenTextFieldErrorBuilder(BuildContext context, String errorText) {
   return UtenFieldMessage.error(errorText);
 }
 
-/// Semantic helper/error text for use with [InputDecoration.helper] and
-/// [InputDecoration.error].
+/// Semantic error/autofill text for use with [InputDecoration.error] and
+/// [InputDecoration.helper]. 字段静态说明已全站收进 fieldLabel 的 ⓘ 悬停提示
+/// （required_field_decoration.dart），此处只承载实时状态（校验错误/预填提醒）。
 class UtenFieldMessage extends StatelessWidget {
-  const UtenFieldMessage.helper(this.message, {super.key, this.maxLines = 1})
-    : kind = UtenFieldMessageKind.helper;
-
   const UtenFieldMessage.error(this.message, {super.key, this.maxLines = 1})
     : kind = UtenFieldMessageKind.error;
+
+  /// 预填默认值提醒（黄框字段的下方说明）：warning 文字色，非错误不抢焦点。
+  const UtenFieldMessage.autofill(this.message, {super.key, this.maxLines = 1})
+    : kind = UtenFieldMessageKind.autofill;
 
   final String message;
   final int maxLines;
@@ -199,12 +197,15 @@ class UtenFieldMessage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isError = kind == UtenFieldMessageKind.error;
+    final isAutofill = kind == UtenFieldMessageKind.autofill;
     final themedStyle = isError
         ? theme.inputDecorationTheme.errorStyle
         : theme.inputDecorationTheme.helperStyle;
     final fallback = theme.textTheme.bodySmall ?? const TextStyle(fontSize: 12);
     final semanticColor = isError
         ? theme.colorScheme.error
+        : isAutofill
+        ? UtenColors.warningText
         : theme.colorScheme.onSurfaceVariant;
     final style = (themedStyle ?? fallback).copyWith(
       color: themedStyle?.color ?? semanticColor,

@@ -468,12 +468,15 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                   errorBuilder: utenTextFieldErrorBuilder,
                   controller: _actionRouteController,
                   maxLength: 500,
-                  decoration: const InputDecoration(
-                    labelText: '办理页面(可选)',
+                  decoration: InputDecoration(
+                    label: fieldLabel(
+                      '办理页面(可选)',
+                      theme,
+                      info: '仅支持应用内以 / 开头的路径',
+                    ),
                     hintText: '例如 /production/schedule',
-                    prefixIcon: Icon(Icons.link_rounded),
-                    border: OutlineInputBorder(),
-                    helper: UtenFieldMessage.helper('仅支持应用内以 / 开头的路径'),
+                    prefixIcon: const Icon(Icons.link_rounded),
+                    border: const OutlineInputBorder(),
                   ),
                   validator: (value) {
                     final route = value?.trim() ?? '';

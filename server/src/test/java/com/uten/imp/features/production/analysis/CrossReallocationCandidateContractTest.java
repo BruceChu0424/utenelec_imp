@@ -66,6 +66,7 @@ class CrossReallocationCandidateContractTest {
                 String.class, int.class, int.class);
         assertThat(method.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo(
-                        "hasAuthority('production_material_analysis:cross_reallocate')");
+                        "hasAuthority('production_material_analysis:view') and "
+                                + "hasAuthority('production_material_analysis:cross_reallocate')");
     }
 }

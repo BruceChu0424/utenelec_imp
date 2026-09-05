@@ -15,6 +15,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../repositories/sales_repository.dart';
 
 /// 弹出批量发货面板；返回生成的出货单张数（null 表示取消）。
@@ -220,10 +221,8 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
                   label: '出货仓',
                   hintText: '审核前可补',
                   value: _warehouseId,
-                  items: [
-                    for (final e in names.warehouseEntries.entries)
-                      UtenDropdownItem(value: e.key, label: e.value),
-                  ],
+                  // V476：主/子层级（父仓置灰分组，出货落具体仓）。
+                  items: warehouseHierarchyItems(names.warehouseHierarchy),
                   onChanged: (v) => setState(() => _warehouseId = v),
                 ),
               ),

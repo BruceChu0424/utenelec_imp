@@ -79,6 +79,9 @@ public class PurchaseReturnService {
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final DocNumberService docNumberService;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
     private final ProcurementArrivalControlPort arrivalControl;
@@ -350,6 +353,10 @@ public class PurchaseReturnService {
         }
         r.setBillDate(req.getBillDate());
         r.setSupplierId(header.supplierId());
+        // V476 运营红线：退回出库必须落到具体叶子仓。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+        }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(header.currencyId());
         r.setExchangeRate(header.exchangeRate());

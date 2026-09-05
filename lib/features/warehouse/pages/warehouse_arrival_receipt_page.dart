@@ -19,7 +19,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -42,19 +41,30 @@ import '../../purchase/config/purchase_doc_config.dart';
 import '../../purchase/models/purchase_doc.dart';
 import '../../subcontract/config/subcontract_doc_config.dart';
 import '../../subcontract/models/subcontract_doc.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/models/inbound_allocation.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../widgets/warehouse_inbound_allocation_view.dart';
 
 class WarehouseArrivalReceiptPage extends ConsumerStatefulWidget {
-  const WarehouseArrivalReceiptPage({super.key, this.prefill});
+  const WarehouseArrivalReceiptPage({
+    super.key,
+    this.prefill,
+    this.canRegister,
+  });
 
   /// 预计到货任务带入的预填；null = 无来源直达（不允许，需从任务中心进入）。
   final ProcurementReceiptPrefill? prefill;
+
+  /// 仅供独立预览/测试覆盖；正式路由为空时从当前登录权限实时推导。
+  final bool? canRegister;
 
   @override
   ConsumerState<WarehouseArrivalReceiptPage> createState() =>
@@ -77,6 +87,7 @@ class _WarehouseArrivalReceiptPageState
   String? _receiverId;
   bool _loading = false;
   bool _saving = false;
+  int _removedLineCount = 0;
 
   final UtenEditableGridController<_ArrivalReceiptLine> _lineGrid =
       UtenEditableGridController<_ArrivalReceiptLine>();
@@ -86,12 +97,80 @@ class _WarehouseArrivalReceiptPageState
   bool get _isPurchase =>
       widget.prefill?.orderType == ProcurementInboundOrderType.purchase;
 
+  bool get _canRegisterNow {
+    final override = widget.canRegister;
+    if (override != null) return override;
+    if (ref.read(isSuperAdminProvider)) return true;
+    final permissions = ref.read(currentPermissionsProvider);
+    return permissions.contains(Perm.warehouseInboundView) &&
+        permissions.contains(Perm.warehouseInboundStockIn);
+  }
+
   /// 建议仓（物料分析目标仓）存在时预填；仓库可按实际到货情况更换，
   /// 改离建议仓时必须明示：合格库存不会计入原物料分析的目标仓备料。
   String? get _suggestedWarehouseId {
     final id = widget.prefill?.suggestedWarehouseId;
     return id == null || id.isEmpty ? null : id;
   }
+
+  String? get _selectedWarehouseName {
+    final id = _warehouseId;
+    if (id == null) return null;
+    final value = ref.read(masterNameServiceProvider).warehouse(id);
+    return value == '—' ? null : value;
+  }
+
+  double _lineInputBaseQty(_ArrivalReceiptLine line) {
+    final input = double.tryParse(line.qty.text.trim()) ?? 0;
+    final rate = line.item.unitRate.toDouble();
+    return input * (rate.isFinite && rate > 0 ? rate : 1);
+  }
+
+  List<WarehouseInboundAllocation> _lineProjectedAllocations(
+    _ArrivalReceiptLine line,
+  ) => warehouseInboundAllocationForWarehouse(
+    line.item.expectedAllocations,
+    double.tryParse(line.qty.text.trim()) ?? 0,
+    actualWarehouseId: _warehouseId,
+    actualWarehouseName: _selectedWarehouseName,
+    unitRate: line.item.unitRate.toDouble(),
+  );
+
+  String _lineBaseUnitLabel(_ArrivalReceiptLine line) =>
+      line.item.baseUnitName?.trim().isNotEmpty == true
+      ? line.item.baseUnitName!.trim()
+      : line.item.expectedAllocations
+                .map((item) => item.baseUnitName)
+                .whereType<String>()
+                .where((name) => name.trim().isNotEmpty)
+                .firstOrNull ??
+            '基本量';
+
+  String _lineTargetWarehouseText(_ArrivalReceiptLine line) {
+    final names = <String>{
+      for (final allocation in line.item.expectedAllocations)
+        if (!allocation.isPublic) ?allocation.targetWarehouseName,
+    }..removeWhere((name) => name.trim().isEmpty);
+    if (names.isEmpty) {
+      names.addAll(
+        line.item.expectedAllocations
+            .expand((item) => item.intendedWarehouseNames)
+            .where((name) => name.trim().isNotEmpty),
+      );
+    }
+    return names.isEmpty ? '无特定主仓' : names.join(' / ');
+  }
+
+  WarehouseInboundAllocationSection _lineAllocationSection(
+    _ArrivalReceiptLine line,
+  ) => WarehouseInboundAllocationSection(
+    id: line.item.orderItemId,
+    goodsLabel: '${line.item.goodsName}(${line.item.goodsCode})',
+    quantity: _lineInputBaseQty(line),
+    unitName: _lineBaseUnitLabel(line),
+    sourceOrderNo: widget.prefill?.orderBillNo,
+    allocations: _lineProjectedAllocations(line),
+  );
 
   @override
   void initState() {
@@ -127,12 +206,23 @@ class _WarehouseArrivalReceiptPageState
       for (final item in prefill.items)
         _ArrivalReceiptLine(item, onChanged: _onLineChanged),
     ]);
+    _removedLineCount = 0;
     await _preloadEmployees([prefill.purchaserId, meId]);
     if (mounted) setState(() => _loading = false);
   }
 
   void _onLineChanged() {
     if (mounted) setState(() {});
+  }
+
+  /// 仅从当前登记请求移出，不调用删除 API、不改来源订货或到货累计。
+  /// 返回任务中心后，这些行仍按服务端剩余量显示为“待登记送检”。
+  void _removeFromThisRegistration(List<_ArrivalReceiptLine> rows) {
+    if (_saving || !_canRegisterNow || rows.isEmpty) return;
+    _lineGrid.removeRows(rows);
+    if (!mounted) return;
+    setState(() => _removedLineCount += rows.length);
+    context.appInfo('已从本次登记移出 ${rows.length} 行；未写入数据库，返回任务中心后仍可继续登记送检');
   }
 
   /// 并发按 id 拉人员名字（picker 的 initial 显示用）。失败静默。
@@ -158,6 +248,10 @@ class _WarehouseArrivalReceiptPageState
   }
 
   Future<void> _save() async {
+    if (!_canRegisterNow) {
+      context.appError('当前账号没有登记并送检权限，请返回任务中心刷新权限');
+      return;
+    }
     final prefill = widget.prefill;
     if (prefill == null) return;
     if (_warehouseId == null || _warehouseId!.isEmpty) {
@@ -203,20 +297,28 @@ class _WarehouseArrivalReceiptPageState
         // 不带 price：价格对仓库不可见，收货审核时服务端按订货明细权威回填金额。
       });
     }
-    // 一步完成 = 登记保存 + 送检审核（责任随本确认框记录，服务端以登录员工为准）。
-    // 币种/汇率/结算方式不在请求里：服务端按来源订货单权威回填，仓库全程不接触采购字段。
-    final confirmed = await showUtenReviewerConfirmDialog(
+    // 一步完成 = 登记保存 + 送检审核。预计去向已按员工本次实收、
+    // unitRate 和所选实际仓重算；真正归属仍由后续 IQC 入库事务决定。
+    final projectedSections = [
+      for (final line in _lines) _lineAllocationSection(line),
+    ];
+    final hasCrossWarehouse = projectedSections.any(
+      (section) => section.allocations.any((item) => item.isCrossWarehouse),
+    );
+    final confirmed = await showWarehouseInboundAllocationConfirmDialog(
       context,
       title: '登记并送检',
       actionLabel: '登记送检',
-      confirmLabel: '确认登记送检',
-      message:
+      confirmLabel: hasCrossWarehouse ? '确认跨仓登记送检' : '确认登记送检',
+      sections: projectedSections,
+      description:
           '确认后按本次实收数量登记到货并直接送品质部待检(IQC)：'
           '检验合格后转仓库待入库任务，仓库确认实物与库位后库存才增加；'
+          '${hasCrossWarehouse ? '红色跨仓部分只是预计，将不绑定原计划并按实际仓公共入库，请重点复核；' : ''}'
           '实到超过财务批准量时系统自动隔离并通知财务审核组，'
-          '不会入库、不会生成应付。单价按订货单自动带入，无需填写。',
+          '不会入库、不会生成应付。最终预定归属以 IQC 合格后仓库确认入库事务为准。',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     final body = <String, dynamic>{
       // 页面生命周期内固定；响应丢失后的重试必须复用，不能再造一张收货单。
       'idempotencyKey': _arrivalIdempotencyKey,
@@ -294,6 +396,16 @@ class _WarehouseArrivalReceiptPageState
   Widget build(BuildContext context) {
     final prefill = widget.prefill;
     final theme = Theme.of(context);
+    final permissionSnapshot = widget.canRegister == null
+        ? ref.watch(currentPermissionsProvider)
+        : const <String>{};
+    final isAdmin =
+        widget.canRegister == null && ref.watch(isSuperAdminProvider);
+    final canRegister =
+        widget.canRegister ??
+        (isAdmin ||
+            (permissionSnapshot.contains(Perm.warehouseInboundView) &&
+                permissionSnapshot.contains(Perm.warehouseInboundStockIn)));
     return Scaffold(
       appBar: UtenAppBar(
         title: prefill == null
@@ -312,11 +424,13 @@ class _WarehouseArrivalReceiptPageState
             : _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
             : AbsorbPointer(
-                absorbing: _saving,
-                child: _buildForm(context, theme, prefill),
+                absorbing: _saving || !canRegister,
+                child: _buildForm(context, theme, prefill, canRegister),
               ),
       ),
-      bottomNavigationBar: prefill == null ? null : _buildBottomBar(theme),
+      bottomNavigationBar: prefill == null
+          ? null
+          : _buildBottomBar(theme, canRegister),
     );
   }
 
@@ -344,6 +458,7 @@ class _WarehouseArrivalReceiptPageState
     BuildContext context,
     ThemeData theme,
     ProcurementReceiptPrefill prefill,
+    bool canRegister,
   ) {
     final names = ref.watch(masterNameServiceProvider);
     return UtenContentContainer(
@@ -380,13 +495,16 @@ class _WarehouseArrivalReceiptPageState
                             filled: true,
                           ),
                         ),
-                        _dropdown(
-                          '入库仓库',
-                          _warehouseId,
-                          names.warehouseEntries,
-                          (v) => setState(() => _warehouseId = v),
-                          fieldKey: const Key('warehouse-arrival-warehouse'),
+                        // V476：仓库下拉带主/子层级（父仓置灰分组，收货落具体仓）。
+                        UtenDropdownField(
+                          key: const Key('warehouse-arrival-warehouse'),
+                          label: '入库仓库',
+                          value: _warehouseId,
                           required: true,
+                          items: warehouseHierarchyItems(
+                            names.warehouseHierarchy,
+                          ),
+                          onChanged: (v) => setState(() => _warehouseId = v),
                         ),
                         // 采购员（采购收货必选；委外进仓单主档无此列，不录）。
                         if (_isPurchase)
@@ -457,6 +575,7 @@ class _WarehouseArrivalReceiptPageState
               ),
             ),
             const SizedBox(height: UtenSpacing.s12),
+            ..._allocationWarehouseNotices(theme),
             Text(
               '明细(${_lines.length} 行)',
               style: theme.textTheme.titleSmall?.copyWith(
@@ -478,7 +597,8 @@ class _WarehouseArrivalReceiptPageState
                           const SizedBox(width: UtenSpacing.s8),
                           Expanded(
                             child: Text(
-                              '表格可左右滑动；数量、实际重量、库位、系列和物料编码可直接编辑。',
+                              '表格可左右滑动；可勾选或右键/长按明细移出本次登记，'
+                              '数量、实际重量、库位、系列和物料编码可直接编辑。',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
@@ -496,6 +616,15 @@ class _WarehouseArrivalReceiptPageState
               createBlankRow: () => throw UnsupportedError('到货任务明细由订货单固定带入'),
               showAddRow: false,
               showRowDelete: false,
+              selectable: canRegister,
+              selectionEnabled: canRegister && !_saving,
+              onRemoveRows: canRegister ? _removeFromThisRegistration : null,
+              removeRowsActionLabel: '移出本次登记',
+              removeRowsDialogTitle: '移出本次登记',
+              removeRowsConfirmLabel: '确认移出',
+              removeRowsMessageBuilder: (count) =>
+                  '确认从本次登记移出选中的 $count 行？'
+                  '该操作不删除订货明细、不改变库存或历史；返回任务中心后仍保持待登记送检。',
               emptyMessage: '该任务没有可登记明细，请返回任务中心刷新',
               footer: Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -505,7 +634,9 @@ class _WarehouseArrivalReceiptPageState
                   UtenSpacing.s12,
                 ),
                 child: Text(
-                  '库位、系列、编码由货品资料带出，可直接修改；送检后会学习回写，下次自动带出。',
+                  _removedLineCount == 0
+                      ? '库位、系列、编码由货品资料带出，可直接修改；送检后会学习回写，下次自动带出。'
+                      : '已移出 $_removedLineCount 行（仅本页临时选择）；这些来源行未写收货、未写库存，仍在待登记送检。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -517,6 +648,77 @@ class _WarehouseArrivalReceiptPageState
         ),
       ),
     );
+  }
+
+  List<Widget> _allocationWarehouseNotices(ThemeData theme) {
+    final targetNames = <String>{
+      for (final line in _lines)
+        for (final allocation in line.item.expectedAllocations)
+          if (!allocation.isPublic) ?allocation.targetWarehouseName,
+    }.where((name) => name.trim().isNotEmpty).toList(growable: false);
+    final crossLineCount = _warehouseId == null
+        ? 0
+        : _lines
+              .where(
+                (line) => _lineProjectedAllocations(
+                  line,
+                ).any((allocation) => allocation.isCrossWarehouse),
+              )
+              .length;
+    if (targetNames.length <= 1 && crossLineCount == 0) return const [];
+    final cross = crossLineCount > 0;
+    final color = cross ? theme.colorScheme.error : theme.colorScheme.tertiary;
+    final title = targetNames.length > 1
+        ? '本任务包含 ${targetNames.length} 个预定主仓：${targetNames.join(' / ')}'
+        : '当前输入含跨仓预定';
+    final detail = cross
+        ? '当前有 $crossLineCount 行包含跨仓部分。可把本次实收改小到所选仓预定量，'
+              '或勾选/右键移出整行，按实际到仓分批登记；若实物确实到当前仓，'
+              '确认后跨仓部分预计转公共库存，最终由 IQC 入库事务复核。'
+        : '请按实际到仓分批登记；可改小本次实收，或勾选/右键移出本次未到的明细。';
+    return [
+      Semantics(
+        container: true,
+        liveRegion: cross,
+        label: '$title。$detail',
+        child: Container(
+          key: const Key('warehouse-arrival-allocation-warehouse-notice'),
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: UtenRadius.mdAll,
+            border: Border.all(color: color.withValues(alpha: 0.55)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                cross ? Icons.warning_amber_rounded : Icons.call_split_rounded,
+                color: color,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(detail, style: theme.textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: UtenSpacing.s12),
+    ];
   }
 
   Widget _arrivalBanner(ThemeData theme, ProcurementReceiptPrefill prefill) {
@@ -640,6 +842,43 @@ class _WarehouseArrivalReceiptPageState
       ),
     ),
     EditableGridColumn(
+      key: 'targetWarehouse',
+      label: '预定主仓',
+      width: 150,
+      textOf: _lineTargetWarehouseText,
+      cellBuilder: (context, line) => Text(
+        _lineTargetWarehouseText(line),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    ),
+    EditableGridColumn(
+      key: 'expectedAllocation',
+      label: '预计去向(基本量)',
+      width: 240,
+      textOf: (line) => warehouseInboundAllocationSummaryText(
+        _lineProjectedAllocations(line),
+        (value) => '${procurementQty(value)} ${_lineBaseUnitLabel(line)}',
+      ),
+      listenableOf: (line) => line.qty,
+      cellBuilder: (context, line) => ValueListenableBuilder<TextEditingValue>(
+        valueListenable: line.qty,
+        builder: (context, _, _) {
+          final allocations = _lineProjectedAllocations(line);
+          return WarehouseInboundAllocationSummary(
+            allocations: allocations,
+            qtyText: (value) =>
+                '${procurementQty(value)} ${_lineBaseUnitLabel(line)}',
+            onTap: () => showWarehouseInboundAllocationDetails(
+              context,
+              title: '预计去向 · ${line.item.goodsName}',
+              sections: [_lineAllocationSection(line)],
+            ),
+          );
+        },
+      ),
+    ),
+    EditableGridColumn(
       key: 'weight',
       label: '实际重量',
       width: 130,
@@ -705,7 +944,7 @@ class _WarehouseArrivalReceiptPageState
     ),
   ];
 
-  Widget _buildBottomBar(ThemeData theme) {
+  Widget _buildBottomBar(ThemeData theme, bool canRegister) {
     final totals = measurementTotalsText(
       _lines.map(
         (line) => MeasuredAmount(
@@ -744,13 +983,16 @@ class _WarehouseArrivalReceiptPageState
                 UtenButton(
                   isLoading: _saving,
                   icon: Icons.fact_check_outlined,
-                  onPressed: _saving ? null : _save,
+                  onPressed: !canRegister || _saving || _lines.isEmpty
+                      ? null
+                      : _save,
                   child: const Text('登记并送检'),
                 ),
               ],
             );
             if (constraints.maxWidth < 680) {
               return Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   summary,
@@ -813,31 +1055,6 @@ class _WarehouseArrivalReceiptPageState
         if (item != null) _empCache[item.id] = item;
         onChanged(item?.id);
       },
-    );
-  }
-
-  Widget _dropdown(
-    String label,
-    String? value,
-    Map<String, String> entries,
-    ValueChanged<String?> onChanged, {
-    bool required = false,
-    bool enabled = true,
-    Key? fieldKey,
-  }) {
-    return UtenDropdownField(
-      key: fieldKey,
-      label: label,
-      value: value,
-      required: required,
-      enabled: enabled,
-      items: [
-        for (final e in entries.entries)
-          UtenDropdownItem(value: e.key, label: e.value),
-        if (value != null && value.isNotEmpty && !entries.containsKey(value))
-          UtenDropdownItem(value: value, label: value),
-      ],
-      onChanged: onChanged,
     );
   }
 }

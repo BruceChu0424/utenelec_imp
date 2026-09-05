@@ -27,6 +27,9 @@ public class WarehouseSaveRequest {
     private UUID workshopDepartmentId;
     @JsonIgnore
     private boolean workshopDepartmentReferenceSpecified;
+    private UUID parentId;             // 上级仓库（V476；null=独立顶层）
+    @JsonIgnore
+    private boolean parentReferenceSpecified;
     private String status;           // 使用/禁用
 
     @JsonSetter("workshopDepartmentId")
@@ -38,5 +41,16 @@ public class WarehouseSaveRequest {
     /** Omitted on update means preserve; explicit JSON null means clear. */
     public boolean hasWorkshopDepartmentReference() {
         return workshopDepartmentReferenceSpecified;
+    }
+
+    @JsonSetter("parentId")
+    public void setParentId(UUID parentId) {
+        this.parentId = parentId;
+        this.parentReferenceSpecified = true;
+    }
+
+    /** 同车间引用口径：更新时省略=保留，显式 null=清空回独立顶层。 */
+    public boolean hasParentReference() {
+        return parentReferenceSpecified;
     }
 }

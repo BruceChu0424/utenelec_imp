@@ -55,12 +55,14 @@ class WorkbenchModuleArea extends ConsumerWidget {
       return requiredAll.every(perms.contains);
     }
 
-    // 每组过滤出可见卡片
+    // 每组过滤出可见卡片。comingSoon 占位卡没有路由与守卫（requiredAnyPermFor=null
+    // 意味着全员可见），与「无码页面不外露」口径不符——占位仅超管可见，接入真实
+    // 路由与守卫后随 visible() 正常放行。
     final itemsOf = {
       for (final g in _allGroups)
         g.key: [
           for (final it in g.items)
-            if (visible(it.location)) it,
+            if (it.comingSoon ? isSuper : visible(it.location)) it,
         ],
     };
 
@@ -337,6 +339,12 @@ const _allGroups = <_ModuleGroup>[
     title: '生产部',
     color: UtenColors.warning,
     items: [
+      _ModuleItem(
+        icon: Icons.precision_manufacturing_outlined,
+        label: '车间生产任务',
+        location: RouteName.productionWorkshopTasks,
+        badge: WorkbenchBadgeKind.productionWorkshop,
+      ),
       // 旧流水线看板/产量录入/产量统计（mock 数据）已下线，收敛为生产管理 hub 单卡。
       // 徽标 = 待排产订单行数（已审订单未排产缺口），与生产调度列表同源。
       _ModuleItem(

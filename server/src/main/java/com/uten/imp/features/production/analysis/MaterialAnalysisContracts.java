@@ -45,9 +45,22 @@ public final class MaterialAnalysisContracts {
             Long version,
             @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
             @NotNull UUID warehouseId,
+            @Size(max = 100) List<@NotNull UUID> warehouseIds,
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
             @NotEmpty @Size(max = RequestLimits.DOCUMENT_LINES)
             @JsonAlias("sources") List<@Valid PreviewItem> items) {
+        /** Old clients and internal callers send only the primary warehouse. */
+        public PreviewRequest(
+                UUID analysisId,
+                Long version,
+                String fingerprint,
+                UUID warehouseId,
+                String idempotencyKey,
+                List<PreviewItem> items) {
+            this(analysisId, version, fingerprint, warehouseId,
+                    warehouseId == null ? List.of() : List.of(warehouseId),
+                    idempotencyKey, items);
+        }
     }
 
     public record PreviewItem(
@@ -107,7 +120,9 @@ public final class MaterialAnalysisContracts {
     /**
      * 本次提交的指定数量（缺省 = 剩余缺口全量提交）。
      * actionGroupKey 与 materialLineId 二选一；服务端按操作组解析，
-     * BUY/SUBCONTRACT 数量不得超过该组「缺口 − 在途任务」的实时余量；
+     * qty is exact demand and must not exceed the live gap after open supply.
+     * Optional publicExtraQty is a separate public replenishment slice and never
+     * increases the action allocation or the origin analysis entitlement.
      * MAKE 在显式 delegated_qty 落地前必须等于全部实时余量，正式计划批量
      * 由 child 创建后的 PlanQuantity 单独确认。
      */
@@ -117,7 +132,24 @@ public final class MaterialAnalysisContracts {
             @NotNull @DecimalMin(value = "0")
             @Digits(integer = 14, fraction = 4) BigDecimal qty,
             @DecimalMin(value = "0") @Digits(integer = 14, fraction = 4)
-            BigDecimal safetyReplenishmentQty) {
+            BigDecimal safetyReplenishmentQty,
+            @DecimalMin(value = "0") @Digits(integer = 14, fraction = 4)
+            BigDecimal publicExtraQty) {
+
+        public SupplyQuantityInput(
+                String actionGroupKey, UUID materialLineId, BigDecimal qty,
+                BigDecimal safetyReplenishmentQty) {
+            this(actionGroupKey, materialLineId, qty,
+                    safetyReplenishmentQty, BigDecimal.ZERO);
+        }
+    }
+
+    public record ClaimSharedFutureRequest(
+            @NotNull @JsonAlias("expectedVersion") Long version,
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
+            @NotBlank @Size(min = 8, max = 128) String idempotencyKey,
+            @NotEmpty @Size(max = RequestLimits.DOCUMENT_LINES)
+            List<@NotBlank @Size(max = 64) String> actionGroupKeys) {
     }
 
     public record PlanPreviewRequest(
@@ -289,6 +321,7 @@ public final class MaterialAnalysisContracts {
             String fingerprint,
             String analysisFingerprint,
             UUID warehouseId,
+            List<UUID> warehouseIds,
             OffsetDateTime analyzedAt,
             List<ProductView> products,
             List<MaterialView> flatMaterials,
@@ -324,6 +357,9 @@ public final class MaterialAnalysisContracts {
             BigDecimal approvedQty,
             BigDecimal remainingQty,
             int allocationPriority,
+            boolean canSchedule,
+            BigDecimal maxSchedulableQty,
+            String scheduleBlockedReason,
             BigDecimal readyNowQty,
             BigDecimal readyByDateQty,
             BigDecimal readyStartQty,
@@ -423,7 +459,27 @@ public final class MaterialAnalysisContracts {
             BigDecimal priorityFulfilledQty,
             List<CrossReallocationRef> crossReallocationRefs,
             List<WarehouseBreakdown> warehouseBreakdown,
-            List<DownstreamReference> downstreamReferences) {
+            List<DownstreamReference> downstreamReferences,
+            BigDecimal publicSurplusApprovedInboundQty,
+            BigDecimal publicSurplusRemainingQty,
+            BigDecimal sharedFutureClaimedQty,
+            BigDecimal additionalSupplyRecommendedQty,
+            BigDecimal selectedWarehousesAvailableQty,
+            BigDecimal selectedOtherWarehouseTransferableQty,
+            LocalDate publicSurplusExpectedDate,
+            List<SharedFutureSupplyRef> sharedFutureSupplyRefs) {
+    }
+
+    public record SharedFutureSupplyRef(
+            String route,
+            BigDecimal approvedInboundQty,
+            BigDecimal availableToClaimQty,
+            LocalDate expectedDate,
+            UUID sourceActionId,
+            String documentType,
+            UUID documentId,
+            String documentNo,
+            boolean sourceIsCurrentAnalysis) {
     }
 
     public record WarehouseBreakdown(
@@ -436,14 +492,18 @@ public final class MaterialAnalysisContracts {
             BigDecimal ownPeggedQty,
             BigDecimal publicAvailableQty,
             BigDecimal openSafetySupplyQty,
-            BigDecimal safetyReplenishmentGapQty) {
+            BigDecimal safetyReplenishmentGapQty,
+            BigDecimal publicSurplusApprovedInboundQty,
+            BigDecimal publicSurplusRemainingQty,
+            LocalDate publicSurplusExpectedDate) {
     }
 
     public record WarehouseView(
             UUID warehouseId,
             String warehouseCode,
             String warehouseName,
-            boolean selected) {
+            boolean selected,
+            boolean primary) {
     }
 
     public record DownstreamReference(
@@ -513,7 +573,11 @@ public final class MaterialAnalysisContracts {
             LocalDate needDate,
             String documentType,
             UUID documentId,
-            String documentNo) {
+            String documentNo,
+            BigDecimal publicSurplusQty,
+            UUID publicSurplusExternalItemId,
+            String operationType,
+            UUID claimSourceActionId) {
     }
 
     public record PlanPreview(
@@ -536,7 +600,10 @@ public final class MaterialAnalysisContracts {
             BigDecimal readyNowQty,
             BigDecimal selectedQty,
             boolean canGenerate,
-            String reason) {
+            String reason,
+            boolean canSchedule,
+            BigDecimal maxSchedulableQty,
+            String scheduleBlockedReason) {
     }
 
     public record PlanDraftPreview(

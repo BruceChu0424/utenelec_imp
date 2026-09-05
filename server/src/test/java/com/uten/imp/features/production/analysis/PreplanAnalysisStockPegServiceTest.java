@@ -139,8 +139,14 @@ class PreplanAnalysisStockPegServiceTest {
         UUID goodsId = UUID.randomUUID();
         UUID colorId = UUID.randomUUID();
         UUID externalItemId = UUID.randomUUID();
+        // V474 锚点行 12 列：goods/color/order_item/external_item + 预留列 +
+        // order_id + 基本量与 exact/shared 预算（0 占位：本用例 claimants 为空，
+        // 预算只做形状存在，不进入分摊）。
         when(anchor.getResultList()).thenReturn(List.<Object[]>of(
-                new Object[]{goodsId, colorId, UUID.randomUUID(), externalItemId}));
+                new Object[]{goodsId, colorId, UUID.randomUUID(), externalItemId,
+                        0, null, 0, UUID.randomUUID(),
+                        BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO}));
         when(analysisLock.getResultList()).thenReturn(List.of(UUID.randomUUID()));
         when(claimants.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {

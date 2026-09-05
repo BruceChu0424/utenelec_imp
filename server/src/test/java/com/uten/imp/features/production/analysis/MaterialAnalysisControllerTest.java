@@ -89,6 +89,7 @@ class MaterialAnalysisControllerTest {
                 MaterialAnalysisContracts.PreviewRequest.class);
         String previewGuard = preview.getAnnotation(PreAuthorize.class).value();
         assertThat(previewGuard)
+                .contains("production_material_analysis:view")
                 .contains("#request.analysisId == null")
                 .contains("production_material_analysis:create")
                 .contains("#request.analysisId != null")
@@ -101,6 +102,30 @@ class MaterialAnalysisControllerTest {
                 MaterialAnalysisContracts.CancelRequest.class);
         assertThat(cancel.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo(
-                        "hasAuthority('production_material_analysis:cancel')");
+                        "hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:cancel')");
+    }
+
+    @Test
+    void routeMemoryCrossCandidatesAndSharedFutureRequireViewPlusAction()
+            throws Exception {
+        Method lastRoutes = MaterialAnalysisController.class.getDeclaredMethod(
+                "lastRoutes", String.class);
+        assertThat(lastRoutes.getAnnotation(PreAuthorize.class).value())
+                .contains("production_material_analysis:view")
+                .contains("production_material_analysis:route");
+
+        Method crossCandidates = MaterialAnalysisController.class.getDeclaredMethod(
+                "crossReallocationCandidates", UUID.class, UUID.class,
+                String.class, int.class, int.class);
+        assertThat(crossCandidates.getAnnotation(PreAuthorize.class).value())
+                .contains("production_material_analysis:view")
+                .contains("production_material_analysis:cross_reallocate");
+
+        Method claim = MaterialAnalysisController.class.getDeclaredMethod(
+                "claimSharedFuture", UUID.class,
+                MaterialAnalysisContracts.ClaimSharedFutureRequest.class);
+        assertThat(claim.getAnnotation(PreAuthorize.class).value())
+                .contains("production_material_analysis:view")
+                .contains("production_material_analysis:claim_shared_future");
     }
 }

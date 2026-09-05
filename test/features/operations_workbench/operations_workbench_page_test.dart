@@ -226,6 +226,102 @@ void main() {
     },
   );
 
+  testWidgets(
+    'order-stage segment offers no checkboxes or batch generate action',
+    (tester) async {
+      // 已进入订货/收货阶段的行（生产上唯一可见形态：已生成的订货单）不能
+      // 再「生成采购订货单」（补货走原订单，V466 收口）——这些段不渲染
+      // 勾选与悬浮按钮，避免用户勾选后对着永远点不动的按钮报障。
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      const orderStageTask = OperationsWorkbenchTask(
+        taskId: 'order-doc-1',
+        packageId: null,
+        planId: null,
+        planNo: 'PP-001',
+        warehouseName: '原材料仓',
+        goodsCode: '',
+        goodsName: '',
+        spec: '',
+        colorName: '',
+        unitName: '',
+        supplyRoute: 'PURCHASE',
+        requiredQty: 0,
+        allocatedQty: 0,
+        fulfilledQty: 0,
+        supplyPeggedQty: 0,
+        openQty: 0,
+        taskStatus: 'FINANCE_APPROVED',
+        needDate: '2026-08-01',
+        expectedDate: null,
+        exceptionCode: null,
+        updatedAt: '2026-07-31T10:00:00+08:00',
+        actionDocument: OperationsActionDocument(
+          id: 'order-1',
+          docType: 'PURCHASE_ORDER',
+          number: 'PO-order-1',
+          path: '/purchase/orders/order-1',
+          canView: true,
+          canEdit: false,
+          status: '1',
+        ),
+        actionDocItemId: null,
+        actionDocumentRestricted: false,
+        goodsCount: 8,
+        openLineCount: 8,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: _FakeGateway(
+                const OperationsWorkbenchData(
+                  department: OperationsWorkbenchDepartment.purchase,
+                  summary: OperationsWorkbenchSummary(
+                    totalTasks: 1,
+                    overdueTasks: 0,
+                    openTasks: 1,
+                    openQty: 0,
+                    statusCounts: {'FINANCE_APPROVED': 1},
+                  ),
+                  items: [orderStageTask],
+                  page: 1,
+                  size: 20,
+                  total: 1,
+                  totalPages: 1,
+                  capabilities: OperationsWorkbenchCapabilities(
+                    canCreatePurchaseOrder: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('财务已通过'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('8 种物料 · 8 行'), findsOneWidget);
+      expect(
+        find.byKey(const Key('operations-workbench-floating-primary-action')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('operations-workbench-selection-bar')),
+        findsNothing,
+      );
+      expect(find.byType(Checkbox), findsNothing);
+      expect(find.text('所选任务已进入采购订单或收货阶段'), findsNothing);
+    },
+  );
+
   testWidgets('refresh disables an enabled floating create action', (
     tester,
   ) async {

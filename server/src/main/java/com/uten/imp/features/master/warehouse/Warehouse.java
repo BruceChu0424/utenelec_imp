@@ -59,6 +59,13 @@ public class Warehouse extends SoftDeletableEntity {
     @Column(name = "workshop_department_id")
     private UUID workshopDepartmentId;
 
+    /**
+     * 上级仓库（V476 主/子层级）：null=独立顶层。父仓仅作查询聚合与下拉分组，
+     * 单据/收发存仍落到具体仓库；保存时服务端校验防环（见 WarehouseService）。
+     */
+    @Column(name = "parent_id")
+    private UUID parentId;
+
     private String status;      // Status（使用/禁用）
 
     /** 单据迁移/运行时自动补录标记。 */

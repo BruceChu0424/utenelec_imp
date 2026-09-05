@@ -19,6 +19,7 @@ import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../production/models/production_material_analysis.dart';
 import '../../production/repositories/production_repository.dart';
@@ -233,6 +234,7 @@ class _SubcontractPreparationPageState
       context.appError('没有可选择的前置自制目标仓，请先维护仓库主数据');
       return null;
     }
+    final hierarchy = ref.read(mn.masterNameServiceProvider).warehouseHierarchy;
     String? selected;
     return showDialog<String>(
       context: context,
@@ -247,18 +249,12 @@ class _SubcontractPreparationPageState
               children: [
                 const Text('目标仓会冻结到本任务。后续领料、报工、FQC、成品实收入仓和委外出仓必须沿用同一仓库。'),
                 const SizedBox(height: UtenSpacing.s12),
-                DropdownButtonFormField<String>(
+                // V476：主/子层级（父仓置灰分组，目标仓必须是具体仓）。
+                WarehouseHierarchyDropdown(
                   key: const Key('subcontract-preparation-warehouse'),
-                  initialValue: selected,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '目标仓库(必选)'),
-                  items: [
-                    for (final entry in entries.entries)
-                      DropdownMenuItem(
-                        value: entry.key,
-                        child: Text(entry.value),
-                      ),
-                  ],
+                  entries: hierarchy,
+                  value: selected,
+                  labelText: '目标仓库(必选)',
                   onChanged: (value) => setDialogState(() => selected = value),
                 ),
               ],

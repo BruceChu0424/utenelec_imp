@@ -72,6 +72,9 @@ public class SubcontractMaterialReturnService {
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final TxSessionVars tx;
     private final EntityManager em;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
@@ -297,6 +300,10 @@ public class SubcontractMaterialReturnService {
         }
         r.setBillDate(req.getBillDate());
         r.setSupplierId(req.getSupplierId());
+        // V476 运营红线：委外退料入仓必须落到具体叶子仓。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+        }
         r.setWarehouseId(req.getWarehouseId());
         var operator = nameResolver.resolveForWrite(
                 req.getWorkerId(), req.getOperatorLegacyId(), req.getOperatorName(), "经办人");

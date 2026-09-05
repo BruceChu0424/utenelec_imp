@@ -46,6 +46,30 @@ class UtenEmployeePickerItem {
 typedef UtenEmployeePickerLoader =
     Future<List<UtenEmployeePickerItem>> Function(String? keyword);
 
+/// 直接拉出人员选择面板（宽屏右侧滑入 / 窄屏底部抽屉），不经过表单字段壳。
+/// 供表格单元格等非表单场景点开即选；返回 null = 用户取消。
+Future<UtenEmployeePickerItem?> showUtenEmployeePickerPanel(
+  BuildContext context, {
+  required UtenEmployeePickerLoader loader,
+  String title = '选择员工',
+  String? selectedId,
+  String? departmentName,
+  String emptyMessage = '未找到匹配的人员',
+  String? emptyDescription,
+}) {
+  return showUtenAdaptivePanel<UtenEmployeePickerItem>(
+    context: context,
+    builder: (_) => _EmployeePickerSheet(
+      loader: loader,
+      title: title,
+      selectedId: selectedId,
+      departmentName: departmentName,
+      emptyMessage: emptyMessage,
+      emptyDescription: emptyDescription,
+    ),
+  );
+}
+
 class UtenEmployeePicker extends StatefulWidget {
   const UtenEmployeePicker({
     super.key,

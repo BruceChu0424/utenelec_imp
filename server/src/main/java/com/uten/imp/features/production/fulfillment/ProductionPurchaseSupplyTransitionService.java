@@ -712,7 +712,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                     || decimal(allocation[11]).signum() > 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "采购收货已生成的生产领料单存在发料或占用消耗，必须先反出库");
+                        "采购收货已生成的生产领料单存在发料或占用消耗，必须先取消出库");
             }
         }
         for (Map.Entry<UUID, BigDecimal> entry

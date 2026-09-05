@@ -100,7 +100,6 @@ class PermissionDelegationPolicyTest {
             "finance:view:all",
             "payroll:view:all",
             "payroll:export",
-            "viewcontext:scoped",
             "dashboard:finance-sensitive:view"
     })
     void highRiskCodesAreNeverContextuallyDelegable(String code) {

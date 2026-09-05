@@ -273,7 +273,8 @@ class AuditTriggerCoverageMigrationContractTest {
                      Map.entry("preplan_subcontract_make_task_batches", 458),
                      Map.entry("employee_secondary_departments", 459),
                      Map.entry("purchase_order_item_sources", 463),
-                     Map.entry("subcontract_order_item_sources", 463));
+                     Map.entry("subcontract_order_item_sources", 463),
+                     Map.entry("preplan_public_supply_events", 474));
 
     /** Business tables repaired by a later narrow forward audit migration. */
     private static final Map<String, Integer> POST_SWEEP_FORWARD_AUDIT_TABLES =

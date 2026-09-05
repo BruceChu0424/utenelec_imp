@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -364,8 +365,11 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
                 signed: true,
               ),
               decoration: InputDecoration(
-                labelText: '低余额警戒线',
-                helper: const UtenFieldMessage.helper('余额低于该值时标记预警；留空表示清除警戒线。'),
+                label: fieldLabel(
+                  '低余额警戒线',
+                  Theme.of(dialogContext),
+                  info: '余额低于该值时标记预警；留空表示清除警戒线。',
+                ),
                 error: utenFieldError(errorMessage),
               ),
             ),

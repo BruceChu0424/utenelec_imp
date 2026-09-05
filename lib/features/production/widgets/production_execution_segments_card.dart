@@ -16,18 +16,18 @@ import '../models/production_execution_planning.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
 
-/// Confirmed execution segments and their operational state transitions.
+/// Confirmed execution segments and their operational state.
 ///
-/// Responsive execution cards expose the legal action for each segment.
-/// Only fully-issued dispatched segments offer a 48x48 batch-start checkbox.
+/// New work no longer exposes separate dispatch/start commands. A segment is
+/// assigned when the plan is scheduled, stays in preparation until the exact
+/// DRAW is fully issued, and the first report atomically records production
+/// start on the server. Legacy DISPATCHED rows remain readable.
 class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
   const ProductionExecutionSegmentsCard({
     super.key,
     required this.planId,
     required this.canAssign,
     required this.canReleaseDefer,
-    required this.canDispatch,
-    required this.canStart,
     required this.canReport,
     this.initialSegmentId,
     this.onChanged,
@@ -36,8 +36,6 @@ class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
   final String planId;
   final bool canAssign;
   final bool canReleaseDefer;
-  final bool canDispatch;
-  final bool canStart;
   final bool canReport;
   final String? initialSegmentId;
   final Future<void> Function()? onChanged;
@@ -55,9 +53,7 @@ class _ProductionExecutionSegmentsCardState
   String? _error;
   bool _loading = false;
   bool _busy = false;
-  bool _batchStarting = false;
   bool _detailOpening = false;
-  final Set<String> _selectedStartIds = <String>{};
 
   @override
   void initState() {
@@ -75,7 +71,6 @@ class _ProductionExecutionSegmentsCardState
       _loading = false;
       _selectedId = widget.initialSegmentId;
       _handledInitialSegmentId = null;
-      _selectedStartIds.clear();
       WidgetsBinding.instance.addPostFrameCallback((_) => _load());
       return;
     }
@@ -100,13 +95,6 @@ class _ProductionExecutionSegmentsCardState
       setState(() {
         _segments = result;
         _error = null;
-        final startableIds = result
-            .where(_isStartSelectable)
-            .map((segment) => segment.id)
-            .toSet();
-        _selectedStartIds.removeWhere(
-          (segmentId) => !startableIds.contains(segmentId),
-        );
         if (_selectedId != null &&
             !result.any((segment) => segment.id == _selectedId)) {
           _selectedId = null;
@@ -159,7 +147,7 @@ class _ProductionExecutionSegmentsCardState
 
   Future<void> _openSegment(ProductionExecutionSegmentView segment) async {
     if (!mounted || _detailOpening) return;
-    if (_busy || _batchStarting) {
+    if (_busy) {
       context.appWarning('正在处理，请稍候', force: true);
       return;
     }
@@ -185,22 +173,12 @@ class _ProductionExecutionSegmentsCardState
     ProductionExecutionSegmentView segment,
     _SegmentAction action,
   ) async {
-    if (_batchStarting) {
-      context.appWarning('正在批量开工，请稍候', force: true);
-      return;
-    }
     switch (action) {
       case _SegmentAction.assign:
         await _assign(segment);
         break;
       case _SegmentAction.releaseDefer:
         await _releaseDefer(segment);
-        break;
-      case _SegmentAction.dispatch:
-        await _transition(segment, 'dispatch');
-        break;
-      case _SegmentAction.start:
-        await _transition(segment, 'start');
         break;
       case _SegmentAction.report:
         await _openReport(segment);
@@ -209,7 +187,7 @@ class _ProductionExecutionSegmentsCardState
   }
 
   Future<void> _openReport(ProductionExecutionSegmentView segment) async {
-    if (_busy || _batchStarting) {
+    if (_busy) {
       context.appWarning('正在处理，请稍候', force: true);
       return;
     }
@@ -236,8 +214,6 @@ class _ProductionExecutionSegmentsCardState
       segment: segment,
       canAssign: widget.canAssign,
       canReleaseDefer: widget.canReleaseDefer,
-      canDispatch: widget.canDispatch,
-      canStart: widget.canStart,
       canReport: widget.canReport,
     );
     if (context.breakpoint.isCompact) {
@@ -291,6 +267,9 @@ class _ProductionExecutionSegmentsCardState
               .where((item) => item.id == workshopId)
               .firstOrNull;
           final teams = workshop?.children ?? const <DepartmentNode>[];
+          final currentWorkshopMissing = workshopId != null && workshop == null;
+          final currentTeamMissing =
+              teamId != null && !teams.any((item) => item.id == teamId);
 
           Future<void> pickDate(bool isBegin) async {
             final now = DateTime.now();
@@ -325,6 +304,13 @@ class _ProductionExecutionSegmentsCardState
                       decoration: const InputDecoration(labelText: '生产车间'),
                       items: [
                         const DropdownMenuItem(value: '', child: Text('待分配')),
+                        if (currentWorkshopMissing)
+                          DropdownMenuItem(
+                            value: workshopId,
+                            child: Text(
+                              '${segment.workshopName?.isNotEmpty == true ? segment.workshopName! : '当前车间'}（当前记录）',
+                            ),
+                          ),
                         for (final item in workshops)
                           DropdownMenuItem(
                             value: item.id,
@@ -347,6 +333,13 @@ class _ProductionExecutionSegmentsCardState
                       decoration: const InputDecoration(labelText: '生产班组'),
                       items: [
                         const DropdownMenuItem(value: '', child: Text('待分配')),
+                        if (currentTeamMissing)
+                          DropdownMenuItem(
+                            value: teamId,
+                            child: Text(
+                              '${segment.teamName?.isNotEmpty == true ? segment.teamName! : '当前班组'}（当前记录）',
+                            ),
+                          ),
                         for (final item in teams)
                           DropdownMenuItem(
                             value: item.id,
@@ -473,8 +466,8 @@ class _ProductionExecutionSegmentsCardState
       builder: (ctx) => AlertDialog(
         title: const Text('解除人工暂缓'),
         content: const Text(
-          '系统会立即重新检查整套物料：已满足时转为已齐套待派工，'
-          '仍有缺口时保持待料并在后续到货后自动转产。确认继续？',
+          '系统会立即重新检查整套物料：已满足时转为物料齐套并进入备料，'
+          '仍有缺口时保持待料并在后续到货后自动推进。确认继续？',
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -493,10 +486,9 @@ class _ProductionExecutionSegmentsCardState
     await _runCommand(
       () => ref
           .read(productionPlanRepositoryProvider)
-          .transitionExecutionSegment(
+          .releaseDeferredExecutionSegment(
             widget.planId,
             segment.id,
-            action: 'release-defer',
             expectedVersion: segment.lockVersion,
             idempotencyKey: businessIdempotencyKey(
               'production-segment-release-defer',
@@ -507,72 +499,11 @@ class _ProductionExecutionSegmentsCardState
     );
   }
 
-  Future<void> _transition(
-    ProductionExecutionSegmentView segment,
-    String action,
-  ) async {
-    final isDispatch = action == 'dispatch';
-    final isStart = action == 'start';
-    if (isDispatch && !segment.materialReady) {
-      context.appError('物料尚未完整齐套，不能派工');
-      return;
-    }
-    if (isDispatch &&
-        (segment.workshopDepartmentId == null ||
-            segment.responsibleEmployeeId == null)) {
-      context.appError('派工前必须指定生产车间和负责人');
-      return;
-    }
-    if (isStart && !segment.materialIssued) {
-      context.appError('仓库尚未完成全部生产领料，不能开工');
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(isDispatch ? '确认派工' : '确认开工'),
-        content: Text(
-          isDispatch
-              ? '派工后任务会进入班组待开工列表，物料占用保持不变。'
-              : '仓库已完成本执行段全部发料。开工后可分批报工，'
-                    '每次报工必须关联这个执行子计划。',
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(isDispatch ? '确认派工' : '确认开工'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    await _runCommand(
-      () => ref
-          .read(productionPlanRepositoryProvider)
-          .transitionExecutionSegment(
-            widget.planId,
-            segment.id,
-            action: action,
-            expectedVersion: segment.lockVersion,
-            idempotencyKey: businessIdempotencyKey(
-              'production-segment-$action',
-              '${segment.id}|${segment.lockVersion}|${segment.status}',
-            ),
-          ),
-      isDispatch ? '已派工' : '已开工',
-    );
-  }
-
   Future<void> _runCommand(
     Future<ProductionExecutionSegmentView> Function() run,
     String success,
   ) async {
-    if (_busy || _batchStarting) return;
+    if (_busy) return;
     setState(() => _busy = true);
     try {
       final updated = await run();
@@ -594,129 +525,6 @@ class _ProductionExecutionSegmentsCardState
       await _load();
     } finally {
       if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  bool _isStartSelectable(ProductionExecutionSegmentView segment) =>
-      widget.canStart &&
-      segment.status == 'DISPATCHED' &&
-      segment.materialIssued;
-
-  List<ProductionExecutionSegmentView> get _startableSegments => [
-    for (final segment in _segments ?? const <ProductionExecutionSegmentView>[])
-      if (_isStartSelectable(segment)) segment,
-  ];
-
-  void _toggleStartSelection(
-    ProductionExecutionSegmentView segment,
-    bool selected,
-  ) {
-    if (!_isStartSelectable(segment) || _batchStarting) return;
-    setState(() {
-      if (selected) {
-        _selectedStartIds.add(segment.id);
-      } else {
-        _selectedStartIds.remove(segment.id);
-      }
-    });
-  }
-
-  void _selectAllStartable() {
-    if (_batchStarting) return;
-    setState(() {
-      _selectedStartIds
-        ..clear()
-        ..addAll(_startableSegments.map((segment) => segment.id));
-    });
-  }
-
-  void _clearStartSelection() {
-    if (_batchStarting || _selectedStartIds.isEmpty) return;
-    setState(_selectedStartIds.clear);
-  }
-
-  Future<void> _batchStart() async {
-    if (_batchStarting || _busy || _selectedStartIds.isEmpty) return;
-    final selected = [
-      for (final segment
-          in _segments ?? const <ProductionExecutionSegmentView>[])
-        if (_selectedStartIds.contains(segment.id) &&
-            _isStartSelectable(segment))
-          segment,
-    ];
-    if (selected.length != _selectedStartIds.length) {
-      setState(() {
-        _selectedStartIds
-          ..clear()
-          ..addAll(selected.map((segment) => segment.id));
-      });
-      context.appWarning('部分执行子计划状态已更新，请重新确认选择', force: true);
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('批量开工(${selected.length} 项)'),
-        content: const Text(
-          '系统会在同一事务中校验全部执行子计划的状态、发料进度和版本。'
-          '任一项已变化都会整体失败，不会出现部分开工。确认继续？',
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(ctx, true),
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: const Text('确认批量开工'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _batchStarting = true);
-    try {
-      final updated = await ref
-          .read(productionPlanRepositoryProvider)
-          .batchStartExecutionSegments(
-            widget.planId,
-            items: [
-              for (final segment in selected)
-                ProductionExecutionBatchStartItem(
-                  segmentId: segment.id,
-                  expectedVersion: segment.lockVersion,
-                  idempotencyKey: businessIdempotencyKey(
-                    'production-segment-batch-start',
-                    '${segment.id}|${segment.lockVersion}|${segment.status}',
-                  ),
-                ),
-            ],
-          );
-      if (!mounted) return;
-      setState(() {
-        _selectedStartIds.clear();
-        if (updated.isNotEmpty) {
-          final updates = {for (final segment in updated) segment.id: segment};
-          _segments = [
-            for (final segment
-                in _segments ?? const <ProductionExecutionSegmentView>[])
-              updates[segment.id] ?? segment,
-          ];
-        }
-      });
-      context.appSuccess('已批量开工 ${selected.length} 个执行子计划');
-      await _load();
-      await widget.onChanged?.call();
-    } on ApiException catch (error) {
-      if (mounted) context.appError(error.message, force: true);
-      await _load();
-    } catch (_) {
-      if (mounted) context.appError('批量开工失败，已刷新最新状态', force: true);
-      await _load();
-    } finally {
-      if (mounted) setState(() => _batchStarting = false);
     }
   }
 
@@ -808,22 +616,35 @@ class _ProductionExecutionSegmentsCardState
       );
     }
 
-    final ready = segments.where((item) => item.status == 'READY').length;
+    final preparing = segments
+        .where(
+          (item) =>
+              (item.status == 'READY' || item.status == 'DISPATCHED') &&
+              !item.materialIssued,
+        )
+        .length;
+    final prepared = segments
+        .where(
+          (item) =>
+              (item.status == 'READY' || item.status == 'DISPATCHED') &&
+              item.materialIssued,
+        )
+        .length;
     final waiting = segments
         .where((item) => item.status == 'WAITING' && item.autoPromoteWhenReady)
         .length;
     final deferred = segments
         .where((item) => item.status == 'WAITING' && !item.autoPromoteWhenReady)
         .length;
+    final legacyConfirmed = segments
+        .where((item) => item.status == 'DISPATCHED')
+        .length;
     final running = segments
-        .where(
-          (item) => item.status == 'DISPATCHED' || item.status == 'IN_PROGRESS',
-        )
+        .where((item) => item.status == 'IN_PROGRESS')
         .length;
     final completed = segments
         .where((item) => item.status == 'COMPLETED')
         .length;
-    final startableCount = _startableSegments.length;
     return Card(
       key: const Key('production-execution-segments-card'),
       child: Padding(
@@ -845,8 +666,10 @@ class _ProductionExecutionSegmentsCardState
                         ),
                       ),
                       Text(
-                        '待派工/发料 $ready · 待料 $waiting · 人工暂缓 $deferred · '
-                        '执行中 $running · 已完成 $completed',
+                        '备料中 $preparing · 备料完毕 $prepared · '
+                        '待料 $waiting · 人工暂缓 $deferred · '
+                        '${legacyConfirmed > 0 ? '历史已确认 $legacyConfirmed · ' : ''}'
+                        '生产中 $running · 已完成 $completed',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -863,15 +686,11 @@ class _ProductionExecutionSegmentsCardState
                 ),
                 IconButton(
                   tooltip: '刷新执行状态',
-                  onPressed: _busy || _batchStarting || _loading ? null : _load,
+                  onPressed: _busy || _loading ? null : _load,
                   icon: const Icon(Icons.refresh_rounded),
                 ),
               ],
             ),
-            if (startableCount > 0 || _selectedStartIds.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              _selectionToolbar(theme, startableCount),
-            ],
             const SizedBox(height: UtenSpacing.s8),
             LayoutBuilder(
               builder: (context, constraints) {
@@ -899,64 +718,8 @@ class _ProductionExecutionSegmentsCardState
     );
   }
 
-  Widget _selectionToolbar(ThemeData theme, int startableCount) {
-    final allSelected =
-        startableCount > 0 && _selectedStartIds.length == startableCount;
-    return Container(
-      key: const Key('production-execution-start-selection-toolbar'),
-      padding: const EdgeInsets.all(UtenSpacing.s8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.28),
-        borderRadius: UtenRadius.smAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Text(
-            '已选 ${_selectedStartIds.length} 项 · 可开工 $startableCount 项',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          UtenButton(
-            key: const Key('production-execution-select-all-startable'),
-            type: UtenButtonType.tonal,
-            size: UtenButtonSize.small,
-            icon: Icons.select_all_rounded,
-            onPressed: allSelected || _batchStarting
-                ? null
-                : _selectAllStartable,
-            child: const Text('全选可开工'),
-          ),
-          TextButton(
-            key: const Key('production-execution-clear-start-selection'),
-            onPressed: _selectedStartIds.isEmpty || _batchStarting
-                ? null
-                : _clearStartSelection,
-            child: const Text('清空'),
-          ),
-          UtenButton(
-            key: const Key('production-execution-batch-start'),
-            size: UtenButtonSize.small,
-            icon: Icons.play_arrow_rounded,
-            isLoading: _batchStarting,
-            onPressed: _selectedStartIds.isEmpty || _busy || _batchStarting
-                ? null
-                : _batchStart,
-            child: Text('批量开工(${_selectedStartIds.length})'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _segmentCard(ThemeData theme, ProductionExecutionSegmentView segment) {
-    final selected = _selectedStartIds.contains(segment.id);
     final focused = _selectedId == segment.id;
-    final startSelectable = _isStartSelectable(segment);
     final assignment = [
       segment.workshopName,
       segment.teamName,
@@ -965,26 +728,25 @@ class _ProductionExecutionSegmentsCardState
       segment.productName,
       segment.productCode,
     ].where((value) => value?.isNotEmpty == true).join(' · ');
-    final borderColor = selected || focused
+    final borderColor = focused
         ? theme.colorScheme.primary
         : theme.colorScheme.outlineVariant;
-    final background = selected
-        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.34)
-        : _rowColor(theme, segment) ?? theme.colorScheme.surfaceContainerLowest;
+    final background =
+        _rowColor(theme, segment) ?? theme.colorScheme.surfaceContainerLowest;
 
     return Semantics(
       container: true,
-      selected: selected,
+      selected: focused,
       label: '执行子计划 ${segment.segmentCode}',
       child: Material(
         color: background,
         shape: RoundedRectangleBorder(
           borderRadius: UtenRadius.mdAll,
-          side: BorderSide(color: borderColor, width: selected ? 2 : 1),
+          side: BorderSide(color: borderColor, width: focused ? 2 : 1),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: _busy || _batchStarting ? null : () => _openSegment(segment),
+          onTap: _busy ? null : () => _openSegment(segment),
           child: Padding(
             padding: const EdgeInsets.all(UtenSpacing.s12),
             child: Column(
@@ -993,28 +755,6 @@ class _ProductionExecutionSegmentsCardState
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (startSelectable) ...[
-                      Semantics(
-                        label: '选择 ${segment.segmentCode} 批量开工',
-                        child: SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Checkbox(
-                            key: ValueKey(
-                              'production-execution-start-select-${segment.id}',
-                            ),
-                            value: selected,
-                            onChanged: _batchStarting
-                                ? null
-                                : (value) => _toggleStartSelection(
-                                    segment,
-                                    value ?? false,
-                                  ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                    ],
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1223,10 +963,7 @@ class _ProductionExecutionSegmentsCardState
   }
 
   List<Widget> _segmentCardActions(ProductionExecutionSegmentView segment) {
-    final commandBusy = _busy || _batchStarting;
-    final assigned =
-        segment.workshopDepartmentId != null &&
-        segment.responsibleEmployeeId != null;
+    final commandBusy = _busy;
     return [
       if (widget.canAssign &&
           (segment.status == 'READY' || segment.status == 'WAITING'))
@@ -1253,35 +990,6 @@ class _ProductionExecutionSegmentsCardState
               : () =>
                     _handleSegmentAction(segment, _SegmentAction.releaseDefer),
           child: const Text('解除人工暂缓'),
-        ),
-      if (widget.canDispatch && segment.status == 'READY')
-        UtenButton(
-          key: ValueKey('production-execution-dispatch-${segment.id}'),
-          size: UtenButtonSize.small,
-          icon: Icons.assignment_turned_in_outlined,
-          onPressed: commandBusy || !segment.materialReady || !assigned
-              ? null
-              : () => _handleSegmentAction(segment, _SegmentAction.dispatch),
-          onDisabledTap: commandBusy
-              ? null
-              : () => context.appWarning(
-                  !segment.materialReady ? '物料尚未完整齐套，不能派工' : '派工前必须指定生产车间和负责人',
-                  force: true,
-                ),
-          child: const Text('派工'),
-        ),
-      if (widget.canStart && segment.status == 'DISPATCHED')
-        UtenButton(
-          key: ValueKey('production-execution-start-${segment.id}'),
-          size: UtenButtonSize.small,
-          icon: Icons.play_arrow_rounded,
-          onPressed: commandBusy || !segment.materialIssued
-              ? null
-              : () => _handleSegmentAction(segment, _SegmentAction.start),
-          onDisabledTap: commandBusy
-              ? null
-              : () => context.appWarning('仓库尚未完成全部生产领料，不能开工', force: true),
-          child: const Text('确认开工'),
         ),
       if (widget.canReport && _canReportSegment(segment))
         UtenButton(
@@ -1332,23 +1040,19 @@ class _ProductionExecutionSegmentsCardState
   }
 }
 
-enum _SegmentAction { assign, releaseDefer, dispatch, start, report }
+enum _SegmentAction { assign, releaseDefer, report }
 
 class _ExecutionSegmentDetail extends StatelessWidget {
   const _ExecutionSegmentDetail({
     required this.segment,
     required this.canAssign,
     required this.canReleaseDefer,
-    required this.canDispatch,
-    required this.canStart,
     required this.canReport,
   });
 
   final ProductionExecutionSegmentView segment;
   final bool canAssign;
   final bool canReleaseDefer;
-  final bool canDispatch;
-  final bool canStart;
   final bool canReport;
 
   @override
@@ -1362,16 +1066,13 @@ class _ExecutionSegmentDetail extends StatelessWidget {
       segment.productName,
       segment.productCode,
     ].where((value) => value?.isNotEmpty == true).join(' · ');
-    final hasCommandPermission =
-        canAssign || canReleaseDefer || canDispatch || canStart || canReport;
+    final hasCommandPermission = canAssign || canReleaseDefer || canReport;
     final hasAction =
         (canReleaseDefer &&
             segment.status == 'WAITING' &&
             !segment.autoPromoteWhenReady) ||
         (canAssign &&
             (segment.status == 'READY' || segment.status == 'WAITING')) ||
-        (canDispatch && segment.status == 'READY') ||
-        (canStart && segment.status == 'DISPATCHED') ||
         (canReport && _canReportSegment(segment));
 
     return Material(
@@ -1508,26 +1209,21 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                         '等待整套物料补齐；当前不会占用零散库存，到货齐套后自动转产。',
                         theme.colorScheme.error,
                       )
-                    else if (segment.status == 'DISPATCHED' &&
+                    else if ((segment.status == 'READY' ||
+                            segment.status == 'DISPATCHED') &&
                         !segment.materialIssued)
                       _notice(
                         theme,
-                        '任务已派工，但仓库尚未按领料单完成全部实物发料；发料完成前不能开工。',
+                        '工单已确认，仓库正在按领料单备料；全部实物出库前不能报工。',
                         theme.colorScheme.tertiary,
                       )
-                    else if (segment.status == 'READY' &&
-                        !segment.materialIssued &&
-                        hasCommandPermission)
+                    else if ((segment.status == 'READY' ||
+                            segment.status == 'DISPATCHED') &&
+                        segment.materialIssued &&
+                        canReport)
                       _notice(
                         theme,
-                        '整套物料已预留并生成领料单。可先完成车间分配和派工；'
-                        '仓库全部实际发料且派工完成后才能确认开工。',
-                        theme.colorScheme.tertiary,
-                      )
-                    else if (segment.status == 'READY' && hasCommandPermission)
-                      _notice(
-                        theme,
-                        '仓库已完成全部发料；请完成车间分配并派工，随后确认开工。',
+                        '备料完毕，可以直接报工；首次报工会在同一事务中登记实际开工。',
                         theme.colorScheme.primary,
                       )
                     else if (segment.status == 'IN_PROGRESS' &&
@@ -1657,10 +1353,15 @@ class _ExecutionSegmentDetail extends StatelessWidget {
 String _segmentStatusText(ProductionExecutionSegmentView segment) =>
     segment.status == 'WAITING' && !segment.autoPromoteWhenReady
     ? '人工暂缓'
-    : segment.status == 'READY' && !segment.materialIssued
-    ? '已齐套·待发料'
-    : segment.status == 'DISPATCHED' && !segment.materialIssued
-    ? '已派工·待发料'
+    : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
+          !segment.materialReady
+    ? '物料不齐套·备料中'
+    : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
+          !segment.materialIssued
+    ? '物料齐套·备料中'
+    : (segment.status == 'READY' || segment.status == 'DISPATCHED') &&
+          segment.materialIssued
+    ? '备料完毕·可报工'
     : segment.status == 'IN_PROGRESS' && segment.ordinaryRemainingQty > 0
     ? '生产中·可继续报工'
     : segment.status == 'IN_PROGRESS' && segment.fqcReworkAvailableQty > 0
@@ -1685,7 +1386,9 @@ String _segmentStatusText(ProductionExecutionSegmentView segment) =>
     : _statusText(segment.status);
 
 bool _canReportSegment(ProductionExecutionSegmentView segment) =>
-    segment.status == 'IN_PROGRESS' &&
+    (segment.status == 'IN_PROGRESS' ||
+        ((segment.status == 'READY' || segment.status == 'DISPATCHED') &&
+            segment.materialIssued)) &&
     (segment.ordinaryRemainingQty > 0.000001 ||
         segment.fqcReworkAvailableQty > 0.000001 ||
         segment.fqcReplacementReadyQty > 0.000001);
@@ -1753,8 +1456,8 @@ String _materialProgressText(ProductionExecutionSegmentView segment) {
 
 String _statusText(String status) => switch (status) {
   'WAITING' => '待料',
-  'READY' => '已齐套·待派工',
-  'DISPATCHED' => '已派工',
+  'READY' => '工单已确认',
+  'DISPATCHED' => '历史工单已确认',
   'IN_PROGRESS' => '生产中',
   'COMPLETED' => '已完成',
   'CANCELLED' => '已取消',

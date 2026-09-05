@@ -42,13 +42,16 @@ import '../../basic_data/widgets/client_ship_address_sheet.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/auth/permissions.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_doc_link_picker.dart';
 import '../../basic_data/models/goods_node.dart' show GoodsListItem;
@@ -68,7 +71,7 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
 class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   SalesDocConfig get _cfg => SalesDocConfig.by(widget.docType);
 
-  /// 订单：金额 = 数量 × 单价 × 折扣（折扣由货品主档带入、锁定）；其它单据仍 = 数量 × 单价。
+  /// 订单：金额 = 数量 × 只读单价 × 可编辑折扣；其它单据仍 = 数量 × 单价。
   bool get _amountUsesDiscount => widget.docType == SalesDocType.order;
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
@@ -131,6 +134,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   /// 对应输入框描红；字段改值即时清除。
   final Set<String> _errors = {};
 
+  /// 系统预填待核对字段（黄框提醒）：按客户记忆上次条款、地址簿带出收货地址等；
+  /// 用户手动改值即移除（视为已核对）。key 与 [_errors] 同名空间但互不影响。
+  final Set<String> _autofilled = {};
+
+  /// 各预填字段带入时的值：文本框监听比对「改动 ≠ 带入值」才清除黄框
+  /// （程序性回填触发监听时值相等，不会误清）。
+  final Map<String, String> _autofillValues = {};
+
   /// 已挂计量汇总刷新监听的数量控制器（随行增删同步挂载/卸除）。
   final Set<TextEditingController> _qtyListened = {};
 
@@ -139,6 +150,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     super.initState();
     // 明细行增删 → 重新挂载数量监听并刷新按单位分组的数量。
     _grid.addListener(_onGridRowsChanged);
+    // 预填黄标联动：收货地址/联系电话被改到与带入值不同 → 视为已核对，移除黄框。
+    _shipAddr.addListener(() => _onAutofillTextEdited('shipAddr', _shipAddr));
+    _shipLinkPhone.addListener(
+      () => _onAutofillTextEdited('shipPhone', _shipLinkPhone),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -184,6 +200,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
               .list(size: 1);
           if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
             _warehouseId = last.items.first.warehouseId;
+            // 预填值黄标提醒核对（用户改选即清除）。
+            _autofilled.add('warehouse');
           }
         } catch (_) {
           /* 预填失败静默，用户手选 */
@@ -292,7 +310,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             row.dieCastPrice.text = it.dieCastPrice.toString();
           }
           if (it.discount != null) {
-            row.discount.text = it.discount.toString();
+            // 旧订单用 null/0 表示不打折；编辑页统一展示为明确的 1 倍，金额语义不变。
+            final discount =
+                widget.docType == SalesDocType.order && it.discount == 0
+                ? 1
+                : it.discount;
+            row.discount.text = discount.toString();
           }
           row.remark.text = it.remark ?? '';
           rows.add(row);
@@ -363,12 +386,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         ..unitId = g.unitId
         ..unitRate = 1
         ..stockPlaceNotifier.value = g.stockPlace;
-      // 订单/出货：单价由货品主档自动带入、锁定（出货亦可由来源订货单引入；金额=数量×单价）。
+      // 订单/出货：单价由货品主档自动带入、锁定(出货亦可由来源订货单引入)。
       if (widget.docType == SalesDocType.order ||
           widget.docType == SalesDocType.shipment) {
-        if (g.price != null) target.price.text = g.price.toString();
+        target.applyLockedPricePreview(g.price);
       }
-      // 订单折扣：货品 zk 倍率（1=原价；空/0→1）自动带入、锁定。
+      // 订单折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整。
       if (widget.docType == SalesDocType.order) {
         final disc = (g.discount == null || g.discount == 0) ? 1.0 : g.discount;
         target.discount.text = disc.toString();
@@ -466,15 +489,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
   }
 
-  /// 表头客户变更（手动选择或上游引入回填）：优先客户收货地址簿（V300 学习能力，
-  /// 最近使用优先）带出收货地址/联系电话；地址簿为空再回退客户主档；都没有则留空
-  /// 不加载。订货单不再采集这两个字段（出货环节承载），故仅出货类单据联动。
+  /// 表头客户变更（手动选择或上游引入回填）：按客户「学习预填」上次订货条款（新建态，
+  /// 只填空/未核对字段并黄标提醒）；出货类单据再按收货地址簿（V300 学习能力，最近使用
+  /// 优先）带出收货地址/联系电话；地址簿为空再回退客户主档；都没有则留空不加载。
+  /// 订货单不采集地址两字段（出货环节承载），仅做条款预填。
   Future<void> _onClientChanged(String? id) async {
     setState(() => _clientId = id);
     _clearError('client');
     if (id == null || id.isEmpty) return;
+    // ① 客户条款学习预填（结账方式/发运策略/币种，黄标提醒核对）。
+    if (widget.id == null) {
+      await _prefillClientTerms(id);
+    }
     if (!_cfg.hasShipInfo) return;
-    // ① 地址簿优先：有记录即带出最近使用的一条（用户可改，保存时再次学习）。
+    // ② 地址簿优先：有记录即带出最近使用的一条（用户可改，保存时再次学习）。
     try {
       final addresses = await ref
           .read(clientShipAddressRepositoryProvider)
@@ -486,13 +514,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         setState(() {
           _shipAddr.text = latest.address;
           _shipLinkPhone.text = latest.linkPhone ?? '';
+          _markAutofilled('shipAddr', _shipAddr.text);
+          _markAutofilled('shipPhone', _shipLinkPhone.text);
         });
         return;
       }
     } catch (_) {
       // 地址簿查询失败静默：不阻塞开单，继续回退主档带出。
     }
-    // ② 回退客户主档「收货地址/地址」+「电话/手机/备用电话」；都没有则清空留待手填。
+    // ③ 回退客户主档「收货地址/地址」+「电话/手机/备用电话」；都没有则清空留待手填。
     try {
       final c = await ref.read(clientRepositoryProvider).detail(id);
       if (!mounted || _clientId != id) return;
@@ -504,10 +534,110 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       setState(() {
         _shipAddr.text = addr;
         _shipLinkPhone.text = phone;
+        _markAutofilled('shipAddr', addr);
+        _markAutofilled('shipPhone', phone);
       });
     } catch (_) {
       // 查询失败静默：不阻塞开单，地址/电话可手填。
     }
+  }
+
+  /// 新建单按客户「学习预填」上次订货条款：结账方式/发运策略/币种带回该客户最近
+  /// 一张订货单的填法。只回填「空 或 仍带预填黄标（未人工核对）」的字段——切换客户
+  /// 时未核对值跟着换新客户的历史走；回填成功即黄标提醒核对。取数失败静默。
+  Future<void> _prefillClientTerms(String clientId) async {
+    final termsApply =
+        _cfg.hasCurrency ||
+        _cfg.hasSettlement ||
+        widget.docType == SalesDocType.order;
+    if (!termsApply) return;
+    final last = await ref
+        .read(salesRepositoryProvider(widget.docType))
+        .lastTermsForClient(clientId);
+    // 竞态守卫：await 期间客户又被改 → 丢弃本次结果。
+    if (!mounted || _clientId != clientId) return;
+    if (last == null) return;
+    final currencyEntries = ref
+        .read(salesMasterNameServiceProvider)
+        .currencyEntries;
+    // 结算方式字典是独立 FutureProvider，选客户时可能尚未就绪；等一次再比对，
+    // 失败则本字段不预填（其余字段照常）。
+    Set<String> settlementIds = const {};
+    try {
+      final methods = await ref.read(settlementMethodOptionsProvider.future);
+      if (!mounted || _clientId != clientId) return;
+      settlementIds = methods.map((e) => e.id).toSet();
+    } catch (_) {
+      settlementIds = const {};
+    }
+    void softPrefill(String key, bool hasField, String? incoming, bool inDict) {
+      if (!hasField || incoming == null || incoming.isEmpty || !inDict) return;
+      final isSoft = switch (key) {
+        'currency' => _currencyId == null || _autofilled.contains(key),
+        'settlementMethod' =>
+          _settlementMethodId == null || _autofilled.contains(key),
+        'shipmentPolicy' =>
+          _shipmentPolicy == null ||
+              _shipmentPolicy == SalesShipmentPolicy.legacyUnspecified ||
+              _autofilled.contains(key),
+        _ => false,
+      };
+      if (!isSoft) return;
+      switch (key) {
+        case 'currency':
+          _currencyId = incoming;
+        case 'settlementMethod':
+          _settlementMethodId = incoming;
+        case 'shipmentPolicy':
+          _shipmentPolicy = incoming;
+      }
+      _autofilled.add(key);
+    }
+
+    setState(() {
+      softPrefill(
+        'settlementMethod',
+        _cfg.hasSettlement,
+        last.settlementMethodId,
+        settlementIds.contains(last.settlementMethodId),
+      );
+      softPrefill(
+        'currency',
+        _cfg.hasCurrency,
+        last.currencyId,
+        currencyEntries.containsKey(last.currencyId),
+      );
+      // 发运策略是封闭枚举：仅带回新单可选值（历史 CUSTOMER_CONFIRM/LEGACY 不预填）。
+      softPrefill(
+        'shipmentPolicy',
+        widget.docType == SalesDocType.order,
+        last.shipmentPolicy,
+        SalesShipmentPolicy.selectable.contains(last.shipmentPolicy),
+      );
+    });
+  }
+
+  /// 标记一个系统带入值（黄框提醒核对）；记下带入值供文本框监听比对。
+  /// 须在 setState 内调用。
+  void _markAutofilled(String key, String value) {
+    _autofilled.add(key);
+    _autofillValues[key] = value;
+  }
+
+  /// 文本框预填黄标联动：文本被改到与带入值不同 → 视为已核对，移除黄框。
+  void _onAutofillTextEdited(String key, TextEditingController ctl) {
+    if (!_autofilled.contains(key)) return;
+    if (ctl.text == (_autofillValues[key] ?? '')) return;
+    setState(() {
+      _autofilled.remove(key);
+      _autofillValues.remove(key);
+    });
+  }
+
+  /// 用户手动改下拉值=已核对：清掉该字段预填黄标。
+  void _markConfirmed(String key) {
+    if (!_autofilled.contains(key)) return;
+    setState(() => _autofilled.remove(key));
   }
 
   /// 打开客户收货地址簿弹窗（查看/选择/新增/删除）；选中后回填收货地址+联系电话。
@@ -528,6 +658,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     setState(() {
       _shipAddr.text = picked.address;
       _shipLinkPhone.text = picked.linkPhone ?? '';
+      // 用户显式挑选=已核对，清掉预填黄标（文本监听对同值场景不会自动清）。
+      _autofilled
+        ..remove('shipAddr')
+        ..remove('shipPhone');
     });
   }
 
@@ -604,6 +738,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     } else {
       final priceRequired = widget.docType != SalesDocType.otherShipment;
       var badRow = 0;
+      var badDiscountRow = 0;
+      var copiedPriceRow = 0;
       for (var i = 0; i < rows.length; i++) {
         final r = rows[i];
         final qtyOk = (double.tryParse(r.qty.text.trim()) ?? 0) > 0;
@@ -615,9 +751,27 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           r.invalidNotifier.value = true;
           badRow = badRow == 0 ? i + 1 : badRow;
         }
+        if (widget.docType == SalesDocType.order &&
+            r.requiresOrderPriceRefresh) {
+          r.invalidNotifier.value = true;
+          copiedPriceRow = copiedPriceRow == 0 ? i + 1 : copiedPriceRow;
+        }
+        if (widget.docType == SalesDocType.order) {
+          if (!isValidSalesOrderDiscountText(r.discount.text)) {
+            r.invalidNotifier.value = true;
+            badDiscountRow = badDiscountRow == 0 ? i + 1 : badDiscountRow;
+          }
+        }
       }
-      if (badRow > 0) {
+      if (copiedPriceRow > 0) {
+        fail('items', '第 $copiedPriceRow 行是复制的新订货明细，请重新选择货品以取得当前主档单价');
+      } else if (badRow > 0) {
         fail('items', '第 $badRow 行明细：数量须大于 0${priceRequired ? '，单价必填' : ''}');
+      } else if (badDiscountRow > 0) {
+        fail(
+          'items',
+          '第 $badDiscountRow 行明细：折扣须大于 0 且不大于 1，最多四位小数(1=原价，0.9=9折)',
+        );
       }
     }
     if (_requiresLinkedSalesShipment && rows.isNotEmpty) {
@@ -685,6 +839,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         'goodsId': r.goods!.id,
         'qty': qty,
         if (price case final price?) ...{
+          // 客户端仅提交即时预览值用于兼容；服务端按货品/来源商业快照重新取得单价，
+          // 再用数量与折扣重算 amountOriginal，绝不信任这里的 price/amount。
           'price': price,
           'amountOriginal': r.amountNotifier.value,
           // 销售订单只提交所选币种的原币金额；销售请求不得夹带伪本币事实。
@@ -1032,19 +1188,27 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                         showUtenClientPicker(context, ref),
                                   ),
                                   if (_cfg.hasWarehouse)
-                                    _dropdown(
-                                      '仓库',
-                                      _warehouseId,
-                                      names.warehouseEntries,
-                                      (v) {
-                                        setState(() => _warehouseId = v);
-                                        _clearError('warehouse');
-                                      },
+                                    // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
+                                    UtenDropdownField(
+                                      label: '仓库',
+                                      value: _warehouseId,
                                       required: true,
+                                      searchable: true,
+                                      autofilled: _autofilled.contains(
+                                        'warehouse',
+                                      ),
                                       errorMessage:
                                           _errors.contains('warehouse')
                                           ? '请选择仓库'
                                           : null,
+                                      items: warehouseHierarchyItems(
+                                        names.warehouseHierarchy,
+                                      ),
+                                      onChanged: (v) {
+                                        setState(() => _warehouseId = v);
+                                        _clearError('warehouse');
+                                        _markConfirmed('warehouse');
+                                      },
                                     ),
                                   if (_cfg.hasCurrency) ...[
                                     _dropdown(
@@ -1054,8 +1218,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       (v) {
                                         setState(() => _currencyId = v);
                                         _clearError('currency');
+                                        _markConfirmed('currency');
                                       },
                                       required: true,
+                                      autofilled: _autofilled.contains(
+                                        'currency',
+                                      ),
                                       errorMessage: _errors.contains('currency')
                                           ? '请选择币种'
                                           : null,
@@ -1110,9 +1278,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                           () => _settlementMethodId = value,
                                         );
                                         _clearError('settlementMethod');
+                                        _markConfirmed('settlementMethod');
                                       },
                                       required: _cfg.settlementRequired,
                                       allowClear: !_cfg.settlementRequired,
+                                      autofilled: _autofilled.contains(
+                                        'settlementMethod',
+                                      ),
                                       errorMessage:
                                           _errors.contains('settlementMethod')
                                           ? '请选择结账方式'
@@ -1194,28 +1366,40 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                   if (_cfg.hasShipInfo) ...[
                                     TextField(
                                       controller: _shipAddr,
-                                      decoration: InputDecoration(
-                                        labelText: '收货地址',
-                                        hintText: '选客户后自动带出，可改',
-                                        // 客户地址簿：点击查看/选择/新增/删除该客户地址。
-                                        suffixIcon: IconButton(
-                                          key: const ValueKey(
-                                            'sales-ship-address-book',
+                                      decoration: applyAutofillHint(
+                                        InputDecoration(
+                                          labelText: '收货地址',
+                                          hintText: '选客户后自动带出，可改',
+                                          // 客户地址簿：点击查看/选择/新增/删除该客户地址。
+                                          suffixIcon: IconButton(
+                                            key: const ValueKey(
+                                              'sales-ship-address-book',
+                                            ),
+                                            tooltip: '客户收货地址簿',
+                                            icon: const Icon(
+                                              Icons.contact_mail_outlined,
+                                              size: 20,
+                                            ),
+                                            onPressed: _openAddressBook,
                                           ),
-                                          tooltip: '客户收货地址簿',
-                                          icon: const Icon(
-                                            Icons.contact_mail_outlined,
-                                            size: 20,
-                                          ),
-                                          onPressed: _openAddressBook,
+                                        ),
+                                        theme,
+                                        autofilled: _autofilled.contains(
+                                          'shipAddr',
                                         ),
                                       ),
                                     ),
                                     TextField(
                                       controller: _shipLinkPhone,
-                                      decoration: const InputDecoration(
-                                        labelText: '联系电话',
-                                        hintText: '随地址自动带出，可改',
+                                      decoration: applyAutofillHint(
+                                        const InputDecoration(
+                                          labelText: '联系电话',
+                                          hintText: '随地址自动带出，可改',
+                                        ),
+                                        theme,
+                                        autofilled: _autofilled.contains(
+                                          'shipPhone',
+                                        ),
                                       ),
                                     ),
                                     TextField(
@@ -1312,42 +1496,59 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                             ],
                           ),
                         ),
-                      UtenEditableGrid<SalesGridRow>(
-                        controller: _grid,
-                        columns: salesGridColumns(
-                          onPickGoods: _pickGoods,
-                          docType: widget.docType,
-                          colorEntries: names.colorEntries,
-                          unitEntries: names.unitEntries,
-                        ),
-                        createBlankRow: () => SalesGridRow(
-                          amountUsesDiscount: _amountUsesDiscount,
-                        ),
-                        cloneRow: (r) => r.clone(),
-                        // 网格底部：数量严格按单位 UUID 分组；金额仍可在同币种单据内汇总。
-                        footer: Wrap(
-                          alignment: WrapAlignment.end,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: UtenSpacing.s16,
-                          runSpacing: UtenSpacing.s4,
-                          children: [
-                            ValueListenableBuilder<double>(
-                              valueListenable: _totalQtyNotifier,
-                              builder: (_, _, _) => Text(
-                                '数量 ${measurementTotalsText(_grid.rows.where((row) => row.goods != null).map((row) => MeasuredAmount(value: double.tryParse(row.qty.text.trim()) ?? 0, unitId: row.unitId, unitName: names.unitEntries[row.unitId])))}',
-                              ),
+                      // 列显隐/排序按单据模式分桶持久化（账号级，跨设备生效）。
+                      Builder(
+                        builder: (_) {
+                          final columnPrefs = ref.watch(
+                            salesDocGridColumnPrefsProvider,
+                          )[widget.docType.name];
+                          return UtenEditableGrid<SalesGridRow>(
+                            controller: _grid,
+                            columns: salesGridColumns(
+                              onPickGoods: _pickGoods,
+                              docType: widget.docType,
+                              colorEntries: names.colorEntries,
+                              unitEntries: names.unitEntries,
                             ),
-                            ValueListenableBuilder<double>(
-                              valueListenable: _grid.totalListenable,
-                              builder: (_, t, _) => Text(
-                                _totalText(names, prefix: '总金额', value: t),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                            createBlankRow: () => SalesGridRow(
+                              amountUsesDiscount: _amountUsesDiscount,
+                            ),
+                            cloneRow: (r) => r.clone(
+                              requireOrderPriceRefresh:
+                                  widget.docType == SalesDocType.order,
+                            ),
+                            showColumnSettings: true,
+                            initialColumnOrder: columnPrefs?.order,
+                            initialHiddenColumnKeys: columnPrefs?.hidden,
+                            onColumnSettingsChanged: (order, hidden) => ref
+                                .read(salesDocGridColumnPrefsProvider.notifier)
+                                .updateFor(widget.docType.name, order, hidden),
+                            // 网格底部：数量严格按单位 UUID 分组；金额仍可在同币种单据内汇总。
+                            footer: Wrap(
+                              alignment: WrapAlignment.end,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: UtenSpacing.s16,
+                              runSpacing: UtenSpacing.s4,
+                              children: [
+                                ValueListenableBuilder<double>(
+                                  valueListenable: _totalQtyNotifier,
+                                  builder: (_, _, _) => Text(
+                                    '数量 ${measurementTotalsText(_grid.rows.where((row) => row.goods != null).map((row) => MeasuredAmount(value: double.tryParse(row.qty.text.trim()) ?? 0, unitId: row.unitId, unitName: names.unitEntries[row.unitId])))}',
+                                  ),
                                 ),
-                              ),
+                                ValueListenableBuilder<double>(
+                                  valueListenable: _grid.totalListenable,
+                                  builder: (_, t, _) => Text(
+                                    _totalText(names, prefix: '总金额', value: t),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -1433,6 +1634,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             label: '发运策略',
             value: value,
             required: true,
+            autofilled: _autofilled.contains('shipmentPolicy'),
             errorMessage: _errors.contains('shipmentPolicy') ? '请选择发运策略' : null,
             items: [
               for (final policy in SalesShipmentPolicy.selectable)
@@ -1447,6 +1649,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
               if (next == null) return;
               setState(() => _shipmentPolicy = next);
               _clearError('shipmentPolicy');
+              _markConfirmed('shipmentPolicy');
             },
           )
         else
@@ -1522,6 +1725,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     ValueChanged<String?> onChanged, {
     bool required = false,
     bool allowClear = true,
+    bool autofilled = false,
     String? errorMessage,
     Future<void> Function()? onAddNew,
     String? addNewLabel,
@@ -1531,6 +1735,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       value: value,
       required: required,
       allowClear: allowClear,
+      autofilled: autofilled,
       errorMessage: errorMessage,
       searchable: true, // 客户/仓库/币种等主档下拉一律支持搜索
       items: [

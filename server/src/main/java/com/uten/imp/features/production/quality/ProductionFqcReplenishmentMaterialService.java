@@ -198,7 +198,7 @@ public class ProductionFqcReplenishmentMaterialService {
                     .setParameter("demandIds", demandIds)
                     .getSingleResult();
             if (decimal(consumed).signum() > 0) {
-                throw conflict("补产物料已实发，请先办理反出库或按原领料行退料");
+                throw conflict("补产物料已实发，请先取消出库或按原领料行退料");
             }
             stockAllocation.releaseByDemands(
                     demandIds, "FQC补产授权取消释放未领物料");
@@ -711,7 +711,7 @@ public class ProductionFqcReplenishmentMaterialService {
         if (rows.isEmpty()) return;
         UUID drawId = (UUID) rows.getFirst()[0];
         if (decimal(rows.getFirst()[2]).signum() > 0) {
-            throw conflict("补产领料单已有实发数量，请先完成反出库或退料");
+            throw conflict("补产领料单已有实发数量，请先完成取消出库或退料");
         }
         em.createNativeQuery("""
                         UPDATE stock_documents

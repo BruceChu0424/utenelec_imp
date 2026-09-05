@@ -28,9 +28,16 @@ public class OrderItemLine {
     @NotNull
     private BigDecimal qty;
 
+    /**
+     * 旧客户端兼容预览字段，不是写入权威：普通新行取货品主档价，报价转单取报价快照，
+     * 既有草稿同一行保留已冻结价；非空预览值若与权威价不同则按冲突拒绝。
+     */
     private BigDecimal price;
+    /** 客户端预览兼容字段；持久化前由服务端按数量、权威单价和折扣重算。 */
     private BigDecimal amountOriginal;
+    /** 销售订单阶段不形成本币金额；本字段被服务端忽略。 */
     private BigDecimal amountLocal;
+    /** 销售可编辑的折扣倍率；新写 0 < discount <= 1，null/0 兼容为原价。 */
     private BigDecimal discount;
     private BigDecimal taxAmount;
     private BigDecimal weight;

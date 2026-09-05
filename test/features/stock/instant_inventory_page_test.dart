@@ -1,6 +1,7 @@
-// 即时库存页（2026-09-01 简化布局后）：
-// - 分类 = UtenFilterToolbar 大类分段（进页不选 = 不过滤，点段才过滤）；
-// - 工具栏行尾 = 仓库下拉 + 含不良品仓 + 共 N 项；
+// 即时库存页（2026-09-01 简化布局后；2026-09-04 顶部统一任务中心范式）：
+// - 分类 = UtenFilterToolbar 大类分段（进页不选 = 不过滤，点段才过滤；
+//   零货品分类不显示为分段）+ 页级搜索框（名称/编号/型号/客户型号）；
+// - 工具栏行尾 = 层级仓库下拉（V476 父仓可选=子树聚合）+ 含不良品仓 + 共 N 项；
 // - 库存台账金额列已从页面移除（无论是否持有 goods:cost:view）。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -71,14 +72,14 @@ void main() {
         const ValueKey('instant-inventory-category-segments'),
       );
 
-      // 一级分类（成品）与无子级根（未分类孤儿）都暴露为分段。
+      // 一级分类（成品）暴露为分段；零货品分类（未分类孤儿 0 件）自动隐藏。
       expect(
         find.descendant(of: segments, matching: find.text('成品')),
         findsOneWidget,
       );
       expect(
         find.descendant(of: segments, matching: find.text('未分类（历史孤儿）')),
-        findsOneWidget,
+        findsNothing,
       );
 
       await tester.tap(
@@ -94,6 +95,19 @@ void main() {
       expect(stock.lastCategoryId, isNull);
     },
   );
+
+  testWidgets('search box reloads with keyword', (tester) async {
+    final stock = _RecordingStockRepository();
+    await pumpPage(tester, stock: stock);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('instant-inventory-search')),
+      '插套',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(stock.lastKeyword, '插套');
+  });
 
   testWidgets('cost column is removed for every account', (tester) async {
     final stock = _RecordingStockRepository();
@@ -197,6 +211,37 @@ class _ProductCategoryRepo implements ProductCategoryRepository {
       children: const <ProductCategoryNode>[],
     ),
   ];
+
+  /// 带计数版树：成品 3 件、未分类孤儿 0 件——零货品分类不应出现为分段。
+  @override
+  Future<List<ProductCategoryNode>> treeWithGoodsCounts() async =>
+      <ProductCategoryNode>[
+        ProductCategoryNode(
+          id: 'goods-root',
+          code: 'G',
+          name: '货品资料',
+          level: 0,
+          goodsCount: 3,
+          children: [
+            ProductCategoryNode(
+              id: 'finished',
+              code: 'FINISHED',
+              name: '成品',
+              level: 1,
+              goodsCount: 3,
+              children: const <ProductCategoryNode>[],
+            ),
+          ],
+        ),
+        ProductCategoryNode(
+          id: 'orphan',
+          code: 'ORPHAN',
+          name: '未分类（历史孤儿）',
+          level: 0,
+          goodsCount: 0,
+          children: const <ProductCategoryNode>[],
+        ),
+      ];
 
   @override
   Future<ProductCategoryDetail> create(ProductCategorySaveInput input) =>

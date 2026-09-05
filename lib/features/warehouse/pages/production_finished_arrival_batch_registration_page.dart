@@ -4,7 +4,7 @@
 // 行内可各自改；成品仓选定后逐行批量拉默认库位建议（V431 偏好链，一次请求合并
 // 全部行）；页头「默认成品仓」预选当前用户上次登记所用的仓（last-warehouse），
 // 切换默认仓 = 批量落到全部未提交行。提交 = 一个事务逐单登记并生成各自的 FQC
-// 送检（每单一份 FQC、行级锚定不变，见产成品待点收任务页文档）。
+// 送检（逐报工分批、逐行 FQC，行级 UUID 锚定不变，见产成品待点收任务页文档）。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -29,6 +29,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
@@ -61,7 +62,9 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
 
   List<ProductionFinishedArrivalRegistration>? _reports;
   String? _defaultWarehouseId;
-  String? _lastWarehouseName;
+
+  /// 默认仓是否上次登记预选（黄框提醒核对；用户改选即清除）。
+  bool _warehouseAutofilled = false;
   String? _error;
   String? _validationError;
   bool _loading = false;
@@ -72,6 +75,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   String? _suggestionError;
   int _suggestionGeneration = 0;
   bool _submitted = false;
+  int _removedLineCount = 0;
 
   bool get _canRegister {
     final override = widget.canRegister;
@@ -117,13 +121,11 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       _grid.replaceAll(rows);
       // 默认仓 = 当前用户上次登记所用仓（无历史不预选，不猜）。
       String? warehouseId;
-      String? lastWarehouseName;
       try {
         final last = await ref
             .read(productionFinishedInboundTaskRepositoryProvider)
             .lastArrivalWarehouse();
         warehouseId = last?.warehouseId;
-        lastWarehouseName = last?.warehouseName;
       } catch (_) {
         /* 上次仓拉取失败不阻断，仅不预选 */
       }
@@ -131,7 +133,8 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       setState(() {
         _reports = reports;
         _defaultWarehouseId = warehouseId;
-        _lastWarehouseName = lastWarehouseName;
+        _warehouseAutofilled = warehouseId?.isNotEmpty == true;
+        _removedLineCount = 0;
         _loading = false;
         _validationError = null;
         _suggestionError = null;
@@ -230,6 +233,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
   Future<void> _onDefaultWarehouseChanged(String? value) async {
     setState(() {
       _defaultWarehouseId = value;
+      _warehouseAutofilled = false; // 用户改选=已核对
       _validationError = null;
       _suggestionError = null;
     });
@@ -256,7 +260,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     final picked = await showDialog<(String, String)>(
       context: context,
       builder: (_) => _WarehousePickerDialog(
-        entries: names.warehouseEntries,
+        entries: names.warehouseHierarchy,
         currentId: current,
       ),
     );
@@ -264,6 +268,20 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     _applyWarehouseToRows(rows, picked.$1);
     setState(() {});
     await _reloadSuggestions();
+  }
+
+  /// 仅把选择行从这次汇总请求移出；来源报工、fqty、库存和历史均不变。
+  /// V469 服务端按行登记，移出行会继续出现在仓库待登记任务中。
+  void _removeFromThisRegistration(List<_BatchArrivalRegistrationRow> rows) {
+    final removable = rows.where((row) => !row.registered).toList();
+    if (_saving || _submitted || !_canRegister || removable.isEmpty) return;
+    _grid.removeRows(removable);
+    if (!mounted) return;
+    setState(() {
+      _removedLineCount += removable.length;
+      _validationError = null;
+    });
+    context.appInfo('已从本次汇总登记移出 ${removable.length} 行；这些报工明细仍保持待登记送检');
   }
 
   String? _rememberPlacesConflict() {
@@ -325,7 +343,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         return;
       }
     }
-    // 按报工单分组：同一报工的全部行必须同仓（一张登记单一个仓）。
+    // 按报工单分组：同一批次中，同一报工的所选行必须同仓。
     final byReport = <String, List<_BatchArrivalRegistrationRow>>{};
     for (final row in rows) {
       byReport.putIfAbsent(row.report.reportId, () => []).add(row);
@@ -358,7 +376,8 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       builder: (dialogContext) => AlertDialog(
         title: Text('汇总登记并送检 ${reportIds.length} 张报工单'),
         content: const Text(
-          '将在同一事务逐张报工单登记成品仓与库位并送品质部检查（每单一份 FQC）。'
+          '将在同一事务把表内明细按报工单登记成品仓与库位，并逐行送品质部检查。'
+          '已移出明细仍留在仓库待登记，不产生 FQC 或库存事实。'
           '任一报工状态、权限、品质或并发校验失败，整批回滚。'
           '提交后进入品质检查；品质放行后再按实物执行最终点收。',
         ),
@@ -427,11 +446,20 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
       _leave(changed: true);
       return;
     }
-    await _rememberRegisteredPlaces(reportIds, result.registeredCount);
+    final registrationIds = result.reports
+        .map((report) => report.registrationId?.trim() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (registrationIds.length != result.reports.length ||
+        registrationIds.isEmpty) {
+      _rememberFailed('服务器未返回完整登记批次 UUID；登记已完成，请返回任务中心核对');
+      return;
+    }
+    await _rememberRegisteredPlaces(registrationIds, result.registeredCount);
   }
 
   Future<void> _rememberRegisteredPlaces(
-    List<String> reportIds,
+    List<String> registrationIds,
     int registeredCount,
   ) async {
     if (_remembering) return;
@@ -442,7 +470,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
     try {
       final result = await ref
           .read(productionFinishedInboundTaskRepositoryProvider)
-          .rememberPlacesBatch(reportIds);
+          .rememberPlacesBatch(registrationIds);
       if (!mounted) return;
       setState(() => _remembering = false);
       final suffix = result.warnings.isEmpty
@@ -505,6 +533,12 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         ),
       );
     }
+    // 建立权限快照订阅；事件处理仍通过 _canRegister 的 read 读取最新值，
+    // 授权刷新/撤销则由这里触发整页重建并即时收起写操作。
+    if (widget.canRegister == null) {
+      ref.watch(isSuperAdminProvider);
+      ref.watch(currentPermissionsProvider);
+    }
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
@@ -555,7 +589,8 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                         const SizedBox(height: UtenSpacing.s8),
                       ],
                       Text(
-                        '成品明细 (${_grid.length} 行 · ${_reports!.length} 张报工单)',
+                        '成品明细 (${_grid.length} 行 · '
+                        '${_grid.rows.map((row) => row.report.reportId).toSet().length} 张报工单)',
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -571,11 +606,20 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                             throw UnsupportedError('明细由所选报工单固定带入'),
                         showAddRow: false,
                         showRowDelete: false,
-                        selectable: _canRegister,
-                        canSelectRow: (row) => !row.registered,
-                        selectedOf: (row) => row.selected,
-                        onRowSelect: (row, next) =>
-                            setState(() => row.selected = next),
+                        selectable: _canRegister && !_submitted,
+                        selectionEnabled:
+                            !_saving && !_remembering && !_submitted,
+                        canSelectRow: (row) => !row.registered && !_submitted,
+                        onRemoveRows: _canRegister && !_submitted
+                            ? _removeFromThisRegistration
+                            : null,
+                        removeRowsActionLabel: '移出本次登记',
+                        removeRowsDialogTitle: '移出本次登记',
+                        removeRowsConfirmLabel: '确认移出',
+                        removeRowsMessageBuilder: (count) =>
+                            '确认从本次汇总登记移出选中的 $count 行？'
+                            '报工事实不会删除，也不会产生 FQC、入库或库存事实；'
+                            '返回任务中心后仍保持待登记送检。',
                         batchActionsBuilder: _canRegister
                             ? (context, controller) => [
                                 Tooltip(
@@ -589,9 +633,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                                     size: UtenButtonSize.large,
                                     icon: Icons.warehouse_outlined,
                                     onPressed: () {
-                                      final rows = controller.rows
-                                          .where((row) => row.selected)
-                                          .toList(growable: false);
+                                      final rows = controller.selectedRows;
                                       if (rows.isEmpty) {
                                         context.appWarning('请先勾选要统一设置成品仓的行');
                                         return;
@@ -599,7 +641,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                                       _pickWarehouseFor(rows);
                                     },
                                     child: Text(
-                                      '统一设置成品仓(${controller.rows.where((row) => row.selected).length})',
+                                      '统一设置成品仓(${controller.selectedCount})',
                                     ),
                                   ),
                                 ),
@@ -609,7 +651,10 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                         footer: Padding(
                           padding: const EdgeInsets.all(UtenSpacing.s12),
                           child: Text(
-                            _canRegister
+                            _removedLineCount > 0
+                                ? '已移出 $_removedLineCount 行（仅本次）；这些行仍在待登记送检，'
+                                      '本次只提交表内剩余行。'
+                                : _canRegister
                                 ? _rememberPlaces
                                       ? '将按所选成品仓记住默认库位；不改变历史登记和库存事实。'
                                       : '仅保存本次到货库位快照，不更新以后默认建议。'
@@ -659,7 +704,8 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
                         size: UtenButtonSize.large,
                         icon: Icons.fact_check_outlined,
                         isLoading: _saving,
-                        onPressed: _saving || _suggestionsLoading
+                        onPressed:
+                            _saving || _suggestionsLoading || _grid.isEmpty
                             ? null
                             : _save,
                         onDisabledTap: _suggestionsLoading
@@ -747,13 +793,9 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
               required: true,
               enabled: _canRegister && !_saving && !_submitted,
               value: _defaultWarehouseId,
-              items: [
-                for (final entry in names.warehouseEntries.entries)
-                  UtenDropdownItem(value: entry.key, label: entry.value),
-              ],
-              helperMessage: _lastWarehouseName == null
-                  ? null
-                  : '已按您上次登记预选（$_lastWarehouseName）',
+              autofilled: _warehouseAutofilled,
+              // V476：主/子层级（父仓置灰分组，实收落具体仓）。
+              items: warehouseHierarchyItems(names.warehouseHierarchy),
               onChanged: _onDefaultWarehouseChanged,
             ),
           ],
@@ -1061,7 +1103,6 @@ class _BatchArrivalRegistrationRow extends EditableGridRow {
   final TextEditingController place;
   final ValueNotifier<String?> warehouseId;
   final ValueNotifier<_BatchPlaceSource> placeSource;
-  bool selected = false;
   bool _applyingSuggestion = false;
 
   void _handlePlaceChanged() {
@@ -1155,11 +1196,11 @@ enum _BatchPlaceSource {
   };
 }
 
-/// 成品仓选择弹窗：搜索 + 列表（数据源 masterNameService.warehouseEntries）。
+/// 成品仓选择弹窗：搜索 + 层级列表（V476 主/子分组；数据源 warehouseHierarchy）。
 class _WarehousePickerDialog extends StatefulWidget {
   const _WarehousePickerDialog({required this.entries, this.currentId});
 
-  final Map<String, String> entries;
+  final List<WarehouseDictEntry> entries;
   final String? currentId;
 
   @override
@@ -1171,17 +1212,20 @@ class _WarehousePickerDialogState extends State<_WarehousePickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final keyword = _keyword.trim().toLowerCase();
-    final entries =
-        widget.entries.entries
-            .where(
-              (entry) =>
-                  keyword.isEmpty ||
-                  entry.value.toLowerCase().contains(keyword) ||
-                  entry.key.toLowerCase().contains(keyword),
-            )
-            .toList()
-          ..sort((a, b) => a.value.compareTo(b.value));
+    final entries = widget.entries
+        .where(
+          (entry) =>
+              keyword.isEmpty ||
+              entry.name.toLowerCase().contains(keyword) ||
+              (entry.id).toLowerCase().contains(keyword),
+        )
+        .toList();
+    final parentIds = widget.entries
+        .map((e) => e.parentId)
+        .whereType<String>()
+        .toSet();
     return AlertDialog(
       title: const Text('选择成品仓'),
       content: SizedBox(
@@ -1206,17 +1250,40 @@ class _WarehousePickerDialogState extends State<_WarehousePickerDialog> {
                       itemCount: entries.length,
                       itemBuilder: (context, index) {
                         final entry = entries[index];
-                        final selected = entry.key == widget.currentId;
+                        final selected = entry.id == widget.currentId;
+                        // 有子仓的仓是分组标题（V476），不可选——实收必须落具体仓。
+                        final isHeader = widget.entries.any(
+                          (o) => o.parentId == entry.id,
+                        );
+                        final isChild =
+                            entry.parentId != null &&
+                            parentIds.contains(entry.parentId);
+                        if (isHeader) {
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.only(
+                              left: isChild ? 32 : 16,
+                            ),
+                            title: Text(
+                              entry.name,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          );
+                        }
                         return ListTile(
                           dense: true,
                           selected: selected,
-                          title: Text(entry.value),
+                          contentPadding: EdgeInsets.only(
+                            left: isChild ? 32 : 16,
+                          ),
+                          title: Text(entry.name),
                           trailing: selected
                               ? const Icon(Icons.check_rounded)
                               : null,
-                          onTap: () => Navigator.of(
-                            context,
-                          ).pop((entry.key, entry.value)),
+                          onTap: () =>
+                              Navigator.of(context).pop((entry.id, entry.name)),
                         );
                       },
                     ),

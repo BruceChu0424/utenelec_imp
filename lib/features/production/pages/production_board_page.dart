@@ -20,6 +20,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -41,6 +42,7 @@ import '../providers/production_board_sort_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/progress_ring.dart';
 import '../widgets/production_fqc_replenishment_banner.dart';
+import '../widgets/production_execution_group_panel.dart';
 
 class ProductionBoardPage extends ConsumerStatefulWidget {
   const ProductionBoardPage({super.key, this.initialTab});
@@ -136,9 +138,8 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                     key: const Key('production-board-pending'),
                     keyword: _keyword,
                   ),
-                  'progress' => _PlanPanel(
+                  'progress' => ProductionExecutionGroupPanel(
                     key: const Key('production-board-progress'),
-                    closed: false,
                     keyword: _keyword,
                   ),
                   'history' =>
@@ -1037,10 +1038,12 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     initialValue: _selected[row.orderItemId]?.toString(),
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
     decoration: InputDecoration(
-      labelText: '本次联合分析数量',
-      helper: UtenFieldMessage.helper(
-        '单位 ${row.unitName ?? '未维护'}；待排上限 ${_qtyText(row.needQty)}；'
-        '最终可生产量由服务端预览确认',
+      label: fieldLabel(
+        '本次联合分析数量',
+        Theme.of(context),
+        info:
+            '单位 ${row.unitName ?? '未维护'}；待排上限 ${_qtyText(row.needQty)}；'
+            '最终可生产量由服务端预览确认',
       ),
     ),
     onChanged: (value) {
@@ -2206,7 +2209,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     final IconData icon;
     switch (state) {
       case 'READY':
-        text = canStartNow ? '物料已齐套 · 待派工/发料' : '物料已齐套';
+        text = canStartNow ? '物料已齐套 · 仓库备料中' : '物料已齐套';
         color = Colors.green.shade700;
         icon = Icons.check_circle_outline_rounded;
         break;
@@ -2214,7 +2217,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         text =
             '物料已齐 ${_fmt(readyQty)} / ${_fmt(totalQty)}'
             '($readySegments/$totalSegments 段)'
-            '${canStartNow ? ' · 部分段待派工/发料' : ''}';
+            '${canStartNow ? ' · 部分段进入仓库备料' : ''}';
         color = Colors.orange.shade800;
         icon = Icons.inventory_2_outlined;
         break;

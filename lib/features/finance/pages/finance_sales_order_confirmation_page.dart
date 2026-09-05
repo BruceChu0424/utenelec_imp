@@ -524,6 +524,9 @@ class _FinanceSalesOrderConfirmationPageState
               onSelectionChanged: canConfirm
                   ? null
                   : (item) => setState(() => _activeItem = item),
+              onSelectionCleared: canConfirm
+                  ? null
+                  : () => setState(() => _activeItem = null),
               rowMenuBuilder: (item) => [
                 UtenMenuItem(
                   label: '查看审核详情',

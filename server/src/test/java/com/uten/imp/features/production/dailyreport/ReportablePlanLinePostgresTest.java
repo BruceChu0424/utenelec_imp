@@ -3,6 +3,7 @@ package com.uten.imp.features.production.dailyreport;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
 import com.uten.imp.security.OwnerVisibility;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -126,11 +129,12 @@ class ReportablePlanLinePostgresTest {
         jdbc.update("""
                 INSERT INTO production_material_analyses(
                     id, warehouse_id, status, fingerprint,
-                    initial_idempotency_key, maker_id
+                    initial_idempotency_key, maker_id,
+                    participating_warehouse_ids
                 ) VALUES (?, ?, 'ACTIVE', ?, 'reportable-plan-line-analysis',
-                          ?)
+                          ?, ARRAY[?]::uuid[])
                 """, ANALYSIS_ID, WAREHOUSE_ID, "d".repeat(64),
-                EMPLOYEE_ID);
+                EMPLOYEE_ID, WAREHOUSE_ID);
         jdbc.update("""
                 INSERT INTO production_material_analysis_items(
                     id, analysis_id, source_type, goods_id, unit_id,
@@ -257,7 +261,12 @@ class ReportablePlanLinePostgresTest {
                 mock(ProductionDocumentAccessPolicy.class);
         when(access.scope()).thenReturn(
                 new OwnerVisibility.OwnerScope(true, java.util.Set.of()));
-        service = new ReportablePlanLineQueryService(jdbc, access);
+        SecurityContextCurrentUser currentUser =
+                mock(SecurityContextCurrentUser.class);
+        when(currentUser.employeeId()).thenReturn(
+                java.util.Optional.of(EMPLOYEE_ID));
+        service = new ReportablePlanLineQueryService(
+                jdbc, access, currentUser);
     }
 
     private void insertDraftProgress() {
@@ -311,6 +320,112 @@ class ReportablePlanLinePostgresTest {
                 new java.math.BigDecimal("10.0000")));
         assertEquals(List.of("XD20260801000001", "XD20260801000002"),
                 items.stream().map(ReportablePlanLine::orderNo).toList());
+    }
+
+    @Test
+    void assignedZeroMaterialReadySegmentIsReportableAndExactIdSetFilters() {
+        writeHistoricalState(() -> jdbc.update(
+                "UPDATE production_execution_segments SET status='READY' WHERE id=?",
+                SEGMENT_ID));
+
+        List<ReportablePlanLine> items = service.list(
+                1,
+                100,
+                null,
+                null,
+                List.of(SEGMENT_ID, UUID.randomUUID())).getItems();
+
+        assertEquals(2, items.size());
+        assertTrue(items.stream().allMatch(item ->
+                SEGMENT_ID.equals(item.executionSegmentId())));
+        assertTrue(items.stream().allMatch(item ->
+                "READY".equals(item.executionSegmentStatus())));
+    }
+
+    @Test
+    void readyToInProgressRequiresExactReportTransactionMarker() {
+        writeHistoricalState(() -> jdbc.update(
+                "UPDATE production_execution_segments "
+                        + "SET status='READY', lock_version=0 WHERE id=?",
+                SEGMENT_ID));
+        assertEquals("READY", jdbc.queryForObject(
+                "SELECT status FROM production_execution_segments WHERE id=?",
+                String.class,
+                SEGMENT_ID));
+        assertEquals("origin", jdbc.queryForObject(
+                "SHOW session_replication_role", String.class));
+
+        assertThrows(DataIntegrityViolationException.class, () ->
+                transaction.executeWithoutResult(ignored -> jdbc.update(
+                        "UPDATE production_execution_segments "
+                                + "SET status='IN_PROGRESS', lock_version=1 "
+                                + "WHERE id=?",
+                        SEGMENT_ID)));
+
+        transaction.executeWithoutResult(ignored -> {
+            jdbc.queryForObject(
+                    "SELECT set_config("
+                            + "'app.production_report_auto_start_segment_id',"
+                            + " ?, true)",
+                    String.class,
+                    SEGMENT_ID.toString());
+            jdbc.queryForObject(
+                    "SELECT set_config("
+                            + "'app.production_report_auto_start_expected_version',"
+                            + " '0', true)",
+                    String.class);
+            assertEquals(1, jdbc.update(
+                    "UPDATE production_execution_segments "
+                            + "SET status='IN_PROGRESS', lock_version=1 "
+                            + "WHERE id=? AND lock_version=0",
+                    SEGMENT_ID));
+            assertEquals(1, jdbc.update("""
+                    INSERT INTO production_execution_segment_events(
+                        execution_segment_id, action, idempotency_key,
+                        request_hash, expected_version, resulting_version)
+                    VALUES (?, 'AUTO_START_ON_REPORT', 'report-test',
+                            ?, 0, 1)
+                    """, SEGMENT_ID, "e".repeat(64)));
+        });
+        assertEquals("IN_PROGRESS", jdbc.queryForObject(
+                "SELECT status FROM production_execution_segments WHERE id=?",
+                String.class,
+                SEGMENT_ID));
+    }
+
+    @Test
+    void assignedWorkshopScopeCanReportAPlannerOwnedPlanButNoPermissionCannot() {
+        writeHistoricalState(() -> jdbc.update("""
+                UPDATE production_plans
+                SET maker_id = (
+                    SELECT id FROM employees
+                    WHERE id <> ?
+                      AND is_deleted = FALSE
+                    ORDER BY id
+                    LIMIT 1)
+                WHERE id = ?
+                """, EMPLOYEE_ID, PLAN_ID));
+        ProductionDocumentAccessPolicy scopedAccess =
+                mock(ProductionDocumentAccessPolicy.class);
+        when(scopedAccess.scope()).thenReturn(
+                new OwnerVisibility.OwnerScope(false, java.util.Set.of()));
+        when(scopedAccess.hasAuthority("production_execution:view"))
+                .thenReturn(true);
+        SecurityContextCurrentUser workshopUser =
+                mock(SecurityContextCurrentUser.class);
+        when(workshopUser.employeeId()).thenReturn(
+                java.util.Optional.of(EMPLOYEE_ID));
+        ReportablePlanLineQueryService workshopService =
+                new ReportablePlanLineQueryService(
+                        jdbc, scopedAccess, workshopUser);
+
+        assertEquals(2, workshopService.list(
+                1, 100, null, null).getItems().size());
+
+        when(scopedAccess.hasAuthority("production_execution:view"))
+                .thenReturn(false);
+        assertTrue(workshopService.list(
+                1, 100, null, null).getItems().isEmpty());
     }
 
     @Test

@@ -1,6 +1,8 @@
 package com.uten.imp.features.production.dailyreport;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
@@ -23,6 +25,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -57,9 +62,47 @@ public class ProductionDailyReportController {
             @RequestParam(defaultValue = "30") int size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) UUID departmentId,
-            @RequestParam(required = false) UUID executionSegmentId) {
+            @RequestParam(required = false) UUID executionSegmentId,
+            @RequestParam(required = false) String executionSegmentIds) {
+        List<UUID> exactSegmentIds = normalizeExecutionSegmentIds(
+                executionSegmentId, executionSegmentIds);
         return reportablePlanLines.list(
-                page, size, keyword, departmentId, executionSegmentId);
+                page, size, keyword, departmentId, exactSegmentIds);
+    }
+
+    /**
+     * Accepts the current comma-separated client shape and the historical
+     * singular parameter. Order is stable, duplicates collapse, and the
+     * server enforces the same bounded batch size for every caller.
+     */
+    static List<UUID> normalizeExecutionSegmentIds(
+            UUID executionSegmentId, String executionSegmentIds) {
+        LinkedHashSet<UUID> normalized = new LinkedHashSet<>();
+        if (executionSegmentId != null) normalized.add(executionSegmentId);
+        if (executionSegmentIds != null && !executionSegmentIds.isBlank()) {
+            String[] tokens = executionSegmentIds.split(",", -1);
+            for (String token : tokens) {
+                String value = token.strip();
+                if (value.isEmpty()) {
+                    throw new ApiException(
+                            ErrorCode.VALIDATION_FAILED,
+                            "批量报工执行段 UUID 清单包含空值");
+                }
+                try {
+                    normalized.add(UUID.fromString(value));
+                } catch (IllegalArgumentException error) {
+                    throw new ApiException(
+                            ErrorCode.VALIDATION_FAILED,
+                            "批量报工执行段 UUID 格式无效");
+                }
+            }
+        }
+        if (normalized.size() > 100) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "一次最多选择 100 个执行工单进行批量报工");
+        }
+        return List.copyOf(new ArrayList<>(normalized));
     }
 
     @GetMapping

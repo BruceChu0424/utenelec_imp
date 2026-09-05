@@ -1,5 +1,47 @@
 part of 'production_material_analysis_page.dart';
 
+@visibleForTesting
+class MaterialAnalysisBorrowBadgeContent extends StatelessWidget {
+  const MaterialAnalysisBorrowBadgeContent({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ExcludeSemantics(
+      child: Text.rich(
+        TextSpan(
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w700,
+          ),
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.only(right: UtenSpacing.s4),
+                child: Icon(icon, size: 16, color: color),
+              ),
+            ),
+            TextSpan(text: label),
+          ],
+        ),
+        maxLines: 2,
+        softWrap: true,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
 abstract class _MaterialAnalysisBorrowState
     extends _MaterialAnalysisBomTreeState {
   // ===== 现货层借用（调货） =====
@@ -10,12 +52,10 @@ abstract class _MaterialAnalysisBorrowState
 
   /// 借用双向徽标：借出方显示"已被调走 · 调给 X"，借入方显示"已调入 ·
   /// 来自 Y"。生效数为 0 时显示"暂未生效"，避免把申请量当成已调量。
-  @override
   Widget _borrowBadges(
     ThemeData theme,
-    ProductionMaterialAnalysisMaterial material, {
-    required bool selected,
-  }) {
+    ProductionMaterialAnalysisMaterial material,
+  ) {
     if (material.borrowRefs.isEmpty && material.crossReallocationRefs.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -23,9 +63,7 @@ abstract class _MaterialAnalysisBorrowState
     for (final ref in material.borrowRefs) {
       final inbound = ref.isInbound;
       final effective = ref.qty > 0;
-      final color = selected
-          ? theme.colorScheme.onPrimary
-          : !effective
+      final color = !effective
           ? theme.colorScheme.onSurfaceVariant
           : inbound
           ? theme.colorScheme.primary
@@ -51,25 +89,12 @@ abstract class _MaterialAnalysisBorrowState
               borderRadius: UtenRadius.smAll,
               border: Border.all(color: color.withValues(alpha: 0.5)),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  inbound
-                      ? Icons.call_received_rounded
-                      : Icons.call_made_rounded,
-                  size: 16,
-                  color: color,
-                ),
-                const SizedBox(width: UtenSpacing.s4),
-                Text(
-                  label,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
+            child: MaterialAnalysisBorrowBadgeContent(
+              icon: inbound
+                  ? Icons.call_received_rounded
+                  : Icons.call_made_rounded,
+              label: label,
+              color: color,
             ),
           ),
         ),
@@ -78,9 +103,7 @@ abstract class _MaterialAnalysisBorrowState
     for (final allocation in material.crossReallocationRefs) {
       final inbound = allocation.isInbound;
       final label = _crossReallocationChipLabel(allocation);
-      final color = selected
-          ? theme.colorScheme.onPrimary
-          : inbound
+      final color = inbound
           ? theme.colorScheme.primary
           : theme.colorScheme.tertiary;
       chips.add(
@@ -100,27 +123,12 @@ abstract class _MaterialAnalysisBorrowState
               borderRadius: UtenRadius.smAll,
               border: Border.all(color: color.withValues(alpha: 0.5)),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  inbound
-                      ? Icons.move_to_inbox_outlined
-                      : Icons.outbox_outlined,
-                  size: 16,
-                  color: color,
-                ),
-                const SizedBox(width: UtenSpacing.s4),
-                Flexible(
-                  child: Text(
-                    label,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+            child: MaterialAnalysisBorrowBadgeContent(
+              icon: inbound
+                  ? Icons.move_to_inbox_outlined
+                  : Icons.outbox_outlined,
+              label: label,
+              color: color,
             ),
           ),
         ),
@@ -305,7 +313,7 @@ abstract class _MaterialAnalysisBorrowState
         title: '撤销这笔借用',
         fieldKey: Key('borrow-revoke-reason'),
         initialValue: '',
-        helperMessage: '撤销后借出方恢复分配、借入方重新出现缺口。请填写撤销原因。',
+        info: '撤销后借出方恢复分配、借入方重新出现缺口。请填写撤销原因。',
         confirmLabel: '确认撤销',
       ),
     );
@@ -365,7 +373,7 @@ abstract class _MaterialAnalysisBorrowState
         title: '撤销跨计划让料',
         fieldKey: Key('cross-reallocation-revoke-reason'),
         initialValue: '',
-        helperMessage: '撤销会重新计算两份计划的物料覆盖。请填写业务原因。',
+        info: '撤销会重新计算两份计划的物料覆盖。请填写业务原因。',
         confirmLabel: '确认撤销',
       ),
     );

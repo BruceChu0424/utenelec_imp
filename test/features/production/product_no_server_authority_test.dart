@@ -33,7 +33,7 @@ void main() {
   );
 
   test(
-    'plan creation carries the optional number through analysis and wizard',
+    'plan creation leaves the number to the server after wizard retirement',
     () {
       final editPage = File(
         'lib/features/production/pages/production_plan_edit_page.dart',
@@ -49,19 +49,13 @@ void main() {
               (p) => p.endsWith('.dart') && p.contains('material_analysis_'),
             ),
       ].map((p) => File(p).readAsStringSync()).join('\n');
-      final wizardPage = File(
-        'lib/features/production/pages/production_plan_wizard_page.dart',
-      ).readAsStringSync();
 
       expect(editPage, contains('initialProductNo: row.productNo.text.trim()'));
-      expect(analysisLibrary, contains('widget.seed.initialProductNoFor('));
-      expect(wizardPage, contains("labelText: '产品编号(可选)'"));
-      expect(wizardPage, contains('UtenFieldMessage.helper('));
-      expect(wizardPage, contains('留空由系统按计划单号生成'));
-      expect(
-        wizardPage,
-        contains('productNo: productNoController.text.trim()'),
-      );
+      // 2026-09-04 起「填写生产计划单」向导页下线（可安排桶直接生成+下发），
+      // 分析侧不再手工指定产品编号——统一留空由服务端按计划单号生成；
+      // 分析链路不得再引用向导专属的产品编号 seed。
+      expect(analysisLibrary, isNot(contains('initialProductNoFor(')));
+      expect(analysisLibrary, isNot(contains('ProductionPlanWizard')));
     },
   );
 

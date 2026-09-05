@@ -69,9 +69,17 @@ public class ProductionFinishedArrivalRegistrationService {
         if (reportId == null || warehouseId == null) {
             throw validation("生产成品库位建议缺少报工单或仓库 UUID");
         }
+        return placeSuggestionsInternal(List.of(reportId), warehouseId);
+    }
+
+    /** One bounded SQL for both single and up-to-50-report batch suggestions. */
+    private PlaceSuggestionsView placeSuggestionsInternal(
+            List<UUID> reportIds,
+            UUID warehouseId) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT report_item.id,
+                                SELECT report.id AS source_report_id,
+                                       report_item.id,
                                        CASE
                                            WHEN preference.id IS NOT NULL
                                                THEN preference.place
@@ -130,8 +138,6 @@ public class ProductionFinishedArrivalRegistrationService {
                                              IS NOT DISTINCT FROM report_item.color_id
                                         WHERE history_registration.warehouse_id =
                                               selected_warehouse.id
-                                          AND history_registration.source_report_id <>
-                                              report.id
                                         GROUP BY history_registration.id,
                                                  history_registration.created_at
                                         ORDER BY history_registration.created_at DESC,
@@ -140,41 +146,38 @@ public class ProductionFinishedArrivalRegistrationService {
                                     ) latest_history
                                     WHERE latest_history.place_count = 1
                                 ) registration_history ON preference.id IS NULL
-                                LEFT JOIN production_finished_arrival_registrations
-                                          visible_registration
-                                  ON visible_registration.source_report_id = report.id
-                                WHERE report.id = :reportId
+                                WHERE report.id IN (:reportIds)
                                   AND report.status = 1
                                   AND report.is_deleted = FALSE
-                                  AND (
-                                      visible_registration.id IS NOT NULL
-                                      OR (
-                                          NOT EXISTS (
-                                              SELECT 1
-                                              FROM production_daily_report_items
-                                                       ineligible_item
-                                              WHERE ineligible_item.report_id = report.id
-                                                AND ineligible_item.is_deleted = FALSE
-                                                AND ineligible_item.execution_segment_id IS NULL)
-                                          AND NOT EXISTS (
-                                              SELECT 1
-                                              FROM production_fqc_inspections inspection
-                                              WHERE inspection.source_report_id = report.id)
-                                          AND NOT EXISTS (
-                                              SELECT 1
-                                              FROM production_fqc_legacy_exemptions exemption
-                                              WHERE exemption.source_report_id = report.id)
-                                      )
-                                  )
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_finished_arrival_registration_items
+                                               registered_item
+                                      WHERE registered_item.source_report_item_id =
+                                            report_item.id)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_fqc_inspections inspection
+                                      WHERE inspection.source_report_item_id =
+                                            report_item.id)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_fqc_legacy_exemptions exemption
+                                      WHERE exemption.source_report_item_id =
+                                            report_item.id)
                                 ORDER BY report_item.line_no NULLS LAST,
                                          report_item.id
                                 """)
-                        .setParameter("reportId", reportId)
+                        .setParameter("reportIds", reportIds)
                         .setParameter("warehouseId", warehouseId));
         if (rows.isEmpty()) throw notFound();
+        Set<UUID> foundReports = rows.stream()
+                .map(row -> (UUID) row[0])
+                .collect(java.util.stream.Collectors.toSet());
+        if (!foundReports.containsAll(reportIds)) throw notFound();
         return new PlaceSuggestionsView(rows.stream()
                 .map(row -> new PlaceSuggestionItemView(
-                        (UUID) row[0], text(row[1]), text(row[2])))
+                        (UUID) row[1], text(row[2]), text(row[3])))
                 .toList());
     }
 
@@ -210,40 +213,40 @@ public class ProductionFinishedArrivalRegistrationService {
                     || !Objects.equals(existing[2], normalized.requestHash())) {
                 throw conflict("该仓库登记幂等键已用于不同请求");
             }
-            return detailInternal(reportId);
+            return detailInternal(reportId, (UUID) existing[0]);
         }
 
         Object[] report = lockApprovedReport(reportId);
-        List<?> existingForReport = em.createNativeQuery("""
-                        SELECT id
-                        FROM production_finished_arrival_registrations
-                        WHERE source_report_id = :reportId
-                        FOR UPDATE
-                        """)
-                .setParameter("reportId", reportId)
-                .getResultList();
-        if (!existingForReport.isEmpty()) {
-            throw conflict("该生产报工已由其他登记命令完成，请刷新");
-        }
-        requireNoQualityOrLegacyFacts(reportId);
-
-        List<UUID> reportItemIds = NativeQueryResults.typedRows(
+        List<UUID> pendingReportItemIds = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
-                                SELECT id
-                                FROM production_daily_report_items
-                                WHERE report_id = :reportId
-                                  AND is_deleted = FALSE
-                                  AND execution_segment_id IS NOT NULL
-                                ORDER BY id
+                                SELECT report_item.id
+                                FROM production_daily_report_items report_item
+                                WHERE report_item.report_id = :reportId
+                                  AND report_item.is_deleted = FALSE
+                                  AND report_item.execution_segment_id IS NOT NULL
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_finished_arrival_registration_items
+                                               registered_item
+                                      WHERE registered_item.source_report_item_id =
+                                            report_item.id)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_fqc_inspections inspection
+                                      WHERE inspection.source_report_item_id =
+                                            report_item.id)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_fqc_legacy_exemptions exemption
+                                      WHERE exemption.source_report_item_id =
+                                            report_item.id)
+                                ORDER BY report_item.id
                                 FOR UPDATE
                                 """)
                         .setParameter("reportId", reportId),
                 UUID.class);
-        if (reportItemIds.isEmpty()
-                || !Set.copyOf(reportItemIds).equals(
-                        normalized.places().keySet())) {
-            throw validation("送检登记必须逐行精确覆盖当前报工全部明细");
-        }
+        requireSelectedPending(
+                pendingReportItemIds, normalized.places().keySet());
 
         WarehouseSnapshot warehouse = lockWarehouse(normalized.warehouseId());
         EmployeeSnapshot receiver = requireReceiver(receiverEmployeeId);
@@ -288,21 +291,58 @@ public class ProductionFinishedArrivalRegistrationService {
                         .setParameter("actorId", actorId)
                         .executeUpdate());
 
-        // Registration and every FQC PENDING fact commit or roll back together.
-        qualityInspection.registerApprovedReport((UUID) report[0]);
-        return detailInternal(reportId);
+        // This selected registration batch and its exact FQC PENDING facts
+        // commit or roll back together. Unselected report lines remain pending.
+        qualityInspection.registerApprovedReportItems(
+                (UUID) report[0],
+                normalized.places().keySet().stream().sorted().toList(),
+                registrationId);
+        return detailInternal(reportId, registrationId);
     }
 
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
     public RememberPlacesResult rememberPlaces(UUID reportId) {
+        return rememberPlaces(reportId, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
+    public RememberPlacesResult rememberPlaces(
+            UUID reportId,
+            UUID exactRegistrationId) {
         tx.bind();
         access.requireWarehouseTaskAccess("无权记忆生产成品库位建议");
         if (reportId == null) {
             throw validation("生产成品库位记忆缺少报工单 UUID");
         }
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
+        if (exactRegistrationId == null) {
+            Number registrationCount = (Number) em.createNativeQuery("""
+                            SELECT COUNT(*)
+                            FROM production_finished_arrival_registrations
+                            WHERE source_report_id = :reportId
+                            """)
+                    .setParameter("reportId", reportId)
+                    .getSingleResult();
+            if (registrationCount != null
+                    && registrationCount.longValue() > 1) {
+                throw conflict("该报工已有多个登记批次，请刷新页面后按登记批次记忆库位");
+            }
+        }
+        String registrationPredicate = exactRegistrationId == null
+                ? """
+                  registration.id = (
+                      SELECT latest.id
+                      FROM production_finished_arrival_registrations latest
+                      WHERE latest.source_report_id = :reportId
+                      ORDER BY latest.created_at DESC, latest.id DESC
+                      LIMIT 1)
+                  """
+                : """
+                  registration.id = :registrationId
+                  AND registration.source_report_id = :reportId
+                  """;
+        var rememberQuery = em.createNativeQuery("""
                                 SELECT registration.id,
                                        registration.warehouse_id,
                                        registration.created_at,
@@ -327,12 +367,17 @@ public class ProductionFinishedArrivalRegistrationService {
                                 JOIN goods goods
                                   ON goods.id = report_item.goods_id
                                  AND goods.is_deleted = FALSE
-                                WHERE registration.source_report_id = :reportId
+                                WHERE
+                                """ + registrationPredicate + """
                                 ORDER BY report_item.goods_id,
                                          report_item.color_id NULLS FIRST,
                                          report_item.id
                                 """)
-                        .setParameter("reportId", reportId));
+                .setParameter("reportId", reportId);
+        if (exactRegistrationId != null) {
+            rememberQuery.setParameter("registrationId", exactRegistrationId);
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(rememberQuery);
         if (rows.isEmpty()) throw notFound();
 
         UUID registrationId = (UUID) rows.getFirst()[0];
@@ -410,24 +455,25 @@ public class ProductionFinishedArrivalRegistrationService {
     }
 
     private ArrivalRegistrationView detailInternal(UUID reportId) {
+        return detailInternal(reportId, null);
+    }
+
+    /**
+     * Without an exact registration id this is the recoverable work view: if
+     * any line is still pending, only those lines are returned and registered
+     * is false.  Replays and post-create responses pass the immutable
+     * registration id and receive that exact historical batch.
+     */
+    private ArrivalRegistrationView detailInternal(
+            UUID reportId,
+            UUID exactRegistrationId) {
         if (reportId == null) throw notFound();
-        EmployeeSnapshot currentReceiver = requireReceiver(
-                currentUser.requireEmployeeId());
         List<Object[]> headers = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT report.id, report.bill_no,
-                                       report.bill_date, report.department_id,
-                                       report.workshop_name,
-                                       registration.id,
-                                       registration.warehouse_id,
-                                       registration.warehouse_code_snapshot,
-                                       registration.warehouse_name_snapshot,
-                                       registration.receiver_employee_id,
-                                       registration.receiver_name_snapshot,
-                                       registration.created_at
+                                        report.bill_date, report.department_id,
+                                        report.workshop_name
                                 FROM production_daily_reports report
-                                LEFT JOIN production_finished_arrival_registrations registration
-                                  ON registration.source_report_id = report.id
                                 WHERE report.id = :reportId
                                   AND report.status = 1
                                   AND report.is_deleted = FALSE
@@ -435,14 +481,20 @@ public class ProductionFinishedArrivalRegistrationService {
                         .setParameter("reportId", reportId));
         if (headers.size() != 1) throw notFound();
         Object[] header = headers.getFirst();
-        boolean registered = header[5] != null;
-        if (!registered && !isPendingRegistration(reportId)) throw notFound();
 
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
+        List<Object[]> rows = exactRegistrationId == null
+                ? pendingItemRows(reportId)
+                : List.of();
+        Object[] registration = null;
+        boolean registered = rows.isEmpty();
+        if (registered) {
+            registration = registrationHeader(reportId, exactRegistrationId);
+            if (registration == null) throw notFound();
+            rows = NativeQueryResults.objectArrayRows(
+                    em.createNativeQuery("""
                                 SELECT report_item.id, report_item.line_no,
-                                       report_item.plan_item_id,
-                                       report_item.execution_segment_id,
+                                        report_item.plan_item_id,
+                                        report_item.execution_segment_id,
                                        plan.id, plan.bill_no,
                                        report_item.goods_id,
                                        goods.code, goods.name,
@@ -463,17 +515,118 @@ public class ProductionFinishedArrivalRegistrationService {
                                   ON color.id = report_item.color_id
                                 LEFT JOIN units unit
                                   ON unit.id = report_item.unit_id
-                                LEFT JOIN production_finished_arrival_registration_items
+                                JOIN production_finished_arrival_registration_items
                                           registration_item
                                   ON registration_item.source_report_item_id = report_item.id
+                                 AND registration_item.registration_id = :registrationId
                                 WHERE report_item.report_id = :reportId
                                   AND report_item.is_deleted = FALSE
                                 ORDER BY report_item.line_no NULLS LAST,
                                          report_item.id
                                 """)
-                        .setParameter("reportId", reportId));
+                            .setParameter("reportId", reportId)
+                            .setParameter("registrationId", registration[0]));
+        }
         if (rows.isEmpty()) throw notFound();
-        List<ArrivalRegistrationItemView> items = rows.stream()
+        EmployeeSnapshot currentReceiver = registered
+                ? null
+                : requireReceiver(currentUser.requireEmployeeId());
+        return new ArrivalRegistrationView(
+                registered ? (UUID) registration[0] : null,
+                registered, (UUID) header[0],
+                text(header[1]), localDate(header[2]), (UUID) header[3],
+                text(header[4]),
+                registered ? (UUID) registration[1] : null,
+                registered ? text(registration[2]) : null,
+                registered ? text(registration[3]) : null,
+                registered ? (UUID) registration[4] : currentReceiver.id(),
+                registered ? text(registration[5]) : currentReceiver.name(),
+                registered ? offsetDateTime(registration[6]) : null,
+                mapArrivalItems(rows));
+    }
+
+    private List<Object[]> pendingItemRows(UUID reportId) {
+        return NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT report_item.id, report_item.line_no,
+                                       report_item.plan_item_id,
+                                       report_item.execution_segment_id,
+                                       plan.id, plan.bill_no,
+                                       report_item.goods_id,
+                                       goods.code, goods.name,
+                                       report_item.color_id, color.name,
+                                       report_item.unit_id, unit.name,
+                                       report_item.qty,
+                                       NULL::text AS place_snapshot,
+                                       goods.stock_place
+                                FROM production_daily_report_items report_item
+                                JOIN production_plan_items plan_item
+                                  ON plan_item.id = report_item.plan_item_id
+                                 AND plan_item.is_deleted = FALSE
+                                JOIN production_plans plan
+                                  ON plan.id = plan_item.plan_id
+                                 AND plan.is_deleted = FALSE
+                                JOIN goods goods ON goods.id = report_item.goods_id
+                                LEFT JOIN colors color
+                                  ON color.id = report_item.color_id
+                                LEFT JOIN units unit
+                                  ON unit.id = report_item.unit_id
+                                WHERE report_item.report_id = :reportId
+                                  AND report_item.is_deleted = FALSE
+                                  AND report_item.execution_segment_id IS NOT NULL
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_finished_arrival_registration_items
+                                               registered_item
+                                      WHERE registered_item.source_report_item_id =
+                                            report_item.id)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_fqc_inspections inspection
+                                      WHERE inspection.source_report_item_id =
+                                            report_item.id)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_fqc_legacy_exemptions exemption
+                                      WHERE exemption.source_report_item_id =
+                                            report_item.id)
+                                ORDER BY report_item.line_no NULLS LAST,
+                                         report_item.id
+                                """)
+                        .setParameter("reportId", reportId));
+    }
+
+    private Object[] registrationHeader(
+            UUID reportId,
+            UUID exactRegistrationId) {
+        String exact = exactRegistrationId == null
+                ? ""
+                : " AND registration.id = :registrationId ";
+        var query = em.createNativeQuery("""
+                        SELECT registration.id, registration.warehouse_id,
+                               registration.warehouse_code_snapshot,
+                               registration.warehouse_name_snapshot,
+                               registration.receiver_employee_id,
+                               registration.receiver_name_snapshot,
+                               registration.created_at
+                        FROM production_finished_arrival_registrations registration
+                        WHERE registration.source_report_id = :reportId
+                        """ + exact + """
+                        ORDER BY registration.created_at DESC,
+                                 registration.id DESC
+                        LIMIT 1
+                        """)
+                .setParameter("reportId", reportId);
+        if (exactRegistrationId != null) {
+            query.setParameter("registrationId", exactRegistrationId);
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    private static List<ArrivalRegistrationItemView> mapArrivalItems(
+            List<Object[]> rows) {
+        return rows.stream()
                 .map(row -> new ArrivalRegistrationItemView(
                         (UUID) row[0], integer(row[1]), (UUID) row[2],
                         (UUID) row[3], (UUID) row[4], text(row[5]),
@@ -482,16 +635,6 @@ public class ProductionFinishedArrivalRegistrationService {
                         text(row[12]), decimal(row[13]), text(row[14]),
                         text(row[15])))
                 .toList();
-        UUID receiverId = registered
-                ? (UUID) header[9] : currentReceiver.id();
-        String receiverName = registered
-                ? text(header[10]) : currentReceiver.name();
-        return new ArrivalRegistrationView(
-                (UUID) header[5], registered, (UUID) header[0],
-                text(header[1]), localDate(header[2]), (UUID) header[3],
-                text(header[4]), (UUID) header[6], text(header[7]),
-                text(header[8]), receiverId, receiverName,
-                offsetDateTime(header[11]), items);
     }
 
     @Transactional(readOnly = true)
@@ -499,7 +642,101 @@ public class ProductionFinishedArrivalRegistrationService {
     public List<ArrivalRegistrationView> batchDetail(List<UUID> reportIds) {
         access.requireWarehouseTaskAccess("无权查看生产成品送检登记");
         List<UUID> ids = requireReportIds(reportIds);
-        return ids.stream().map(this::detailInternal).toList();
+        List<Object[]> headerRows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT report.id, report.bill_no,
+                                       report.bill_date, report.department_id,
+                                       report.workshop_name
+                                FROM production_daily_reports report
+                                WHERE report.id IN (:reportIds)
+                                  AND report.status = 1
+                                  AND report.is_deleted = FALSE
+                                """)
+                        .setParameter("reportIds", ids));
+        Map<UUID, Object[]> headerByReport = new LinkedHashMap<>();
+        for (Object[] header : headerRows) {
+            headerByReport.put((UUID) header[0], header);
+        }
+
+        List<Object[]> itemRows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT report_item.report_id,
+                                       report_item.id, report_item.line_no,
+                                       report_item.plan_item_id,
+                                       report_item.execution_segment_id,
+                                       plan.id, plan.bill_no,
+                                       report_item.goods_id,
+                                       goods.code, goods.name,
+                                       report_item.color_id, color.name,
+                                       report_item.unit_id, unit.name,
+                                       report_item.qty,
+                                       NULL::text AS place_snapshot,
+                                       goods.stock_place
+                                FROM production_daily_report_items report_item
+                                JOIN production_plan_items plan_item
+                                  ON plan_item.id = report_item.plan_item_id
+                                 AND plan_item.is_deleted = FALSE
+                                JOIN production_plans plan
+                                  ON plan.id = plan_item.plan_id
+                                 AND plan.is_deleted = FALSE
+                                JOIN goods goods ON goods.id = report_item.goods_id
+                                LEFT JOIN colors color
+                                  ON color.id = report_item.color_id
+                                LEFT JOIN units unit
+                                  ON unit.id = report_item.unit_id
+                                WHERE report_item.report_id IN (:reportIds)
+                                  AND report_item.is_deleted = FALSE
+                                  AND report_item.execution_segment_id IS NOT NULL
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_finished_arrival_registration_items
+                                               registered_item
+                                      WHERE registered_item.source_report_item_id =
+                                            report_item.id)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_fqc_inspections inspection
+                                      WHERE inspection.source_report_item_id =
+                                            report_item.id)
+                                  AND NOT EXISTS (
+                                      SELECT 1
+                                      FROM production_fqc_legacy_exemptions exemption
+                                      WHERE exemption.source_report_item_id =
+                                            report_item.id)
+                                ORDER BY report_item.report_id,
+                                         report_item.line_no NULLS LAST,
+                                         report_item.id
+                                """)
+                        .setParameter("reportIds", ids));
+        Map<UUID, List<Object[]>> itemsByReport = new LinkedHashMap<>();
+        for (Object[] row : itemRows) {
+            itemsByReport.computeIfAbsent(
+                    (UUID) row[0], ignored -> new ArrayList<>())
+                    .add(java.util.Arrays.copyOfRange(row, 1, row.length));
+        }
+        EmployeeSnapshot receiver = itemRows.isEmpty()
+                ? null
+                : requireReceiver(currentUser.requireEmployeeId());
+
+        List<ArrivalRegistrationView> result = new ArrayList<>();
+        for (UUID reportId : ids) {
+            Object[] header = headerByReport.get(reportId);
+            List<Object[]> items = itemsByReport.get(reportId);
+            if (header == null || items == null || items.isEmpty()) {
+                // Stale selections are uncommon; preserve the former exact
+                // registered-history/not-found behavior without penalizing
+                // the normal all-pending batch with N database round trips.
+                result.add(detailInternal(reportId));
+                continue;
+            }
+            result.add(new ArrivalRegistrationView(
+                    null, false, (UUID) header[0],
+                    text(header[1]), localDate(header[2]), (UUID) header[3],
+                    text(header[4]), null, null, null,
+                    receiver.id(), receiver.name(), null,
+                    mapArrivalItems(items)));
+        }
+        return List.copyOf(result);
     }
 
     /** 多报工单同仓库位建议合并（一次 HTTP 请求；逐单复用单册建议 SQL 口径）。 */
@@ -512,16 +749,12 @@ public class ProductionFinishedArrivalRegistrationService {
         if (warehouseId == null) {
             throw validation("生产成品库位建议缺少仓库 UUID");
         }
-        List<PlaceSuggestionItemView> merged = new ArrayList<>();
-        for (UUID reportId : ids) {
-            merged.addAll(placeSuggestions(reportId, warehouseId).items());
-        }
-        return new PlaceSuggestionsView(merged);
+        return placeSuggestionsInternal(ids, warehouseId);
     }
 
     /**
      * 多张报工单一次性汇总登记送检：外层一个事务，逐单复用 {@link #register}
-     * 的完整校验与 FQC 创建（每单一份 FQC、行级锚定不变）；任一单失败整批回滚。
+     * 的完整校验与逐行 FQC 创建（每个请求可为待办行的非空子集）；任一单失败整批回滚。
      * 幂等：批量键 + 报工单 UUID 派生逐单子键，重试时已完成单自动安全重放。
      */
     @Transactional
@@ -552,15 +785,22 @@ public class ProductionFinishedArrivalRegistrationService {
             }
         }
 
+        // Canonical report lock order prevents reverse-order overlapping
+        // batches from deadlocking. Never trust client list order for locks.
+        List<BatchReportRegistrationRequest> orderedReports = request.reports()
+                .stream()
+                .sorted(Comparator.comparing(
+                        BatchReportRegistrationRequest::reportId))
+                .toList();
         List<RegisteredReportView> registered = new ArrayList<>();
-        for (BatchReportRegistrationRequest report : request.reports()) {
+        for (BatchReportRegistrationRequest report : orderedReports) {
             UUID reportId = report.reportId();
             // 子键 = 批量键 + 报工单 UUID（UUID 仅含十六进制与 '-'，落在合法字符集内）。
             String reportKey = batchKey + ":" + reportId;
             ArrivalRegistrationView view = register(reportId, new ArrivalRegistrationRequest(
                     reportKey, report.warehouseId(), report.items()));
             registered.add(new RegisteredReportView(
-                    view.reportId(), view.reportNo(),
+                    view.registrationId(), view.reportId(), view.reportNo(),
                     view.warehouseId(), view.warehouseName()));
         }
         return new BatchArrivalRegistrationResult(registered.size(), registered);
@@ -585,6 +825,49 @@ public class ProductionFinishedArrivalRegistrationService {
             warnings.addAll(result.warnings());
         }
         return new BatchRememberPlacesResult(remembered, unchanged, ambiguous, warnings);
+    }
+
+    /**
+     * Exact V469 remember path. Registration ids come from the batch-register
+     * response, so another partial batch for the same report cannot change the
+     * preference source between the two HTTP requests.
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
+    public BatchRememberPlacesResult rememberPlacesForRegistrations(
+            List<UUID> registrationIds) {
+        tx.bind();
+        access.requireWarehouseTaskAccess("无权记忆生产成品库位建议");
+        List<UUID> ids = requireRegistrationIds(registrationIds);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT registration.id,
+                                       registration.source_report_id
+                                FROM production_finished_arrival_registrations registration
+                                WHERE registration.id IN (:registrationIds)
+                                ORDER BY registration.id
+                                """)
+                        .setParameter("registrationIds", ids));
+        if (rows.size() != ids.size()) throw notFound();
+        Map<UUID, UUID> reportByRegistration = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            reportByRegistration.put((UUID) row[0], (UUID) row[1]);
+        }
+
+        int remembered = 0;
+        int unchanged = 0;
+        int ambiguous = 0;
+        List<String> warnings = new ArrayList<>();
+        for (UUID registrationId : ids) {
+            RememberPlacesResult result = rememberPlaces(
+                    reportByRegistration.get(registrationId), registrationId);
+            remembered += result.remembered();
+            unchanged += result.unchanged();
+            ambiguous += result.ambiguous();
+            warnings.addAll(result.warnings());
+        }
+        return new BatchRememberPlacesResult(
+                remembered, unchanged, ambiguous, warnings);
     }
 
     /** 当前用户最近一次成品送检登记所用成品仓（无登记历史返回 null）。 */
@@ -628,6 +911,22 @@ public class ProductionFinishedArrivalRegistrationService {
         return List.copyOf(distinct);
     }
 
+    private static List<UUID> requireRegistrationIds(List<UUID> registrationIds) {
+        if (registrationIds == null || registrationIds.isEmpty()) {
+            throw validation("批量库位记忆缺少登记批次清单");
+        }
+        if (registrationIds.size() > 50) {
+            throw validation("一次最多记忆 50 个登记批次");
+        }
+        LinkedHashSet<UUID> distinct = new LinkedHashSet<>();
+        for (UUID id : registrationIds) {
+            if (id == null || !distinct.add(id)) {
+                throw validation("登记批次清单无效或存在重复");
+            }
+        }
+        return List.copyOf(distinct);
+    }
+
     private Object[] lockApprovedReport(UUID reportId) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -645,62 +944,6 @@ public class ProductionFinishedArrivalRegistrationService {
         return rows.getFirst();
     }
 
-    private void requireNoQualityOrLegacyFacts(UUID reportId) {
-        Number count = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM production_daily_report_items report_item
-                        WHERE report_item.report_id = :reportId
-                          AND report_item.is_deleted = FALSE
-                          AND (
-                              EXISTS (
-                                  SELECT 1
-                                  FROM production_fqc_inspections inspection
-                                  WHERE inspection.source_report_item_id = report_item.id)
-                              OR EXISTS (
-                                  SELECT 1
-                                  FROM production_fqc_legacy_exemptions exemption
-                                  WHERE exemption.source_report_item_id = report_item.id)
-                              OR report_item.execution_segment_id IS NULL)
-                        """)
-                .setParameter("reportId", reportId)
-                .getSingleResult();
-        if (count == null || count.longValue() != 0) {
-            throw conflict("该报工已有 FQC/历史切点事实，不能重复登记送检");
-        }
-    }
-
-    private boolean isPendingRegistration(UUID reportId) {
-        Number count = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM production_daily_reports report
-                        WHERE report.id = :reportId
-                          AND report.status = 1
-                          AND report.is_deleted = FALSE
-                          AND EXISTS (
-                              SELECT 1
-                              FROM production_daily_report_items report_item
-                              WHERE report_item.report_id = report.id
-                                AND report_item.is_deleted = FALSE)
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM production_daily_report_items report_item
-                              WHERE report_item.report_id = report.id
-                                AND report_item.is_deleted = FALSE
-                                AND report_item.execution_segment_id IS NULL)
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM production_fqc_inspections inspection
-                              WHERE inspection.source_report_id = report.id)
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM production_fqc_legacy_exemptions exemption
-                              WHERE exemption.source_report_id = report.id)
-                        """)
-                .setParameter("reportId", reportId)
-                .getSingleResult();
-        return count != null && count.longValue() == 1;
-    }
-
     private WarehouseSnapshot lockWarehouse(UUID warehouseId) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -710,12 +953,15 @@ public class ProductionFinishedArrivalRegistrationService {
                                   AND is_deleted = FALSE
                                   AND is_accountable = TRUE
                                   AND COALESCE(status, '') <> '禁用'
+                                  AND NOT EXISTS (SELECT 1 FROM warehouses c
+                                                  WHERE c.parent_id = warehouses.id
+                                                    AND c.is_deleted = FALSE)
                                 FOR UPDATE
                                 """)
                         .setParameter("warehouseId", warehouseId));
         if (rows.size() != 1 || text(rows.getFirst()[1]) == null
                 || text(rows.getFirst()[1]).isBlank()) {
-            throw validation("目标仓库不存在、已停用或不参与库存核算");
+            throw validation("目标仓库不存在、已停用、不参与库存核算或不是具体子仓库");
         }
         return new WarehouseSnapshot(
                 text(rows.getFirst()[0]), text(rows.getFirst()[1]));
@@ -788,6 +1034,18 @@ public class ProductionFinishedArrivalRegistrationService {
         return new NormalizedRequest(
                 key, request.warehouseId(), Map.copyOf(places),
                 CanonicalFingerprint.sha256(hashParts));
+    }
+
+    static void requireSelectedPending(
+            List<UUID> pendingReportItemIds,
+            Set<UUID> requestedReportItemIds) {
+        if (pendingReportItemIds == null || pendingReportItemIds.isEmpty()
+                || requestedReportItemIds == null
+                || requestedReportItemIds.isEmpty()
+                || !Set.copyOf(pendingReportItemIds).containsAll(
+                        requestedReportItemIds)) {
+            throw conflict("所选报工明细已登记、已进入品质或来源已变化，请刷新后重试");
+        }
     }
 
     static RememberPlan buildRememberPlan(List<RememberPlaceSource> sources) {

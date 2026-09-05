@@ -446,6 +446,44 @@ class NoticeServiceTest {
     }
 
     @Test
+    void productionWorkshopTaskIsBothARegularNoticeAndInteractivePopup() {
+        Notice task = new Notice();
+        task.setId(UUID.randomUUID());
+        task.setTitle("备料完毕·可报工：ZX00000001");
+        task.setContent("请从我的车间任务办理");
+        task.setType("task");
+        task.setPublisher("系统");
+        task.setPublishedAt(Instant.now());
+        task.setAudienceUserId(userId);
+        task.setActionRoute("/production/workshop-tasks");
+        task.setSourceEvent(
+                "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED");
+        task.setAggregateKind("PRODUCTION_EXECUTION_SEGMENT");
+        task.setAggregateId(UUID.randomUUID());
+        when(noticeRepository.findVisiblePendingReviews(
+                eq(userId), argThat(events -> events.contains(
+                        "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED")), any()))
+                .thenReturn(List.of(task));
+        when(stateRepository.findByIdUserIdAndIdNoticeIdIn(eq(userId), any()))
+                .thenReturn(List.of());
+
+        List<NoticeDto> popupItems = service.pendingReviews();
+
+        assertEquals(1, popupItems.size());
+        NoticeDto dto = popupItems.getFirst();
+        assertTrue(dto.interactive());
+        assertEquals("task", dto.type());
+        assertEquals("/production/workshop-tasks", dto.actionRoute());
+        assertEquals(
+                "PRODUCTION_EXECUTION_SEGMENT", dto.aggregateKind());
+        // The same persisted Notice row remains part of the ordinary notice
+        // inbox/top-arrival stream; the catalog only adds popup behavior.
+        assertEquals(
+                "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED",
+                dto.sourceEvent());
+    }
+
+    @Test
     void resolveReviewNoticesDelegatesBoundedUpdateAndValidatesShape() {
         org.assertj.core.api.Assertions
                 .assertThatThrownBy(() -> service.resolveReviewNotices(" ", null, null))

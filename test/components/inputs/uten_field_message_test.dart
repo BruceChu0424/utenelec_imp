@@ -11,7 +11,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      _host(width: 320, child: const UtenFieldMessage.helper('短提示')),
+      _host(width: 320, child: const UtenFieldMessage.autofill('短提示')),
     );
 
     expect(find.byIcon(Icons.help_outline_rounded), findsNothing);
@@ -128,12 +128,17 @@ void main() {
           key: formKey,
           child: UtenInput(
             label: '金额',
-            helperMessage: '请输入账户原币金额',
+            info: '请输入账户原币金额',
             validator: (_) => longMessage,
           ),
         ),
       ),
     );
+
+    // 字段说明收进标签旁 ⓘ（悬停提示），不再常驻框下。
+    expect(find.byIcon(Icons.info_outline), findsOneWidget);
+    expect(find.byTooltip('请输入账户原币金额'), findsOneWidget);
+    expect(find.text('请输入账户原币金额'), findsNothing);
 
     expect(formKey.currentState!.validate(), isFalse);
     await tester.pump();

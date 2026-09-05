@@ -31,7 +31,7 @@ class UtenDateField extends StatefulWidget {
     this.firstDate,
     this.lastDate,
     this.enabled = true,
-    this.helperMessage,
+    this.info,
     this.errorMessage,
   });
 
@@ -43,8 +43,8 @@ class UtenDateField extends StatefulWidget {
   final DateTime? lastDate;
   final bool enabled;
 
-  /// 字段辅助说明；超出一行时可展开查看全文。
-  final String? helperMessage;
+  /// 字段说明：收进标签旁 ⓘ 悬停提示，不常驻输入框下方（全站约定）。
+  final String? info;
 
   /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
   final String? errorMessage;
@@ -83,15 +83,13 @@ class _UtenDateFieldState extends State<UtenDateField> {
         child: InputDecorator(
           decoration: applyRequiredEmpty(
             InputDecoration(
-              label: requiredLabel(
+              label: fieldLabel(
                 widget.label,
                 theme,
                 required: widget.required,
+                info: widget.info,
                 base: theme.inputDecorationTheme.labelStyle,
               ),
-              helper: widget.helperMessage == null
-                  ? null
-                  : UtenFieldMessage.helper(widget.helperMessage!),
               error: widget.errorMessage == null
                   ? null
                   : UtenFieldMessage.error(widget.errorMessage!),

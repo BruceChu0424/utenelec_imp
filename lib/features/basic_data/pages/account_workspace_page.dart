@@ -810,6 +810,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                       rowMenuBuilder: _rowMenu,
                       onSelectionChanged: (account) =>
                           setState(() => _selectedAccount = account),
+                      onSelectionCleared: () =>
+                          setState(() => _selectedAccount = null),
                       onRowTap: (account) => _openAccount(account.id),
                       sortColumn: _sortKey,
                       sortAscending: _sortAsc,

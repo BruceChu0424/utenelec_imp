@@ -1,3 +1,5 @@
+import 'inbound_allocation.dart';
+
 /// 到货任务在仓库流水线中的当前步骤（到货登记 → [超量待财务] → 送检 → 品质放行）。
 enum InboundArrivalStep {
   /// 可登记实际到货（还有批准剩余量可收）。
@@ -34,7 +36,7 @@ extension ProcurementInboundOrderTypeUi on ProcurementInboundOrderType {
   };
 
   String? get receiptCreateRoute => switch (this) {
-    // 登记实际到货走仓库独立页（价格/币种对仓库不可见；保存后由任务中心直达收货单审核页）。
+    // 登记实际到货统一走仓库独立页：价格/币种不可见，保存即在同一业务动作中登记并送检。
     ProcurementInboundOrderType.purchase => '/warehouse/inbound/receipts/new',
     ProcurementInboundOrderType.subcontract =>
       '/warehouse/inbound/receipts/new',
@@ -59,10 +61,13 @@ class InboundExpectationItem {
     this.colorName,
     this.unitId,
     this.unitName,
+    this.baseUnitId,
+    this.baseUnitName,
     this.goodsSeries,
     this.goodsStockPlace,
     this.unitPrice,
     this.expectedDate,
+    this.expectedAllocations = const [],
   });
 
   final String id;
@@ -77,6 +82,8 @@ class InboundExpectationItem {
   final String? colorName;
   final String? unitId;
   final String? unitName;
+  final String? baseUnitId;
+  final String? baseUnitName;
   final num unitRate;
 
   /// 订货单价（服务端从订货明细带出；到货登记预填携带、价格列隐藏，审核时服务端权威重算）。
@@ -91,6 +98,7 @@ class InboundExpectationItem {
   /// 已登记待审核在途量（服务端按草稿未审收货单汇总）：审核通过后转入 acceptedQty。
   final num registeredQty;
   final String? expectedDate;
+  final List<WarehouseInboundAllocation> expectedAllocations;
 
   /// 还可登记量 = 当前服务端释放容量 − 已登记待审核量。
   num get effectiveRemainingQty {
@@ -115,6 +123,8 @@ class InboundExpectationItem {
       colorName: _text(json['colorName']),
       unitId: _text(json['unitId']),
       unitName: _text(json['unitName']),
+      baseUnitId: _text(json['baseUnitId']),
+      baseUnitName: _text(json['baseUnitName']),
       unitRate: _number(json['unitRate']),
       unitPrice: json['unitPrice'] == null ? null : _number(json['unitPrice']),
       orderedQty: _number(json['orderedQty']),
@@ -122,6 +132,7 @@ class InboundExpectationItem {
       remainingQty: _number(json['remainingQty']),
       registeredQty: _number(json['registeredQty']),
       expectedDate: _text(json['expectedDate']),
+      expectedAllocations: _allocationList(json['expectedAllocations']),
     );
   }
 }
@@ -262,9 +273,12 @@ class InboundExpectation {
               colorName: item.colorName,
               unitId: item.unitId,
               unitName: item.unitName,
+              baseUnitId: item.baseUnitId,
+              baseUnitName: item.baseUnitName,
               unitRate: item.unitRate,
               unitPrice: item.unitPrice,
               approvedRemainingQty: item.effectiveRemainingQty,
+              expectedAllocations: item.expectedAllocations,
             ),
           )
           .toList(growable: false),
@@ -352,7 +366,10 @@ class ProcurementReceiptPrefillItem {
     this.colorName,
     this.unitId,
     this.unitName,
+    this.baseUnitId,
+    this.baseUnitName,
     this.unitPrice,
+    this.expectedAllocations = const [],
   });
 
   final String orderItemId;
@@ -367,12 +384,15 @@ class ProcurementReceiptPrefillItem {
   final String? colorName;
   final String? unitId;
   final String? unitName;
+  final String? baseUnitId;
+  final String? baseUnitName;
   final num unitRate;
 
   /// 订货单价：到货登记行携带（价格列隐藏不展示），保存随行提交；
   /// 服务端审核时仍按订货明细权威重算，防客户端篡改。
   final num? unitPrice;
   final num approvedRemainingQty;
+  final List<WarehouseInboundAllocation> expectedAllocations;
 }
 
 class ProcurementArrivalReturnTask {
@@ -687,6 +707,13 @@ String? _text(Object? value) {
   final text = value.toString().trim();
   return text.isEmpty ? null : text;
 }
+
+List<WarehouseInboundAllocation> _allocationList(Object? value) => value is List
+    ? [
+        for (final row in value.whereType<Map<Object?, Object?>>())
+          WarehouseInboundAllocation.fromJson(Map<String, dynamic>.from(row)),
+      ]
+    : const [];
 
 num _number(Object? value) {
   if (value is num) return value;

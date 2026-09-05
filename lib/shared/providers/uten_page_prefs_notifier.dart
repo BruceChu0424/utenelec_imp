@@ -34,6 +34,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
@@ -82,7 +83,9 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   }
 
   T? _loadFromCache() {
-    final raw = ref.read(sharedPreferencesProvider).getString(cacheKey);
+    final prefs = _sharedPrefsOrNull();
+    if (prefs == null) return null;
+    final raw = prefs.getString(cacheKey);
     if (raw == null || raw.isEmpty) return null;
     try {
       return decode(jsonDecode(raw));
@@ -107,6 +110,11 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
     }
   }
 
+  /// Explicit page-entry synchronization. Most pages can rely on the automatic
+  /// session listener; pages whose first request depends on a persisted default
+  /// may await this method before constructing that request.
+  Future<void> syncNow() => _syncFromServer();
+
   /// 整体替换状态并持久化（简单偏好用这个）。
   void update(T value) {
     state = value;
@@ -123,9 +131,20 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   void _writeCache() {
     final encoded = encode(state);
     if (encoded == null) return;
-    ref
-        .read(sharedPreferencesProvider)
-        .setString(cacheKey, jsonEncode(encoded));
+    final prefs = _sharedPrefsOrNull();
+    if (prefs == null) return;
+    prefs.setString(cacheKey, jsonEncode(encoded));
+  }
+
+  /// 本地缓存层对「未注入 sharedPreferences」容错：widget 测试经常直接泵页面
+  /// 而不 override 该全局 provider（main.dart 才注入）。只窄捕接线守卫抛出的
+  /// UnimplementedError——跳过本地缓存层，状态回落默认值，服务端同步照常。
+  SharedPreferences? _sharedPrefsOrNull() {
+    try {
+      return ref.read(sharedPreferencesProvider);
+    } on UnimplementedError {
+      return null;
+    }
   }
 
   Future<void> _pushToServer() async {

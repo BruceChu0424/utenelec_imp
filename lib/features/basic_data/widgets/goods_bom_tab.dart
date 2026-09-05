@@ -33,6 +33,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
 import '../repositories/goods_bom_repository.dart';
@@ -51,7 +52,14 @@ class _BomNode {
 
 /// 表格行：可见节点的平铺（含深度与级联序号，供 MasterDataTableView 渲染）。
 class _BomRow {
-  const _BomRow(this.node, this.depth, this.seq, this.parentGoodsId);
+  const _BomRow(
+    this.node,
+    this.depth,
+    this.seq,
+    this.parentGoodsId,
+    this.ancestorContinuations,
+    this.isLastChild,
+  );
 
   final _BomNode node;
   final int depth;
@@ -59,6 +67,8 @@ class _BomRow {
 
   /// 该 BOM 行真正所属的父货品；嵌套行不能误用页面根货品 id。
   final String parentGoodsId;
+  final List<bool> ancestorContinuations;
+  final bool isLastChild;
 }
 
 /// 添加组件时的父级候选项（顶层本货品 或 任一可见组件）。
@@ -145,6 +155,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       if (!mounted) return;
       setState(() {
         _roots = roots;
+        // A reload creates new row/node objects. Clear the old action context
+        // so edit/delete/add-parent never targets a stale or already deleted id.
+        _selected = null;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -190,18 +203,32 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       int depth,
       String prefix,
       String parentGoodsId,
+      List<bool> ancestorContinuations,
     ) {
       for (var i = 0; i < nodes.length; i++) {
         final seq = prefix.isEmpty ? '${i + 1}' : '$prefix.${i + 1}';
         final n = nodes[i];
-        rows.add(_BomRow(n, depth, seq, parentGoodsId));
+        final isLastChild = i == nodes.length - 1;
+        rows.add(
+          _BomRow(
+            n,
+            depth,
+            seq,
+            parentGoodsId,
+            List.unmodifiable(ancestorContinuations),
+            isLastChild,
+          ),
+        );
         if (n.expanded && n.children != null) {
-          walk(n.children!, depth + 1, seq, n.item.componentGoodsId);
+          walk(n.children!, depth + 1, seq, n.item.componentGoodsId, [
+            ...ancestorContinuations,
+            !isLastChild,
+          ]);
         }
       }
     }
 
-    walk(_roots ?? const <_BomNode>[], 0, '', widget.goodsId);
+    walk(_roots ?? const <_BomNode>[], 0, '', widget.goodsId, const []);
     return rows;
   }
 
@@ -239,12 +266,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
   }
 
-  /// 行点击：选中（工具条 编辑/删除 生效）；有子级的行同时展开/收起。
-  void _onRowTap(_BomRow row) {
-    setState(() => _selected = row);
-    if (row.node.item.hasChildren) _toggle(row.node);
-  }
-
   // ---- 增删改 -------------------------------------------------------------
   //
   // 添加组件：选中某组件行 → 默认作为该组件的子组件；未选中 → 顶层。弹窗内父级可选。
@@ -257,7 +278,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         _BomParentOption(
           goodsId: r.node.item.componentGoodsId,
           label:
-              '${'　' * (r.depth + 1)}└ ${r.node.item.componentName ?? r.node.item.componentCode ?? ''}',
+              '${r.seq} · 层级 ${r.depth + 1} · '
+              '${r.node.item.componentName ?? r.node.item.componentCode ?? ''}',
         ),
     ];
     final defaultParent =
@@ -368,19 +390,41 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   // ---- 渲染 ---------------------------------------------------------------
 
   /// 表格列（与 MasterDataTableView 对齐：key 仅标识用，本页不接筛选/排序）。
-  static final _columns = <MasterColumnDef<_BomRow>>[
-    // 展开标识列：有子类的行显 ▶（未展开）/ ▼（已展开），点行任意位置即展开/收起——
-    // 没有标识用户无从得知该行可下钻（对照老系统 001.jpg 的 +/- 方块）。
+  List<MasterColumnDef<_BomRow>> get _columns => [
+    // 层级身份集中在首列：级联号 + 明确层级文字 + 连续树轨 + 48dp
+    // 单击展开按钮。行单击只负责选中，不再让“双击整行”兼任树导航。
     MasterColumnDef(
-      key: 'expand',
-      label: '',
-      width: 48,
-      value: (r) {
-        final n = r.node;
-        if (!n.item.hasChildren) return '';
-        if (n.loading) return '…';
-        return n.expanded ? '▼' : '▶';
-      },
+      key: 'treeIdentity',
+      label: '层级 / 组件',
+      width: 320,
+      value: (r) =>
+          '${r.seq} 层级 ${r.depth + 1} '
+          '${r.node.item.componentName ?? ''} '
+          '${r.node.item.componentCode ?? ''}',
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (context, r) => UtenTreeTableCell(
+        key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
+        toggleKey: ValueKey('goods-bom-tree-toggle-${r.node.item.id}'),
+        depth: r.depth,
+        sequence: r.seq,
+        levelLabel: '组件 ${r.depth + 1} 级',
+        title:
+            r.node.item.componentName ?? r.node.item.componentCode ?? '未命名组件',
+        subtitle: [
+          r.node.item.componentCode,
+          if (r.node.loading) '正在加载下级…',
+        ].whereType<String>().where((value) => value.isNotEmpty).join(' · '),
+        pathLabel: '组件树 ${r.seq}',
+        hasChildren: r.node.item.hasChildren,
+        expanded: r.node.expanded,
+        onToggle: r.node.loading ? null : () => _toggle(r.node),
+        ancestorContinuations: r.ancestorContinuations,
+        isLastChild: r.isLastChild,
+        foregroundColor:
+            _selected != null && r.node.item.id == _selected!.node.item.id
+            ? Colors.white
+            : null,
+      ),
     ),
     // 已审列（V256）：审计标记为服务端持久数据，对所有人可见（✓ + 行变绿）；
     // 改标记要 goods:bom:audit，进「审计模式」点行翻面。
@@ -390,7 +434,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       width: 56,
       value: (r) => r.node.item.audited ? '✓' : '',
     ),
-    MasterColumnDef(key: 'seq', label: '序号', width: 72, value: (r) => r.seq),
     MasterColumnDef(
       key: 'code',
       label: '编号',
@@ -402,18 +445,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       label: '型号',
       width: 120,
       value: (r) => r.node.item.componentModel,
-    ),
-    MasterColumnDef(
-      key: 'name',
-      label: '货品名称',
-      width: 220,
-      // 树形缩进：一级顶格；子类退一格 + └ 分支符，孙类退两格，逐级递进
-      // （每层一个全角空格，层级深浅直接看缩进就知道）。
-      value: (r) {
-        final name = r.node.item.componentName ?? '';
-        if (r.depth == 0) return name;
-        return '${'　' * r.depth}└ $name';
-      },
     ),
     MasterColumnDef(
       key: 'spec',
@@ -530,7 +561,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                       ? '审计模式：点击行标记/取消「已核对无误」(已审 $auditedCount/${visible.length}；编辑组件后需重新核对)' // TODO(l10n)
                       : (roots.isEmpty
                             ? '该货品暂无组装信息'
-                            : '共 ${roots.length} 个组件(▶ = 含子类，点行展开；选中组件后再添加默认为其子组件)'), // TODO(l10n): 补 arb
+                            : '共 ${roots.length} 个顶层组件(层级列箭头可展开；单击行只选中，选中后添加默认作为其子组件)'), // TODO(l10n): 补 arb
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: _auditMode
                         ? Colors.green.shade700
@@ -551,10 +582,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (_, _) {},
-            onRowTap: _onRowTap,
-            // 单击选中（驱动编辑/删除按钮与「添加组件」默认父级）；
-            // 双击才走 _onRowTap（展开/收起子级）。全 App 统一单选双开契约。
-            // 审计模式下单击顺带翻面该行的审计标记（绿色）。
+            // 单击行只选中(驱动编辑/删除与添加默认父级)；展开/折叠由
+            // 层级单元里的 48dp 箭头单击完成。审计模式下单击顺带翻面。
             onSelectionChanged: (row) {
               setState(() => _selected = row);
               if (_auditMode) _toggleAudited(row);
@@ -572,6 +601,16 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             // 进全屏后由全屏路由同位置渲染，按钮逻辑（本 State 的增删改方法）
             // 与选中态（didUpdateWidget → _fsTick 驱动全屏重建）全部生效。
             toolbarActions: [
+              // 页面主动作置于业务工具条最前：持有独立 goods:bom:create 即显示，
+              // 不依赖 goods:edit，窄屏换行时也不会被次要导出/编辑动作挤到末尾。
+              if (widget.canCreate)
+                UtenButton(
+                  key: const Key('goods-bom-add-component'),
+                  size: UtenButtonSize.large,
+                  icon: Icons.add_rounded,
+                  onPressed: _addItem,
+                  child: const Text('添加组件'), // TODO(l10n): 补 arb
+                ),
               // 导出组件（goods:export）：与「预览」弹窗里的下载Excel 同一端点
               // （整树展开的加密 xlsx），此处是组装信息页签的直接入口。
               UtenExportButton(
@@ -600,14 +639,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   onPressed: _selected == null ? null : _deleteSelected,
                   child: const Text('删除'), // TODO(l10n): 补 arb
                 ),
-              if (widget.canCreate)
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  size: UtenButtonSize.large,
-                  icon: Icons.add_rounded,
-                  onPressed: _addItem,
-                  child: const Text('添加组件'), // TODO(l10n): 补 arb
-                ),
               // 审计模式（V256，goods:bom:audit）：开=点行标记/取消「已核对无误」
               // （已审行绿色）。与编辑权限解耦——质检可以只有审计权没有编辑权。
               if (_canAudit)
@@ -624,7 +655,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             isLoading: _loading && _roots == null,
             error: _error,
             onRetry: _load,
-            emptyMessage: '暂无组装信息，点右上角「添加组件」录入', // TODO(l10n): 补 arb
+            emptyMessage: '暂无组装信息，点上方「添加组件」录入', // TODO(l10n): 补 arb
           ),
         ),
       ],

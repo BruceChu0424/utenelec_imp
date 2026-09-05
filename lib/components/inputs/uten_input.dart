@@ -1,5 +1,5 @@
 // UtenInput - 通用输入框（文本/密码/搜索 + 客户端校验）
-// 文档：docs/02-组件库/UtenInput.md（待写）
+// 文档：docs/02-组件库/UtenInput.md
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,7 +13,7 @@ class UtenInput extends StatefulWidget {
     super.key,
     this.label,
     this.hint,
-    this.helperMessage,
+    this.info,
     this.errorMessage,
     this.controller,
     this.obscureText = false,
@@ -40,8 +40,9 @@ class UtenInput extends StatefulWidget {
   /// 占位提示
   final String? hint;
 
-  /// 字段辅助说明；超出一行时可展开查看全文。
-  final String? helperMessage;
+  /// 字段说明：收进标签旁 ⓘ 悬停提示，不常驻输入框下方（全站约定，
+  /// 同 UtenEditableGrid.headerInfo）。
+  final String? info;
 
   /// 外部字段错误；与 [validator] 生成的错误共用统一长提示外观。
   final String? errorMessage;
@@ -140,11 +141,12 @@ class _UtenInputState extends State<UtenInput> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.label != null) ...[
-          // 标签（必填时附红 *）
-          requiredLabel(
+          // 标签（必填时附红 *；说明收进旁侧 ⓘ）
+          fieldLabel(
             widget.label!,
             theme,
             required: widget.required,
+            info: widget.info,
             base: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w500,
               color: theme.colorScheme.onSurface,
@@ -172,9 +174,6 @@ class _UtenInputState extends State<UtenInput> {
           decoration: applyRequiredEmpty(
             InputDecoration(
               hintText: widget.hint,
-              helper: widget.helperMessage == null
-                  ? null
-                  : UtenFieldMessage.helper(widget.helperMessage!),
               error: widget.errorMessage == null
                   ? null
                   : UtenFieldMessage.error(widget.errorMessage!),

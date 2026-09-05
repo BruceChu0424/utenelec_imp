@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -500,11 +501,11 @@ class _DispositionDialogState extends State<_DispositionDialog> {
                     ),
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
-                      labelText: widget.correction
-                          ? '撤回数量(基本单位)*'
-                          : '处置数量(基本单位)*',
-                      helper: UtenFieldMessage.helper(
-                        '必须大于 0，最多 ${_qty(maxQty)}，最多 4 位小数',
+                      label: fieldLabel(
+                        widget.correction ? '撤回数量(基本单位)' : '处置数量(基本单位)',
+                        Theme.of(context),
+                        required: true,
+                        info: '必须大于 0，最多 ${_qty(maxQty)}，最多 4 位小数',
                       ),
                     ),
                     validator: _validateQty,
@@ -518,10 +519,12 @@ class _DispositionDialogState extends State<_DispositionDialog> {
                     maxLength: 500,
                     minLines: 2,
                     maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: '处置原因或检验依据 *',
-                      helper: UtenFieldMessage.helper(
-                        '该内容会写入不可改写的质检处置事件，请填写可追溯依据。',
+                    decoration: InputDecoration(
+                      label: fieldLabel(
+                        '处置原因或检验依据',
+                        Theme.of(context),
+                        required: true,
+                        info: '该内容会写入不可改写的质检处置事件，请填写可追溯依据。',
                       ),
                     ),
                     validator: (value) => value == null || value.trim().isEmpty

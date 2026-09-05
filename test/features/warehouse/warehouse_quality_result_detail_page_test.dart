@@ -82,6 +82,45 @@ void main() {
     );
   });
 
+  test(
+    'allocation model parses four kinds, truncates in order and tolerates old responses',
+    () {
+      final allocations = [
+        for (final row in _fourExpectedAllocations)
+          WarehouseInboundAllocation.fromJson(row),
+      ];
+      expect(allocations.map((item) => item.kind), [
+        WarehouseInboundAllocationKind.formalDemand,
+        WarehouseInboundAllocationKind.exactAnalysis,
+        WarehouseInboundAllocationKind.sharedClaim,
+        WarehouseInboundAllocationKind.publicStock,
+      ]);
+      final preview = warehouseInboundAllocationPreview(allocations, 6);
+      expect(preview.map((item) => item.qty), [2, 4]);
+      expect(preview.map((item) => item.kind), [
+        WarehouseInboundAllocationKind.formalDemand,
+        WarehouseInboundAllocationKind.exactAnalysis,
+      ]);
+      final guardedGap = warehouseInboundAllocationPreview(allocations, 12);
+      expect(guardedGap.last.kind, WarehouseInboundAllocationKind.unknown);
+      expect(guardedGap.last.qty, 2);
+      expect(guardedGap.last.formationStatus, contains('差额去向待服务端复核'));
+      expect(
+        WarehouseIqcStockInConfirmResult.fromJson(const {
+          'batchId': 'legacy-batch',
+          'confirmedCount': 1,
+        }).allocations,
+        isEmpty,
+      );
+      expect(
+        WarehouseQualityReleasedSlice.fromJson(
+          _sliceJson('legacy', 'inspection', 'goods', 'G', '旧响应', 1),
+        ).expectedAllocations,
+        isEmpty,
+      );
+    },
+  );
+
   testWidgets(
     'merged table joins verdicts and releasable slices with solo-confirm path',
     (tester) async {
@@ -91,7 +130,9 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
 
       final qualityGateway = _QualityGateway(_detailJson());
-      final stockInGateway = _StockInGateway();
+      final stockInGateway = _StockInGateway(
+        allocations: _singleActualAllocations,
+      );
       final preferences = await SharedPreferences.getInstance();
 
       await tester.pumpWidget(
@@ -133,6 +174,7 @@ void main() {
         '收货总量',
         '合格总量',
         '不合格总量',
+        '预计去向',
         '放行信息',
       ]) {
         expect(find.text(header), findsOneWidget, reason: '缺列 $header');
@@ -167,6 +209,10 @@ void main() {
 
       // 确认入库：改一条库位 → 复核弹窗 → 提交单张确认命令（含预填与手填库位）。
       await tester.enterText(
+        find.byKey(const Key('quality-slice-qty-pass-1')),
+        '5',
+      );
+      await tester.enterText(
         find.byKey(const Key('quality-slice-place-pass-1')),
         'B-02',
       );
@@ -174,7 +220,24 @@ void main() {
         find.byKey(const Key('warehouse-quality-detail-confirm')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, '确认入库'));
+      expect(find.text('本分析预定'), findsOneWidget);
+      expect(find.text('数量 4 件'), findsOneWidget);
+      expect(find.text('公共在途已采用'), findsOneWidget);
+      expect(find.text('数量 1 件'), findsOneWidget);
+      expect(find.text('数量 3 件'), findsNothing);
+      await tester.tap(
+        find.byKey(const Key('warehouse-inbound-allocation-confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('warehouse-inbound-allocation-result-dialog')),
+        findsOneWidget,
+      );
+      expect(find.text('正式工单'), findsOneWidget);
+      expect(find.text('公共库存'), findsWidgets);
+      expect(find.textContaining('是否完整齐套、可领料以车间任务'), findsOneWidget);
+      await tester.tap(find.text('关闭').last);
       await tester.pumpAndSettle();
 
       expect(stockInGateway.confirmCalls, 1);
@@ -186,7 +249,7 @@ void main() {
       };
       expect(byPassEvent['pass-1']!.place, 'B-02');
       expect(byPassEvent['pass-2']!.place, 'A-01');
-      expect(byPassEvent['pass-1']!.baseQty, 10);
+      expect(byPassEvent['pass-1']!.baseQty, 5);
       expect(tester.takeException(), isNull);
     },
   );
@@ -238,7 +301,9 @@ void main() {
     await tester.enterText(find.byKey(placeKey), 'B-02');
     await tester.tap(find.byKey(const Key('warehouse-quality-detail-confirm')));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '确认入库'));
+    await tester.tap(
+      find.byKey(const Key('warehouse-inbound-allocation-confirm')),
+    );
     await tester.pumpAndSettle();
 
     // 冲突 → 整批未入库、刷新事实并保留当前输入。
@@ -359,6 +424,7 @@ void main() {
     expect(find.byType(Checkbox), findsNothing);
     expect(find.textContaining('实际库位 C-03'), findsOneWidget);
     expect(find.textContaining('仓库员'), findsOneWidget);
+    expect(find.textContaining('正式工单 10'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
@@ -412,7 +478,10 @@ Map<String, dynamic> _detailJson() => {
       },
   ],
   'items': [
-    _sliceJson('pass-1', 'inspection-0', 'goods-0', 'G-000', '测试产品0', 10),
+    {
+      ..._sliceJson('pass-1', 'inspection-0', 'goods-0', 'G-000', '测试产品0', 10),
+      'expectedAllocations': _singleExpectedAllocations,
+    },
     _sliceJson('pass-2', 'inspection-1', 'goods-1', 'G-001', '测试产品1', 3),
     _sliceJson('pass-3', 'inspection-1', 'goods-1', 'G-001', '测试产品1', 3),
   ],
@@ -494,6 +563,16 @@ Map<String, dynamic> _completedDetailJson() => {
       'place': 'C-03',
       'confirmedBy': '仓库员',
       'confirmedAt': '2026-08-31T10:30:00Z',
+      'actualAllocations': [
+        _allocationJson(
+          kind: 'FORMAL_DEMAND',
+          qty: 10,
+          passEventId: 'pass-1',
+          stockInBatchItemId: 'stock-in-1',
+          planNo: 'SC-001',
+          segmentCode: 'GD-001',
+        ),
+      ],
     },
   ],
   'rejections': <Map<String, dynamic>>[],
@@ -545,9 +624,10 @@ class _QualityGateway implements WarehouseQualityResultGateway {
 }
 
 class _StockInGateway implements WarehouseIqcStockInGateway {
-  _StockInGateway({this.conflictOnce = false});
+  _StockInGateway({this.conflictOnce = false, this.allocations = const []});
 
   final bool conflictOnce;
+  final List<WarehouseInboundAllocation> allocations;
   int confirmCalls = 0;
   WarehouseIqcStockInConfirmCommand? lastCommand;
 
@@ -567,9 +647,82 @@ class _StockInGateway implements WarehouseIqcStockInGateway {
       replayed: false,
       confirmedCount: command.items.length,
       confirmedAt: '2026-09-01T10:00:00Z',
+      allocations: allocations,
     );
   }
 }
+
+final List<Map<String, dynamic>> _fourExpectedAllocations = [
+  _allocationJson(kind: 'FORMAL_DEMAND', qty: 2),
+  _allocationJson(kind: 'EXACT_ANALYSIS', qty: 4),
+  _allocationJson(kind: 'SHARED_CLAIM', qty: 3),
+  _allocationJson(kind: 'PUBLIC', qty: 1),
+];
+
+final List<Map<String, dynamic>> _singleExpectedAllocations = [
+  _allocationJson(kind: 'EXACT_ANALYSIS', qty: 4),
+  _allocationJson(kind: 'SHARED_CLAIM', qty: 3),
+  _allocationJson(kind: 'PUBLIC', qty: 3),
+];
+
+final List<WarehouseInboundAllocation> _singleActualAllocations = [
+  WarehouseInboundAllocation.fromJson(
+    _allocationJson(
+      kind: 'FORMAL_DEMAND',
+      qty: 4,
+      passEventId: 'pass-1',
+      stockInBatchItemId: 'stock-in-result-1',
+      planNo: 'SC-001',
+      segmentCode: 'GD-001',
+    ),
+  ),
+  WarehouseInboundAllocation.fromJson(
+    _allocationJson(
+      kind: 'PUBLIC',
+      qty: 1,
+      passEventId: 'pass-1',
+      stockInBatchItemId: 'stock-in-result-1',
+    ),
+  ),
+];
+
+Map<String, dynamic> _allocationJson({
+  required String kind,
+  required num qty,
+  String? passEventId,
+  String? stockInBatchItemId,
+  String? planNo,
+  String? segmentCode,
+}) => {
+  'passEventId': passEventId ?? 'pass-model',
+  'stockInBatchItemId': stockInBatchItemId,
+  'kind': kind,
+  'qty': qty,
+  'actualWarehouseId': 'warehouse-1',
+  'actualWarehouseName': '原料仓',
+  'targetWarehouseId': kind == 'PUBLIC' ? null : 'warehouse-1',
+  'targetWarehouseName': kind == 'PUBLIC' ? null : '原料仓',
+  'intendedWarehouseNames': kind == 'PUBLIC' ? <String>[] : ['原料仓'],
+  'warehouseMatches': true,
+  'analysisId': kind == 'PUBLIC' ? null : 'analysis-1',
+  'analysisMaterialId': kind == 'PUBLIC' ? null : 'material-1',
+  'productCode': kind == 'PUBLIC' ? null : 'CP-001',
+  'productName': kind == 'PUBLIC' ? null : '成品一',
+  'sourceLabel': kind == 'PUBLIC' ? '公共库存' : '销售订单 XS-001',
+  'planId': planNo == null ? null : 'plan-1',
+  'planNo': planNo,
+  'executionSegmentId': segmentCode == null ? null : 'segment-1',
+  'executionSegmentCode': segmentCode,
+  'workshopDepartmentId': segmentCode == null ? null : 'workshop-1',
+  'workshopName': segmentCode == null ? null : '装配车间',
+  'responsibleEmployeeId': segmentCode == null ? null : 'employee-1',
+  'responsibleEmployeeName': segmentCode == null ? null : '张负责人',
+  'formationStatus': kind == 'PUBLIC'
+      ? '实际入库后未形成生产预留，已进入公共库存'
+      : segmentCode == null
+      ? '尚未形成生产计划或工单'
+      : '已转入正式工单物料预留',
+};
 
 class _FailingReturnGateway implements WarehouseIqcReturnGateway {
   @override

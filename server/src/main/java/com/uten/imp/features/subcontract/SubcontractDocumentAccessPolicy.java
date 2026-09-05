@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract;
 
+import com.uten.imp.application.port.SubcontractDocumentReadAccessPort;
 import com.uten.imp.security.DocumentAccessPolicy;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -13,7 +14,8 @@ import org.springframework.stereotype.Component;
  * 生成的只读需求单，不接入本隔离。
  */
 @Component
-public class SubcontractDocumentAccessPolicy extends DocumentAccessPolicy {
+public class SubcontractDocumentAccessPolicy extends DocumentAccessPolicy
+        implements SubcontractDocumentReadAccessPort {
 
     public static final String SCOPE = "subcontract";
     public static final String VIEW_ALL = "subcontract:view:all";

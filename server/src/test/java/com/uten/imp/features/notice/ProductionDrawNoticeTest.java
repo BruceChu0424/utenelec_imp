@@ -110,7 +110,8 @@ class ProductionDrawNoticeTest {
         when(users.findById(allowedId)).thenReturn(Optional.of(allowed));
         when(users.findById(revokedId)).thenReturn(Optional.of(revoked));
         when(users.findById(inactiveId)).thenReturn(Optional.of(inactive));
-        when(permissions.permsOf(allowed)).thenReturn(Set.of("stock_doc:issue"));
+        when(permissions.permsOf(allowed)).thenReturn(Set.of(
+                "stock_doc:view", "stock_doc:approve", "stock_doc:issue"));
         when(permissions.permsOf(revoked)).thenReturn(Set.of());
 
         ChainNoticeService service = service(
@@ -124,7 +125,7 @@ class ProductionDrawNoticeTest {
         verify(notices).publishForUser(
                 eq(allowedId),
                 eq("待处理生产领料：SL-001"),
-                contains("审核本身不扣库存"),
+                contains("首次出库会在同一事务完成审核与本次扣账"),
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/warehouse/DRAW/" + drawId),
@@ -138,16 +139,17 @@ class ProductionDrawNoticeTest {
     }
 
     @Test
-    void issuedDrawTargetsCurrentPlanningAndProductionViewers() {
+    void issuedDrawTargetsOnlyTheExactWorkshopTaskAudience() {
         UUID drawId = UUID.randomUUID();
-        UUID plannerId = UUID.randomUUID();
-        UUID productionId = UUID.randomUUID();
+        UUID segmentId = UUID.randomUUID();
+        UUID workshopId = UUID.randomUUID();
+        UUID responsibleEmployeeId = UUID.randomUUID();
+        UUID workshopUserId = UUID.randomUUID();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notices = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
-        UserAccount planner = active(plannerId);
-        UserAccount production = active(productionId);
+        UserAccount workshopUser = active(workshopUserId);
 
         when(jdbc.queryForList(
                 contains("FROM stock_documents stock"),
@@ -156,17 +158,42 @@ class ProductionDrawNoticeTest {
                         "plan_no", "SJ-002",
                         "warehouse_name", "原材料仓")));
         when(jdbc.queryForList(
-                contains("WITH RECURSIVE subtree"),
+                contains("production_planning_package_document_items mapping"),
                 eq(UUID.class),
-                eq("SUB_PLAN"))).thenReturn(List.of(plannerId));
+                eq(drawId))).thenReturn(List.of(segmentId));
         when(jdbc.queryForList(
-                contains("WITH RECURSIVE subtree"),
+                contains("FOR UPDATE"),
                 eq(UUID.class),
-                eq("DEPT_PROD"))).thenReturn(List.of(productionId));
-        when(users.findById(plannerId)).thenReturn(Optional.of(planner));
-        when(users.findById(productionId)).thenReturn(Optional.of(production));
-        when(permissions.permsOf(planner)).thenReturn(Set.of("production_plan:view"));
-        when(permissions.permsOf(production)).thenReturn(Set.of("production_plan:view"));
+                eq(segmentId))).thenReturn(List.of(segmentId));
+        when(jdbc.queryForList(
+                contains("FROM v_production_execution_workbench_segments task"),
+                eq(segmentId))).thenReturn(List.of(Map.ofEntries(
+                        Map.entry("segment_id", segmentId),
+                        Map.entry("segment_code", "SEG-002"),
+                        Map.entry("plan_no", "SJ-002"),
+                        Map.entry("product_code", "P-002"),
+                        Map.entry("product_name", "测试产品"),
+                        Map.entry("product_color_name", "蓝色"),
+                        Map.entry("product_unit_name", "件"),
+                        Map.entry("planned_qty", new java.math.BigDecimal("10")),
+                        Map.entry("segment_status", "READY"),
+                        Map.entry("material_status", "KIT_READY"),
+                        Map.entry("preparation_status", "PREPARED"),
+                        Map.entry("issued", true),
+                        Map.entry("reportable", true),
+                        Map.entry("workshop_department_id", workshopId),
+                        Map.entry("workshop_name", "装配一车间"),
+                        Map.entry("responsible_employee_id", responsibleEmployeeId),
+                        Map.entry("responsible_employee_name", "车间负责人"))));
+        when(jdbc.queryForList(
+                contains("WITH RECURSIVE workshop_tree(id)"),
+                eq(UUID.class),
+                eq(workshopId),
+                eq(responsibleEmployeeId))).thenReturn(List.of(workshopUserId));
+        when(users.findById(workshopUserId))
+                .thenReturn(Optional.of(workshopUser));
+        when(permissions.permsOf(workshopUser)).thenReturn(Set.of(
+                "notice:read", "production_execution:view"));
 
         ChainNoticeService service = service(
                 notices, users, permissions, jdbc,
@@ -177,21 +204,15 @@ class ProductionDrawNoticeTest {
                 new ObjectMapper().createObjectNode());
 
         verify(notices).publishForUser(
-                eq(plannerId),
-                eq("生产领料已全部发出：SL-002"),
-                contains("现可办理正式开工"),
-                eq(ChainNoticeService.TYPE_WORKFLOW),
+                eq(workshopUserId),
+                eq("备料完毕·可报工：SEG-002"),
+                contains("当前状态：备料完毕，可直接报工"),
+                eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
-                eq("/production/schedule"),
-                eq(ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUED));
-        verify(notices).publishForUser(
-                eq(productionId),
-                eq("生产领料已全部发出：SL-002"),
-                contains("现可办理正式开工"),
-                eq(ChainNoticeService.TYPE_WORKFLOW),
-                anyString(),
-                eq("/production/schedule"),
-                eq(ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUED));
+                eq("/production/workshop-tasks"),
+                eq(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED),
+                eq("important"),
+                eq(segmentId));
     }
 
     @Test

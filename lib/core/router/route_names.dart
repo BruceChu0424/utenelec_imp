@@ -210,6 +210,10 @@ abstract final class RouteName {
   static const String warehouseReportSummary = '/warehouse/report/summary';
   static const String warehouseInboundExpectations =
       '/warehouse/inbound/expectations';
+
+  /// 预计到货任务详情页（任务中心双击进入；extra 带当前 InboundExpectation）。
+  static String warehouseArrivalExpectationDetail(String expectationId) =>
+      '$warehouseInboundExpectations/${Uri.encodeComponent(expectationId)}';
   static const String warehouseDocumentHistory = '/warehouse/history';
   static const String warehousePurchaseReceiptHistory =
       '/warehouse/history/purchase-receipts';
@@ -321,6 +325,7 @@ abstract final class RouteName {
   static const String production = '/production';
   static const String productionSchedule = '/production/schedule';
   static const String productionProgress = '/production/progress';
+  static const String productionWorkshopTasks = '/production/workshop-tasks';
   static const String productionMaterialAnalysis =
       '/production/material-analysis';
   static const String productionMaterialAnalysisHistory =
@@ -329,7 +334,7 @@ abstract final class RouteName {
   static const String productionDailyReportList = '/production/daily-reports';
   static const String productionWhereUsed = '/production/where-used';
   static const String productionChainHealth = '/production/chain-health';
-  // /production/reports/{plan-detail|plan-summary|daily-detail|daily-summary} 用 RoutePath 助手。
+  // /production/reports/{plan-detail|plan-summary} 用 RoutePath 助手（当前仅注册 2 段）。
 
   // 钱流管理（财税部）：hub + 5 单据 + AR/AP 台账 + 对账 + 支票 + 报表。
   // seg = receipts|payments|expenses|incomes|bank-transfers。
@@ -579,8 +584,8 @@ abstract final class RoutePath {
   static String productionDailyReportEdit(String id) =>
       '/production/daily-reports/$id/edit';
 
-  /// 生产报表（4 入口）。
-  /// [seg] = plan-detail|plan-summary|daily-detail|daily-summary。
+  /// 生产报表（当前注册 2 入口）。
+  /// [seg] = plan-detail|plan-summary。
   static String productionReport(String seg) => '/production/reports/$seg';
 
   /// 钱流单据：列表 / 新建 / 详情 / 编辑。

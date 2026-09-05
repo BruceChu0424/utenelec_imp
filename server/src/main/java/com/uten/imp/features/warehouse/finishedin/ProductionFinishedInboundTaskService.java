@@ -51,6 +51,21 @@ public class ProductionFinishedInboundTaskService {
                 JOIN production_daily_report_items report_item
                   ON report_item.report_id = report.id
                  AND report_item.is_deleted = FALSE
+                 AND report_item.execution_segment_id IS NOT NULL
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM production_finished_arrival_registration_items
+                              registered_item
+                     WHERE registered_item.source_report_item_id =
+                           report_item.id)
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM production_fqc_inspections inspection
+                     WHERE inspection.source_report_item_id = report_item.id)
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM production_fqc_legacy_exemptions exemption
+                     WHERE exemption.source_report_item_id = report_item.id)
                 JOIN goods goods ON goods.id = report_item.goods_id
                 LEFT JOIN LATERAL (
                     SELECT production_plan.id AS plan_id,
@@ -69,24 +84,6 @@ public class ProductionFinishedInboundTaskService {
                 ) plan ON TRUE
                 WHERE report.status = 1
                   AND report.is_deleted = FALSE
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM production_finished_arrival_registrations registration
-                      WHERE registration.source_report_id = report.id)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM production_fqc_inspections inspection
-                      WHERE inspection.source_report_id = report.id)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM production_fqc_legacy_exemptions exemption
-                      WHERE exemption.source_report_id = report.id)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM production_daily_report_items legacy_item
-                      WHERE legacy_item.report_id = report.id
-                        AND legacy_item.is_deleted = FALSE
-                        AND legacy_item.execution_segment_id IS NULL)
                 GROUP BY report.id, report.bill_no, report.bill_date,
                          plan.plan_id, plan.plan_no, report.created_at
             ), final_count_tasks AS (

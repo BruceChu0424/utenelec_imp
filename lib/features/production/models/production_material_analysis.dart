@@ -25,6 +25,30 @@ enum MaterialSupplyRoute {
   }
 }
 
+/// 货品一个颜色+单位维度的最近确认路线（/last-routes 学习预填用）。
+class MaterialRouteMemory {
+  const MaterialRouteMemory({
+    required this.route,
+    this.colorId,
+    this.unitId,
+    this.reason,
+  });
+
+  final MaterialSupplyRoute route;
+  final String? colorId;
+  final String? unitId;
+  final String? reason;
+
+  static MaterialRouteMemory fromJson(Map<String, dynamic> json) {
+    return MaterialRouteMemory(
+      route: MaterialSupplyRoute.fromWire(json['route'])!,
+      colorId: json['colorId'] as String?,
+      unitId: json['unitId'] as String?,
+      reason: json['reason'] as String?,
+    );
+  }
+}
+
 /// 服务端权威的逐 BOM 路径需求激活状态。
 ///
 /// `requiredQty == 0` 不能再被客户端统一解释成“无需补货”：它可能是上级
@@ -108,6 +132,7 @@ class ProductionMaterialAnalysisSeed {
     this.analysisId,
     this.analysisVersion,
     this.warehouseId,
+    this.warehouseIds = const [],
     this.billDate,
     this.deliveryDate,
     this.departmentId,
@@ -119,6 +144,7 @@ class ProductionMaterialAnalysisSeed {
   final String? analysisId;
   final int? analysisVersion;
   final String? warehouseId;
+  final List<String> warehouseIds;
   final String? billDate;
   final String? deliveryDate;
   final String? departmentId;
@@ -681,6 +707,7 @@ class ProductionMaterialAnalysisView {
     required this.fingerprint,
     this.status,
     this.warehouseId,
+    this.warehouseIds = const [],
     this.analyzedAt,
     this.products = const [],
     this.materials = const [],
@@ -696,6 +723,7 @@ class ProductionMaterialAnalysisView {
   final int version;
   final String fingerprint;
   final String? warehouseId;
+  final List<String> warehouseIds;
   final String? analyzedAt;
   final List<ProductionMaterialAnalysisProduct> products;
   final List<ProductionMaterialAnalysisMaterial> materials;
@@ -716,6 +744,7 @@ class ProductionMaterialAnalysisView {
         version: _int(json['version']) ?? 0,
         fingerprint: _string(json['fingerprint']) ?? '',
         warehouseId: _string(json['warehouseId']),
+        warehouseIds: _stringList(json['warehouseIds']),
         analyzedAt: _string(
           json['analyzedAt'] ?? json['calculatedAt'] ?? json['updatedAt'],
         ),
@@ -767,6 +796,9 @@ class ProductionMaterialAnalysisProduct {
     this.submittedQty = 0,
     this.approvedQty = 0,
     this.remainingQty = 0,
+    this.serverCanSchedule,
+    this.serverMaxSchedulableQty,
+    this.scheduleBlockedReason,
     this.readyNowQty = 0,
     this.readyStartQty,
     this.readyFinishQty,
@@ -810,6 +842,9 @@ class ProductionMaterialAnalysisProduct {
   final double submittedQty;
   final double approvedQty;
   final double remainingQty;
+  final bool? serverCanSchedule;
+  final double? serverMaxSchedulableQty;
+  final String? scheduleBlockedReason;
   final double readyNowQty;
   final double? readyStartQty;
   final double? readyFinishQty;
@@ -840,6 +875,11 @@ class ProductionMaterialAnalysisProduct {
   final double? planExecutionInboundQty;
   final double? planExecutionProgressRatio;
 
+  /// 服务端明确区分“可以先排给车间”和“当前物料已经齐套”。旧服务端没有
+  /// 新字段时保守回退原 ready-now 门禁，避免客户端越权放开待料排产。
+  bool get canSchedule => serverCanSchedule ?? readyNowQty > 0;
+  double get maxSchedulableQty => serverMaxSchedulableQty ?? readyNowQty;
+
   factory ProductionMaterialAnalysisProduct.fromJson(
     Map<String, dynamic> json,
   ) => ProductionMaterialAnalysisProduct(
@@ -869,6 +909,11 @@ class ProductionMaterialAnalysisProduct {
     submittedQty: _double(json['submittedQty']) ?? 0,
     approvedQty: _double(json['approvedQty']) ?? 0,
     remainingQty: _double(json['remainingQty']) ?? 0,
+    serverCanSchedule: json.containsKey('canSchedule')
+        ? json['canSchedule'] == true
+        : null,
+    serverMaxSchedulableQty: _double(json['maxSchedulableQty']),
+    scheduleBlockedReason: _string(json['scheduleBlockedReason']),
     readyNowQty: _double(json['readyNowQty']) ?? 0,
     readyStartQty: _double(json['readyStartQty']),
     readyFinishQty: _double(json['readyFinishQty']),
@@ -909,6 +954,77 @@ class MaterialAllocationPriorityInput {
   };
 }
 
+/// One authoritative public-surplus future-supply source visible to the
+/// current user. Document identifiers may be redacted by object permissions;
+/// null identifiers therefore mean "source protected", not missing data.
+class SharedFutureSupplyRef {
+  const SharedFutureSupplyRef({
+    this.route,
+    this.approvedInboundQty = 0,
+    this.availableToClaimQty = 0,
+    this.expectedDate,
+    this.sourceActionId,
+    this.documentType,
+    this.documentId,
+    this.documentNo,
+    this.sourceIsCurrentAnalysis = false,
+  });
+
+  final MaterialSupplyRoute? route;
+  final double approvedInboundQty;
+  final double availableToClaimQty;
+  final String? expectedDate;
+  final String? sourceActionId;
+  final String? documentType;
+  final String? documentId;
+  final String? documentNo;
+  final bool sourceIsCurrentAnalysis;
+
+  factory SharedFutureSupplyRef.fromJson(Map<String, dynamic> json) =>
+      SharedFutureSupplyRef(
+        route: MaterialSupplyRoute.fromWire(json['route']),
+        approvedInboundQty: _double(json['approvedInboundQty']) ?? 0,
+        availableToClaimQty: _double(json['availableToClaimQty']) ?? 0,
+        expectedDate: _string(json['expectedDate']),
+        sourceActionId: _string(json['sourceActionId']),
+        documentType: _string(json['documentType']),
+        documentId: _string(json['documentId']),
+        documentNo: _string(json['documentNo']),
+        sourceIsCurrentAnalysis: json['sourceIsCurrentAnalysis'] == true,
+      );
+}
+
+/// Material-analysis planning defaults shared by every product/child entry.
+///
+/// A positive complete-kit quantity is the safest useful first batch: it can
+/// become the immediately executable segment while the remainder stays
+/// traceable as waiting material. When nothing is ready yet, the full server
+/// scheduling cap remains the default so staff can still assign the waiting
+/// work to a workshop in advance.
+extension ProductionMaterialAnalysisBatchSuggestion
+    on ProductionMaterialAnalysisProduct {
+  bool get hasPartialReadyBatch {
+    final cap = maxSchedulableQty;
+    return cap.isFinite &&
+        cap > 0 &&
+        readyNowQty.isFinite &&
+        readyNowQty > 0 &&
+        readyNowQty < cap;
+  }
+
+  double get suggestedFirstBatchQty {
+    final cap = maxSchedulableQty;
+    if (!cap.isFinite || cap <= 0) return 0;
+    if (hasPartialReadyBatch) return readyNowQty < cap ? readyNowQty : cap;
+    return cap;
+  }
+
+  double get waitingQtyAfterSuggestedFirstBatch {
+    final remaining = maxSchedulableQty - suggestedFirstBatchQty;
+    return remaining > 0 && remaining.isFinite ? remaining : 0;
+  }
+}
+
 class ProductionMaterialAnalysisMaterial {
   const ProductionMaterialAnalysisMaterial({
     required this.materialLineId,
@@ -937,6 +1053,14 @@ class ProductionMaterialAnalysisMaterial {
     this.reservedQty = 0,
     this.safetyStockQty = 0,
     this.inboundQty = 0,
+    this.publicSurplusApprovedInboundQty = 0,
+    this.publicSurplusRemainingQty = 0,
+    this.sharedFutureClaimedQty = 0,
+    this.additionalSupplyRecommendedQty = 0,
+    this.selectedWarehousesAvailableQty = 0,
+    this.selectedOtherWarehouseTransferableQty = 0,
+    this.publicSurplusExpectedDate,
+    this.sharedFutureSupplyRefs = const [],
     this.shortageQty = 0,
     this.demandSupplyGapQty = 0,
     this.subcontractHandoffFutureQty = 0,
@@ -1007,6 +1131,17 @@ class ProductionMaterialAnalysisMaterial {
   final double reservedQty;
   final double safetyStockQty;
   final double inboundQty;
+  final double publicSurplusApprovedInboundQty;
+  final double publicSurplusRemainingQty;
+  final double sharedFutureClaimedQty;
+  final double additionalSupplyRecommendedQty;
+
+  /// Availability across the explicitly checked warehouses. Reference only:
+  /// it never raises readyNow or creates an entitlement outside the primary.
+  final double selectedWarehousesAvailableQty;
+  final double selectedOtherWarehouseTransferableQty;
+  final String? publicSurplusExpectedDate;
+  final List<SharedFutureSupplyRef> sharedFutureSupplyRefs;
   final double shortageQty;
 
   /// 尚未被本批已分配现货或节点精确到货权益覆盖的生产需求。
@@ -1104,6 +1239,21 @@ class ProductionMaterialAnalysisMaterial {
     reservedQty: _double(json['reservedQty']) ?? 0,
     safetyStockQty: _double(json['safetyStockQty']) ?? 0,
     inboundQty: _double(json['inboundQty']) ?? 0,
+    publicSurplusApprovedInboundQty:
+        _double(json['publicSurplusApprovedInboundQty']) ?? 0,
+    publicSurplusRemainingQty: _double(json['publicSurplusRemainingQty']) ?? 0,
+    sharedFutureClaimedQty: _double(json['sharedFutureClaimedQty']) ?? 0,
+    additionalSupplyRecommendedQty:
+        _double(json['additionalSupplyRecommendedQty']) ?? 0,
+    selectedWarehousesAvailableQty:
+        _double(json['selectedWarehousesAvailableQty']) ?? 0,
+    selectedOtherWarehouseTransferableQty:
+        _double(json['selectedOtherWarehouseTransferableQty']) ?? 0,
+    publicSurplusExpectedDate: _string(json['publicSurplusExpectedDate']),
+    sharedFutureSupplyRefs: _mapList(
+      json['sharedFutureSupplyRefs'],
+      SharedFutureSupplyRef.fromJson,
+    ),
     shortageQty: _double(json['shortageQty']) ?? 0,
     demandSupplyGapQty: _demandSupplyGap(json),
     subcontractHandoffFutureQty:
@@ -1168,6 +1318,9 @@ class MaterialWarehouseStock {
     this.publicAvailableQty = 0,
     this.openSafetySupplyQty = 0,
     this.safetyReplenishmentGapQty = 0,
+    this.publicSurplusApprovedInboundQty = 0,
+    this.publicSurplusRemainingQty = 0,
+    this.publicSurplusExpectedDate,
   });
 
   final String warehouseId;
@@ -1194,25 +1347,32 @@ class MaterialWarehouseStock {
   /// max(安全库存 - 公共可用 - 公共补库在途, 0)。同 SKU 路径会重复，
   /// 客户端提交前必须按 goods/color/unit 去重且显式回传。
   final double safetyReplenishmentGapQty;
+  final double publicSurplusApprovedInboundQty;
+  final double publicSurplusRemainingQty;
+  final String? publicSurplusExpectedDate;
 
   /// 安全库存抵扣前的现货量（在库 - 预留），用于解释「有在库但现货为 0」。
   double get preSafetyQty =>
       (onHandQty - reservedQty).clamp(0.0, double.infinity);
 
-  factory MaterialWarehouseStock.fromJson(Map<String, dynamic> json) =>
-      MaterialWarehouseStock(
-        warehouseId: _string(json['warehouseId'] ?? json['id']) ?? '',
-        warehouseCode: _string(json['warehouseCode'] ?? json['code']),
-        warehouseName: _string(json['warehouseName'] ?? json['name']),
-        onHandQty: _double(json['onHandQty']) ?? 0,
-        reservedQty: _double(json['reservedQty']) ?? 0,
-        availableQty: _double(json['availableQty']) ?? 0,
-        ownPeggedQty: _double(json['ownPeggedQty']) ?? 0,
-        publicAvailableQty: _double(json['publicAvailableQty']) ?? 0,
-        openSafetySupplyQty: _double(json['openSafetySupplyQty']) ?? 0,
-        safetyReplenishmentGapQty:
-            _double(json['safetyReplenishmentGapQty']) ?? 0,
-      );
+  factory MaterialWarehouseStock.fromJson(
+    Map<String, dynamic> json,
+  ) => MaterialWarehouseStock(
+    warehouseId: _string(json['warehouseId'] ?? json['id']) ?? '',
+    warehouseCode: _string(json['warehouseCode'] ?? json['code']),
+    warehouseName: _string(json['warehouseName'] ?? json['name']),
+    onHandQty: _double(json['onHandQty']) ?? 0,
+    reservedQty: _double(json['reservedQty']) ?? 0,
+    availableQty: _double(json['availableQty']) ?? 0,
+    ownPeggedQty: _double(json['ownPeggedQty']) ?? 0,
+    publicAvailableQty: _double(json['publicAvailableQty']) ?? 0,
+    openSafetySupplyQty: _double(json['openSafetySupplyQty']) ?? 0,
+    safetyReplenishmentGapQty: _double(json['safetyReplenishmentGapQty']) ?? 0,
+    publicSurplusApprovedInboundQty:
+        _double(json['publicSurplusApprovedInboundQty']) ?? 0,
+    publicSurplusRemainingQty: _double(json['publicSurplusRemainingQty']) ?? 0,
+    publicSurplusExpectedDate: _string(json['publicSurplusExpectedDate']),
+  );
 }
 
 /// 一笔有效借用的双向投影：本节点是借出方（OUT）还是借入方（IN）、
@@ -1472,6 +1632,7 @@ String _formatModelQty(double value) {
 class MaterialAnalysisNotificationTarget {
   const MaterialAnalysisNotificationTarget({
     required this.target,
+    this.actionId,
     this.documentType,
     this.documentId,
     this.documentNo,
@@ -1480,6 +1641,7 @@ class MaterialAnalysisNotificationTarget {
   });
 
   final MaterialSupplyRoute? target;
+  final String? actionId;
   final String? documentType;
   final String? documentId;
   final String? documentNo;
@@ -1493,6 +1655,7 @@ class MaterialAnalysisNotificationTarget {
     Map<String, dynamic> json,
   ) => MaterialAnalysisNotificationTarget(
     target: MaterialSupplyRoute.fromWire(json['target'] ?? json['route']),
+    actionId: _string(json['actionId']),
     documentType: _string(json['documentType']),
     documentId: _string(json['documentId']),
     documentNo: _string(json['documentNo']),
@@ -1522,6 +1685,10 @@ class MaterialAnalysisSupplyAction {
     this.safetyStockSnapshotQty = 0,
     this.publicAvailableSnapshotQty = 0,
     this.openSafetySupplySnapshotQty = 0,
+    this.publicSurplusQty = 0,
+    this.publicSurplusExternalItemId,
+    this.operationType,
+    this.claimSourceActionId,
     this.needDate,
     this.documentType,
     this.documentId,
@@ -1543,6 +1710,10 @@ class MaterialAnalysisSupplyAction {
   final double safetyStockSnapshotQty;
   final double publicAvailableSnapshotQty;
   final double openSafetySupplySnapshotQty;
+  final double publicSurplusQty;
+  final String? publicSurplusExternalItemId;
+  final String? operationType;
+  final String? claimSourceActionId;
   final String? needDate;
   final String? documentType;
   final String? documentId;
@@ -1567,6 +1738,12 @@ class MaterialAnalysisSupplyAction {
             _double(json['publicAvailableSnapshotQty']) ?? 0,
         openSafetySupplySnapshotQty:
             _double(json['openSafetySupplySnapshotQty']) ?? 0,
+        publicSurplusQty: _double(json['publicSurplusQty']) ?? 0,
+        publicSurplusExternalItemId: _string(
+          json['publicSurplusExternalItemId'],
+        ),
+        operationType: _string(json['operationType']),
+        claimSourceActionId: _string(json['claimSourceActionId']),
         needDate: _string(json['needDate']),
         documentType: _string(json['documentType']),
         documentId: _string(json['documentId']),
@@ -1578,16 +1755,22 @@ class ProductionMaterialAnalysisWarehouse {
   const ProductionMaterialAnalysisWarehouse({
     required this.warehouseId,
     this.warehouseName,
+    this.selected = false,
+    this.primary = false,
   });
 
   final String warehouseId;
   final String? warehouseName;
+  final bool selected;
+  final bool primary;
 
   factory ProductionMaterialAnalysisWarehouse.fromJson(
     Map<String, dynamic> json,
   ) => ProductionMaterialAnalysisWarehouse(
     warehouseId: _string(json['warehouseId'] ?? json['id']) ?? '',
     warehouseName: _string(json['warehouseName'] ?? json['name']),
+    selected: json['selected'] == true,
+    primary: json['primary'] == true,
   );
 }
 
@@ -1702,18 +1885,21 @@ class MaterialSupplyQuantityInput {
     this.materialLineId,
     required this.qty,
     required this.safetyReplenishmentQty,
+    this.publicExtraQty = 0,
   }) : assert(actionGroupKey != null || materialLineId != null);
 
   final String? actionGroupKey;
   final String? materialLineId;
   final double qty;
   final double safetyReplenishmentQty;
+  final double publicExtraQty;
 
   Map<String, dynamic> toJson() => {
     if (actionGroupKey != null) 'actionGroupKey': actionGroupKey,
     if (materialLineId != null) 'materialLineId': materialLineId,
     'qty': qty,
     'safetyReplenishmentQty': safetyReplenishmentQty,
+    'publicExtraQty': publicExtraQty,
   };
 }
 
@@ -1804,8 +1990,12 @@ class ProductionMaterialPlanPreview {
   final List<ProductionMaterialPlanPreviewPlan> plans;
   final Set<String> allowedActions;
 
-  bool get canGenerate =>
-      allReady && items.isNotEmpty && items.every((item) => item.canGenerate);
+  bool get canSchedule =>
+      items.isNotEmpty && items.every((item) => item.canSchedule);
+
+  /// 兼容旧调用名；生成计划的业务资格现在等同可排产，物料是否齐套另读
+  /// [allReady] / [ProductionMaterialPlanPreviewItem.canGenerate]。
+  bool get canGenerate => canSchedule;
 
   factory ProductionMaterialPlanPreview.fromJson(
     Map<String, dynamic> json,
@@ -1832,14 +2022,27 @@ class ProductionMaterialPlanPreviewItem {
     this.selectedQty = 0,
     this.canGenerate = false,
     this.reason,
+    this.serverCanSchedule,
+    this.serverMaxSchedulableQty,
+    this.scheduleBlockedReason,
   });
 
   final String analysisLineId;
   final double requestedQty;
   final double readyNowQty;
   final double selectedQty;
+
+  /// 历史字段：仅表示当前所选数量是否真实齐套，不再代表能否先排产。
   final bool canGenerate;
   final String? reason;
+  final bool? serverCanSchedule;
+  final double? serverMaxSchedulableQty;
+  final String? scheduleBlockedReason;
+
+  bool get materialReady => canGenerate;
+  String? get materialReadinessReason => reason;
+  bool get canSchedule => serverCanSchedule ?? canGenerate;
+  double get maxSchedulableQty => serverMaxSchedulableQty ?? readyNowQty;
 
   factory ProductionMaterialPlanPreviewItem.fromJson(
     Map<String, dynamic> json,
@@ -1850,6 +2053,11 @@ class ProductionMaterialPlanPreviewItem {
     selectedQty: _double(json['selectedQty']) ?? 0,
     canGenerate: json['canGenerate'] == true,
     reason: _string(json['reason']),
+    serverCanSchedule: json.containsKey('canSchedule')
+        ? json['canSchedule'] == true
+        : null,
+    serverMaxSchedulableQty: _double(json['maxSchedulableQty']),
+    scheduleBlockedReason: _string(json['scheduleBlockedReason']),
   );
 }
 

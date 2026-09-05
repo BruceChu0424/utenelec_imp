@@ -46,9 +46,11 @@ class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
     super.key,
     this.id,
     this.initialExecutionSegmentId,
+    this.initialExecutionSegmentIds = const [],
   });
   final String? id; // null=新建
   final String? initialExecutionSegmentId;
+  final List<String> initialExecutionSegmentIds;
 
   @override
   ConsumerState<ProductionDailyReportEditPage> createState() =>
@@ -183,15 +185,21 @@ class _ProductionDailyReportEditPageState
     if (_grid.isEmpty) _grid.addRow(DailyGridRow());
     if (!mounted) return;
     setState(() => _loading = false);
-    final initialSegmentId = widget.initialExecutionSegmentId;
-    if (widget.id == null &&
-        initialSegmentId != null &&
-        initialSegmentId.isNotEmpty &&
-        _grid.rows.isNotEmpty) {
-      await _loadInitialSource(
-        _grid.rows.first,
-        executionSegmentId: initialSegmentId,
-      );
+    if (widget.id == null) {
+      final initialIds = <String>{
+        if (widget.initialExecutionSegmentId?.trim().isNotEmpty == true)
+          widget.initialExecutionSegmentId!.trim(),
+        for (final id in widget.initialExecutionSegmentIds)
+          if (id.trim().isNotEmpty) id.trim(),
+      }.take(100).toList(growable: false);
+      if (initialIds.length == 1 && _grid.rows.isNotEmpty) {
+        await _loadInitialSource(
+          _grid.rows.first,
+          executionSegmentId: initialIds.single,
+        );
+      } else if (initialIds.length > 1) {
+        await _loadInitialSources(initialIds);
+      }
     }
   }
 
@@ -283,6 +291,61 @@ class _ProductionDailyReportEditPageState
       context.appError(
         productionErrorMessage(error, fallback: '当前执行子计划加载失败，请稍后重试'),
       );
+    }
+  }
+
+  Future<void> _loadInitialSources(List<String> executionSegmentIds) async {
+    try {
+      final page = await ref
+          .read(productionDailyReportRepositoryProvider)
+          .reportablePlanLines(
+            size: 100,
+            departmentId: _departmentId,
+            executionSegmentIds: executionSegmentIds,
+          );
+      if (!mounted) return;
+      final bySegment = <String, List<ReportablePlanLine>>{};
+      for (final source in page.items) {
+        final id = source.executionSegmentId;
+        if (id == null || id.isEmpty) continue;
+        bySegment.putIfAbsent(id, () => []).add(source);
+      }
+      final invalid = executionSegmentIds.where((id) {
+        final rows = bySegment[id];
+        return rows == null || rows.length != 1 || !rows.single.canReport;
+      });
+      if (page.total != executionSegmentIds.length || invalid.isNotEmpty) {
+        context.appWarning(
+          '部分工单已变化或包含多个销售分摊，未自动生成批量报工；请刷新车间任务后重试',
+          force: true,
+        );
+        return;
+      }
+      final departments = <String>{};
+      for (final id in executionSegmentIds) {
+        final departmentId = bySegment[id]!.single.departmentId;
+        if (departmentId != null && departmentId.isNotEmpty) {
+          departments.add(departmentId);
+        }
+      }
+      if (departments.length > 1) {
+        context.appWarning('批量报工必须属于同一车间，请分车间办理', force: true);
+        return;
+      }
+      final rows = [for (final _ in executionSegmentIds) DailyGridRow()];
+      _grid.replaceAll(rows);
+      for (var index = 0; index < executionSegmentIds.length; index++) {
+        _applySource(
+          rows[index],
+          bySegment[executionSegmentIds[index]]!.single,
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        context.appError(
+          productionErrorMessage(error, fallback: '批量报工来源加载失败，请稍后重试'),
+        );
+      }
     }
   }
 

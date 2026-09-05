@@ -37,6 +37,8 @@ class WarehouseListItem {
     this.legacyOperatorId,
     this.status,
     this.legacyId,
+    this.parentId,
+    this.parentName,
   });
 
   final String id;
@@ -52,6 +54,12 @@ class WarehouseListItem {
   final int? legacyOperatorId;
   final String? status;
   final int? legacyId;
+
+  /// 上级仓库（V476 主/子层级）；null=独立顶层。
+  final String? parentId;
+
+  /// 上级仓库名称（列表列展示用）。
+  final String? parentName;
 
   factory WarehouseListItem.fromJson(Map<String, dynamic> json) =>
       WarehouseListItem(
@@ -68,6 +76,8 @@ class WarehouseListItem {
                 ?.toInt(),
         status: json['status'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        parentId: json['parentId'] as String?,
+        parentName: json['parentName'] as String?,
       );
 }
 
@@ -84,6 +94,7 @@ class WarehouseDetail {
     this.legacyOperatorId,
     this.status,
     this.legacyId,
+    this.parentId,
   });
 
   final String id;
@@ -100,6 +111,9 @@ class WarehouseDetail {
   final String? status;
   final int? legacyId;
 
+  /// 上级仓库（V476 主/子层级）；null=独立顶层。
+  final String? parentId;
+
   factory WarehouseDetail.fromJson(Map<String, dynamic> json) =>
       WarehouseDetail(
         id: json['id'] as String,
@@ -115,6 +129,7 @@ class WarehouseDetail {
                 ?.toInt(),
         status: json['status'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        parentId: json['parentId'] as String?,
       );
 }
 

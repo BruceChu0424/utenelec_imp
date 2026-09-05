@@ -54,34 +54,6 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
 
   bool get _isCreate => widget.goodsId == null;
 
-  bool get _isAdmin => ref.read(isSuperAdminProvider);
-
-  bool get _canCreate =>
-      _isAdmin ||
-      ref.read(currentPermissionsProvider).contains(Perm.goodsCreate);
-  bool get _canEdit =>
-      _isAdmin || ref.read(currentPermissionsProvider).contains(Perm.goodsEdit);
-  bool get _canDelete =>
-      _isAdmin ||
-      ref.read(currentPermissionsProvider).contains(Perm.goodsDelete);
-  bool get _canStatus =>
-      _isAdmin ||
-      ref.read(currentPermissionsProvider).contains(Perm.goodsStatus);
-  bool get _canBomCreate =>
-      _isAdmin ||
-      ref.read(currentPermissionsProvider).contains(Perm.goodsBomCreate);
-  bool get _canBomEdit =>
-      _isAdmin ||
-      ref.read(currentPermissionsProvider).contains(Perm.goodsBomEdit);
-  bool get _canBomDelete =>
-      _isAdmin ||
-      ref.read(currentPermissionsProvider).contains(Perm.goodsBomDelete);
-
-  /// 有库存查看权限才显示「出入库流水」（无权限点了也是访问受限页）。
-  bool get _canViewStock =>
-      ref.read(isSuperAdminProvider) ||
-      ref.read(currentPermissionsProvider).contains(Perm.stockView);
-
   @override
   void initState() {
     super.initState();
@@ -172,6 +144,20 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 权限来自会话快照，必须 watch 而不是 read：登录恢复或管理员刷新授权后，本页
+    // 立即重建按钮，避免已持有 goods:bom:create 却看不到「添加组件」。
+    final isAdmin = ref.watch(isSuperAdminProvider);
+    final permissions = ref.watch(currentPermissionsProvider);
+    bool can(String permission) => isAdmin || permissions.contains(permission);
+    final canCreate = can(Perm.goodsCreate);
+    final canEdit = can(Perm.goodsEdit);
+    final canDelete = can(Perm.goodsDelete);
+    final canStatus = can(Perm.goodsStatus);
+    final canBomCreate = can(Perm.goodsBomCreate);
+    final canBomEdit = can(Perm.goodsBomEdit);
+    final canBomDelete = can(Perm.goodsBomDelete);
+    final canViewStock = can(Perm.stockView);
+
     if (_isCreate && widget.categoryId == null) {
       return Scaffold(
         body: Center(child: UtenEmpty.error(message: '缺少分类参数，无法新增货品')),
@@ -204,15 +190,15 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
           initialDetail: _detail,
           initialCategoryId: widget.categoryId,
           initialTab: widget.initialTab,
-          canCreate: _canCreate,
-          canEdit: _canEdit,
-          canStatus: _canStatus,
-          canBomCreate: _canBomCreate,
-          canBomEdit: _canBomEdit,
-          canBomDelete: _canBomDelete,
-          onToggleStatus: _canStatus && !_isCreate ? _toggleStatus : null,
-          onDelete: _canDelete && !_isCreate ? _delete : null,
-          onViewMovements: _canViewStock && !_isCreate
+          canCreate: canCreate,
+          canEdit: canEdit,
+          canStatus: canStatus,
+          canBomCreate: canBomCreate,
+          canBomEdit: canBomEdit,
+          canBomDelete: canBomDelete,
+          onToggleStatus: canStatus && !_isCreate ? _toggleStatus : null,
+          onDelete: canDelete && !_isCreate ? _delete : null,
+          onViewMovements: canViewStock && !_isCreate
               ? () {
                   final id = _detail?.id;
                   if (id != null && id.isNotEmpty) {

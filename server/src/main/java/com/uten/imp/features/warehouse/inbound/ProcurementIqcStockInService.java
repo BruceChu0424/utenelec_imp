@@ -1,6 +1,7 @@
 package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
+import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
@@ -17,6 +18,7 @@ import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.Ba
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmResult;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.InboundAllocation;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ReleasedSlice;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.StockInHistoryItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.TaskDetail;
@@ -25,6 +27,7 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -64,6 +68,13 @@ public class ProcurementIqcStockInService {
     private final ProductionSupplyTransitionPort purchaseSupply;
     private final ProductionSubcontractSupplyTransitionPort subcontractSupply;
     private final PreplanAnalysisPegPort preplanAnalysisPeg;
+    private PreplanInboundAllocationReadPort inboundAllocationRead =
+            PreplanInboundAllocationReadPort.NOOP;
+
+    @Autowired
+    void setInboundAllocationRead(PreplanInboundAllocationReadPort value) {
+        this.inboundAllocationRead = value;
+    }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('" + ProcurementIqcStockInPermissions.VIEW + "')")
@@ -73,8 +84,14 @@ public class ProcurementIqcStockInService {
         List<PassSlice> pendingSlices = passSlices(type, receiptId, false).stream()
                 .filter(slice -> slice.remainingBaseQty().signum() > 0)
                 .toList();
+        Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected =
+                inboundAllocationRead.expectedForPassEvents(
+                        type, receiptId,
+                        pendingSlices.stream().map(PassSlice::passEventId).toList());
         List<ReleasedSlice> items = pendingSlices.stream()
-                .map(this::toView)
+                .map(slice -> toView(
+                        slice,
+                        expected.getOrDefault(slice.passEventId(), List.of())))
                 .toList();
         List<StockInHistoryItem> history = history(type, receiptId);
         // 单人维护场景允许同人完成「品质放行 + 仓库确认」：不再阻断；同人复核提示
@@ -149,7 +166,8 @@ public class ProcurementIqcStockInService {
                     batch.type(), batch.receiptId(), batch.command());
             results.add(new BatchConfirmEntryResult(
                     batch.type(), batch.receiptId(), result.batchId(),
-                    result.replayed(), result.confirmedCount(), result.confirmedAt()));
+                    result.replayed(), result.confirmedCount(), result.confirmedAt(),
+                    result.allocations()));
             confirmedItemCount += result.confirmedCount();
         }
         return new BatchConfirmResult(results, results.size(), confirmedItemCount);
@@ -167,7 +185,8 @@ public class ProcurementIqcStockInService {
                 throw conflict("该入库幂等键已用于不同的数量、库位或任务，请更换后重试");
             }
             return new ConfirmResult(
-                    existing.id(), true, existing.confirmedCount(), existing.confirmedAt());
+                    existing.id(), true, existing.confirmedCount(), existing.confirmedAt(),
+                    inboundAllocations(inboundAllocationRead.actualForBatch(existing.id())));
         }
 
         receiptHeader(type, receiptId);
@@ -257,7 +276,9 @@ public class ProcurementIqcStockInService {
         advanceProductionAfterStockIn(type, receiptId, batchId, inspectionItemIds);
         recalculateOrderClosure(type, receiptId);
         rememberConfirmedPlaces(locked, command, batchId, now, actorUserId, actorEmployeeId);
-        return new ConfirmResult(batchId, false, command.items().size(), now);
+        return new ConfirmResult(
+                batchId, false, command.items().size(), now,
+                inboundAllocations(inboundAllocationRead.actualForBatch(batchId)));
     }
 
     /**
@@ -542,7 +563,9 @@ public class ProcurementIqcStockInService {
                 .toList();
     }
 
-    private ReleasedSlice toView(PassSlice slice) {
+    private ReleasedSlice toView(
+            PassSlice slice,
+            List<PreplanInboundAllocationReadPort.AllocationView> expectedAllocations) {
         Allocation allocation = allocation(slice);
         return new ReleasedSlice(
                 slice.passEventId(), slice.inspectionItemId(), slice.goodsId(),
@@ -553,7 +576,7 @@ public class ProcurementIqcStockInService {
                 slice.stockedForReleaseBaseQty(), slice.remainingBaseQty(),
                 allocation.weight(), slice.weightUnitId(), slice.weightUnitName(),
                 slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
-                slice.releasedAt());
+                slice.releasedAt(), inboundAllocations(expectedAllocations));
     }
 
     private Allocation allocation(PassSlice slice) {
@@ -595,11 +618,43 @@ public class ProcurementIqcStockInService {
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId)
                 .getResultList();
-        return rows.stream().map(row -> new StockInHistoryItem(
-                uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
-                str(row[4]), str(row[5]), str(row[6]), str(row[7]),
-                decimal(row[8]), nullableDecimal(row[9]), str(row[10]),
-                str(row[11]), str(row[12]), offsetDateTime(row[13]))).toList();
+        List<UUID> batchIds = rows.stream().map(row -> uuid(row[1]))
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        Map<UUID, List<InboundAllocation>> actualByItem = new LinkedHashMap<>();
+        for (InboundAllocation allocation : inboundAllocations(
+                inboundAllocationRead.actualForBatches(batchIds))) {
+            if (allocation.stockInBatchItemId() != null) {
+                actualByItem.computeIfAbsent(
+                        allocation.stockInBatchItemId(), ignored -> new ArrayList<>())
+                        .add(allocation);
+            }
+        }
+        return rows.stream().map(row -> {
+            UUID stockInItemId = uuid(row[0]);
+            return new StockInHistoryItem(
+                    stockInItemId, uuid(row[1]), uuid(row[2]), uuid(row[3]),
+                    str(row[4]), str(row[5]), str(row[6]), str(row[7]),
+                    decimal(row[8]), nullableDecimal(row[9]), str(row[10]),
+                    str(row[11]), str(row[12]), offsetDateTime(row[13]),
+                    actualByItem.getOrDefault(stockInItemId, List.of()));
+        }).toList();
+    }
+
+    private static List<InboundAllocation> inboundAllocations(
+            Collection<PreplanInboundAllocationReadPort.AllocationView> values) {
+        if (values == null || values.isEmpty()) return List.of();
+        return values.stream().map(value -> new InboundAllocation(
+                value.passEventId(), value.stockInBatchItemId(), value.kind(),
+                value.qty(), value.actualWarehouseId(), value.actualWarehouseName(),
+                value.targetWarehouseId(), value.targetWarehouseName(),
+                value.intendedWarehouseNames(), value.warehouseMatches(),
+                value.analysisId(), value.analysisMaterialId(),
+                value.productCode(), value.productName(), value.sourceLabel(),
+                value.planId(), value.planNo(), value.executionSegmentId(),
+                value.executionSegmentCode(), value.workshopDepartmentId(),
+                value.workshopName(), value.responsibleEmployeeId(),
+                value.responsibleEmployeeName(), value.formationStatus()))
+                .toList();
     }
 
     private Object[] receiptHeader(String type, UUID receiptId) {

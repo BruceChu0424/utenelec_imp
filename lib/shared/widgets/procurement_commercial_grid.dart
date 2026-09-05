@@ -9,6 +9,7 @@
 // 后端 createBatch 按「供应商+商业条款」组合拆单归集到各张单的头字段。
 import 'package:flutter/material.dart';
 
+import '../../components/inputs/required_field_decoration.dart';
 import '../../components/layout/uten_editable_grid.dart';
 
 /// 行级商业条款行的契约（列构建的泛型约束；Dart 无交集类型，用抽象类收口）。
@@ -22,6 +23,10 @@ abstract class CommercialTermsGridRow extends EditableGridRow {
   ValueNotifier<String?> get settlementMethodIdNotifier;
   TextEditingController get exchangeRate;
   TextEditingController get taxRate;
+
+  /// 行级条款「学习预填」黄标（supplier/currency/rate/tax/settlement）。
+  ValueNotifier<Set<String>> get termsAutofilledNotifier;
+  void clearTermsAutofilled(String key);
 }
 
 /// 备注行的契约（同上）。
@@ -45,6 +50,46 @@ mixin CommercialTermsRowMixin on EditableGridRow
   @override
   final TextEditingController taxRate = TextEditingController();
 
+  /// 行级条款「学习预填」黄标（key：supplier/currency/rate/tax/settlement）。
+  /// /last-terms 学习带入即标记（单元格黄框提醒核对）；用户改值清除——下拉经页面
+  /// 落值回调清除，汇率/税率文本控制器由监听按「改动≠带入值」清除。
+  @override
+  final ValueNotifier<Set<String>> termsAutofilledNotifier =
+      ValueNotifier<Set<String>>(const <String>{});
+  final Map<String, String> _termsAutofillValues = {};
+  bool _termsWatchAttached = false;
+
+  /// 当前仍带预填黄标的条款 key 集合。
+  Set<String> get termsAutofilled => termsAutofilledNotifier.value;
+
+  /// 标记一个学习带入值（黄框提醒核对）。[value] 为带入值（文本字段比对用）。
+  void markTermsAutofilled(String key, String value) {
+    termsAutofilledNotifier.value = {...termsAutofilledNotifier.value, key};
+    _termsAutofillValues[key] = value;
+    if (!_termsWatchAttached && (key == 'rate' || key == 'tax')) {
+      _termsWatchAttached = true;
+      void watch(TextEditingController ctl, String k) {
+        ctl.addListener(() {
+          if (!termsAutofilled.contains(k)) return;
+          if (ctl.text == (_termsAutofillValues[k] ?? '')) return;
+          clearTermsAutofilled(k);
+        });
+      }
+
+      watch(exchangeRate, 'rate');
+      watch(taxRate, 'tax');
+    }
+  }
+
+  /// 清除一个条款的预填黄标（用户改值=已核对）。
+  @override
+  void clearTermsAutofilled(String key) {
+    if (!termsAutofilled.contains(key)) return;
+    termsAutofilledNotifier.value = {...termsAutofilledNotifier.value}
+      ..remove(key);
+    _termsAutofillValues.remove(key);
+  }
+
   @override
   String? get currencyId => currencyIdNotifier.value;
 
@@ -57,7 +102,8 @@ mixin CommercialTermsRowMixin on EditableGridRow
   @override
   set settlementMethodId(String? v) => settlementMethodIdNotifier.value = v;
 
-  /// 行克隆时拷贝另一行的条款（不共享控制器/通知器）。
+  /// 行克隆时拷贝另一行的条款（不共享控制器/通知器；预填黄标不拷——克隆行是用户
+  /// 显式复制，值已随源行核对语境失效）。
   void copyCommercialFrom(CommercialTermsRowMixin other) {
     currencyId = other.currencyId;
     settlementMethodId = other.settlementMethodId;
@@ -69,6 +115,7 @@ mixin CommercialTermsRowMixin on EditableGridRow
   void dispose() {
     currencyIdNotifier.dispose();
     settlementMethodIdNotifier.dispose();
+    termsAutofilledNotifier.dispose();
     exchangeRate.dispose();
     taxRate.dispose();
     super.dispose();
@@ -100,6 +147,7 @@ class ProcurementTermDropdownCell extends StatelessWidget {
     required this.entries,
     this.onChanged,
     this.requiredEmpty = false,
+    this.autofilled = false,
     this.hint = '点击选择',
   });
 
@@ -107,6 +155,9 @@ class ProcurementTermDropdownCell extends StatelessWidget {
   final Map<String, String> entries;
   final ValueChanged<String?>? onChanged;
   final bool requiredEmpty;
+
+  /// 学习预填值（黄框提醒核对；与 requiredEmpty 红优先级：红在前）。
+  final bool autofilled;
   final String hint;
 
   @override
@@ -134,19 +185,29 @@ class ProcurementTermDropdownCell extends StatelessWidget {
           ),
       ],
       child: InputDecorator(
-        decoration: InputDecoration(
-          isDense: true,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 8,
+        decoration: applyAutofillHint(
+          applyRequiredEmpty(
+            InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              suffixIcon: Icon(
+                hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              suffixIconConstraints: const BoxConstraints(minWidth: 20),
+            ),
+            theme,
+            requiredEmpty: requiredEmpty,
           ),
-          suffixIcon: Icon(
-            hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          suffixIconConstraints: const BoxConstraints(minWidth: 20),
+          theme,
+          autofilled: autofilled && hasValue,
         ),
         child: Text(
           label,
@@ -186,13 +247,20 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
       textOf: (r) =>
           r.currencyId == null ? '' : (currencyEntries[r.currencyId] ?? ''),
       listenableOf: (r) => r.currencyIdNotifier,
-      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
-        valueListenable: row.currencyIdNotifier,
-        builder: (_, v, _) => ProcurementTermDropdownCell(
-          value: v,
-          entries: currencyEntries,
-          requiredEmpty: v == null,
-          onChanged: (next) => onPickCurrency(row)(next),
+      cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+        valueListenable: row.termsAutofilledNotifier,
+        builder: (_, marks, _) => ValueListenableBuilder<String?>(
+          valueListenable: row.currencyIdNotifier,
+          builder: (_, v, _) => ProcurementTermDropdownCell(
+            value: v,
+            entries: currencyEntries,
+            requiredEmpty: v == null,
+            autofilled: marks.contains('currency'),
+            onChanged: (next) {
+              row.clearTermsAutofilled('currency');
+              onPickCurrency(row)(next);
+            },
+          ),
         ),
       ),
     ),
@@ -201,15 +269,22 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
       label: '汇率',
       width: 84,
       numeric: true,
-      cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.exchangeRate,
-        isEmpty: () =>
-            (double.tryParse(row.exchangeRate.text.trim()) ?? 0) <= 0,
-        child: TextField(
-          controller: row.exchangeRate,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '1'),
+      cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+        valueListenable: row.termsAutofilledNotifier,
+        builder: (context, marks, _) => RequiredCellFrame(
+          listenable: row.exchangeRate,
+          isEmpty: () =>
+              (double.tryParse(row.exchangeRate.text.trim()) ?? 0) <= 0,
+          child: TextField(
+            controller: row.exchangeRate,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: applyAutofillHint(
+              const InputDecoration(isDense: true, hintText: '1'),
+              Theme.of(context),
+              autofilled: marks.contains('rate'),
+            ),
+          ),
         ),
       ),
     ),
@@ -218,11 +293,18 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
       label: '税率(%)',
       width: 84,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.taxRate,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+        valueListenable: row.termsAutofilledNotifier,
+        builder: (context, marks, _) => TextField(
+          controller: row.taxRate,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: applyAutofillHint(
+            const InputDecoration(isDense: true, hintText: '0'),
+            Theme.of(context),
+            autofilled: marks.contains('tax'),
+          ),
+        ),
       ),
     ),
     EditableGridColumn<R>(
@@ -234,13 +316,20 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           ? ''
           : (settlementEntries[r.settlementMethodId] ?? ''),
       listenableOf: (r) => r.settlementMethodIdNotifier,
-      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
-        valueListenable: row.settlementMethodIdNotifier,
-        builder: (_, v, _) => ProcurementTermDropdownCell(
-          value: v,
-          entries: settlementEntries,
-          requiredEmpty: v == null,
-          onChanged: (next) => onPickSettlement(row)(next),
+      cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+        valueListenable: row.termsAutofilledNotifier,
+        builder: (_, marks, _) => ValueListenableBuilder<String?>(
+          valueListenable: row.settlementMethodIdNotifier,
+          builder: (_, v, _) => ProcurementTermDropdownCell(
+            value: v,
+            entries: settlementEntries,
+            requiredEmpty: v == null,
+            autofilled: marks.contains('settlement'),
+            onChanged: (next) {
+              row.clearTermsAutofilled('settlement');
+              onPickSettlement(row)(next);
+            },
+          ),
         ),
       ),
     ),

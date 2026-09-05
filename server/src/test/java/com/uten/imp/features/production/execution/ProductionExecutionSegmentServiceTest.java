@@ -585,6 +585,8 @@ class ProductionExecutionSegmentServiceTest {
                         false,
                         goodsId,
                         workshopId,
+                        // s.responsible_employee_id（V474 起进入 lock 投影）
+                        null,
                         autoPromoteWhenReady,
                         materialRequirementMode,
                         planMakerId
@@ -648,6 +650,8 @@ class ProductionExecutionSegmentServiceTest {
                 false,
                 false,
                 goodsId,
+                null,
+                // s.responsible_employee_id（V474 起进入 lock 投影）
                 null,
                 true,
                 "DEMANDED",

@@ -229,6 +229,10 @@ class _FakeCategoryRepository extends Fake
     implements ProductCategoryRepository {
   @override
   Future<List<ProductCategoryNode>> tree() async => _tree;
+
+  // 货品选择器不消费货品计数；沿用无计数树即可。
+  @override
+  Future<List<ProductCategoryNode>> treeWithGoodsCounts() async => _tree;
 }
 
 class _FakeGoodsRepository extends Fake implements GoodsRepository {

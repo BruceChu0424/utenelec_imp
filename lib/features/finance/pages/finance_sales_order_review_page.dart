@@ -692,13 +692,7 @@ class _FinanceSalesOrderReviewPageState
               type: 'number',
               value: (it) => _trimNum(it.qty),
             ),
-            MasterColumnDef(
-              key: 'weight',
-              label: '实际重量',
-              width: 100,
-              type: 'number',
-              value: (it) => _trimNum(it.weight),
-            ),
+            // 实际重量列已下线（2026-09-04：单位已表达重量，销售订单编辑不再录入）。
             MasterColumnDef(
               key: 'price',
               label: '单价',

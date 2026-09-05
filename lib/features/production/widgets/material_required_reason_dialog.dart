@@ -1,20 +1,24 @@
 import 'package:flutter/material.dart';
 
-// 通用「必填原因」对话框：标题/初始值/辅助文案/确认按钮文案由调用方给定。
+import '../../../components/inputs/required_field_decoration.dart';
+
+// 通用「必填原因」对话框：标题/初始值/说明文案/确认按钮文案由调用方给定。
+// 说明文案走 fieldLabel 的 ⓘ 悬停提示（Tooltip 不依赖 LayoutBuilder，
+// 与 AlertDialog 固有宽度量测兼容）。
 class MaterialRequiredReasonDialog extends StatefulWidget {
   const MaterialRequiredReasonDialog({
     super.key,
     required this.title,
     required this.fieldKey,
     required this.initialValue,
-    required this.helperMessage,
+    required this.info,
     required this.confirmLabel,
   });
 
   final String title;
   final Key fieldKey;
   final String initialValue;
-  final String helperMessage;
+  final String info;
   final String confirmLabel;
 
   @override
@@ -48,9 +52,7 @@ class _MaterialRequiredReasonDialogState
       minLines: 2,
       maxLines: 4,
       decoration: InputDecoration(
-        labelText: '原因(必填)',
-        // uten-field-message-exception: raw-message - AlertDialog intrinsic sizing does not support LayoutBuilder.
-        helperText: widget.helperMessage,
+        label: fieldLabel('原因(必填)', Theme.of(context), info: widget.info),
       ),
     ),
     actions: [

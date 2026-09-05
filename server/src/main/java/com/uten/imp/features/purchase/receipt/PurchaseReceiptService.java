@@ -75,6 +75,9 @@ public class PurchaseReceiptService {
     private final PurchaseReceiptRepository receiptRepo;
     private final PurchaseReceiptItemRepository itemRepo;
     private final StockService stockService;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final PurchaseReceiptAmountAuthority receiptAmountAuthority;
     private final ProcurementIqcReplacementAllocationService iqcReplacementAllocation;
@@ -393,6 +396,10 @@ public class PurchaseReceiptService {
         }
         r.setBillDate(req.getBillDate());
         r.setSupplierId(req.getSupplierId());
+        // V476 运营红线：收货入库必须落到具体叶子仓；主仓库只作查询聚合。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "入库仓库");
+        }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());
         r.setExchangeRate(req.getExchangeRate());

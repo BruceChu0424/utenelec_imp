@@ -20,10 +20,20 @@ import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 
 /// 单选项：[value]（null=清空/不选）+ [label]（展示文本）。
+///
+/// [enabled]=false 为分组标题（如仓库层级下拉的父仓）：正常显示与参与值回显，
+/// 但点击不生效；[indent] 为缩进像素（子仓缩进展示），两者默认关闭保持旧行为。
 class UtenDropdownItem {
-  const UtenDropdownItem({this.value, required this.label});
+  const UtenDropdownItem({
+    this.value,
+    required this.label,
+    this.enabled = true,
+    this.indent = 0,
+  });
   final String? value;
   final String label;
+  final bool enabled;
+  final double indent;
 }
 
 /// outlined 单选下拉，Overlay 弹层样式对齐货品资料筛选下拉。
@@ -38,9 +48,10 @@ class UtenDropdownField extends StatefulWidget {
     this.allowClear = true,
     this.enabled = true,
     this.hintText,
-    this.helperMessage,
+    this.info,
     this.searchable,
     this.errorMessage,
+    this.autofilled = false,
     this.onAddNew,
     this.addNewLabel,
   });
@@ -60,14 +71,18 @@ class UtenDropdownField extends StatefulWidget {
   final bool enabled;
   final String? hintText;
 
-  /// 字段辅助说明；超出一行时可展开查看全文。
-  final String? helperMessage;
+  /// 字段说明：收进标签旁 ⓘ 悬停提示，不常驻输入框下方（全站约定）。
+  final String? info;
 
   /// 弹层是否带搜索框（输入实时过滤选项）。null=自动（选项 ≥4 个时启用）。
   final bool? searchable;
 
   /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
   final String? errorMessage;
+
+  /// 当前值是否系统预填（学习/主档带入）：黄框 + 下方「请核对」提醒，用户改值后置 false。
+  /// 优先级：errorMessage（红）> 必填空（红）> autofilled（黄）。
+  final bool autofilled;
 
   /// 浮层内"添加新项"回调（如颜色/单位内联新建）：非空时在搜索框下方渲染浅绿"添加"按钮，
   /// 点击先关浮层再触发。null=不显示（默认，不影响其他调用方）。
@@ -151,29 +166,40 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         widget.required &&
         !hasValue &&
         widget.errorMessage == null;
+    // 预填黄框仅在「有值、无错误、非必填空」时呈现（必填空/错误仍走红，优先级更高）。
+    final autofillHint =
+        widget.enabled &&
+        widget.autofilled &&
+        hasValue &&
+        widget.errorMessage == null;
     return CompositedTransformTarget(
       link: _link,
       child: InkWell(
         onTap: _open,
         child: InputDecorator(
           decoration: applyRequiredEmpty(
-            InputDecoration(
-              label: widget.label == null
-                  ? null
-                  : requiredLabel(
-                      widget.label!,
-                      theme,
-                      required: widget.required,
-                      base: theme.inputDecorationTheme.labelStyle,
-                    ),
-              hintText: widget.hintText,
-              helper: widget.helperMessage == null
-                  ? null
-                  : UtenFieldMessage.helper(widget.helperMessage!),
-              error: widget.errorMessage == null
-                  ? null
-                  : UtenFieldMessage.error(widget.errorMessage!),
-              suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+            applyAutofillHint(
+              InputDecoration(
+                label: widget.label == null
+                    ? null
+                    : fieldLabel(
+                        widget.label!,
+                        theme,
+                        required: widget.required,
+                        info: widget.info,
+                        base: theme.inputDecorationTheme.labelStyle,
+                      ),
+                hintText: widget.hintText,
+                helper: autofillHint
+                    ? const UtenFieldMessage.autofill('已按上次记录预填，请核对')
+                    : null,
+                error: widget.errorMessage == null
+                    ? null
+                    : UtenFieldMessage.error(widget.errorMessage!),
+                suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+              ),
+              theme,
+              autofilled: autofillHint,
             ),
             theme,
             requiredEmpty: requiredEmpty,
@@ -348,8 +374,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                   ctx,
                                   label: it.label,
                                   selected: it.value == widget.value,
-                                  onTap: () => _select(it.value),
+                                  onTap: it.enabled
+                                      ? () => _select(it.value)
+                                      : null,
                                   theme: theme,
+                                  indent: it.indent,
                                 ),
                               if (filtered.isEmpty)
                                 Padding(
@@ -383,16 +412,20 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     BuildContext ctx, {
     required String label,
     required bool selected,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     required ThemeData theme,
+    double indent = 0,
   }) {
+    final disabled = onTap == null;
     return InkWell(
       onTap: onTap,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 300),
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s8,
+        padding: EdgeInsets.only(
+          left: UtenSpacing.s12 + indent,
+          right: UtenSpacing.s12,
+          top: UtenSpacing.s8,
+          bottom: UtenSpacing.s8,
         ),
         color: selected ? theme.colorScheme.primaryContainer : null,
         child: Row(
@@ -413,7 +446,12 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium,
+                style: disabled
+                    ? theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      )
+                    : theme.textTheme.bodyMedium,
               ),
             ),
           ],

@@ -5,6 +5,7 @@ import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.RequestUuidSets;
 import com.uten.imp.features.production.mrp.GoodsWorkshopPreferenceView;
 import com.uten.imp.features.production.mrp.ProductionGoodsWorkshopPreferenceService;
 import jakarta.validation.Valid;
@@ -59,6 +60,20 @@ public class MaterialAnalysisController {
         return queryService.salesCandidates(keyword, page, size);
     }
 
+    /**
+     * 货品 → 最近一次分析确认的供应路线（路线「学习预填」：无建议路线的物料、
+     * 或上次确认与建议不同的物料，下次分析默认带出上次的选择，前端黄标/草稿
+     * 提醒核对）。goodsIds 为逗号分隔 UUID，返回 {goodsId: [{colorId, unitId,
+     * route, reason}]}（同货品多颜色/单位各有记忆）。
+     */
+    @GetMapping("/last-routes")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:route')")
+    public java.util.Map<String, java.util.List<MaterialAnalysisService.LastRoutePerGoods>> lastRoutes(
+            @RequestParam String goodsIds) {
+        java.util.Set<UUID> ids = RequestUuidSets.commaSeparated(goodsIds, "货品 ID");
+        return queryService.lastRoutesPerGoods(ids);
+    }
+
     /** Learned defaults used only to prefill a new planning draft. */
     @GetMapping("/default-workshops")
     @PreAuthorize("hasAuthority('production_material_analysis:view')")
@@ -75,8 +90,10 @@ public class MaterialAnalysisController {
 
     @PostMapping("/preview")
     @PreAuthorize("""
-            (#request.analysisId == null and hasAuthority('production_material_analysis:create'))
-            or (#request.analysisId != null and hasAuthority('production_material_analysis:refresh'))
+            hasAuthority('production_material_analysis:view') and (
+              (#request.analysisId == null and hasAuthority('production_material_analysis:create'))
+              or (#request.analysisId != null and hasAuthority('production_material_analysis:refresh'))
+            )
             """)
     public AnalysisView preview(@Valid @RequestBody PreviewRequest request) {
         return queryService.preview(request);
@@ -102,7 +119,7 @@ public class MaterialAnalysisController {
     }
 
     @GetMapping("/{id}/materials/{materialLineId}/cross-reallocation-candidates")
-    @PreAuthorize("hasAuthority('production_material_analysis:cross_reallocate')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:cross_reallocate')")
     public PageResponse<CrossReallocationCandidate> crossReallocationCandidates(
             @PathVariable UUID id,
             @PathVariable UUID materialLineId,
@@ -114,7 +131,7 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/{id}/cross-reallocations")
-    @PreAuthorize("hasAuthority('production_material_analysis:cross_reallocate')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:cross_reallocate')")
     public AnalysisView createCrossReallocation(
             @PathVariable UUID id,
             @Valid @RequestBody CrossReallocationRequest request) {
@@ -122,7 +139,7 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/{id}/cross-reallocations/{reallocationId}/revoke")
-    @PreAuthorize("hasAuthority('production_material_analysis:cross_reallocate')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:cross_reallocate')")
     public AnalysisView revokeCrossReallocation(
             @PathVariable UUID id,
             @PathVariable UUID reallocationId,
@@ -131,7 +148,7 @@ public class MaterialAnalysisController {
     }
 
     @PutMapping("/{id}/routes")
-    @PreAuthorize("hasAuthority('production_material_analysis:route')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:route')")
     public AnalysisView saveRoutes(
             @PathVariable UUID id,
             @Valid @RequestBody RouteRequest request) {
@@ -139,7 +156,7 @@ public class MaterialAnalysisController {
     }
 
     @PutMapping("/{id}/allocation-priorities")
-    @PreAuthorize("hasAuthority('production_material_analysis:reallocate')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:reallocate')")
     public AnalysisView saveAllocationPriorities(
             @PathVariable UUID id,
             @Valid @RequestBody AllocationPriorityRequest request) {
@@ -148,7 +165,7 @@ public class MaterialAnalysisController {
 
     /** 现货层借用（调货）：把一条直接组件路径的已分配覆盖量调给另一产品同物料路径。 */
     @PostMapping("/{id}/borrows")
-    @PreAuthorize("hasAuthority('production_material_analysis:reallocate')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:reallocate')")
     public AnalysisView createBorrow(
             @PathVariable UUID id,
             @Valid @RequestBody BorrowRequest request) {
@@ -157,7 +174,7 @@ public class MaterialAnalysisController {
 
     /** 撤销一笔 ACTIVE 借用，恢复基线分配投影。 */
     @PostMapping("/{id}/borrows/{borrowId}/revoke")
-    @PreAuthorize("hasAuthority('production_material_analysis:reallocate')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:reallocate')")
     public AnalysisView revokeBorrow(
             @PathVariable UUID id,
             @PathVariable UUID borrowId,
@@ -166,11 +183,19 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/{id}/notify")
-    @PreAuthorize("hasAuthority('production_material_analysis:notify')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:notify')")
     public AnalysisView notifySupply(
             @PathVariable UUID id,
             @Valid @RequestBody NotifyRequest request) {
         return commandService.notifySupply(id, request);
+    }
+
+    @PostMapping("/{id}/claim-shared-future")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:claim_shared_future')")
+    public AnalysisView claimSharedFuture(
+            @PathVariable UUID id,
+            @Valid @RequestBody ClaimSharedFutureRequest request) {
+        return commandService.claimSharedFuture(id, request);
     }
 
     /** V458：有子层级委外件的前置自制任务进度（先自制、后通知委外的账本投影）。 */
@@ -189,7 +214,7 @@ public class MaterialAnalysisController {
 
     /** V458：按已产未通知量分批通知委外（生成只读委外申请并通知委外部）。 */
     @PostMapping("/subcontract-make-tasks/{taskId}/notify")
-    @PreAuthorize("hasAuthority('production_material_analysis:notify')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:notify')")
     public SubcontractMakeTaskService.NotifyResult notifySubcontractMakeBatch(
             @PathVariable UUID taskId,
             @Valid @RequestBody SubcontractMakeTaskService.NotifyRequest request) {
@@ -197,7 +222,7 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/{id}/plan-preview")
-    @PreAuthorize("hasAuthority('production_material_analysis:generate')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:generate')")
     public PlanPreview planPreview(
             @PathVariable UUID id,
             @Valid @RequestBody PlanPreviewRequest request) {
@@ -205,7 +230,7 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/{id}/generate-plan")
-    @PreAuthorize("hasAuthority('production_material_analysis:generate')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:generate')")
     public GenerateResult generatePlan(
             @PathVariable UUID id,
             @Valid @RequestBody GeneratePlanRequest request) {
@@ -213,7 +238,7 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasAuthority('production_material_analysis:cancel')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:cancel')")
     public AnalysisView cancelAnalysis(
             @PathVariable UUID id,
             @Valid @RequestBody CancelRequest request) {
@@ -221,7 +246,7 @@ public class MaterialAnalysisController {
     }
 
     @PostMapping("/{id}/actions/{actionId}/cancel")
-    @PreAuthorize("hasAuthority('production_material_analysis:notify')")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and (hasAuthority('production_material_analysis:notify') or hasAuthority('production_material_analysis:claim_shared_future'))")
     public AnalysisView cancelAction(
             @PathVariable UUID id,
             @PathVariable UUID actionId,

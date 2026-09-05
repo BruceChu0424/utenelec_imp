@@ -93,7 +93,9 @@ class ProductionFinishedInboundTaskServiceTest {
                         && value.contains("document.status = 0")
                         && value.contains("'ARRIVAL_REGISTRATION'::text")
                         && value.contains(
-                        "production_finished_arrival_registrations")
+                        "production_finished_arrival_registration_items")
+                        && value.contains(
+                        "registered_item.source_report_item_id")
                         && value.contains(
                         "source_daily_report_item_id IS NOT NULL")));
     }

@@ -21,6 +21,7 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -79,6 +80,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
     static final String EVENT_SEGMENT_READY = "PRODUCTION_SEGMENT_READY";
     static final String EVENT_SEGMENT_DISPATCHED = "PRODUCTION_SEGMENT_DISPATCHED";
     static final String EVENT_SEGMENT_STARTED = "PRODUCTION_SEGMENT_STARTED";
+    static final String EVENT_SEGMENT_WORKSHOP_ASSIGNED =
+            "PRODUCTION_SEGMENT_WORKSHOP_ASSIGNED";
+    static final String EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED =
+            "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED";
     static final String EVENT_SHIPMENT_APPROVED = "SALES_SHIPMENT_APPROVED";
     static final String EVENT_SHIPMENT_PENDING_FINANCE =
             "SALES_SHIPMENT_PENDING_FINANCE_AUDIT";
@@ -269,6 +274,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         notifyExecutionSegmentTransition(aggregateId, false);
                 case EVENT_SEGMENT_STARTED ->
                         notifyExecutionSegmentTransition(aggregateId, true);
+                case EVENT_SEGMENT_WORKSHOP_ASSIGNED ->
+                        notifyExecutionSegmentWorkshopAssigned(aggregateId);
                 case EVENT_SHIPMENT_APPROVED -> notifyShipmentApproved(aggregateId);
                 case EVENT_SHIPMENT_PENDING_FINANCE ->
                         notifyShipmentPendingFinanceAudit(aggregateId);
@@ -426,6 +433,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                         "计划单 " + planNo + " 审核后 BOM 净需求不足(订单行状态=待物料)，请采购/调度跟进备料。",
                         "/production/plans/" + planId);
             }
+            publishWorkshopTasksForPlan(
+                    planId, "生产计划已审核下达");
         });
     }
 
@@ -784,25 +793,24 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                       SELECT 1
                       FROM production_daily_report_items report_item
                       WHERE report_item.report_id = report.id
-                        AND report_item.is_deleted = FALSE)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM production_daily_report_items report_item
-                      WHERE report_item.report_id = report.id
                         AND report_item.is_deleted = FALSE
-                        AND report_item.execution_segment_id IS NULL)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM production_finished_arrival_registrations registration
-                      WHERE registration.source_report_id = report.id)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM production_fqc_inspections inspection
-                      WHERE inspection.source_report_id = report.id)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM production_fqc_legacy_exemptions exemption
-                      WHERE exemption.source_report_id = report.id)
+                        AND report_item.execution_segment_id IS NOT NULL
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM production_finished_arrival_registration_items
+                                     registered_item
+                            WHERE registered_item.source_report_item_id =
+                                  report_item.id)
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM production_fqc_inspections inspection
+                            WHERE inspection.source_report_item_id =
+                                  report_item.id)
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM production_fqc_legacy_exemptions exemption
+                            WHERE exemption.source_report_item_id =
+                                  report_item.id))
                 """, reportId);
     }
 
@@ -1024,13 +1032,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     + "，共 " + str(document.get("line_count")) + " 行物料"
                     + (warehouse.isBlank() ? "" : "，发料仓库「" + warehouse + "」")
                     + (department.isBlank() ? "" : "，领料车间「" + department + "」")
-                    + "。请先核对并审核领料需求，再按实物分轮出库；审核本身不扣库存。";
-            Set<UUID> warehouseUsers = new LinkedHashSet<>();
-            warehouseUsers.addAll(departmentUserIdsWithAuthority(
-                    "SUB_WH", "stock_doc:approve"));
-            warehouseUsers.addAll(departmentUserIdsWithAuthority(
-                    "SUB_WH", "stock_doc:issue"));
-            for (UUID warehouseUser : warehouseUsers) {
+                    + "。请核对实物后直接点“出库”；首次出库会在同一事务完成审核与本次扣账，"
+                    + "任一步失败都不会留下半审核状态。";
+            for (UUID warehouseUser : departmentUserIdsWithAuthorities(
+                    "SUB_WH", "stock_doc:view", "stock_doc:approve",
+                    "stock_doc:issue")) {
                 sendToUser(
                         warehouseUser,
                         TYPE_TASK,
@@ -1042,7 +1048,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
         });
     }
 
-    /** 仓库把 DRAW 全部实际出库后，通知计划和生产岗位可以继续正式开工。 */
+    /** 仓库把 DRAW 全部实际出库后，仅通知精确执行段所属车间可以直接报工。 */
     public void notifyProductionDrawIssued(
             UUID stockDocId, String issueIdempotencyKey) {
         if (!isOutboxDelivery()) {
@@ -1069,36 +1075,19 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                     WHERE stock.id = ?
                       AND stock.doc_type = 'DRAW'
                       AND stock.status = 1
-                      AND stock.issue_status = 2
                       AND stock.is_deleted = FALSE
                     """, stockDocId);
             if (document == null) return;
-            String billNo = str(document.get("bill_no"));
-            String planNo = str(document.get("plan_no"));
-            String warehouse = str(document.get("warehouse_name"));
-            Set<UUID> recipients = new LinkedHashSet<>();
-            recipients.addAll(departmentUserIdsWithAuthority(
-                    "SUB_PLAN", "production_plan:view"));
-            recipients.addAll(departmentUserIdsWithAuthority(
-                    "DEPT_PROD", "production_plan:view"));
-            for (UUID recipient : recipients) {
-                sendToUser(
-                        recipient,
-                        TYPE_WORKFLOW,
-                        "生产领料已全部发出：" + billNo,
-                        "仓库" + (warehouse.isBlank() ? "" : "「" + warehouse + "」")
-                                + "已完成领料单 " + billNo + " 的全部实物出库"
-                                + (planNo.isBlank()
-                                        ? "。"
-                                        : "(生产计划 " + planNo + ")。")
-                                + "对应执行子计划现可办理正式开工。",
-                        "/production/schedule",
-                        EVENT_PRODUCTION_DRAW_ISSUED);
-            }
+            publishWorkshopTasksForDraw(
+                    stockDocId,
+                    "仓库已完成领料单 "
+                            + str(document.get("bill_no"))
+                            + " 的本轮实物出库",
+                    true);
         });
     }
 
-    /** 未派工前仓库撤回已发物料后，提醒计划/生产重新等待发料。 */
+    /** 首次报工前取消已发物料后，仅提醒精确执行段所属车间重新等待备料。 */
     public void notifyProductionDrawIssueReversed(
             UUID stockDocId, String reverseIdempotencyKey) {
         if (!isOutboxDelivery()) {
@@ -1130,29 +1119,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
                       AND stock.is_deleted = FALSE
                     """, stockDocId);
             if (document == null) return;
-            String billNo = str(document.get("bill_no"));
-            String planNo = str(document.get("plan_no"));
-            String warehouse = str(document.get("warehouse_name"));
-            Set<UUID> recipients = new LinkedHashSet<>();
-            recipients.addAll(departmentUserIdsWithAuthority(
-                    "SUB_PLAN", "production_plan:view"));
-            recipients.addAll(departmentUserIdsWithAuthority(
-                    "DEPT_PROD", "production_plan:view"));
-            for (UUID recipient : recipients) {
-                sendToUser(
-                        recipient,
-                        TYPE_URGENT,
-                        "生产发料已撤回：" + billNo,
-                        "仓库" + (warehouse.isBlank() ? "" : "「" + warehouse + "」")
-                                + "已反向领料单 " + billNo + " 的部分实物出库"
-                                + (planNo.isBlank()
-                                        ? "。"
-                                        : "(生产计划 " + planNo + ")。")
-                                + "执行子计划恢复为待发料，重新全量发料前不得开工。",
-                        "/production/schedule",
-                        EVENT_PRODUCTION_DRAW_ISSUE_REVERSED,
-                        "normal");
-            }
+            publishWorkshopTasksForDraw(
+                    stockDocId,
+                    "领料单 " + str(document.get("bill_no"))
+                            + " 已取消部分出库，等待仓库重新备料",
+                    false);
         });
     }
 
@@ -2680,31 +2651,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             return;
         }
         deliverAtomically(() -> {
-            Map<String, Object> segment = one("""
-                    SELECT s.segment_code, s.planned_qty,
-                           s.plan_begin_date, s.plan_end_date,
-                           p.bill_no AS plan_no, g.code AS goods
-                    FROM production_execution_segments s
-                    JOIN production_plans p ON p.id = s.plan_id
-                    JOIN goods g ON g.id = s.product_goods_id
-                    WHERE s.id = ? AND s.status = 'READY'
-                      AND s.is_deleted = false
-                    """, segmentId);
-            if (segment == null) return;
             String sourceLabel = executionReadySourceLabel(normalizedSource);
-            notifyRoles(
-                    List.of("planner", "production"),
-                    TYPE_TASK,
-                    "待料子任务已齐套："
-                            + str(segment.get("segment_code")),
-                    sourceLabel + "后物料已重新核验并完整占用。生产计划 "
-                            + str(segment.get("plan_no")) + "、产品 "
-                            + str(segment.get("goods")) + "、数量 "
-                            + qty(bd(segment.get("planned_qty")))
-                            + " 已转为可生产，请安排派工；计划日期 "
-                            + str(segment.get("plan_begin_date")) + " 至 "
-                            + str(segment.get("plan_end_date")) + "。",
-                    "/production/schedule");
+            publishWorkshopTask(
+                    segmentId, sourceLabel + "后工单已齐套，仓库进入备料流程");
         });
     }
 
@@ -2716,6 +2665,294 @@ public class ChainNoticeService implements SubcontractChainNoticePort {
             case "MANUAL_RELEASE" -> "人工解除暂缓";
             default -> "物料状态变化";
         };
+    }
+
+    /**
+     * 执行段后补/变更车间（或负责人）后重建车间任务卡：先按段办结旧卡（旧车间
+     * 弹窗随即撤下），再按当前车间收件人口径重新投递。计划下达时车间为空的段，
+     * 其首张任务卡正是由这里的后补分配补发——否则该段永远收不到车间通知。
+     */
+    public void notifyExecutionSegmentWorkshopAssigned(UUID segmentId) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(
+                    EVENT_SEGMENT_WORKSHOP_ASSIGNED,
+                    "PRODUCTION_EXECUTION_SEGMENT",
+                    segmentId,
+                    Map.of());
+            return;
+        }
+        deliverAtomically(() ->
+                publishWorkshopTask(segmentId, "生产任务已分配到您的车间"));
+    }
+
+    private void publishWorkshopTasksForPlan(
+            UUID planId, String triggerDescription) {
+        List<UUID> segmentIds = jdbc.queryForList("""
+                SELECT segment.id
+                FROM production_execution_segments segment
+                JOIN production_planning_packages package
+                  ON package.id = segment.package_id
+                 AND package.is_deleted = FALSE
+                 AND package.status = 'CONFIRMED'
+                WHERE segment.plan_id = ?
+                  AND segment.is_deleted = FALSE
+                  AND segment.status IN (
+                      'WAITING','READY','DISPATCHED','IN_PROGRESS')
+                ORDER BY segment.id
+                """, UUID.class, planId);
+        for (UUID segmentId : segmentIds) {
+            publishWorkshopTask(segmentId, triggerDescription);
+        }
+    }
+
+    private void publishWorkshopTasksForDraw(
+            UUID stockDocId,
+            String triggerDescription,
+            boolean onlyReadyToReport) {
+        List<UUID> segmentIds = jdbc.queryForList("""
+                SELECT DISTINCT demand.execution_segment_id
+                FROM stock_document_items item
+                JOIN production_planning_package_document_items mapping
+                  ON mapping.document_type = 'DRAW'
+                 AND mapping.document_id = item.doc_id
+                 AND mapping.document_item_id = item.id
+                JOIN production_material_demands demand
+                  ON demand.id = mapping.demand_id
+                 AND demand.is_deleted = FALSE
+                 AND demand.execution_segment_id IS NOT NULL
+                JOIN production_planning_package_documents header
+                  ON header.package_id = mapping.package_id
+                 AND header.document_type = 'DRAW'
+                 AND header.document_id = item.doc_id
+                 AND header.execution_segment_id =
+                     demand.execution_segment_id
+                JOIN production_planning_packages package
+                  ON package.id = mapping.package_id
+                 AND package.status = 'CONFIRMED'
+                 AND package.is_deleted = FALSE
+                JOIN production_execution_segments segment
+                  ON segment.id = demand.execution_segment_id
+                 AND segment.package_id = mapping.package_id
+                 AND segment.is_deleted = FALSE
+                WHERE item.doc_id = ?
+                  AND item.is_deleted = FALSE
+                ORDER BY demand.execution_segment_id
+                """, UUID.class, stockDocId);
+        for (UUID segmentId : segmentIds) {
+            publishWorkshopTask(
+                    segmentId, triggerDescription, onlyReadyToReport);
+        }
+    }
+
+    /**
+     * Rebuilds one actionable workshop notice from current database facts.
+     * Every state transition resolves the previous card first, so out-of-order
+     * outbox delivery cannot leave a stale “ready” or “preparing” popup.
+     */
+    private void publishWorkshopTask(
+            UUID segmentId, String triggerDescription) {
+        publishWorkshopTask(segmentId, triggerDescription, false);
+    }
+
+    private void publishWorkshopTask(
+            UUID segmentId,
+            String triggerDescription,
+            boolean onlyReadyToReport) {
+        // Scheduler delivery and on-demand workers can rebuild the same aggregate
+        // concurrently. Lock the segment row so resolve + publish stays serialized.
+        List<UUID> lockedSegmentIds = jdbc.queryForList("""
+                SELECT id
+                FROM production_execution_segments
+                WHERE id = ? AND is_deleted = FALSE
+                FOR UPDATE
+                """, UUID.class, segmentId);
+        if (lockedSegmentIds.isEmpty()) return;
+        Map<String, Object> task = one("""
+                SELECT task.segment_id, task.segment_code, task.plan_no,
+                       task.product_code, task.product_name,
+                       task.product_color_name, task.product_unit_name,
+                       task.planned_qty, task.segment_status,
+                       task.material_status, task.preparation_status,
+                       task.issued, task.reportable,
+                       task.workshop_department_id, task.workshop_name,
+                       task.responsible_employee_id,
+                       task.responsible_employee_name,
+                       draw.bill_no AS draw_no,
+                       draw.warehouse_name AS draw_warehouse_name
+                FROM v_production_execution_workbench_segments task
+                LEFT JOIN LATERAL (
+                    SELECT document.bill_no, warehouse.name AS warehouse_name
+                    FROM production_planning_package_documents link
+                    JOIN stock_documents document
+                      ON document.id=link.document_id
+                     AND document.doc_type='DRAW'
+                     AND document.is_deleted=FALSE
+                     AND document.status <> -1
+                    LEFT JOIN warehouses warehouse
+                      ON warehouse.id=document.warehouse_id
+                    WHERE link.execution_segment_id=task.segment_id
+                      AND link.document_type='DRAW'
+                    ORDER BY document.created_at DESC,document.id DESC
+                    LIMIT 1
+                ) draw ON TRUE
+                WHERE task.segment_id = ?
+                """, segmentId);
+        if (task == null) return;
+        String status = str(task.get("segment_status"));
+        if (!Set.of("WAITING", "READY", "DISPATCHED").contains(status)) {
+            return;
+        }
+        UUID workshopId = (UUID) task.get("workshop_department_id");
+        UUID responsibleId = (UUID) task.get("responsible_employee_id");
+        if (workshopId == null) return;
+
+        boolean issued = Boolean.TRUE.equals(task.get("issued"));
+        boolean reportable = Boolean.TRUE.equals(task.get("reportable"));
+        String drawNo = str(task.get("draw_no"));
+        String drawWarehouse = str(task.get("draw_warehouse_name"));
+        if (onlyReadyToReport && !reportable && !issued) return;
+        noticeService.resolveReviewNotices(
+                "PRODUCTION_EXECUTION_SEGMENT", segmentId, "STATE_CHANGED");
+        String taskState;
+        String titlePrefix;
+        if (reportable || issued) {
+            taskState = "备料完毕"
+                    + (drawNo.isBlank() ? "" : "，领料单 " + drawNo)
+                    + (drawWarehouse.isBlank()
+                            ? "" : "，发料仓 " + drawWarehouse)
+                    + "，可直接报工";
+            titlePrefix = "备料完毕·可报工：";
+        } else if ("KIT_SHORT".equals(str(task.get("material_status")))
+                || "WAITING".equals(status)) {
+            taskState = "物料尚未齐套，任务已分配并持续跟踪";
+            titlePrefix = "生产任务·备料中：";
+        } else if (!drawNo.isBlank()) {
+            taskState = "物料已齐套，领料单 " + drawNo
+                    + (drawWarehouse.isBlank()
+                            ? "" : "，发料仓 " + drawWarehouse)
+                    + "；请按仓库安排领料";
+            titlePrefix = "物料齐套·等待领料：";
+        } else {
+            taskState = "物料已齐套，仓库正在生成或核对领料单；"
+                    + "领料单形成前无需到仓";
+            titlePrefix = "生产任务·仓库备料中：";
+        }
+        String segmentCode = str(task.get("segment_code"));
+        String product = (str(task.get("product_code")) + " "
+                + str(task.get("product_name"))).strip();
+        String workshop = str(task.get("workshop_name"));
+        String content = (triggerDescription == null
+                || triggerDescription.isBlank()
+                        ? "生产任务状态已更新"
+                        : triggerDescription.strip())
+                + "。生产计划 " + str(task.get("plan_no"))
+                + "，工单 " + segmentCode
+                + "，产品 " + (product.isBlank() ? "未命名产品" : product)
+                + "，数量 " + qty(bd(task.get("planned_qty")))
+                + (str(task.get("product_unit_name")).isBlank()
+                        ? "" : " " + str(task.get("product_unit_name")))
+                + (workshop.isBlank() ? "" : "，车间 " + workshop)
+                + "；当前状态：" + taskState
+                + "。请从“我的车间任务”查看实时物料与报工入口。";
+        boolean actionable = reportable || issued || !drawNo.isBlank();
+        for (UUID recipient : workshopRecipientUserIds(
+                workshopId, responsibleId)) {
+            if (actionable) {
+                sendToUser(
+                        recipient, TYPE_TASK, titlePrefix + segmentCode, content,
+                        "/production/workshop-tasks",
+                        EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED,
+                        "important", segmentId);
+            } else {
+                // WAITING/短料只是进度更新：保留顶部通知和任务入口，但不制造
+                // “现在来领料”的中间行动卡；真正生成 DRAW 后再升级为行动卡。
+                sendToUser(
+                        recipient, TYPE_TASK, titlePrefix + segmentCode, content,
+                        "/production/workshop-tasks",
+                        EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED,
+                        "normal");
+            }
+        }
+    }
+
+    /**
+     * Main/secondary active workshop members plus explicit responsible person
+     * and workshop managers. Every candidate is intersected with the current
+     * effective notice + workshop-task permissions, including personal revoke.
+     */
+    List<UUID> workshopRecipientUserIds(
+            UUID workshopDepartmentId, UUID responsibleEmployeeId) {
+        if (workshopDepartmentId == null) return List.of();
+        List<UUID> candidates = jdbc.queryForList("""
+                WITH RECURSIVE workshop_tree(id) AS (
+                    SELECT id
+                    FROM departments
+                    WHERE id = ? AND is_deleted = FALSE
+                    UNION ALL
+                    SELECT child.id
+                    FROM departments child
+                    JOIN workshop_tree parent ON child.parent_id = parent.id
+                    WHERE child.is_deleted = FALSE
+                ), candidate_employee(id) AS (
+                    SELECT employee.id
+                    FROM employees employee
+                    WHERE employee.department_id IN (
+                        SELECT id FROM workshop_tree)
+                    UNION
+                    SELECT secondary.employee_id
+                    FROM employee_secondary_departments secondary
+                    WHERE secondary.department_id IN (
+                        SELECT id FROM workshop_tree)
+                    UNION
+                    SELECT department.manager_id
+                    FROM departments department
+                    WHERE department.id IN (SELECT id FROM workshop_tree)
+                      AND department.manager_id IS NOT NULL
+                    UNION
+                    SELECT CAST(? AS uuid)
+                )
+                SELECT DISTINCT user_account.id
+                FROM candidate_employee candidate
+                JOIN employees employee ON employee.id = candidate.id
+                JOIN users user_account
+                  ON user_account.employee_id = employee.id
+                WHERE candidate.id IS NOT NULL
+                  AND employee.is_deleted = FALSE
+                  AND employee.status IN (
+                      'active','probation','onLeave')
+                  AND user_account.is_deleted = FALSE
+                  AND user_account.status = 'active'
+                ORDER BY user_account.id
+                """, UUID.class, workshopDepartmentId, responsibleEmployeeId);
+        Set<String> required = Set.of(
+                NOTICE_READ_AUTHORITY, "production_execution:view");
+        return candidates.stream()
+                .filter(userId -> userRepo.findById(userId)
+                        .filter(account -> !account.isDeleted()
+                                && "active".equals(account.getStatus()))
+                        .map(permissionResolver::permsOf)
+                        .map(permissions -> permissions.containsAll(required))
+                        .orElse(false))
+                .toList();
+    }
+
+    /** First report creation resolves every current popup for the exact task. */
+    public int resolveProductionWorkshopTasks(
+            Collection<UUID> segmentIds, String reason) {
+        if (segmentIds == null || segmentIds.isEmpty()) return 0;
+        int resolved = 0;
+        for (UUID segmentId : segmentIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList()) {
+            resolved += noticeService.resolveReviewNotices(
+                    "PRODUCTION_EXECUTION_SEGMENT",
+                    segmentId,
+                    reason == null || reason.isBlank()
+                            ? "COMPLETED" : reason.strip());
+        }
+        return resolved;
     }
 
     /** ⑤ 发货通知销售：出货单审核后，按订单聚合本次出货量。（出货单暂无物流单号字段，内容含单号/数量/仓库。） */

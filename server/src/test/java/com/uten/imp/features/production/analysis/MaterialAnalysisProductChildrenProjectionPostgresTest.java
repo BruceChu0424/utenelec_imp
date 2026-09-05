@@ -129,6 +129,7 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(TxSessionVars.class),
                 mock(ProductionDocumentAccessPolicy.class),
+                mock(com.uten.imp.security.OwnerVisibility.class),
                 mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
 
         MaterialAnalysisContracts.AnalysisView leafView =
@@ -199,6 +200,7 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(TxSessionVars.class),
                 mock(ProductionDocumentAccessPolicy.class),
+                mock(com.uten.imp.security.OwnerVisibility.class),
                 mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
 
         MaterialAnalysisContracts.ProductView partial = service

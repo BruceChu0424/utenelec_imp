@@ -1,0 +1,114 @@
+// 仓库层级下拉（V476 主/子层级统一呈现）——全站仓库选择入口共用。
+//
+// 数据：MasterDictionaryService.warehouseHierarchy（顶层仓在前、子仓紧随其后，
+// parentId 悬空按顶层处理；旧后端未返回 parentId 时自动退化为平铺列表）。
+//
+// 两种呈现：
+// - [WarehouseHierarchyDropdown]：Material DropdownButtonFormField 形态
+//  （即时库存等工具栏行尾用）；
+// - [warehouseHierarchyItems]：UtenDropdownField 选项列表（编辑页/登记页用），
+//   父仓在运营口径（allowParent=false）下渲染为置灰分组标题。
+//
+// 聚合语义（allowParent=true，仅查询页）：父仓可选，选中 = 自身 + 全部子仓聚合
+// （服务端 WarehouseScopeService 展开）；「含不良品仓」等聚合口径开关在父仓下仍生效。
+// 运营页父仓不可选——单据/收发存只能落到具体仓库；历史已保存的父仓值仍能回显。
+import 'package:flutter/material.dart';
+
+import '../../components/inputs/uten_dropdown_field.dart';
+import '../providers/master_name_provider.dart';
+
+class WarehouseHierarchyDropdown extends StatelessWidget {
+  const WarehouseHierarchyDropdown({
+    super.key,
+    required this.entries,
+    required this.value,
+    required this.onChanged,
+    this.labelText = '仓库',
+    this.includeAll = false,
+    this.allowParent = false,
+    this.enabled = true,
+  });
+
+  /// 层级有序仓库列表（names.warehouseHierarchy）。
+  final List<WarehouseDictEntry> entries;
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  final String labelText;
+  final bool includeAll;
+
+  /// true = 允许选父仓（查询聚合语义）；false = 父仓只作分组标题。
+  final bool allowParent;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ids = entries.map((e) => e.id).toSet();
+    // 被引用为上级的仓 = 分组父仓；其子仓缩进展示。
+    final parentIds = entries
+        .map((e) => e.parentId)
+        .whereType<String>()
+        .where(ids.contains)
+        .toSet();
+    return DropdownButtonFormField<String?>(
+      initialValue: value,
+      isExpanded: true,
+      // 本 Flutter 版本 DropdownButtonFormField 无 enabled 参数：禁用=onChanged 置空。
+      decoration: InputDecoration(isDense: true, labelText: labelText),
+      items: [
+        if (includeAll) const DropdownMenuItem<String?>(child: Text('全部')),
+        for (final e in entries)
+          () {
+            final hasChildren = entries.any((o) => o.parentId == e.id);
+            final selectable = allowParent || !hasChildren;
+            final isChild =
+                e.parentId != null && parentIds.contains(e.parentId);
+            return DropdownMenuItem<String?>(
+              // 禁选标题用哨兵值保 value 唯一；已保存的父仓值仍按真实 id 匹配回显。
+              value: selectable || value == e.id ? e.id : 'group:${e.id}',
+              enabled: selectable,
+              child: Padding(
+                padding: EdgeInsets.only(left: isChild ? 16 : 0),
+                child: Text(
+                  e.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: hasChildren && !allowParent
+                      ? TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        )
+                      : null,
+                ),
+              ),
+            );
+          }(),
+      ],
+      onChanged: enabled ? onChanged : null,
+    );
+  }
+}
+
+/// 层级仓库下拉的 UtenDropdownField 选项：顶层仓在前，子仓缩进跟随。
+/// allowParent=false（运营默认）时父仓=置灰分组标题（不可点，仍参与值回显）。
+List<UtenDropdownItem> warehouseHierarchyItems(
+  List<WarehouseDictEntry> hierarchy, {
+  bool allowParent = false,
+}) {
+  final ids = hierarchy.map((e) => e.id).toSet();
+  final parentIds = hierarchy
+      .map((e) => e.parentId)
+      .whereType<String>()
+      .where(ids.contains)
+      .toSet();
+  return [
+    for (final e in hierarchy)
+      UtenDropdownItem(
+        value: e.id,
+        label: e.name,
+        enabled: allowParent || !hierarchy.any((o) => o.parentId == e.id),
+        indent: e.parentId != null && parentIds.contains(e.parentId) ? 16 : 0,
+      ),
+  ];
+}

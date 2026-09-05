@@ -109,13 +109,15 @@ abstract final class ApiEndpoints {
       '${productionFinishedArrivalRegistration(reportId)}/place-suggestions';
   static String productionFinishedArrivalRememberPlaces(String reportId) =>
       '${productionFinishedArrivalRegistration(reportId)}/remember-places';
-  // 多报工单汇总登记（一次提交逐单 FQC）：批量明细/批量库位建议/批量记忆/上次成品仓。
+  // 多报工单汇总登记：批量明细/建议/按登记批次精确记忆/上次成品仓。
   static const productionFinishedArrivalBatchBase =
       '/warehouse/production-finished-in/arrival-registrations/batch';
   static const productionFinishedArrivalBatchPlaceSuggestions =
       '$productionFinishedArrivalBatchBase/place-suggestions';
   static const productionFinishedArrivalBatchRememberPlaces =
       '$productionFinishedArrivalBatchBase/remember-places';
+  static const productionFinishedArrivalBatchRememberRegistrationBatches =
+      '$productionFinishedArrivalBatchBase/remember-registration-batches';
   static const productionFinishedArrivalLastWarehouse =
       '/warehouse/production-finished-in/arrival-registrations/last-warehouse';
   static const productionQualityInspections = '/production/quality-inspections';
@@ -399,6 +401,8 @@ abstract final class ApiEndpoints {
   static String stockDocApprove(String id) => '/stock/docs/$id/approve';
   static String stockDocReverse(String id) => '/stock/docs/$id/reverse';
   static String stockDocIssue(String id) => '/stock/docs/$id/issue';
+  static String stockDocApproveAndIssue(String id) =>
+      '/stock/docs/$id/approve-and-issue';
   static String stockDocIssueReverse(String id) =>
       '/stock/docs/$id/issue/reverse';
   static const productionMaterialReturnableSources =

@@ -6,6 +6,7 @@ import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
+import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -13,6 +14,7 @@ import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.Arriv
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalExceptionTask;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.GoodsProfileHintRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationItem;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.InboundAllocation;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.InboundExpectationTask;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ReturnCompletionRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.SupplierReturnTask;
@@ -20,6 +22,7 @@ import com.uten.imp.features.purchase.receipt.ReceiptPriceMasker;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -242,6 +245,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private final TxSessionVars tx;
     private final FinanceReviewerEligibilityPort reviewerEligibility;
     private final ReceiptPriceMasker priceMasker;
+    private PreplanInboundAllocationReadPort inboundAllocationRead =
+            PreplanInboundAllocationReadPort.NOOP;
 
     public ProcurementArrivalControlService(
             JdbcTemplate jdbc,
@@ -258,6 +263,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         this.tx = tx;
         this.reviewerEligibility = reviewerEligibility;
         this.priceMasker = priceMasker;
+    }
+
+    @Autowired
+    void setInboundAllocationRead(PreplanInboundAllocationReadPort value) {
+        this.inboundAllocationRead = value;
     }
 
     /**
@@ -1376,7 +1386,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 ? "purchase_receipts" : "subcontract_receipts";
         String receiptItemTable = PURCHASE.equals(header.orderType())
                 ? "purchase_receipt_items" : "subcontract_receipt_items";
-        List<InboundExpectationItem> items = jdbc.query(("""
+        List<InboundExpectationItem> baseItems = jdbc.query(("""
                 SELECT item.id, item.order_item_id, item.line_no,
                        item.goods_id, goods.code AS goods_code,
                        goods.name AS goods_name,
@@ -1384,7 +1394,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        goods.stock_place AS goods_stock_place,
                        item.color_id,
                        color.name AS color_name, item.unit_id,
-                       unit.name AS unit_name, item.unit_rate,
+                       unit.name AS unit_name,
+                       goods.unit_id AS base_unit_id,
+                       base_unit.name AS base_unit_name,
+                       item.unit_rate,
                        -- 2026-08-18 起不再向仓库端返回订货单价：价格对仓库不可见，
                        -- 收货审核时服务端按订货明细权威回填金额。
                        NULL AS unit_price,
@@ -1403,6 +1416,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 JOIN goods goods ON goods.id = item.goods_id
                 LEFT JOIN colors color ON color.id = item.color_id
                 LEFT JOIN units unit ON unit.id = item.unit_id
+                LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
                 LEFT JOIN (
                     SELECT receipt_item.order_item_id,
                            SUM(receipt_item.qty) AS registered_qty
@@ -1432,14 +1446,41 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getString("color_name"),
                         rs.getObject("unit_id", UUID.class),
                         rs.getString("unit_name"),
+                        rs.getObject("base_unit_id", UUID.class),
+                        rs.getString("base_unit_name"),
                         rs.getBigDecimal("unit_rate"),
                         rs.getBigDecimal("unit_price"),
                         rs.getBigDecimal("ordered_qty"),
                         rs.getBigDecimal("accepted_qty"),
                         rs.getBigDecimal("remaining_qty"),
                         rs.getBigDecimal("registered_qty"),
-                        rs.getObject("expected_date", LocalDate.class)),
+                        rs.getObject("expected_date", LocalDate.class),
+                        List.of()),
                 header.id());
+        Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected =
+                inboundAllocationRead.expectedForOrderItems(
+                        header.orderType(),
+                        baseItems.stream()
+                                .map(item -> new PreplanInboundAllocationReadPort
+                                        .OrderItemQuantity(
+                                        item.orderItemId(),
+                                        receivableBaseQty(
+                                                item.remainingQty(),
+                                                item.registeredQty(),
+                                                item.unitRate())))
+                                .toList());
+        List<InboundExpectationItem> items = baseItems.stream().map(item ->
+                new InboundExpectationItem(
+                        item.id(), item.orderItemId(), item.lineNo(), item.goodsId(),
+                        item.goodsCode(), item.goodsName(), item.goodsSeries(),
+                        item.goodsStockPlace(), item.colorId(), item.colorName(),
+                        item.unitId(), item.unitName(), item.baseUnitId(),
+                        item.baseUnitName(), item.unitRate(), item.unitPrice(),
+                        item.orderedQty(), item.acceptedQty(), item.remainingQty(),
+                        item.registeredQty(), item.expectedDate(),
+                        expected.getOrDefault(item.orderItemId(), List.of()).stream()
+                                .map(ProcurementArrivalControlService::toInboundAllocation)
+                                .toList())).toList();
         BigDecimal registeredQty = items.stream()
                 .map(InboundExpectationItem::registeredQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -1478,6 +1519,21 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 draftReceiptIds,
                 pendingInspectionReceipts,
                 openArrivalExceptions);
+    }
+
+    private static InboundAllocation toInboundAllocation(
+            PreplanInboundAllocationReadPort.AllocationView value) {
+        return new InboundAllocation(
+                value.passEventId(), value.stockInBatchItemId(), value.kind(),
+                value.qty(), value.actualWarehouseId(), value.actualWarehouseName(),
+                value.targetWarehouseId(), value.targetWarehouseName(),
+                value.intendedWarehouseNames(), value.warehouseMatches(),
+                value.analysisId(), value.analysisMaterialId(),
+                value.productCode(), value.productName(), value.sourceLabel(),
+                value.planId(), value.planNo(), value.executionSegmentId(),
+                value.executionSegmentCode(), value.workshopDepartmentId(),
+                value.workshopName(), value.responsibleEmployeeId(),
+                value.responsibleEmployeeName(), value.formationStatus());
     }
 
     private List<ArrivalExceptionTask> queryExceptions(
@@ -2529,6 +2585,15 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     private static BigDecimal nonNegative(BigDecimal value) {
         return value.signum() < 0 ? BigDecimal.ZERO : value;
+    }
+
+    static BigDecimal receivableBaseQty(
+            BigDecimal remainingQty,
+            BigDecimal registeredQty,
+            BigDecimal unitRate) {
+        return nonNegative(nonNegative(remainingQty)
+                .subtract(nonNegative(registeredQty)))
+                .multiply(unitRate == null ? BigDecimal.ONE : unitRate);
     }
 
     private static boolean sameQuantity(BigDecimal left, BigDecimal right) {

@@ -2,6 +2,7 @@ package com.uten.imp.features.purchase.order;
 
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort;
+import com.uten.imp.application.port.PreplanPublicSupplyCapturePort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
@@ -42,6 +43,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,10 +81,20 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private final PurchaseOrderItemRepository itemRepo;
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ProductionSupplyTransitionPort productionSupply;
+    private PreplanPublicSupplyCapturePort publicSupplyCapture =
+            PreplanPublicSupplyCapturePort.NOOP;
+
+    @Autowired
+    void setPublicSupplyCapture(PreplanPublicSupplyCapturePort value) {
+        this.publicSupplyCapture = value;
+    }
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final DocNumberService docNumberService;
     private final ProductionSupplySourceGuard productionSourceGuard;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
@@ -499,6 +511,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         order.setStatus(STATUS_APPROVED);
         order.setApproverId(approverEmployeeId);
         orderRepo.save(order);
+        orderRepo.flush();
+        publicSupplyCapture.afterOrderApproved(
+                PreplanPublicSupplyCapturePort.PURCHASE, id);
     }
 
     @Transactional
@@ -545,6 +560,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 ProcurementArrivalControlPort.PURCHASE, id);
         o.setStatus(STATUS_REVERSED);
         orderRepo.save(o);
+        orderRepo.flush();
+        publicSupplyCapture.afterOrderReversed(
+                PreplanPublicSupplyCapturePort.PURCHASE, id);
         return assembleDetail(o);
     }
 
@@ -707,6 +725,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         }
         o.setBillDate(req.getBillDate());
         o.setSupplierId(req.getSupplierId());
+        // V476 运营红线：订货仓库必须选具体叶子仓（收货沿用同仓）。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+        }
         o.setWarehouseId(req.getWarehouseId());
         o.setCurrencyId(req.getCurrencyId());
         o.setExchangeRate(req.getExchangeRate());
@@ -884,7 +906,11 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                             GROUP BY src.request_item_id
                         ) pending ON pending.request_item_id = item.id
                         WHERE item.id IN (:ids)
-                        ORDER BY COALESCE(item.deliver_date, request.need_date) NULLS LAST,
+                        ORDER BY CASE WHEN EXISTS (
+                                     SELECT 1 FROM preplan_supply_actions action
+                                     WHERE action.public_surplus_external_item_id = item.id
+                                   ) THEN 1 ELSE 0 END,
+                                 COALESCE(item.deliver_date, request.need_date) NULLS LAST,
                                  item.id
                         """).setParameter("ids", allIds));
         Map<UUID, BigDecimal> remaining = new java.util.HashMap<>();

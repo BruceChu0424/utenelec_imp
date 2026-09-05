@@ -19,8 +19,8 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/master_facet.dart';
 
-/// 一列定义：[key]（筛选键，与后端 query 参数对齐）、[label]（列头）、
-/// [width]（固定列宽，列对齐用）、[value]（单元格取值）。
+/// 一列定义：[key](筛选键，与后端 query 参数对齐)、[label](列头)、
+/// [width](固定列宽，列对齐用)、[value](文本值)、[cellBuilder](可选自定义内容)。
 class MasterColumnDef<T> {
   const MasterColumnDef({
     required this.key,
@@ -30,12 +30,23 @@ class MasterColumnDef<T> {
     this.type = 'text',
     this.sortable = false,
     this.cellColor,
+    this.cellBuilder,
+    this.cellBuilderHandlesSemantics = false,
   });
 
   final String key;
   final String label;
   final double width;
   final String? Function(T item) value;
+
+  /// 可选自定义单元格。外层仍负责列宽、内边距、网格线和选中底色；builder 只负责
+  /// 单元格内部内容。[value] 仍是列宽测算、排序键、文本行键和无障碍标签的回退真值。
+  final Widget Function(BuildContext context, T item)? cellBuilder;
+
+  /// Interactive/custom cells can opt out of the table's fallback label when
+  /// their child already exposes complete button/expanded/value semantics.
+  /// Defaults to false so existing simple custom cells keep the column label.
+  final bool cellBuilderHandlesSemantics;
 
   /// 列类型，对齐后端 ReportColumn.type：text / date / number / money / bool。
   /// 用于决定排序菜单文案（date=从远到近/从近到远，数值=从小到大/从大到小）。
@@ -119,6 +130,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onRowTap,
     this.canOpenRow,
     this.onSelectionChanged,
+    this.onSelectionCleared,
     this.isSelected,
     this.rowMenuBuilder,
     this.canShowRowMenu,
@@ -137,16 +149,23 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.toolbarActions,
     this.embedded = false,
     this.primary = false,
+    this.virtualized = false,
     this.showFullscreenToggle,
     this.showColumnChooser = true,
+    this.enableTextSelection = true,
     this.rowColor,
     this.leadingGroups,
     this.selectable = false,
     this.idOf,
     this.rowKeyOf,
+    this.rowWidgetKeyOf,
+    this.unselectableLeadingBuilder,
     this.selectedIds = const <String>{},
     this.onSelectedIdsChanged,
-  });
+  }) : assert(
+         !embedded || !virtualized,
+         'virtualized=true requires a bounded, non-embedded table',
+       );
 
   final List<MasterColumnDef<T>> columns;
   final List<T> items;
@@ -170,6 +189,10 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 单击选中行变化回调（供调用方拿选中行做后续操作，如 BOM Tab 据此决定
   /// "添加组件"默认父级）；embedded 表在选中后继续调用 [onRowTap]。
   final void Function(T item)? onSelectionChanged;
+
+  /// 行菜单中的可用动作执行完毕后，表格会清除内部单选高亮，并调用本回调让页面
+  /// 同步清理依赖选中行的外部动作状态。仅关闭菜单、不执行条目时不会调用。
+  final VoidCallback? onSelectionCleared;
 
   /// 外部受控选中判定：非空时优先用它判定高亮（按业务键比较，不受 item 引用变化影响），
   /// 供每次 build 重建 item 对象的场景（如 BOM 的 _BomRow）——否则默认内部 _selectedItem 走引用相等。
@@ -208,6 +231,17 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 到下标键（筛选/刷新后 Selectable 复用性变差）。缺省沿用 idOf，行为不变。
   final String? Function(T)? rowKeyOf;
 
+  /// Optional test/automation key for the rendered row wrapper. Business code
+  /// should still use [rowKeyOf] for identity; this hook lets migrations keep
+  /// stable row locators without encoding widget internals into the data key.
+  final Key? Function(T item)? rowWidgetKeyOf;
+
+  /// Optional replacement for the disabled checkbox of rows whose [idOf]
+  /// returns null. Hierarchical/workflow tables use this for a 48dp gate icon
+  /// with a concrete reason instead of presenting a checkbox that can never act.
+  final Widget Function(BuildContext context, T item)?
+  unselectableLeadingBuilder;
+
   /// 多选选中集合（调用方拥有，单一真值源）。组件只读它判定勾选/高亮、只通过
   /// [onSelectedIdsChanged] 把"新集合"回交调用方，从不自行清空——故跨页天然保留。
   final Set<String> selectedIds;
@@ -230,6 +264,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 不能与 [embedded] 同用（embedded 无 NestedScrollView 祖先）。
   final bool primary;
 
+  /// Bounded data-workbench mode: fill the available body height and keep the
+  /// row list lazy (`shrinkWrap:false`). Use for rich/interactive tables with
+  /// dozens of rows; short master-data tables keep the default shrink-to-content
+  /// behaviour. Cannot be combined with [embedded].
+  final bool virtualized;
+
   /// 是否显示工具条「全屏」按钮。null 时按 [embedded] 推断：嵌入场景（滑窗/picker/弹窗内的
   /// 明细表）默认隐藏全屏按钮，避免整屏路由在受限容器里铺满屏幕（详细排产滑窗 bug 修复）；
   /// 非嵌入主页面默认显示。显式传 true 可在嵌入场景放开。
@@ -238,6 +278,14 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 是否显示工具条「表头设置」。窄屏页面可关闭以把有限高度留给数据，
   /// 桌面/全屏默认保留完整列显隐能力。
   final bool showColumnChooser;
+
+  /// 是否为只读表体创建独立 [SelectionArea]。
+  ///
+  /// 默认开启，保留普通数据表的复制能力。包含横向同步滚动、分页或密集行手势的
+  /// 重交互页面可显式关闭；此时整表用 [SelectionContainer.disabled] 隔离，避免
+  /// Flutter Web 在路由转场/滚动期间反复维护 SelectionRegistrar 导致主线程卡顿。
+  /// [selectable] 为 true 的业务多选表始终关闭文字框选，本开关不改变行勾选语义。
+  final bool enableTextSelection;
 
   /// 行底色（按行数据定，如货品按状态：使用=浅蓝/禁用=浅红）；返回 null = 默认透明。
   /// 单击选中时组件自动把该色加深加亮（提高不透明度），无底色行维持原 primary 高亮。
@@ -662,13 +710,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         );
         if (tw > w) w = tw;
       }
-      next[i] =
+      final measured =
           (w +
                   _cellPadX * 2 +
                   _headerIconAllowance +
                   (def.sortable ? _sortIconAllowance : 0) +
                   _autoFitBuffer)
               .clamp(_minColWidth, _maxColWidth);
+      final declared = def.width.clamp(_minColWidth, _maxColWidth);
+      // Rich cells may contain buttons/progress/two-line guidance whose width
+      // cannot be inferred from [value]. Treat the declared width as a minimum;
+      // plain text columns can still auto-grow beyond it.
+      next[i] = measured < declared ? declared : measured;
     }
     _widths = next;
   }
@@ -953,6 +1006,31 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         : text;
   }
 
+  Widget _dataCell(MasterColumnDef<T> column, T item, TextStyle textStyle) {
+    final builder = column.cellBuilder;
+    if (builder == null) {
+      return _dataCellText(column.value(item) ?? '', textStyle);
+    }
+    final value = column.value(item)?.trim();
+    final custom = DefaultTextStyle.merge(
+      style: textStyle,
+      child: IconTheme.merge(
+        data: IconThemeData(color: textStyle.color),
+        child: builder(context, item),
+      ),
+    );
+    final aligned = widget.selectable
+        ? Align(alignment: Alignment.centerLeft, child: custom)
+        : custom;
+    if (column.cellBuilderHandlesSemantics) return aligned;
+    return Semantics(
+      label: value == null || value.isEmpty
+          ? column.label
+          : '${column.label}: $value',
+      child: aligned,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 全屏中：表格在全屏路由里渲染，正常树让位（ScrollController 只挂一棵树）。
@@ -1016,6 +1094,46 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     );
   }
 
+  /// 成功空态仍保留调用方业务工具条(例如 BOM 的“添加组件”)。加载中/错误态不走
+  /// 本壳，避免基础数据尚未确认时开放依赖现状的写动作。
+  Widget _emptyStateWithToolbarActions(Widget child) {
+    final actions = widget.toolbarActions;
+    if (actions == null || actions.isEmpty) return _stateShell(child);
+    final toolbar = Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: actions,
+      ),
+    );
+    if (widget.embedded) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [toolbar, _stateShell(child)],
+      );
+    }
+    // A two-pane page can temporarily leave only one row-height for its empty
+    // table while banners or filters are visible.  A fixed Column needs the
+    // 44dp action plus its 8dp gap and overflows before the empty state can
+    // shrink.  Slivers keep the action reachable and let the empty state scroll
+    // naturally in that bounded viewport; primary mode still participates in
+    // the ancestor NestedScrollView.
+    return CustomScrollView(
+      controller: widget.primary ? null : _bodyV,
+      primary: widget.primary,
+      physics: widget.primary
+          ? const AlwaysScrollableScrollPhysics()
+          : const ClampingScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(child: toolbar),
+        SliverFillRemaining(hasScrollBody: false, child: Center(child: child)),
+      ],
+    );
+  }
+
   Widget _buildTable(BuildContext context) {
     final theme = Theme.of(context);
     // 嵌入场景（滑窗/picker/弹窗内明细表）默认不显示全屏按钮：整屏路由在受限容器里会铺满
@@ -1044,7 +1162,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     );
     // 主数据为空且无任何前导分组 → 空态占位（有分组时仍渲染表头 + 分组行）。
     if (widget.items.isEmpty && !hasGroupRows) {
-      return _stateShell(
+      return _emptyStateWithToolbarActions(
         UtenEmpty(
           icon: Icons.table_rows_outlined,
           message: widget.emptyMessage,
@@ -1146,6 +1264,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         _BodyFlex(
           embedded: widget.embedded,
           primary: widget.primary,
+          virtualized: widget.virtualized,
           child: _maybeSelectionArea(
             Stack(
               key: _bodyAreaKey,
@@ -1153,14 +1272,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                 LayoutBuilder(
                   builder: (ctx, c) {
                     // 区高随卡片折叠/展开变化（constraints 变化）→ 重测横滚条位置。
-                    if (widget.primary) _scheduleHBarUpdate();
+                    if (widget.primary || _hasFloatingBatchActions) {
+                      _scheduleHBarUpdate();
+                    }
                     final list = ListView.builder(
                       controller: widget.primary ? null : _bodyV,
                       // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
                       // 参与联动。shrinkWrap 必须关（否则短表 maxScrollExtent=0，header 收完后
                       // 滚动卡死）；physics 必须 AlwaysScrollable（行少时 body 也要能滚→header 才收）。
                       primary: widget.primary,
-                      shrinkWrap: widget.primary ? false : true,
+                      shrinkWrap: widget.primary || widget.virtualized
+                          ? false
+                          : true,
                       physics: widget.primary
                           ? const AlwaysScrollableScrollPhysics()
                           : const ClampingScrollPhysics(),
@@ -1201,9 +1324,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                             widget.rowKeyOf?.call(item) ??
                             widget.idOf?.call(item);
                         final rowWidget = RepaintBoundary(
-                          key: (idKey != null && idKey.isNotEmpty)
-                              ? ValueKey('row:$idKey')
-                              : ValueKey('idx:$i'),
+                          key:
+                              widget.rowWidgetKeyOf?.call(item) ??
+                              ((idKey != null && idKey.isNotEmpty)
+                                  ? ValueKey('row:$idKey')
+                                  : ValueKey('idx:$i')),
                           child: _buildDataRow(theme, item),
                         );
                         // 末行挂测量键：primary 模式横滚条按末行定位（贴末行下）。
@@ -1296,8 +1421,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   /// 默认包裹）隔开——勾选行为不受页面选择区影响。
   /// 注：2026-08-11 查明 selectable 表整片空白的真正根因是 stretch 行在无界高度下
   /// 布局崩溃（见 [_selectableCross]），并非 SelectionArea；此处隔离仅按上述理由保留。
-  /// 非 selectable 表保留自身文本复制（表体局部 SelectionArea）。
-  Widget _maybeSelectionArea(Widget child) => widget.selectable
+  /// 非 selectable 表默认保留自身文本复制；重交互调用方可用
+  /// [MasterDataTableView.enableTextSelection] 显式退出。
+  Widget _maybeSelectionArea(Widget child) =>
+      widget.selectable || !widget.enableTextSelection
       ? SelectionContainer.disabled(child: child)
       : SelectionArea(child: child);
 
@@ -1530,7 +1657,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                   child: Checkbox(
                     tristate: true,
                     value: _headerCheckValue,
-                    onChanged: _onToggleAllPage,
+                    onChanged: _pageSelectableIds().isEmpty
+                        ? null
+                        : _onToggleAllPage,
                   ),
                 ),
               ),
@@ -1602,6 +1731,42 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     _fsTick.value++;
   }
 
+  /// 单个数据格：列宽 + 语义底色（cellColor）+ 列间竖线 + 内边距 + 内容。
+  /// 底色较深（如缺口列的 error 实底）时自动切白色文字/图标，保证红底白字
+  /// 的对比度；浅色语义底（errorContainer 半透明等）保持默认前景色。
+  Widget _buildDataCell(
+    ThemeData theme,
+    int columnIndex,
+    T item,
+    bool selected,
+    TextStyle textStyle,
+  ) {
+    final column = widget.columns[columnIndex];
+    final cellColor = selected ? null : column.cellColor?.call(context, item);
+    final onCellColor =
+        cellColor != null &&
+        ThemeData.estimateBrightnessForColor(cellColor) == Brightness.dark;
+    final cellStyle = onCellColor
+        ? textStyle.copyWith(color: Colors.white)
+        : textStyle;
+    final lineColor = selected ? Colors.white : theme.colorScheme.outline;
+    return Container(
+      width: _widths[columnIndex],
+      // 列间竖线：逐格勾勒单元格右边界；选中行用白色竖线。
+      decoration: BoxDecoration(
+        color: cellColor,
+        border: Border(right: BorderSide(color: lineColor, width: 0.5)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s12,
+          vertical: UtenSpacing.s8,
+        ),
+        child: _dataCell(column, item, cellStyle),
+      ),
+    );
+  }
+
   Widget _buildDataRow(ThemeData theme, T item) {
     // selectable 多选：选中由 selectedIds（业务键）驱动，单选 _selectedItem 失效。
     // 否则沿用单选：外部 isSelected 谓词优先，回落内部 _selectedItem 引用相等。
@@ -1649,39 +1814,22 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                       ),
                     ),
                     child: Center(
-                      child: Checkbox(
-                        value: selected,
-                        // 无业务 id 的行禁用勾选（不计入全选）。
-                        onChanged: (multiId == null || multiId.isEmpty)
-                            ? null
-                            : (v) => _toggleRow(item, v ?? false),
-                      ),
+                      child:
+                          (multiId == null || multiId.isEmpty) &&
+                              widget.unselectableLeadingBuilder != null
+                          ? widget.unselectableLeadingBuilder!(context, item)
+                          : Checkbox(
+                              value: selected,
+                              // 无业务 id 的行禁用勾选（不计入全选）。
+                              onChanged: (multiId == null || multiId.isEmpty)
+                                  ? null
+                                  : (v) => _toggleRow(item, v ?? false),
+                            ),
                     ),
                   ),
                 ),
               for (final i in _visibleIndices)
-                Container(
-                  width: _widths[i],
-                  // 列间竖线：逐格勾勒单元格右边界；选中行用白色竖线。
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? null
-                        : widget.columns[i].cellColor?.call(context, item),
-                    border: Border(
-                      right: BorderSide(color: lineColor, width: 0.5),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s12,
-                      vertical: UtenSpacing.s8,
-                    ),
-                    child: _dataCellText(
-                      widget.columns[i].value(item) ?? '',
-                      textStyle,
-                    ),
-                  ),
-                ),
+                _buildDataCell(theme, i, item, selected, textStyle),
             ],
           ),
         ),
@@ -1691,15 +1839,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     final rowCanOpen =
         configuredOnRowTap != null && (widget.canOpenRow?.call(item) ?? true);
     final onRowTap = rowCanOpen ? configuredOnRowTap : null;
+    final rowCanSelect = widget.selectable && multiId?.isNotEmpty == true;
     final configuredRowMenuBuilder = widget.rowMenuBuilder;
     final rowMenuBuilder =
         configuredRowMenuBuilder != null &&
             (widget.canShowRowMenu?.call(item) ?? true)
         ? configuredRowMenuBuilder
         : null;
-    // 纯展示行（无打开操作、无行菜单、非多选）不挂任何手势，避免暴露可点击状态。
-    // 多选模式即使没有打开操作也挂 InkWell：单击行 = 切换勾选。
-    if (onRowTap == null && rowMenuBuilder == null && !widget.selectable) {
+    // 纯展示行(无打开、无行菜单、无单选回调、非多选)不挂手势，避免伪可交互。
+    // 只有 onSelectionChanged 的行仍必须可单击选中，例如 BOM 把展开动作放进树单元格后，
+    // 整行不再负责打开，但编辑/删除仍依赖行选择。
+    if (onRowTap == null &&
+        rowMenuBuilder == null &&
+        widget.onSelectionChanged == null &&
+        !rowCanSelect) {
       return row;
     }
 
@@ -1737,6 +1890,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       widget.onSelectionChanged?.call(item);
     }
 
+    /// 菜单动作(含其异步确认/业务回调)完成后清理上下文选中。仅取消菜单时保留
+    /// 原选择，避免用户已有多选被一次误触清空。
+    void clearSelectionAfterMenuAction() {
+      if (!mounted) return;
+      if (widget.selectable) {
+        widget.onSelectedIdsChanged?.call(const <String>{});
+        _fsTick.value++;
+        return;
+      }
+      setState(() => _selectedItem = null);
+      _fsTick.value++;
+      widget.onSelectionCleared?.call();
+    }
+
     /// 打开前保证多选行仍保持勾选。手动双击窗会让第一次点击立即执行
     /// “切换选择”；若用户原本已选中该行，第一次点击会先取消，第二击识别为
     /// 双击时必须补回选择，避免打开详情后右下/批量主操作意外变灰。
@@ -1772,6 +1939,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       // 不能用 identityHashCode：单击选中触发重建后 item 对象引用已换
       // （BOM 的 _BomRow 每次 build 重建），内容键对同一逻辑行保持稳定。
       final rowKey =
+          widget.rowKeyOf?.call(item) ??
           widget.idOf?.call(item) ??
           'cells:${widget.columns.map((c) => c.value(item) ?? '').join(' ')}';
       interactive = InkWell(
@@ -1799,10 +1967,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         child: interactive,
       );
     }
+    if (rowCanSelect ||
+        (!widget.selectable && widget.onSelectionChanged != null)) {
+      interactive = Semantics(selected: selected, child: interactive);
+    }
     if (rowMenuBuilder != null) {
       return UtenContextMenuRegion(
         entriesBuilder: () => rowMenuBuilder(item),
         onMenuOpening: selectRowForMenu,
+        onActionCompleted: clearSelectionAfterMenuAction,
         child: interactive,
       );
     }
@@ -2543,11 +2716,13 @@ class _BodyFlex extends StatelessWidget {
   const _BodyFlex({
     required this.embedded,
     required this.primary,
+    required this.virtualized,
     required this.child,
   });
 
   final bool embedded;
   final bool primary;
+  final bool virtualized;
   final Widget child;
 
   @override
@@ -2557,7 +2732,10 @@ class _BodyFlex extends StatelessWidget {
     }
     // primary（联动折叠）用 tight：表格填满 NestedScrollView body 释放出的空间；
     // 普通列表页用 loose：行少时连同 shrinkWrap 收缩表高。
-    return Flexible(fit: primary ? FlexFit.tight : FlexFit.loose, child: child);
+    return Flexible(
+      fit: primary || virtualized ? FlexFit.tight : FlexFit.loose,
+      child: child,
+    );
   }
 }
 

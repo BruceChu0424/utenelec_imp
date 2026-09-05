@@ -95,8 +95,9 @@ public class WarehouseService {
         Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
         Page<Warehouse> p = repo.findAll(spec, pageable);
         Map<UUID, String> workshopNames = workshopNames(p.getContent());
+        Map<UUID, String> parentNames = parentNames(p.getContent());
         return new PageResponse<>(
-                p.getContent().stream().map(row -> toList(row, workshopNames)).toList(),
+                p.getContent().stream().map(row -> toList(row, workshopNames, parentNames)).toList(),
                 page, size, p.getTotalElements(), p.getTotalPages());
     }
 
@@ -135,7 +136,8 @@ public class WarehouseService {
         Specification<Warehouse> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
         List<Warehouse> rows = repo.findAll(spec, Sort.by(Sort.Direction.ASC, "code"));
         Map<UUID, String> workshopNames = workshopNames(rows);
-        return rows.stream().map(row -> toList(row, workshopNames)).toList();
+        Map<UUID, String> parentNames = parentNames(rows);
+        return rows.stream().map(row -> toList(row, workshopNames, parentNames)).toList();
     }
 
     /** Minimal workshop dictionary for warehouse create/edit. */
@@ -220,7 +222,35 @@ public class WarehouseService {
             DepartmentReference workshop = requireWorkshop(req.getWorkshopDepartmentId());
             w.setWorkshopDepartmentId(workshop == null ? null : workshop.id());
         }
+        if (req.hasParentReference()) {
+            w.setParentId(requireValidParent(w, req.getParentId()));
+        }
         w.setStatus(req.getStatus());
+    }
+
+    /**
+     * 上级仓库校验（V476）：存在且未软删、不能是自己、不能落在自己的后代链上（防环）。
+     * 返回 null = 清空回独立顶层。
+     */
+    private UUID requireValidParent(Warehouse self, UUID parentId) {
+        if (parentId == null) return null;
+        if (self.getId() != null && self.getId().equals(parentId)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "上级仓库不能是自己");
+        }
+        Warehouse parent = repo.findById(parentId)
+                .filter(p -> !p.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "上级仓库不存在"));
+        // 沿 parent 的上级链上溯：途中遇到自己 = 会成环，拒绝。
+        UUID cursor = parent.getParentId();
+        int depth = 0;
+        while (cursor != null && depth++ < 64) {
+            if (cursor.equals(self.getId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "上级仓库不能是自己的子仓库");
+            }
+            Warehouse up = repo.findById(cursor).orElse(null);
+            cursor = up == null ? null : up.getParentId();
+        }
+        return parentId;
     }
 
     private WarehouseDetail toDetail(Warehouse w) {
@@ -231,17 +261,32 @@ public class WarehouseService {
         return new WarehouseDetail(w.getId(), w.getCode(), w.getName(), w.getLocation(), w.getRemark(),
                 w.isAccountable(), workshopId, workshopName, w.getLegacyOperatorId(),
                 w.getWorkshopLegacyId(),
-                w.getStatus(), w.getLegacyId());
+                w.getStatus(), w.getLegacyId(), w.getParentId());
     }
 
-    private WarehouseListItem toList(Warehouse w, Map<UUID, String> workshopNames) {
+    private WarehouseListItem toList(Warehouse w, Map<UUID, String> workshopNames,
+                                     Map<UUID, String> parentNames) {
         UUID workshopId = w.getWorkshopDepartmentId();
         // Map.copyOf 返回的不可变 Map 对 null key 的 get 会抛 NPE，车间未设置时需先判空。
         String workshopName = workshopId == null ? null : workshopNames.get(workshopId);
         return new WarehouseListItem(w.getId(), w.getCode(), w.getName(), w.getLocation(), w.getRemark(),
                 w.isAccountable(), workshopId, workshopName, w.getLegacyOperatorId(),
                 w.getWorkshopLegacyId(),
-                w.getStatus(), w.getLegacyId());
+                w.getStatus(), w.getLegacyId(), w.getParentId(), parentNames.get(w.getParentId()));
+    }
+
+    /** 上级仓库名称（V476 层级列表列）：仓库量级个位数，全量载入一次建 id→name。 */
+    private Map<UUID, String> parentNames(List<Warehouse> rows) {
+        Set<UUID> parentIds = rows.stream()
+                .map(Warehouse::getParentId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (parentIds.isEmpty()) return Map.of();
+        Map<UUID, String> names = new java.util.HashMap<>();
+        for (Warehouse w : repo.findAll()) {
+            if (parentIds.contains(w.getId())) names.put(w.getId(), w.getName());
+        }
+        return names;
     }
 
     private DepartmentReference requireWorkshop(UUID id) {

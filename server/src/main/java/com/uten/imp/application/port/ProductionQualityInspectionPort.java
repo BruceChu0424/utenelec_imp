@@ -1,21 +1,30 @@
 package com.uten.imp.application.port;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * Integration boundary for production final-quality inspection (FQC).
  *
  * <p>The warehouse-arrival registration transaction registers one inspection
- * per approved report line. A later FINISHED_IN producer must register its exact
+ * per selected approved report line. Unselected lines remain pending for a later
+ * registration batch. A later FINISHED_IN producer must register its exact
  * stock-document line here in the same transaction; the implementation accepts
  * only quantity backed by append-only PASS decisions.  The port never mutates
  * stock, report progress, {@code iqty}, or parent MAKE readiness itself.</p>
  */
 public interface ProductionQualityInspectionPort {
 
-    /** Register every warehouse-registered exact line of an approved report. */
-    void registerApprovedReport(UUID reportId);
+    /**
+     * Register the exact warehouse-registered lines selected in one arrival
+     * command. A report may be handed to FQC in several batches, while every
+     * report line keeps one permanent registration and inspection identity.
+     */
+    void registerApprovedReportItems(
+            UUID reportId,
+            List<UUID> reportItemIds,
+            UUID registrationId);
 
     /**
      * Allocate qualified PASS quantity to one initial FINISHED_IN draft line.

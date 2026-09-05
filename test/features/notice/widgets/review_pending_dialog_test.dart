@@ -48,6 +48,13 @@ class _FakeNoticeRepository implements NoticeRepository {
 void main() {
   setUp(resetReviewPendingDialogForTest);
 
+  test('production workshop tasks use their dedicated workbench route', () {
+    expect(
+      workbenchRouteFor('PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'),
+      RouteName.productionWorkshopTasks,
+    );
+  });
+
   Notice noticeOf(
     String id, {
     String title = '待财务确认：SO-001',
@@ -101,7 +108,7 @@ void main() {
     final repo = _FakeNoticeRepository();
     await pumpDialog(tester, repo: repo, pending: [noticeOf('n1')]);
 
-    expect(find.text('待办审核'), findsOneWidget);
+    expect(find.text('待办提醒'), findsOneWidget);
     expect(find.text('有 1 项事务等待你处理'), findsOneWidget);
     expect(find.text('待财务确认：SO-001'), findsOneWidget);
     expect(find.text('待处理'), findsOneWidget);
@@ -156,7 +163,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.snoozedIds, containsAll(['n1', 'n2']));
-    expect(find.text('待办审核'), findsNothing);
+    expect(find.text('待办提醒'), findsNothing);
   });
 
   testWidgets('primary button goes to the domain workbench even for one item', (
@@ -183,7 +190,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('财务确认工作台'), findsOneWidget);
-    expect(find.text('待办审核'), findsNothing);
+    expect(find.text('待办提醒'), findsNothing);
     expect(repo.readIds, contains('n1'));
   });
 
@@ -256,7 +263,7 @@ void main() {
     await pumpDialog(tester, repo: repo, pending: [noticeOf('n1')]);
 
     // 已打开时再次调用：并入当前弹窗（「一共有 2 项」），不叠第二层。
-    final context = tester.element(find.text('待办审核'));
+    final context = tester.element(find.text('待办提醒'));
     repo.noticesById['n2'] = noticeOf('n2', title: '第二项');
     await showReviewPendingDialog(
       context,
@@ -264,7 +271,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('待办审核'), findsOneWidget);
+    expect(find.text('待办提醒'), findsOneWidget);
     expect(find.text('有 2 项事务等待你处理'), findsOneWidget);
     expect(find.text('第二项'), findsOneWidget);
   });

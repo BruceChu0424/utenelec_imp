@@ -137,6 +137,7 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(TxSessionVars.class),
                 mock(ProductionDocumentAccessPolicy.class),
+                mock(com.uten.imp.security.OwnerVisibility.class),
                 mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
         MaterialAnalysisService.SourceLine source = sourceLine(
                 analysisItemId, finishedGoodsId, unitId);

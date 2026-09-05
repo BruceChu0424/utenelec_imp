@@ -113,10 +113,7 @@ void main() {
     expect(find.text('AR-001'), findsOneWidget);
     expect(find.textContaining('001 65.1234'), findsNothing);
     await tester.enterText(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.decoration?.labelText == '应用原因(必填)',
-      ),
+      find.byKey(const ValueKey('customer-prepayment-apply-reason')),
       '客户确认预收用于订单 XD-001',
     );
     await tester.tap(find.byKey(const ValueKey('customer-prepayment-apply')));
@@ -137,10 +134,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('customer-prepayment-reverse')));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.decoration?.labelText == '反转原因(必填)',
-      ),
+      find.byKey(const ValueKey('customer-prepayment-reverse-reason')),
       '客户要求改用其它订单',
     );
     await tester.tap(find.text('确认反转'));

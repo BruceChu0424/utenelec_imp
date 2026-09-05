@@ -72,9 +72,11 @@ public class ProductionExecutionPackageCommandService {
             preplanAnalysisPeg;
 
     /**
-     * 确认排产预览为正式执行计划包：冻结执行分段与销售分摊、写入物料需求，为齐套段分配库存并生成领料单，
-     * 按缺口生成采购/委外申请与自制子计划。全部在同一事务内完成，预览指纹须与冻结快照一致；
-     * 幂等键命中已确认计划包时直接重放既有结果，不重复下达。
+     * 确认排产预览为正式执行计划包：冻结执行分段与销售分摊、写入物料需求，
+     * 为齐套段分配库存并生成领料单。旧/手工计划仍按缺口生成采购、委外申请与
+     * 自制子计划；物料分析来源计划只复用已存在的计划前供给责任，禁止重复下达。
+     * 全部在同一事务内完成，预览指纹须与冻结快照一致；幂等键命中已确认计划包
+     * 时直接重放既有结果。
      */
     @Transactional
     public PlanningPackageResult confirm(
@@ -88,6 +90,12 @@ public class ProductionExecutionPackageCommandService {
         if (!Objects.equals(prelockedAnalysisId, plan.materialAnalysisId())) {
             throw conflict("生产计划的来源物料分析已变化，请重新预览后重试");
         }
+        // A material-analysis plan has already externalized BUY,
+        // SUBCONTRACT and MAKE responsibility through path-owned
+        // preplan_supply_actions. The formal package persists the exact
+        // demands and execution segment, but must not create a second set of
+        // supply documents for the same shortage.
+        boolean packageOwnsSupply = packageOwnsSupply(plan.materialAnalysisId());
         requireNoActiveLegacyPackage(planId);
         ProductionFulfillmentLedgerService.BeginConfirmation begin =
                 ledger.beginConfirmation(
@@ -131,7 +139,9 @@ public class ProductionExecutionPackageCommandService {
                         new ProductionMaterialAllocationFacade.MaterialDimension(
                                 dimension.goodsId(), dimension.colorId()))
                 .toList());
-        purchaseFacade.lockOpenSupply(dimensions);
+        if (packageOwnsSupply) {
+            purchaseFacade.lockOpenSupply(dimensions);
+        }
 
         ProductionExecutionPlanningService.Snapshot locked =
                 planning.lockedSnapshot(
@@ -261,7 +271,9 @@ public class ProductionExecutionPackageCommandService {
         }
 
         Map<DemandMaterialKey, BigDecimal> purchaseShortage =
-                proposedPurchaseShortage(segmentDrafts);
+                packageOwnsSupply
+                        ? proposedPurchaseShortage(segmentDrafts)
+                        : Map.of();
         Map<UUID, String> segmentCodeById = segmentCodeById(segmentDrafts);
         List<ProductionPurchaseRequestFacade.DraftLine> purchaseLines =
                 demands.stream()
@@ -283,10 +295,12 @@ public class ProductionExecutionPackageCommandService {
                         })
                         .filter(line -> line.qty().signum() > 0)
                         .toList();
-        requirePurchaseRequestForBuyShortage(
-                request.isGeneratePurchaseRequest(), purchaseLines);
+        if (packageOwnsSupply) {
+            requirePurchaseRequestForBuyShortage(
+                    request.isGeneratePurchaseRequest(), purchaseLines);
+        }
         MrpGenerateResult purchaseResult =
-                request.isGeneratePurchaseRequest()
+                packageOwnsSupply && request.isGeneratePurchaseRequest()
                         ? createPurchase(
                                 plan, begin.planningPackage(),
                                 request.getWarehouseId(),
@@ -294,9 +308,11 @@ public class ProductionExecutionPackageCommandService {
                         : null;
 
         Map<DemandMaterialKey, BigDecimal> subcontractShortage =
-                proposedShortage(
-                        segmentDrafts,
-                        ProductionMaterialDemand.ROUTE_SUBCONTRACT);
+                packageOwnsSupply
+                        ? proposedShortage(
+                                segmentDrafts,
+                                ProductionMaterialDemand.ROUTE_SUBCONTRACT)
+                        : Map.of();
         List<ProductionSubcontractRequestPort.DraftLine> subcontractLines =
                 demands.stream()
                         .map(demand -> {
@@ -319,13 +335,15 @@ public class ProductionExecutionPackageCommandService {
                         .filter(line -> line.qty().signum() > 0)
                         .toList();
         MrpGenerateResult subcontractResult =
-                subcontractCoordinator.create(
-                        plan.billNo(),
-                        plan.deliveryDate(),
-                        request.getWarehouseId(),
-                        begin.planningPackage(),
-                        demands,
-                        subcontractLines);
+                packageOwnsSupply
+                        ? subcontractCoordinator.create(
+                                plan.billNo(),
+                                plan.deliveryDate(),
+                                request.getWarehouseId(),
+                                begin.planningPackage(),
+                                demands,
+                                subcontractLines)
+                        : null;
 
         List<ExecutionSegmentResult> results = results(
                 segmentDrafts, demandsBySegment, allocatedByDemand, draws);
@@ -334,9 +352,11 @@ public class ProductionExecutionPackageCommandService {
         // 自制件派生只使用本次直接层 MAKE 缺口；下层 BOM 进入子计划后再逐级排产。
         // 与领料/采购同事务，走 EXECUTION_V1 subplan_links，幂等不重复。
         List<GenerateSubplansRequest.Created> subplanResults =
-                mrpService.generateSelfMadeSubplansForPackage(
-                        planId, begin.planningPackage().getId(),
-                        directMakeRequirements(allocation));
+                packageOwnsSupply
+                        ? mrpService.generateSelfMadeSubplansForPackage(
+                                planId, begin.planningPackage().getId(),
+                                directMakeRequirements(allocation))
+                        : List.of();
         for (GenerateSubplansRequest.Created subplan : subplanResults) {
             ledger.recordDocument(
                     begin.planningPackage().getId(),
@@ -345,9 +365,11 @@ public class ProductionExecutionPackageCommandService {
                     subplan.billNo(),
                     currentUser.requireId());
         }
-        createMakeSupplyPegs(
-                begin.planningPackage(), demands,
-                segmentDrafts, subplanResults);
+        if (packageOwnsSupply) {
+            createMakeSupplyPegs(
+                    begin.planningPackage(), demands,
+                    segmentDrafts, subplanResults);
+        }
         ledger.refreshDemandStatuses(
                 demands.stream()
                         .map(ProductionMaterialDemand::getId)
@@ -366,6 +388,11 @@ public class ProductionExecutionPackageCommandService {
                 drawResults.isEmpty() ? null : drawResults.getFirst(),
                 results,
                 drawResults);
+    }
+
+    /** Legacy/manual plans let the package own supply generation. */
+    static boolean packageOwnsSupply(UUID materialAnalysisId) {
+        return materialAnalysisId == null;
     }
 
     private List<SegmentDraft> persistSegments(

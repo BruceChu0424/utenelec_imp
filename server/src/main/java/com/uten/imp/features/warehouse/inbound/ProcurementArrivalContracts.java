@@ -257,13 +257,37 @@ public final class ProcurementArrivalContracts {
             String colorName,
             UUID unitId,
             String unitName,
+            UUID baseUnitId,
+            String baseUnitName,
             BigDecimal unitRate,
             BigDecimal unitPrice,
             BigDecimal orderedQty,
             BigDecimal acceptedQty,
             BigDecimal remainingQty,
             BigDecimal registeredQty,
-            LocalDate expectedDate) {
+            LocalDate expectedDate,
+            List<ProcurementIqcStockInContracts.InboundAllocation> expectedAllocations) {
+
+        public InboundExpectationItem {
+            expectedAllocations = expectedAllocations == null
+                    ? List.of() : List.copyOf(expectedAllocations);
+        }
+
+        public InboundExpectationItem(
+                UUID id, UUID orderItemId, Integer lineNo,
+                UUID goodsId, String goodsCode, String goodsName,
+                String goodsSeries, String goodsStockPlace,
+                UUID colorId, String colorName, UUID unitId, String unitName,
+                BigDecimal unitRate, BigDecimal unitPrice,
+                BigDecimal orderedQty, BigDecimal acceptedQty,
+                BigDecimal remainingQty, BigDecimal registeredQty,
+                LocalDate expectedDate) {
+            this(id, orderItemId, lineNo, goodsId, goodsCode, goodsName,
+                    goodsSeries, goodsStockPlace, colorId, colorName, unitId,
+                    unitName, unitId, unitName, unitRate, unitPrice,
+                    orderedQty, acceptedQty,
+                    remainingQty, registeredQty, expectedDate, List.of());
+        }
     }
 
     public record InboundExpectationTask(

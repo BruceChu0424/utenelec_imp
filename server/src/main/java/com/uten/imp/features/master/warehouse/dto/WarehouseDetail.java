@@ -26,4 +26,6 @@ public class WarehouseDetail {
     private Integer workshopLegacyId;
     private String status;
     private Integer legacyId;
+    /** 上级仓库（V476 主/子层级）；null=独立顶层。 */
+    private UUID parentId;
 }

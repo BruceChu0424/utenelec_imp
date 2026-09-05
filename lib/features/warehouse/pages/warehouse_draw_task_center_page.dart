@@ -49,17 +49,18 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
           keyword: keyword,
           refreshTick: refreshTick,
         ),
+        // 生产领料/退料由生产链自动生成（齐套建 DRAW、报工/退料闭环），
+        // 不提供手工新建入口——手工单没有计划包与执行段映射，出库链路会
+        // 被台账守卫拒绝，属死路；临时性出入库请用「其它入库/其它出库」。
         'draw' => WarehouseStockDocSegment(
           docType: StockDocType.draw,
           keyword: keyword,
           refreshTick: refreshTick,
-          createLabel: '新建领料单',
         ),
         _ => WarehouseStockDocSegment(
           docType: StockDocType.wdraw,
           keyword: keyword,
           refreshTick: refreshTick,
-          createLabel: '新建退料单',
         ),
       },
     );

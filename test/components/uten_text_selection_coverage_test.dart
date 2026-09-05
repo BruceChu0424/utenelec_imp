@@ -34,6 +34,7 @@ bool _selectableOf(WidgetTester tester, Finder finder) =>
 
 Widget _table({
   bool selectable = false,
+  bool enableTextSelection = true,
   Set<String>? selectedIds,
   void Function(_Row)? onRowTap,
 }) {
@@ -52,6 +53,7 @@ Widget _table({
     filters: const {},
     onFilterChanged: (_, _) {},
     selectable: selectable,
+    enableTextSelection: enableTextSelection,
     idOf: (row) => row.id,
     selectedIds: selectedIds ?? const <String>{},
     onSelectedIdsChanged: (_) {},
@@ -62,6 +64,7 @@ Widget _table({
 /// 模拟真实页面：UtenContentContainer（页面 region）包 说明文字 + 表格（自带嵌套 region）。
 Widget _page({
   bool selectableTable = false,
+  bool enableTableTextSelection = true,
   bool pageSelectable = true,
   void Function(_Row)? onRowTap,
 }) {
@@ -76,7 +79,11 @@ Widget _page({
             children: [
               const Text('页面说明文字'),
               Expanded(
-                child: _table(selectable: selectableTable, onRowTap: onRowTap),
+                child: _table(
+                  selectable: selectableTable,
+                  enableTextSelection: enableTableTextSelection,
+                  onRowTap: onRowTap,
+                ),
               ),
             ],
           ),
@@ -144,6 +151,18 @@ void main() {
     expect(find.byType(SelectionArea), findsOneWidget);
     expect(_selectableOf(tester, find.text('页面说明文字')), isFalse);
     expect(_selectableOf(tester, find.text('a1')), isTrue);
+  });
+
+  testWidgets('重交互只读表可显式关闭文字选择且隔离外层 region', (tester) async {
+    await tester.pumpWidget(_page(enableTableTextSelection: false));
+    await tester.pumpAndSettle();
+
+    // 只剩页面说明的 region；表格自身不再创建 SelectionArea，且 disabled
+    // 边界阻止外层页面 region 渗入表头/表体。
+    expect(find.byType(SelectionArea), findsOneWidget);
+    expect(_selectableOf(tester, find.text('页面说明文字')), isTrue);
+    expect(_selectableOf(tester, find.text('ID')), isFalse);
+    expect(_selectableOf(tester, find.text('a1')), isFalse);
   });
 
   testWidgets('多选表（任务中心）整表隔离：页面 region 不渗入勾选表体', (tester) async {

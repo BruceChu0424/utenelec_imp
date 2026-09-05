@@ -124,7 +124,7 @@ class PreplanExternalSupplySourceGuardPostgresTest {
             execute(connection, """
                     INSERT INTO purchase_orders(
                         id,bill_no,bill_date,warehouse_id,status,created_by,updated_by)
-                    VALUES(?,?,?,?,1,?,?)
+                    VALUES(?,?,?,?,0,?,?)
                     """, orderId, orderNo, BILL_DATE, fixture.warehouseId(),
                     fixture.userId(), fixture.userId());
             insertPurchaseOrderItem(connection, fixture, orderId, demandOrderItemId,
@@ -1224,6 +1224,11 @@ class PreplanExternalSupplySourceGuardPostgresTest {
     private static void anchorOrderItemSources(
             Connection connection, UUID orderId) throws Exception {
         try (PreparedStatement statement = connection.prepareStatement("INSERT INTO purchase_order_item_sources(order_item_id, request_item_id, alloc_qty, line_no) SELECT oi.id, oi.request_item_id, oi.qty, 1 FROM purchase_order_items oi WHERE oi.order_id=? AND oi.request_item_id IS NOT NULL AND oi.qty > 0 AND NOT EXISTS (SELECT 1 FROM purchase_order_item_sources s WHERE s.order_item_id=oi.id)")) {
+            statement.setObject(1, orderId);
+            statement.executeUpdate();
+        }
+        // V472 已审核单来源行不可变：锚点回填后再置为已审核（与应用先写来源后送审同序）。
+        try (PreparedStatement statement = connection.prepareStatement("UPDATE purchase_orders SET status=1 WHERE id=?")) {
             statement.setObject(1, orderId);
             statement.executeUpdate();
         }

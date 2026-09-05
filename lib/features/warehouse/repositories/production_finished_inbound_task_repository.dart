@@ -92,10 +92,15 @@ class ProductionFinishedInboundTaskRepository {
   }
 
   Future<ProductionFinishedRememberPlacesResult> rememberPlaces(
-    String reportId,
-  ) async {
+    String reportId, {
+    String? registrationId,
+  }) async {
     final json = await api.post(
       ApiEndpoints.productionFinishedArrivalRememberPlaces(reportId),
+      query: {
+        if (registrationId?.isNotEmpty == true)
+          'registrationId': registrationId,
+      },
     );
     return ProductionFinishedRememberPlacesResult.fromJson(json);
   }
@@ -129,7 +134,7 @@ class ProductionFinishedInboundTaskRepository {
         const [];
   }
 
-  /// 一次提交逐单 FQC：reports = [{reportId, warehouseId, items:[{reportItemId, place}]}]。
+  /// 一次提交逐单所选 FQC 行：reports = [{reportId, warehouseId, items:[{reportItemId, place}]}]。
   Future<ProductionFinishedBatchRegistrationResult>
   saveArrivalRegistrationBatch(Map<String, dynamic> body) async {
     final json = await api.post(
@@ -139,13 +144,13 @@ class ProductionFinishedInboundTaskRepository {
     return ProductionFinishedBatchRegistrationResult.fromJson(json);
   }
 
-  /// 批量登记后的库位记忆（逐单聚合 remembered/unchanged/ambiguous 与告警）。
+  /// 批量登记后的库位记忆：绑定服务端返回的 registration UUID，避免并发串批。
   Future<ProductionFinishedRememberPlacesResult> rememberPlacesBatch(
-    List<String> reportIds,
+    List<String> registrationIds,
   ) async {
     final json = await api.post(
-      ApiEndpoints.productionFinishedArrivalBatchRememberPlaces,
-      body: reportIds,
+      ApiEndpoints.productionFinishedArrivalBatchRememberRegistrationBatches,
+      body: registrationIds,
     );
     return ProductionFinishedRememberPlacesResult.fromJson(json);
   }

@@ -1,10 +1,12 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_arrival_batch_registration_page.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 const _reportA = '20000000-0000-0000-0000-000000000001';
 const _reportB = '20000000-0000-0000-0000-000000000002';
@@ -12,7 +14,103 @@ const _itemA = '30000000-0000-0000-0000-000000000001';
 const _itemB = '30000000-0000-0000-0000-000000000002';
 const _itemA2 = '30000000-0000-0000-0000-000000000003';
 
+final _testBatchPermissionsProvider =
+    NotifierProvider<_TestBatchPermissions, Set<String>>(
+      _TestBatchPermissions.new,
+    );
+
+class _TestBatchPermissions extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const <String>{};
+
+  void replace(Set<String> permissions) => state = permissions;
+}
+
 void main() {
+  testWidgets('正式批量登记页响应 stock_doc:approve 动态授予与撤销', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _BatchArrivalApi();
+    final container = ProviderContainer(
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_testBatchPermissionsProvider),
+        ),
+        isSuperAdminProvider.overrideWithValue(false),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: ProductionFinishedArrivalBatchRegistrationPage(
+            reportIds: [_reportA, _reportB],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    const submitKey = Key('production-finished-arrival-batch-submit');
+    expect(find.byKey(submitKey), findsNothing);
+
+    container.read(_testBatchPermissionsProvider.notifier).replace({
+      Perm.stockDocApprove,
+    });
+    await tester.pumpAndSettle();
+    expect(find.byKey(submitKey), findsOneWidget);
+    expect(
+      tester
+          .widgetList<Checkbox>(find.byType(Checkbox))
+          .any((checkbox) => checkbox.onChanged != null),
+      isTrue,
+    );
+
+    container.read(_testBatchPermissionsProvider.notifier).replace(const {});
+    await tester.pumpAndSettle();
+    expect(find.byKey(submitKey), findsNothing);
+  });
+
+  testWidgets('批量自制登记可右键移出任意明细且只提交表内剩余报工行', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _BatchArrivalApi();
+    await _openBatchPage(tester, api: api);
+
+    final removedPlace = _placeField(_itemB);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('两极插套')),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await gesture.up();
+    await tester.pump();
+    await tester.tap(find.text('移出本次登记 (1)').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('仍保持待登记送检'), findsOneWidget);
+    await tester.tap(find.text('确认移出'));
+    await tester.pumpAndSettle();
+    expect(removedPlace, findsNothing);
+    expect(find.textContaining('这些行仍在待登记送检'), findsOneWidget);
+
+    _pressSubmit(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认登记并送检'));
+    await tester.pumpAndSettle();
+    final reports = (api.lastPostBody?['reports'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(reports, hasLength(1));
+    expect(reports.single['reportId'], _reportA);
+    final items = (reports.single['items'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(items.single['reportItemId'], _itemA);
+    expect(api.rememberedRegistrationIds, {
+      '40000000-0000-0000-0000-000000000001',
+    });
+  });
+
   testWidgets('批量登记页合并多报工明细、预选上次仓、按单分组提交并批量记忆', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -67,6 +165,10 @@ void main() {
             .cast<Map<String, dynamic>>();
     expect(itemsB.single['place'], 'CP-B-02');
     expect(api.rememberBatchCalls, 1);
+    expect(api.rememberedRegistrationIds, {
+      '40000000-0000-0000-0000-000000000001',
+      '40000000-0000-0000-0000-000000000002',
+    });
     expect(tester.takeException(), isNull);
   });
 
@@ -167,6 +269,7 @@ class _BatchArrivalApi extends ApiClient {
   String? lastPostPath;
   Map<String, dynamic>? lastPostBody;
   int rememberBatchCalls = 0;
+  Set<String> rememberedRegistrationIds = const {};
   final List<String> suggestionRequests = [];
 
   @override
@@ -257,8 +360,11 @@ class _BatchArrivalApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/batch/remember-places')) {
+    if (path.endsWith('/batch/remember-registration-batches')) {
       rememberBatchCalls++;
+      rememberedRegistrationIds = (body as List)
+          .map((id) => id.toString())
+          .toSet();
       return const {
         'remembered': 2,
         'unchanged': 0,
@@ -268,21 +374,23 @@ class _BatchArrivalApi extends ApiClient {
     }
     lastPostPath = path;
     lastPostBody = Map<String, dynamic>.from(body! as Map);
+    final requestedReports = (lastPostBody!['reports'] as List)
+        .cast<Map<String, dynamic>>();
     return {
-      'registeredCount': 2,
-      'reports': const [
-        {
-          'reportId': _reportA,
-          'reportNo': 'RB202608300001',
-          'warehouseId': 'warehouse-1',
-          'warehouseName': '成品仓',
-        },
-        {
-          'reportId': _reportB,
-          'reportNo': 'RB202608300002',
-          'warehouseId': 'warehouse-1',
-          'warehouseName': '成品仓',
-        },
+      'registeredCount': requestedReports.length,
+      'reports': [
+        for (final report in requestedReports)
+          {
+            'registrationId': report['reportId'] == _reportA
+                ? '40000000-0000-0000-0000-000000000001'
+                : '40000000-0000-0000-0000-000000000002',
+            'reportId': report['reportId'],
+            'reportNo': report['reportId'] == _reportA
+                ? 'RB202608300001'
+                : 'RB202608300002',
+            'warehouseId': report['warehouseId'],
+            'warehouseName': '成品仓',
+          },
       ],
     };
   }

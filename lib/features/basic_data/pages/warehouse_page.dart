@@ -20,6 +20,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/warehouse_node.dart';
 import '../repositories/warehouse_repository.dart';
 import '../repositories/master_status_repository.dart';
@@ -130,7 +131,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     _loadWarehouses(1);
   }
 
-  List<MasterFieldDef> _fields() => [
+  List<MasterFieldDef> _fields({String? excludeId}) => [
     const MasterFieldDef(
       key: 'name',
       label: '仓库名称',
@@ -168,6 +169,19 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       customBuilder: (field) => _WarehouseWorkshopField(
         initialValue: field.initialValue,
         onChanged: field.onChanged,
+      ),
+    ),
+    // V476 主/子层级：上级仓库。不选=独立顶层；父仓仅作查询聚合与下拉分组。
+    MasterFieldDef(
+      key: 'parentId',
+      label: '上级仓库',
+      group: '基础',
+      type: MasterFieldType.custom,
+      hint: '不选=独立顶层仓',
+      customBuilder: (field) => _WarehouseParentField(
+        initialValue: field.initialValue,
+        onChanged: field.onChanged,
+        excludeId: excludeId,
       ),
     ),
     const MasterFieldDef(
@@ -208,13 +222,14 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     showMasterEditDialog(
       context: context,
       title: '编辑仓库',
-      fields: _fields(),
+      fields: _fields(excludeId: d.id),
       initialValues: {
         'name': d.name ?? '',
         'code': d.code ?? '',
         'location': d.location ?? '',
         'accountable': d.accountable ? 'true' : 'false',
         'workshopDepartmentId': d.workshopDepartmentId ?? '',
+        'parentId': d.parentId ?? '',
         'status': d.status ?? '',
       },
       readOnlyKeys: _canStatus ? null : const {'status'},
@@ -349,6 +364,13 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       value: (w) => w.name,
     ),
     MasterColumnDef(
+      key: 'parent',
+      // V476 主/子层级：子仓行显示主仓名，主仓/独立仓显示「—」。
+      label: '上级仓库',
+      width: 150,
+      value: (w) => w.parentName ?? '—',
+    ),
+    MasterColumnDef(
       key: 'location',
       label: '位置',
       width: 160,
@@ -460,6 +482,71 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _WarehouseParentField extends ConsumerStatefulWidget {
+  const _WarehouseParentField({
+    required this.initialValue,
+    required this.onChanged,
+    this.excludeId,
+  });
+
+  final String? initialValue;
+  final ValueChanged<dynamic> onChanged;
+
+  /// 编辑时排除自己（自己不能当自己的上级；服务端另防环）。
+  final String? excludeId;
+
+  @override
+  ConsumerState<_WarehouseParentField> createState() =>
+      _WarehouseParentFieldState();
+}
+
+class _WarehouseParentFieldState extends ConsumerState<_WarehouseParentField> {
+  String? _value;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.initialValue?.isEmpty == true ? null : widget.initialValue;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(masterNameServiceProvider).ensureLoaded();
+    });
+  }
+
+  @override
+  void didUpdateWidget(_WarehouseParentField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialValue != widget.initialValue) {
+      _value = widget.initialValue?.isEmpty == true
+          ? null
+          : widget.initialValue;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final names = ref.watch(masterNameServiceProvider);
+    return UtenDropdownField(
+      label: '上级仓库',
+      hintText: '不选=独立顶层仓',
+      value: _value,
+      items: [
+        for (final e in names.warehouseHierarchy)
+          if (e.id != widget.excludeId)
+            UtenDropdownItem(
+              value: e.id,
+              label: e.name,
+              enabled: e.id == _value || e.parentId == null,
+              indent: e.parentId == null ? 0 : 16,
+            ),
+      ],
+      onChanged: (value) {
+        setState(() => _value = value);
+        widget.onChanged(value);
+      },
     );
   }
 }

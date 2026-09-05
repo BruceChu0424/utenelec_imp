@@ -166,6 +166,7 @@ void main() {
         'version': 6,
         'fingerprint': 'a' * 64,
         'warehouseId': 'warehouse-1',
+        'warehouseIds': ['warehouse-1'],
         'idempotencyKey': 'preview-command-1',
         'sources': [
           {'salesOrderItemId': 'sales-line-1', 'requestedQty': 8.0},
@@ -396,6 +397,7 @@ void main() {
             'actionGroupKey': 'action-group-1',
             'qty': 0.0,
             'safetyReplenishmentQty': 6.0,
+            'publicExtraQty': 0.0,
           },
         ],
       });

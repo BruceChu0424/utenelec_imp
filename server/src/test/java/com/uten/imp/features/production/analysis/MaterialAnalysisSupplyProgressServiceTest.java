@@ -182,10 +182,39 @@ class MaterialAnalysisSupplyProgressServiceTest {
                     assertThat(execution.parameters())
                             .containsEntry("analysisId", scenario.analysisId)
                             .containsEntry("makeChildAnalysisItemId",
-                                    scenario.makeChildAnalysisItemId);
+                                    scenario.makeChildAnalysisItemId)
+                            .containsEntry("childSourceType", "MAKE_COMPONENT");
                     assertThat(execution.parameters().values())
                             .doesNotContain(scenario.analysisItemId);
                 });
+    }
+
+    @Test
+    void subcontractMakeProgressUsesPreproductionChainInsteadOfPurchaseChain() {
+        ProjectionScenario scenario = new ProjectionScenario(false, false);
+        scenario.subcontractMake = true;
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(view.route()).isEqualTo("SUBCONTRACT");
+        assertThat(step(view, "MAKE_TASK").label())
+                .isEqualTo("已创建委外前置自制任务");
+        assertThat(step(view, "PRODUCTION").label())
+                .isEqualTo("委外目标件前置自制入库");
+        assertThat(step(view, "PLAN").documentId())
+                .isEqualTo(scenario.makePlanId);
+        assertThat(scenario.executions)
+                .filteredOn(execution -> execution.sql().contains(
+                        "FROM production_plans plan"))
+                .singleElement()
+                .satisfies(execution -> assertThat(execution.parameters())
+                        .containsEntry("makeChildAnalysisItemId",
+                                scenario.makeChildAnalysisItemId)
+                        .containsEntry("childSourceType", "SUBCONTRACT_MAKE"));
+        assertThat(scenario.executions).noneMatch(execution ->
+                execution.sql().contains("SELECT DISTINCT request.bill_no")
+                        || execution.sql().contains("FROM purchase_order_items"));
     }
 
     private static MaterialAnalysisContracts.SupplyProgressStep step(
@@ -210,6 +239,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
         private BigDecimal delegatedQty = BigDecimal.ZERO;
         private Object[] splitProgress;
         private boolean make;
+        private boolean subcontractMake;
         private boolean subcontractPlanExists = true;
         private final UUID analysisId = UUID.randomUUID();
         private final UUID materialLineId = UUID.randomUUID();
@@ -276,7 +306,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 return rows(new Object[]{purchase ? "SQ-001" : "WW-001", AT});
             }
             if (sql.contains("FROM production_plans plan")) {
-                return make
+                return make || subcontractMake
                         ? rows(new Object[]{makePlanId, "SJ-MAKE-001", 1,
                                 true, AT, makerId})
                         : List.of();
@@ -347,9 +377,10 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 return rows(new Object[]{actionId,
                         make ? "MAKE" : purchase ? "BUY" : "SUBCONTRACT",
                         make ? "PREPLAN_MAKE_TASK"
+                                : subcontractMake ? "SUBCONTRACT_MAKE_TASK"
                                 : purchase ? "PURCHASE_REQUEST" : "SUBCONTRACT_APPLICATION",
-                        make ? makeChildAnalysisItemId : externalItemId,
-                        make ? "自制备料 2026-08-30 abcd"
+                        make || subcontractMake ? makeChildAnalysisItemId : externalItemId,
+                        make || subcontractMake ? "自制备料 2026-08-30 abcd"
                                 : purchase ? "SQ-001" : "WW-001",
                         AT, makerId});
             }

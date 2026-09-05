@@ -33,6 +33,7 @@ import '../../stock/repositories/stock_query_repository.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../widgets/stock_grid_columns.dart';
@@ -542,25 +543,31 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                     onChanged: (d) =>
                                         setState(() => _billDate = d),
                                   ),
-                                  _dd(
-                                    '仓库',
-                                    _warehouseId,
-                                    names.warehouseEntries,
-                                    (v) {
+                                  // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
+                                  UtenDropdownField(
+                                    label: '仓库',
+                                    value: _warehouseId,
+                                    required: true,
+                                    items: warehouseHierarchyItems(
+                                      names.warehouseHierarchy,
+                                    ),
+                                    onChanged: (v) {
                                       setState(() => _warehouseId = v);
                                       if (_isCheck) {
                                         unawaited(_refreshCheckBooks());
                                       }
                                     },
-                                    required: true,
                                   ),
                                   if (widget.docType == StockDocType.transfer)
-                                    _dd(
-                                      '调入仓',
-                                      _toWarehouseId,
-                                      names.warehouseEntries,
-                                      (v) => setState(() => _toWarehouseId = v),
+                                    UtenDropdownField(
+                                      label: '调入仓',
+                                      value: _toWarehouseId,
                                       required: true,
+                                      items: warehouseHierarchyItems(
+                                        names.warehouseHierarchy,
+                                      ),
+                                      onChanged: (v) =>
+                                          setState(() => _toWarehouseId = v),
                                     ),
                                   if (widget.docType == StockDocType.draw) ...[
                                     _dd(

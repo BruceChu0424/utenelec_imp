@@ -41,9 +41,38 @@ public class MaterialCategoryService {
 
     @Transactional(readOnly = true)
     public List<MaterialCategoryNode> tree() {
+        return tree(false);
+    }
+
+    /**
+     * 全树（未软删）。withGoodsCounts=true 时每个节点附 {@code goodsCount} =
+     * 子树（含自身）未软删货品数——即时库存等页面用它隐藏零货品分类的分段。
+     */
+    @Transactional(readOnly = true)
+    public List<MaterialCategoryNode> tree(boolean withGoodsCounts) {
         UUID systemCategoryId = systemCategories.materialCategoryId();
-        return buildTree(
+        List<MaterialCategoryNode> roots = buildTree(
                 repo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null, systemCategoryId);
+        if (withGoodsCounts) {
+            Map<UUID, Long> direct = new HashMap<>();
+            for (Object[] row : repo.countGoodsPerCategory()) {
+                direct.put((UUID) row[0], ((Number) row[1]).longValue());
+            }
+            for (MaterialCategoryNode root : roots) {
+                accumulateGoodsCounts(root, direct);
+            }
+        }
+        return roots;
+    }
+
+    /** 后序累加：节点 goodsCount = 自身直接货品数 + 各子树货品数之和。 */
+    private long accumulateGoodsCounts(MaterialCategoryNode node, Map<UUID, Long> direct) {
+        long sum = direct.getOrDefault(node.getId(), 0L);
+        for (MaterialCategoryNode child : node.getChildren()) {
+            sum += accumulateGoodsCounts(child, direct);
+        }
+        node.setGoodsCount(sum);
+        return sum;
     }
 
     @Transactional(readOnly = true)

@@ -30,6 +30,7 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -45,6 +46,7 @@ import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -58,6 +60,7 @@ import '../widgets/subcontract_link_picker.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
   const SubcontractDocEditPage({super.key, required this.docType, this.id});
@@ -694,19 +697,36 @@ class _SubcontractDocEditPageState
                             ),
                         ],
                       ),
-                      UtenEditableGrid<SubcontractGridRow>(
-                        controller: _grid,
-                        columns: subcontractGridColumns(
-                          _pickGoods,
-                          _cfg,
-                          unitEntries: ref
-                              .watch(mn.masterNameServiceProvider)
-                              .unitEntries,
-                          // 每行末尾备注列（随行提交 remark）。
-                          showRemark: true,
-                        ),
-                        createBlankRow: () => SubcontractGridRow(),
-                        cloneRow: (r) => r.clone(),
+                      // 列显隐/排序按单据模式分桶持久化（账号级，跨设备生效）。
+                      Builder(
+                        builder: (_) {
+                          final columnPrefs = ref.watch(
+                            subcontractApplicationGridColumnPrefsProvider,
+                          )[widget.docType.name];
+                          return UtenEditableGrid<SubcontractGridRow>(
+                            controller: _grid,
+                            showColumnSettings: true,
+                            initialColumnOrder: columnPrefs?.order,
+                            initialHiddenColumnKeys: columnPrefs?.hidden,
+                            onColumnSettingsChanged: (order, hidden) => ref
+                                .read(
+                                  subcontractApplicationGridColumnPrefsProvider
+                                      .notifier,
+                                )
+                                .updateFor(widget.docType.name, order, hidden),
+                            columns: subcontractGridColumns(
+                              _pickGoods,
+                              _cfg,
+                              unitEntries: ref
+                                  .watch(mn.masterNameServiceProvider)
+                                  .unitEntries,
+                              // 每行末尾备注列（随行提交 remark）。
+                              showRemark: true,
+                            ),
+                            createBlankRow: () => SubcontractGridRow(),
+                            cloneRow: (r) => r.clone(),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -882,12 +902,13 @@ class _SubcontractDocEditPageState
                   ),
                 if (_cfg.hasWarehouse)
                   // 回厂新建已经迁到仓库独立登记页；这里仅服务其余单据或既有草稿编辑。
-                  _dropdown(
-                    '仓库',
-                    _warehouseId,
-                    names.warehouseEntries,
-                    (v) => setState(() => _warehouseId = v),
+                  // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
+                  UtenDropdownField(
+                    label: '仓库',
+                    value: _warehouseId,
                     required: _cfg.warehouseRequired,
+                    items: warehouseHierarchyItems(names.warehouseHierarchy),
+                    onChanged: (v) => setState(() => _warehouseId = v),
                   ),
                 if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)
                   _dropdown(
@@ -901,7 +922,7 @@ class _SubcontractDocEditPageState
                     required: widget.docType == SubcontractDocType.order,
                     allowClear: widget.docType != SubcontractDocType.order,
                     errorMessage: _currencyError,
-                    helperMessage: widget.docType == SubcontractDocType.order
+                    info: widget.docType == SubcontractDocType.order
                         ? '财务批准后冻结为委外订单币种快照'
                         : null,
                   ),
@@ -918,9 +939,7 @@ class _SubcontractDocEditPageState
                     required: _cfg.settlementRequired,
                     allowClear: !_cfg.settlementRequired,
                     errorMessage: _settlementError,
-                    helperMessage: _cfg.settlementRequired
-                        ? '财务批准后冻结为委外订单结算快照'
-                        : null,
+                    info: _cfg.settlementRequired ? '财务批准后冻结为委外订单结算快照' : null,
                   ),
                 if (_cfg.hasTaxRate && !_commercialTermsInheritedFromSource)
                   TextField(
@@ -934,14 +953,14 @@ class _SubcontractDocEditPageState
                       decimal: true,
                     ),
                     decoration: InputDecoration(
-                      labelText: widget.docType == SubcontractDocType.order
-                          ? '税率(%)*'
-                          : '税率(%)',
-                      helper: widget.docType == SubcontractDocType.order
-                          ? const UtenFieldMessage.helper(
-                              '必填，允许 0；财务批准后冻结，范围 0–100',
-                            )
-                          : const UtenFieldMessage.helper('范围 0–100'),
+                      label: fieldLabel(
+                        '税率(%)',
+                        theme,
+                        required: widget.docType == SubcontractDocType.order,
+                        info: widget.docType == SubcontractDocType.order
+                            ? '必填，允许 0；财务批准后冻结，范围 0–100'
+                            : '范围 0–100',
+                      ),
                       error: _taxRateError == null
                           ? null
                           : UtenFieldMessage.error(_taxRateError!),
@@ -1005,10 +1024,11 @@ class _SubcontractDocEditPageState
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: const InputDecoration(
-                      labelText: '建议索赔金额(本币)',
-                      helper: UtenFieldMessage.helper(
-                        '仅供后续财务责任决定参考；不会自动扣款、抵销或生成负应付',
+                    decoration: InputDecoration(
+                      label: fieldLabel(
+                        '建议索赔金额(本币)',
+                        theme,
+                        info: '仅供后续财务责任决定参考；不会自动扣款、抵销或生成负应付',
                       ),
                     ),
                   ),
@@ -1078,7 +1098,7 @@ class _SubcontractDocEditPageState
     bool enabled = true,
     bool allowClear = true,
     String? errorMessage,
-    String? helperMessage,
+    String? info,
   }) {
     return UtenDropdownField(
       label: label,
@@ -1087,7 +1107,7 @@ class _SubcontractDocEditPageState
       enabled: enabled,
       allowClear: allowClear,
       errorMessage: errorMessage,
-      helperMessage: helperMessage,
+      info: info,
       items: [
         for (final e in entries.entries)
           UtenDropdownItem(value: e.key, label: e.value),

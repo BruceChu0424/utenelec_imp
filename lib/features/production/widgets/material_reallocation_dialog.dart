@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/api_exception.dart';
@@ -660,10 +661,12 @@ class _MaterialReallocationDialogBodyState
               _submitError = null;
             }),
             decoration: InputDecoration(
-              labelText: '让料数量',
-              helper: UtenFieldMessage.helper(
-                '服务端可让 ${widget.qtyText(target.sourceLendableQty)} · '
-                '接受计划缺 ${widget.qtyText(target.shortageQty)} · 最多 ${widget.qtyText(_maxQty)}',
+              label: fieldLabel(
+                '让料数量',
+                theme,
+                info:
+                    '服务端可让 ${widget.qtyText(target.sourceLendableQty)} · '
+                    '接受计划缺 ${widget.qtyText(target.shortageQty)} · 最多 ${widget.qtyText(_maxQty)}',
               ),
               suffixText: _sourceMaterial.unitName,
             ),
@@ -682,9 +685,12 @@ class _MaterialReallocationDialogBodyState
               _dirty = true;
               _submitError = null;
             }),
-            decoration: const InputDecoration(
-              labelText: '业务原因(必填)',
-              helper: UtenFieldMessage.helper('例如：客户订单加急，本批现货先给该计划。'),
+            decoration: InputDecoration(
+              label: fieldLabel(
+                '业务原因(必填)',
+                theme,
+                info: '例如：客户订单加急，本批现货先给该计划。',
+              ),
               alignLabelWithHint: true,
             ),
           ),

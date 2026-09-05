@@ -19,6 +19,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -754,10 +755,11 @@ class _ProductionPlanEditPageState
                                       ),
                                       initialValue: _manualSourceType,
                                       isExpanded: true,
-                                      decoration: const InputDecoration(
-                                        labelText: '手工计划来源',
-                                        helper: UtenFieldMessage.helper(
-                                          '仅手工添加的货品行必填',
+                                      decoration: InputDecoration(
+                                        label: fieldLabel(
+                                          '手工计划来源',
+                                          theme,
+                                          info: '仅手工添加的货品行必填',
                                         ),
                                       ),
                                       items: [
@@ -782,10 +784,11 @@ class _ProductionPlanEditPageState
                                       ),
                                       controller: _manualSourceRef,
                                       maxLength: 200,
-                                      decoration: const InputDecoration(
-                                        labelText: '手工计划需求编号',
-                                        helper: UtenFieldMessage.helper(
-                                          '同一需求后续处理必须沿用同一个编号',
+                                      decoration: InputDecoration(
+                                        label: fieldLabel(
+                                          '手工计划需求编号',
+                                          theme,
+                                          info: '同一需求后续处理必须沿用同一个编号',
                                         ),
                                       ),
                                     ),
@@ -796,10 +799,11 @@ class _ProductionPlanEditPageState
                                         'production-manual-source-reason',
                                       ),
                                       controller: _manualSourceReason,
-                                      decoration: const InputDecoration(
-                                        labelText: '手工计划原因',
-                                        helper: UtenFieldMessage.helper(
-                                          '返工、试制、样品、备库或其他计划不得绕过物料分析',
+                                      decoration: InputDecoration(
+                                        label: fieldLabel(
+                                          '手工计划原因',
+                                          theme,
+                                          info: '返工、试制、样品、备库或其他计划不得绕过物料分析',
                                         ),
                                       ),
                                       minLines: 1,

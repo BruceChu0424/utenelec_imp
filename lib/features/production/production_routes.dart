@@ -18,6 +18,7 @@ import 'pages/production_plan_list_page.dart';
 import 'pages/production_plan_summary_sheet_page.dart';
 import 'pages/production_report_page.dart';
 import 'pages/where_used_report_page.dart';
+import 'pages/production_workshop_tasks_page.dart';
 
 /// 生产模块公开路由清单。
 ///
@@ -38,6 +39,11 @@ final List<RouteBase> productionRoutes = [
     path: RouteName.productionProgress,
     name: 'production-progress',
     builder: (_, _) => const ProductionBoardPage(initialTab: 1),
+  ),
+  GoRoute(
+    path: RouteName.productionWorkshopTasks,
+    name: 'production-workshop-tasks',
+    builder: (_, _) => const ProductionWorkshopTasksPage(),
   ),
   GoRoute(
     path: RouteName.productionMaterialAnalysis,
@@ -109,10 +115,19 @@ final List<RouteBase> productionRoutes = [
   GoRoute(
     path: '/production/daily-reports/new',
     name: 'production-daily-report-new',
-    builder: (_, state) => ProductionDailyReportEditPage(
-      initialExecutionSegmentId:
-          state.uri.queryParameters['executionSegmentId'],
-    ),
+    builder: (_, state) {
+      final batch = state.uri.queryParameters['executionSegmentIds']
+          ?.split(',')
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .take(100)
+          .toList(growable: false);
+      return ProductionDailyReportEditPage(
+        initialExecutionSegmentId:
+            state.uri.queryParameters['executionSegmentId'],
+        initialExecutionSegmentIds: batch ?? const [],
+      );
+    },
   ),
   GoRoute(
     path: '/production/daily-reports/:id/edit',

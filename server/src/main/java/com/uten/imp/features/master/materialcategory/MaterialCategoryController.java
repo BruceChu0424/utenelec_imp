@@ -22,8 +22,10 @@ public class MaterialCategoryController {
 
     @GetMapping("/tree")
     @PreAuthorize("hasAuthority('material_category:view')")
-    public List<MaterialCategoryNode> tree() {
-        return service.tree();
+    public List<MaterialCategoryNode> tree(
+            @RequestParam(name = "withGoodsCounts", required = false, defaultValue = "false")
+            boolean withGoodsCounts) {
+        return service.tree(withGoodsCounts);
     }
 
     @GetMapping("/{id}/subtree")

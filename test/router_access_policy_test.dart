@@ -291,7 +291,7 @@ void main() {
 
     test('production progress uses the backend view permission', () {
       expect(requiredAnyPermFor(RouteName.productionProgress), const [
-        Perm.productionPlanView,
+        Perm.productionExecutionOverview,
       ]);
     });
 

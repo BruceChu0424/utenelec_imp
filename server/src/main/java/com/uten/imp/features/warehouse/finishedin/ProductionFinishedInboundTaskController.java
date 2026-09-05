@@ -81,6 +81,15 @@ public class ProductionFinishedInboundTaskController {
         return arrivalRegistrations.rememberPlacesBatch(reportIds);
     }
 
+    @PostMapping("/arrival-registrations/batch/remember-registration-batches")
+    @PreAuthorize("hasAuthority('stock_doc:view')"
+            + " and hasAuthority('stock_doc:approve')")
+    public BatchRememberPlacesResult rememberRegistrationBatches(
+            @RequestBody List<UUID> registrationIds) {
+        return arrivalRegistrations.rememberPlacesForRegistrations(
+                registrationIds);
+    }
+
     @GetMapping("/arrival-registrations/last-warehouse")
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public LastWarehouseView lastArrivalWarehouse() {
@@ -115,7 +124,8 @@ public class ProductionFinishedInboundTaskController {
     @PreAuthorize("hasAuthority('stock_doc:view')"
             + " and hasAuthority('stock_doc:approve')")
     public RememberPlacesResult rememberPlaces(
-            @PathVariable UUID reportId) {
-        return arrivalRegistrations.rememberPlaces(reportId);
+            @PathVariable UUID reportId,
+            @RequestParam(required = false) UUID registrationId) {
+        return arrivalRegistrations.rememberPlaces(reportId, registrationId);
     }
 }

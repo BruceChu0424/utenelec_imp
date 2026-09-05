@@ -1,4 +1,36 @@
 # 老库数据迁移 · 总索引
+> **当前共享源码候选（2026-09-04）**：迁移目录头为 **V476**，共 **438** 个迁移文件、
+> **438** 个唯一版本且无重号。V476 新增仓库主/子层级：`warehouses.parent_id` +
+> 一次性种子（仓库（14年版）=主仓，其余 5 仓挂子仓），主仓只作查询聚合（即时库存
+> 选它=子树汇总），一切单据/收发存/报工/物料分析必须落到具体子仓（前后端双重
+> 校验），见[迁移说明 92](92-V476仓库主子层级.md)。V475 权限面收口补遗：补 `finance.payables`（采购委外
+> 应付结算工作台）与 `quality.inspection-records`（品质检测记录）两个守卫页 surface
+> （V455「带路由守卫页面 100% 纳入目录」口径的漏网，零默认 grant，112→114 面），并按
+> V455 模式下线双端零引用孤儿码 `viewcontext:scoped`（无 @PreAuthorize 强制、无前端
+> 常量，存量授权一并清理；重置白名单版本门增至 V475/437）。V474 新增运行时直接超采公共在途追加账、订单级
+> exact/public 份额、仓库预计/实际去向投影与跨主仓 exact 闸门，并保留齐套器的
+> READY+WAITING 分批结果，见[迁移说明 91](91-V474运行时公共在途与入库去向.md)。V473 只以前向迁移把 `stock_doc:reverse_issue` 的权限目录
+> 文案统一为“取消生产领料出库”，不改权限 code、既有授权、兼容 API 或历史流水，见
+> [迁移说明 90](90-V473生产领料取消出库权限文案.md)。V471 保存“主领料仓 + 参与仓集合”，历史分析与旧形态写入口
+> 都归一为单主仓；参与仓只提供可调拨参考，不扩大齐套、预留或 DRAW。V472 把精确需求与
+> 公共超量拆账，后续分析以受容量锁和对象范围保护的显式 claim 采用公共在途，并登记
+> production_material_analysis:over_supply / production_material_analysis:claim_shared_future
+> 到权限目录、默认部门和 production.material-analysis 权限面。见
+> [迁移说明 89](89-V471-V472物料分析参与仓与公共在途认领.md)。目标库迁移、历史对账、
+> 岗位 UAT、恢复演练和签名发布均未完成，生产 **NO-GO**。下文旧段落中的“当前目录头”均为
+> 对应迁移时点的历史证据，不能覆盖本段 V475 头。
+>
+> **V470 生产执行工作台与报工即开工（2026-09-04）**：按最外层 analysis 聚合进行中，
+> 新车间任务页按主职/兼职/负责人/经理与有效权限求交；人工派工/确认开工从新入口下线，
+> 全量实发后直接可报工，首次创建日报与 `AUTO_START_ON_REPORT` 同事务；生产 DRAW 只能
+> 审核并出库一段式，首次报工前可取消出库、之后必须退料。见
+> [迁移说明 88](88-V470生产执行工作台与报工即开工.md)。
+>
+> **V469 生产成品按明细分批登记送检（2026-09-04）**：前向解除 V430 的日报头唯一/整单
+> 全覆盖约束，保留来源行 UUID 全局唯一、追加式审计、幂等与 FQC/库存隔离；未选行继续待登记，
+> 旧登记零改写。见 [迁移说明 87](87-V469生产成品按明细分批登记送检.md) 与
+> [ADR-058 后置修订](../99-决策记录-ADR/ADR-058-生产成品仓库送检登记与库位快照.md)。
+>
 > **当前共享源码候选(2026-09-04)**：迁移目录头为 V467，共 429 个迁移文件、429 个唯一版本且无重号。V467 委外权益委托触发器放开双路线（ADR-062 修订二配套修复）：V337 的 `fn_check_preplan_make_entitlement_delegation` 头触发器写死 MAKE 形状（route='MAKE'/PREPLAN_MAKE_TASK/MAKE_COMPONENT），b0a62cd1 让有子层委外「下达委外」也走 `preplan_make_entitlement_delegations` 迁移 exact 权益后，真库 INSERT 被 23514「invalid preplan MAKE entitlement delegation」拒绝、下达事务整体回滚（2026-09-04 事故，行为锁定在 `SubcontractMakeDelegationRouteGuardPostgresTest`）；本迁移把配对放开为 route→(document_type, child_source_type) 双路线（MAKE 与 SUBCONTRACT 各自配对、未知路线仍失败关闭），事件侧触发器与总量校验器本就形状无关不动；不加表、表计数不变，见 [迁移说明 86](86-V467委外权益委托触发器放开双路线.md)。V466 IQC 退回补货单通道收口：`v_preplan_buy_action_slice_progress`（V463 sources 分摊版）的 `open_order_qty` 计入「已退回不合格量」（`procurement_iqc_rejection_cases.return_recorded_at` 非空且四终态内），使原订单退回后的重新欠货计入在途——配合应用侧下达余量扣除（已取消 IQC 行动对应原订货单欠货），消除「原订单预计到货重开等待补货」与「物料分析取消行动邀请重新下单」双通道并存的重复补货；行动本体按 V250 追加式契约保持取消不复活；不新增表，见 [迁移说明 85](85-V466IQC退回补货单通道收口.md)。V465 ordered_qty 守卫与「放开超采」对齐（ADR-068/069 遗留修复）：`trg_purchase/subcontract_request/application_ordered_guard` 换成「只禁负数」的 `fn_guard_ordered_qty_non_negative`（触发器沿用原名），单行超采订货在财务批准回写 ordered_qty 时不再被 23514 拒绝；不新增表，见 [迁移说明 84](84-V465超采守卫对齐.md)。V463/V464 订货行多来源锚定（同货品合并生成订货单，ADR-069）：新增 `purchase_order_item_sources` / `subcontract_order_item_sources` 两张来源分配表（一条合并订货行锚定多条申请明细，SUM(alloc_qty)=行数量、历史行回填单来源 alloc=行数量、FIFO 分摊末位吸收超额），替换 `v_procurement_decomposition_tasks`（待财务占用按 sources 汇总）与 `v_preplan_buy_action_slice_progress`（切片进度经 sources 分摊）两视图，新增两个 FIFO 分摊 SQL 函数；V464 重发 `business_data_reset()` 孪生登记两新表（CLEAR 222→224、总数 318→320），ops/reset_business_data.sql 与 BusinessDataResetSqlContractTest 同步，见 [迁移说明 83](83-V463-V464订货行多来源锚定.md)。V462 工作台「清空业务数据」函数 `business_data_reset()`（应用内孪生：与 ops/reset_business_data.sql 同一份 318 表清单、清空+归零+校验+全员下线单事务；不加表，重置白名单版本门增至 V462/424），见 [迁移说明 82](82-V462工作台清空业务数据函数.md) 与 ADR-067。V461 恢复 V458 丢失的 `SUBCONTRACT_PREPARATION` 来源类型：V458 重写 `production_material_analysis_item_source_type_chk` 时基于 V234 基线、漏带 V436 增补值，委外备料链路（SubcontractPreparationCoordinator 等 7 个服务仍在写）真库 INSERT 被 23514 拒绝（迁移测试 fixture 即触发），仅恢复枚举值、不加表、表计数不变，见 [迁移说明 81](81-V461恢复委外备料来源类型.md)。V460 委外前置自制任务外部化守卫补漏：放行 (route='SUBCONTRACT', external_document_type='SUBCONTRACT_MAKE_TASK') 组合进入 V250 的 route×type CHECK 与 action/allocation 外部化握手守卫（真库「采用委外」被 23514 拒绝的根因修复），不加表、表计数不变，见 [迁移说明 80](80-V460委外前置自制任务外部化守卫补漏.md)。V459 部门定向审核待办弹窗基础：新增兼职部门表 `employee_secondary_departments`（PRESERVE，权限合成并入兼职部门链、per-user auth_version 即时吊销）；`notices` 加聚合定位与办结撤回四列（历史行全 NULL=永不撤回、零行为变化）与待办部分索引；`notice_user_states` 加 `snoozed_until`（稍后再看）；登记 `review_inbox:view` 与 `reviews.inbox` 面（110→111）——零默认 grant、不重写历史行，见 [迁移说明 79](79-V459部门定向审核待办弹窗基础.md)。V458 委外先做后审账本：新增 `preplan_subcontract_make_tasks` / `preplan_subcontract_make_task_batches` 两张业务事实表（reset 白名单 CLEAR，计数 315→317）。V457 货品后模镶件编号：`goods` 新增 `rear_insert_code varchar(100)`（模具编号之后的独立字段，解决模具师傅换错后模镶件），存量按老备注（老库 `B_Goods.Paper`→`goods.paper`）保守解析「换后模X镶件 / 后模镶件用X」两类写法回填，备注原文一字不动，未点明后模的（换镶件/换6M镶件等）保持 NULL 留人工补录；`migrate_goods_data.sql` 同口径解析，老库重迁一致。V457 不新增业务表、零默认 grant，重置白名单增至 V457/419（V458 再增至 V458/420、V459 增至 V459/421、V460/V461 再增至 V461/423、V463/V464 增至 V464/426、V465 增至 V465/427、V466 增至 V466/428、V467 增至 V467/429）。空库 V1→V458 与重置 PostgreSQL 测试已过（2026-09-02 补验 V458：`V238ToCurrentSyntheticMigrationPostgresTest` 等四个 DB 测试全绿、420 个迁移校验通过；V459 席位验证随本批合入执行）；目标库迁移、岗位 UAT、恢复与签名发布均未完成，生产 **NO-GO**。V457 见 [迁移说明 77](77-V457货品后模镶件编号.md)。V456 页面内授权入口接线见 [迁移说明 76](76-V456页面内授权入口接线.md)；V455 权限目录收口见 [迁移说明 75](75-V455权限目录收口.md)。
 >
 > **V452/V453 供应商默认结算方式与账期维护**：V452 给供应商主档加 UUID 权威默认结算方式（镜像 V285 客户契约：精确 legacy 回填、price_style 同步触发器、活动引用守卫）；V453 登记结算方式管理页权限与权限面，账期策略（V330 五列）首次获得在线维护入口，系统角色 CASH/MONTHLY 口径锁定不可在线改。两者不新增业务表、零默认 grant；目标库迁移、岗位 UAT、恢复与签名发布均未完成，生产 **NO-GO**，见 [迁移说明 72](72-V452-V453供应商默认结算方式与结算方式账期维护.md)。

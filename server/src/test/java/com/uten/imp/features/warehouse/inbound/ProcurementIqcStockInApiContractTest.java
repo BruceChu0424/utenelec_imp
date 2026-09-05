@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ReleasedSlice;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.InboundAllocation;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.StockInHistoryItem;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.TaskDetail;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,7 @@ class ProcurementIqcStockInApiContractTest {
                 TaskDetail.class,
                 ReleasedSlice.class,
                 StockInHistoryItem.class,
+                InboundAllocation.class,
                 ProcurementIqcStockInContracts.ConfirmResult.class);
 
         List<String> componentNames = responseTypes.stream()
@@ -71,6 +73,22 @@ class ProcurementIqcStockInApiContractTest {
         for (String token : COMMERCIAL_TOKENS) {
             assertThat(json).doesNotContain("\\\"" + token);
         }
+    }
+
+    @Test
+    void allocationContractSeparatesActualAndIntendedWarehouses() {
+        assertThat(Arrays.stream(InboundAllocation.class.getRecordComponents())
+                .map(RecordComponent::getName).toList())
+                .contains(
+                        "kind", "qty",
+                        "actualWarehouseId", "actualWarehouseName",
+                        "targetWarehouseId", "targetWarehouseName",
+                        "intendedWarehouseNames", "warehouseMatches",
+                        "analysisId", "analysisMaterialId",
+                        "planId", "executionSegmentId",
+                        "workshopDepartmentId", "responsibleEmployeeId",
+                        "formationStatus")
+                .doesNotContain("price", "amount", "clientName");
     }
 
     @Test

@@ -547,7 +547,7 @@ class ChainNoticeOutboxEventTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
         when(jdbc.queryForList(
-                contains("production_finished_arrival_registrations"),
+                contains("FROM production_daily_reports report"),
                 eq(reportId))).thenReturn(List.of(Map.of(
                         "id", reportId,
                         "bill_no", "RB-ARRIVAL-001")));
@@ -575,7 +575,7 @@ class ChainNoticeOutboxEventTest {
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
         when(jdbc.queryForList(
-                contains("production_finished_arrival_registrations"),
+                contains("FROM production_daily_reports report"),
                 eq(reportId))).thenReturn(List.of(Map.of(
                         "id", reportId,
                         "bill_no", "RB-ARRIVAL-002")));
@@ -627,7 +627,7 @@ class ChainNoticeOutboxEventTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
         when(jdbc.queryForList(
-                contains("production_finished_arrival_registrations"),
+                contains("FROM production_daily_reports report"),
                 eq(reportId))).thenReturn(List.of());
         ChainNoticeService service = service(jdbc, outbox);
 

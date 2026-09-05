@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -256,9 +257,10 @@ class _MaterialSettlementSheetState
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  labelText: '冲销数量',
-                  helper: UtenFieldMessage.helper(
-                    '最多 ${_number(source.reversibleQtyBase)}',
+                  label: fieldLabel(
+                    '冲销数量',
+                    Theme.of(dialogContext),
+                    info: '最多 ${_number(source.reversibleQtyBase)}',
                   ),
                 ),
               ),

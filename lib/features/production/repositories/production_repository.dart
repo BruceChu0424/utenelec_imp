@@ -136,16 +136,17 @@ class ProductionPlanRepository {
     final orderedIds = goodsIds.toList(growable: false)..sort();
     final result = <String, ({String departmentId, String? departmentName})>{};
     final effectiveCancelToken = cancelToken ?? CancelToken();
-    final requests = <Future<List<Map<String, dynamic>>>>[];
+    final requests = <Future<List<Map<String, dynamic>>> Function()>[];
     for (var start = 0; start < orderedIds.length; start += requestLimit) {
       final proposedEnd = start + requestLimit;
       final end = proposedEnd < orderedIds.length
           ? proposedEnd
           : orderedIds.length;
+      final ids = orderedIds.sublist(start, end).join(',');
       requests.add(
-        api.getListOnce(
+        () => api.getListOnce(
           '$_materialAnalysesBase/default-workshops', // ENDPOINT
-          query: {'ids': orderedIds.sublist(start, end).join(',')},
+          query: {'ids': ids},
           receiveTimeout: receiveTimeout,
           cancelToken: effectiveCancelToken,
         ),
@@ -153,7 +154,7 @@ class ProductionPlanRepository {
     }
     List<List<Map<String, dynamic>>> batches;
     try {
-      batches = await Future.wait(requests, eagerError: true);
+      batches = await _runBounded(requests);
     } catch (_) {
       if (!effectiveCancelToken.isCancelled) {
         effectiveCancelToken.cancel('default workshop lookup failed');
@@ -172,6 +173,64 @@ class ProductionPlanRepository {
       }
     }
     return result;
+  }
+
+  /// 货品 → 最近一次分析确认的供应路线（路线「学习预填」：无建议路线或上次
+  /// 确认与建议不同的物料，下次分析默认带出上次的选择）。同货品按颜色+单位
+  /// 维度各有记忆。无历史返回空 Map；失败由调用方静默处理。
+  /// 大分析几百货品时按 100/块并行分块（URL 编码后接近常见代理 8KB
+  /// request-line 上限，与 default-workshops 同款防护）。
+  Future<Map<String, List<MaterialRouteMemory>>> materialAnalysisLastRoutes(
+    Set<String> goodsIds,
+  ) async {
+    if (goodsIds.isEmpty) return const {};
+    const chunkSize = 100;
+    final ordered = goodsIds.toList(growable: false)..sort();
+    final requests = <Future<Map<String, dynamic>> Function()>[];
+    for (var start = 0; start < ordered.length; start += chunkSize) {
+      final end = (start + chunkSize).clamp(0, ordered.length);
+      final ids = ordered.sublist(start, end).join(',');
+      requests.add(
+        () => api.get(
+          '$_materialAnalysesBase/last-routes', // ENDPOINT
+          query: {'goodsIds': ids},
+        ),
+      );
+    }
+    final chunks = await _runBounded(requests);
+    return {
+      for (final chunk in chunks)
+        for (final entry in chunk.entries)
+          if (entry.value is List)
+            entry.key: [
+              for (final item in entry.value as List)
+                if (item is Map<String, dynamic>)
+                  MaterialRouteMemory.fromJson(item),
+            ],
+    };
+  }
+
+  /// Avoid turning a large analysis into dozens of simultaneous GETs. Four
+  /// workers keep latency low without overwhelming proxies or the API pool.
+  Future<List<T>> _runBounded<T>(
+    List<Future<T> Function()> requests, {
+    int concurrency = 4,
+  }) async {
+    if (requests.isEmpty) return const [];
+    final results = List<T?>.filled(requests.length, null);
+    var next = 0;
+    Future<void> worker() async {
+      while (next < requests.length) {
+        final index = next++;
+        results[index] = await requests[index]();
+      }
+    }
+
+    final workerCount = requests.length < concurrency
+        ? requests.length
+        : concurrency;
+    await Future.wait(List.generate(workerCount, (_) => worker()));
+    return [for (final value in results) value as T];
   }
 
   /// 物料供给全链路进度（只读）：按「提交需求 → 采购/委外下单 → 财务批准 →
@@ -389,35 +448,20 @@ class ProductionPlanRepository {
     return ProductionExecutionSegmentView.fromJson(json);
   }
 
-  Future<ProductionExecutionSegmentView> transitionExecutionSegment(
+  Future<ProductionExecutionSegmentView> releaseDeferredExecutionSegment(
     String planId,
     String segmentId, {
-    required String action,
     required int expectedVersion,
     required String idempotencyKey,
   }) async {
     final json = await api.post(
-      '/production/plans/$planId/execution-segments/$segmentId/$action',
+      '/production/plans/$planId/execution-segments/$segmentId/release-defer',
       body: {
         'expectedVersion': expectedVersion,
         'idempotencyKey': idempotencyKey,
       },
     ); // ENDPOINT
     return ProductionExecutionSegmentView.fromJson(json);
-  }
-
-  /// Atomically starts all selected, fully-issued dispatched segments.
-  Future<List<ProductionExecutionSegmentView>> batchStartExecutionSegments(
-    String planId, {
-    required List<ProductionExecutionBatchStartItem> items,
-  }) async {
-    final list = await api.postList(
-      '/production/plans/$planId/execution-segments/batch-start',
-      body: {
-        'items': [for (final item in items) item.toJson()],
-      },
-    ); // ENDPOINT
-    return list.map(ProductionExecutionSegmentView.fromJson).toList();
   }
 
   /// D3 订单物料分析：已审销售订货单直接 BOM 展开。
@@ -592,6 +636,7 @@ class ProductionPlanRepository {
     int? expectedVersion,
     String? analysisFingerprint,
     required String warehouseId,
+    List<String> warehouseIds = const [],
     required String idempotencyKey,
     required List<MaterialAnalysisSourceInput> sources,
   }) async {
@@ -602,6 +647,7 @@ class ProductionPlanRepository {
         'version': ?expectedVersion,
         'fingerprint': ?analysisFingerprint,
         'warehouseId': warehouseId,
+        'warehouseIds': warehouseIds.isEmpty ? [warehouseId] : warehouseIds,
         'idempotencyKey': idempotencyKey,
         'sources': [for (final source in sources) source.toJson()],
       },
@@ -621,6 +667,58 @@ class ProductionPlanRepository {
         'fingerprint': analysis.fingerprint,
         'idempotencyKey': idempotencyKey,
         'decisions': [for (final decision in decisions) decision.toJson()],
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  Future<ProductionMaterialAnalysisView> cancelMaterialAnalysis({
+    required ProductionMaterialAnalysisView analysis,
+    required String idempotencyKey,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/cancel',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'reason': reason,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  Future<ProductionMaterialAnalysisView> cancelMaterialSupplyAction({
+    required ProductionMaterialAnalysisView analysis,
+    required String actionId,
+    required String idempotencyKey,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/actions/$actionId/cancel',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'reason': reason,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  Future<ProductionMaterialAnalysisView> claimSharedFutureSupply({
+    required ProductionMaterialAnalysisView analysis,
+    required String idempotencyKey,
+    required List<String> actionGroupKeys,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/claim-shared-future',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'actionGroupKeys': actionGroupKeys,
       },
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);
@@ -1599,6 +1697,7 @@ class ProductionDailyReportRepository {
     String? keyword,
     String? departmentId,
     String? executionSegmentId,
+    List<String> executionSegmentIds = const [],
   }) async {
     final json = await api.get(
       '/production/daily-reports/reportable-plan-lines',
@@ -1611,6 +1710,8 @@ class ProductionDailyReportRepository {
           'departmentId': departmentId,
         if (executionSegmentId != null && executionSegmentId.isNotEmpty)
           'executionSegmentId': executionSegmentId,
+        if (executionSegmentIds.isNotEmpty)
+          'executionSegmentIds': executionSegmentIds.join(','),
       },
     );
     return PagedResult.fromJson(json, ReportablePlanLine.fromJson);

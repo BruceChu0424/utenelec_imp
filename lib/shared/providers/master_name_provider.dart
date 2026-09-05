@@ -48,6 +48,32 @@ class GoodsDictEntry {
   );
 }
 
+/// 仓库字典项（V476 主/子层级）：id/名称 + 上级仓库引用，供层级下拉分组展示。
+class WarehouseDictEntry {
+  const WarehouseDictEntry({
+    required this.id,
+    required this.name,
+    this.code,
+    this.parentId,
+    this.status,
+  });
+
+  final String id;
+  final String name;
+  final String? code;
+  final String? parentId;
+  final String? status;
+
+  factory WarehouseDictEntry.fromJson(Map<String, dynamic> json) =>
+      WarehouseDictEntry(
+        id: json['id'] as String,
+        name: (json['name'] ?? '') as String,
+        code: json['code'] as String?,
+        parentId: json['parentId'] as String?,
+        status: json['status'] as String?,
+      );
+}
+
 /// 各单据域共用的小主档与货品名称缓存。
 ///
 /// [_commonLoad] 同时承担并发去重：同一页面树中多个组件并发请求时只发一组 HTTP 请求。
@@ -58,6 +84,7 @@ class MasterDictionaryService {
   final ApiClient api;
 
   Map<String, String> _warehouses = {};
+  List<WarehouseDictEntry> _warehouseList = [];
   Map<String, String> _currencies = {};
   Map<String, String> _colors = {};
   Map<String, String> _units = {};
@@ -78,6 +105,10 @@ class MasterDictionaryService {
         api.getList(ApiEndpoints.unitsDict),
       ]);
       _warehouses = _nameMap(results[0]);
+      _warehouseList = [
+        for (final entry in results[0].whereType<Map<String, dynamic>>())
+          WarehouseDictEntry.fromJson(entry),
+      ];
       _currencies = _nameMap(results[1]);
 
       _colors = _nameMap(results[2]);
@@ -190,6 +221,48 @@ class MasterDictionaryService {
   String employee(String? id) => resolveName(_employees, id);
 
   Map<String, String> get warehouseEntries => _warehouses;
+
+  /// 仓库层级列表（V476）：顶层仓在前、子仓紧随其后按编号排序；
+  /// parentId 悬空（指向已删/未知仓）按顶层处理。旧后端无 parentId 时全为顶层。
+  /// [_warehouseList] 为空但名称映射有值（测试 fake 只注名称映射）时按平铺退化。
+  List<WarehouseDictEntry> get warehouseHierarchy {
+    final source = _warehouseList.isNotEmpty
+        ? _warehouseList
+        : [
+            for (final e in _warehouses.entries)
+              WarehouseDictEntry(id: e.key, name: e.value),
+          ];
+    final byParent = <String, List<WarehouseDictEntry>>{};
+    final known = source.map((e) => e.id).toSet();
+    final roots = <WarehouseDictEntry>[];
+    for (final e in source) {
+      final parent = e.parentId;
+      if (parent != null && parent.isNotEmpty && known.contains(parent)) {
+        byParent.putIfAbsent(parent, () => []).add(e);
+      } else {
+        roots.add(e);
+      }
+    }
+    int byCode(WarehouseDictEntry a, WarehouseDictEntry b) =>
+        (a.code ?? '').compareTo(b.code ?? '');
+
+    List<WarehouseDictEntry> flatten(List<WarehouseDictEntry> nodes) {
+      final sorted = [...nodes]..sort(byCode);
+      return [
+        for (final n in sorted) ...[n, ...flatten(byParent[n.id] ?? const [])],
+      ];
+    }
+
+    return flatten(roots);
+  }
+
+  /// 该仓库是否有子仓（V476）：即时库存页用它决定「含不良品仓」开关在
+  /// 选父仓（多仓聚合）时仍可用、选叶子仓时置灰。
+  bool warehouseHasChildren(String? id) {
+    if (id == null || id.isEmpty) return false;
+    return _warehouseList.any((e) => e.parentId == id);
+  }
+
   Map<String, String> get currencyEntries => _currencies;
   Map<String, String> get colorEntries => _colors;
   Map<String, String> get unitEntries => _units;

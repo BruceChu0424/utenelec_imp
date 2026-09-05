@@ -89,6 +89,34 @@ Map<String, DeptSelection> buildDeptSelectionMap(
   return out;
 }
 
+/// 直接拉出部门选择面板（宽屏右侧滑入 / 窄屏底部抽屉），不经过表单字段壳。
+/// 供表格单元格等非表单场景点开即选；返回 null = 用户取消。
+/// [requireConfirm] 为 false 时单选点行即选定返回（与旧居中弹窗行为一致）。
+Future<List<DeptSelection>?> showUtenDepartmentPickerPanel(
+  BuildContext context, {
+  required List<DepartmentNode> tree,
+  UtenDepartmentPickerMode mode = UtenDepartmentPickerMode.single,
+  List<DeptSelection> initialSelection = const [],
+  bool requireConfirm = false,
+  bool expandOnRowTap = false,
+  Set<String> initiallyExpandedIds = const {},
+  DepartmentSelectionPredicate selectablePredicate =
+      isOperationalDepartmentNode,
+}) {
+  return showUtenAdaptivePanel<List<DeptSelection>>(
+    context: context,
+    builder: (_) => _DepartmentPickerSheet(
+      mode: mode,
+      tree: tree,
+      initialSelection: initialSelection,
+      requireConfirm: requireConfirm,
+      expandOnRowTap: expandOnRowTap,
+      initiallyExpandedIds: initiallyExpandedIds,
+      selectablePredicate: selectablePredicate,
+    ),
+  );
+}
+
 class UtenDepartmentPicker extends ConsumerStatefulWidget {
   const UtenDepartmentPicker({
     super.key,

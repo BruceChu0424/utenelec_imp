@@ -260,11 +260,14 @@ public class ProductionMaterialStockLedgerService {
             UUID warehouseId,
             Collection<MaterialLine> rawLines,
             String idempotencyKey,
+            String reason,
             UUID actorId) {
         tx.bind();
         List<MaterialLine> lines = normalize(rawLines, warehouseId, false);
+        String normalizedReason = reason == null ? "" : reason.strip();
         Event event = beginEvent(
-                documentId, "ISSUE_REVERSE", idempotencyKey, hash(lines), actorId);
+                documentId, "ISSUE_REVERSE", idempotencyKey,
+                hash(lines, normalizedReason), normalizedReason, actorId);
         if (event.replayed()) {
             return new PreparedReverse(
                     event.id(), true, List.of(), actorId);
@@ -279,7 +282,7 @@ public class ProductionMaterialStockLedgerService {
             if (available.compareTo(line.qtyBase()) < 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "反出库数量超过来源行尚未退回的已领基本量");
+                        "取消出库数量超过来源行尚未退回的已领基本量");
             }
         }
         return new PreparedReverse(
@@ -287,10 +290,9 @@ public class ProductionMaterialStockLedgerService {
     }
 
     /**
-     * Once a segment is dispatched, started or completed, its issued material
-     * can only return through the explicit WDRAW/good-return chain. Reversing
-     * the warehouse issue posting underneath an active task would make the
-     * execution state claim materials that no longer exist.
+     * Before the first report, a READY or historical DISPATCHED task may still
+     * cancel an erroneous warehouse issue. Once production has begun, material
+     * may only come back through the explicit WDRAW/good-return chain.
      */
     private void requireReverseIssueBeforeDispatch(
             UUID documentId, List<MaterialLine> lines) {
@@ -302,32 +304,51 @@ public class ProductionMaterialStockLedgerService {
         if (itemIds.isEmpty()) return;
         List<Object[]> segments = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT DISTINCT segment.id, segment.status
-                                FROM production_planning_package_document_items mapping
-                                JOIN production_material_demands demand
-                                  ON demand.id = mapping.demand_id
-                                 AND demand.is_deleted = FALSE
-                                JOIN production_execution_segments segment
-                                  ON segment.id = demand.execution_segment_id
-                                 AND segment.is_deleted = FALSE
-                                WHERE mapping.document_type = 'DRAW'
-                                  AND mapping.document_id = :documentId
-                                  AND mapping.document_item_id IN (:itemIds)
+                                SELECT segment.id, segment.status,
+                                       EXISTS (
+                                           SELECT 1
+                                           FROM production_daily_report_items report_item
+                                           JOIN production_daily_reports report
+                                             ON report.id = report_item.report_id
+                                            AND report.is_deleted = FALSE
+                                            AND report.status IN (0, 1)
+                                           WHERE report_item.execution_segment_id =
+                                                 segment.id
+                                             AND report_item.is_deleted = FALSE
+                                       ) AS has_report
+                                FROM production_execution_segments segment
+                                WHERE segment.id IN (
+                                    SELECT demand.execution_segment_id
+                                    FROM production_planning_package_document_items mapping
+                                    JOIN production_material_demands demand
+                                      ON demand.id = mapping.demand_id
+                                     AND demand.is_deleted = FALSE
+                                    WHERE mapping.document_type = 'DRAW'
+                                      AND mapping.document_id = :documentId
+                                      AND mapping.document_item_id IN (:itemIds)
+                                      AND demand.execution_segment_id IS NOT NULL
+                                )
+                                  AND segment.is_deleted = FALSE
                                 ORDER BY segment.id
                                 FOR UPDATE OF segment
                                 """)
                         .setParameter("documentId", documentId)
                         .setParameter("itemIds", itemIds));
-        boolean active = segments.stream().anyMatch(row -> List.of(
-                        SEGMENT_DISPATCHED,
-                        SEGMENT_IN_PROGRESS,
-                        SEGMENT_COMPLETED)
-                .contains(row[1]));
+        boolean active = segments.stream().anyMatch(row ->
+                issueCancellationBlocked(
+                        (String) row[1], Boolean.TRUE.equals(row[2])));
         if (active) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "生产任务已派工、开工或完成，不能反出库；请按原领料行办理生产退料");
+                    "生产任务已有报工、已开始或已完成，不能取消出库；请按原领料行办理生产退料");
         }
+    }
+
+    static boolean issueCancellationBlocked(
+            String segmentStatus, boolean hasReport) {
+        return hasReport
+                || List.of(SEGMENT_IN_PROGRESS, SEGMENT_COMPLETED)
+                        .contains(segmentStatus);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -649,7 +670,7 @@ public class ProductionMaterialStockLedgerService {
         if (remaining.signum() > 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "反出库/退料数量超过该来源行尚未退回的已领基本量");
+                    "取消出库/退料数量超过该来源行尚未退回的已领基本量");
         }
     }
 
@@ -878,6 +899,17 @@ public class ProductionMaterialStockLedgerService {
             String rawKey,
             String requestHash,
             UUID actorId) {
+        return beginEvent(
+                documentId, eventType, rawKey, requestHash, null, actorId);
+    }
+
+    private Event beginEvent(
+            UUID documentId,
+            String eventType,
+            String rawKey,
+            String requestHash,
+            String reason,
+            UUID actorId) {
         String key = normalizeKey(rawKey);
         List<Object[]> existing = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -903,10 +935,10 @@ public class ProductionMaterialStockLedgerService {
         em.createNativeQuery("""
                         INSERT INTO production_material_stock_events(
                             id, stock_document_id, event_type, idempotency_key,
-                            request_hash, created_at, created_by
+                            request_hash, reason, created_at, created_by
                         ) VALUES (
                             :id, :documentId, :eventType, :key,
-                            :requestHash, now(), :actorId
+                            :requestHash, :reason, now(), :actorId
                         )
                         """)
                 .setParameter("id", id)
@@ -914,6 +946,7 @@ public class ProductionMaterialStockLedgerService {
                 .setParameter("eventType", eventType)
                 .setParameter("key", key)
                 .setParameter("requestHash", requestHash)
+                .setParameter("reason", reason)
                 .setParameter("actorId", actorId)
                 .executeUpdate();
         return new Event(id, false);
@@ -1098,6 +1131,17 @@ public class ProductionMaterialStockLedgerService {
                     MessageDigest.getInstance("SHA-256")
                             .digest(canonical.toString()
                                     .getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    private static String hash(List<MaterialLine> lines, String reason) {
+        String canonical = hash(lines) + "|REASON|" + reason;
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256")
+                            .digest(canonical.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException("SHA-256 unavailable", impossible);
         }

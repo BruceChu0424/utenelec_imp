@@ -1,9 +1,11 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ReleasedSlice;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.InboundAllocation;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.StockInHistoryItem;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.InspectionLineItem;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.RejectionCaseItem;
@@ -14,6 +16,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -234,6 +237,13 @@ public class WarehouseQualityResultService {
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
+    private PreplanInboundAllocationReadPort inboundAllocationRead =
+            PreplanInboundAllocationReadPort.NOOP;
+
+    @Autowired
+    void setInboundAllocationRead(PreplanInboundAllocationReadPort value) {
+        this.inboundAllocationRead = value;
+    }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
@@ -657,7 +667,7 @@ public class WarehouseQualityResultService {
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId)
                 .getResultList();
-        return rows.stream().map(row -> new ReleasedSlice(
+        List<ReleasedSlice> base = rows.stream().map(row -> new ReleasedSlice(
                 uuid(row[0]), uuid(row[1]), uuid(row[2]),
                 str(row[3]), str(row[4]), str(row[5]),
                 uuid(row[6]), str(row[7]), str(row[8]),
@@ -666,6 +676,37 @@ public class WarehouseQualityResultService {
                 nullableDecimal(row[15]), uuid(row[16]), str(row[17]),
                 str(row[18]), str(row[19]), str(row[20]),
                 offsetDateTime(row[21]))).toList();
+        Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected =
+                inboundAllocationRead.expectedForPassEvents(
+                        receiptType, receiptId,
+                        base.stream().map(ReleasedSlice::passEventId).toList());
+        return base.stream().map(slice -> new ReleasedSlice(
+                slice.passEventId(), slice.inspectionItemId(), slice.goodsId(),
+                slice.goodsCode(), slice.goodsName(), slice.colorName(),
+                slice.unitId(), slice.unitName(), slice.sourceOrderNo(),
+                slice.receivedBaseQty(), slice.qualityPassedBaseQty(),
+                slice.warehouseStockedBaseQty(), slice.releasedBaseQty(),
+                slice.stockedForReleaseBaseQty(), slice.remainingBaseQty(),
+                slice.releasedWeight(), slice.weightUnitId(), slice.weightUnitName(),
+                slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
+                slice.releasedAt(), expected.getOrDefault(slice.passEventId(), List.of())
+                        .stream().map(WarehouseQualityResultService::toAllocation)
+                        .toList())).toList();
+    }
+
+    private static InboundAllocation toAllocation(
+            PreplanInboundAllocationReadPort.AllocationView value) {
+        return new InboundAllocation(
+                value.passEventId(), value.stockInBatchItemId(), value.kind(),
+                value.qty(), value.actualWarehouseId(), value.actualWarehouseName(),
+                value.targetWarehouseId(), value.targetWarehouseName(),
+                value.intendedWarehouseNames(), value.warehouseMatches(),
+                value.analysisId(), value.analysisMaterialId(),
+                value.productCode(), value.productName(), value.sourceLabel(),
+                value.planId(), value.planNo(), value.executionSegmentId(),
+                value.executionSegmentCode(), value.workshopDepartmentId(),
+                value.workshopName(), value.responsibleEmployeeId(),
+                value.responsibleEmployeeName(), value.formationStatus());
     }
 
     /** 仓库入库历史（与 IQC 待入库详情同口径）。 */

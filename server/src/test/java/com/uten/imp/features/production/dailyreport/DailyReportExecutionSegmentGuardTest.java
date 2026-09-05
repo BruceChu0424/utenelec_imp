@@ -4,6 +4,8 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
+import com.uten.imp.features.notice.ChainNoticeService;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class DailyReportExecutionSegmentGuardTest {
@@ -32,7 +35,7 @@ class DailyReportExecutionSegmentGuardTest {
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> fixture.guard.validateDraft(
-                        UUID.randomUUID(), List.of(line)));
+                        UUID.randomUUID(), fixture.workshopId, List.of(line)));
 
         assertTrue(error.getMessage().contains("计划行或产品维度不一致"));
     }
@@ -45,6 +48,7 @@ class DailyReportExecutionSegmentGuardTest {
                 ApiException.class,
                 () -> fixture.guard.validateDraft(
                         UUID.randomUUID(),
+                        fixture.workshopId,
                         List.of(fixture.line("3"))));
 
         assertTrue(error.getMessage().contains("累计报工超过计划数量"));
@@ -56,20 +60,39 @@ class DailyReportExecutionSegmentGuardTest {
 
         assertDoesNotThrow(() -> fixture.guard.validateDraft(
                 UUID.randomUUID(),
+                fixture.workshopId,
                 List.of(fixture.line("6"))));
     }
 
     @Test
-    void dispatchedSegmentCannotBeReportedBeforeFormalStart() {
+    void dispatchedZeroMaterialSegmentAutoStartsWithTheFirstReport() {
         Fixture fixture = fixture("DISPATCHED", "10", "0");
+        UUID reportId = UUID.randomUUID();
+
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(
+                reportId,
+                fixture.workshopId,
+                List.of(fixture.line("2"))));
+
+        verify(fixture.notices).resolveProductionWorkshopTasks(
+                List.of(fixture.segmentId), "REPORT_STARTED");
+        verify(fixture.notices).notifyExecutionSegmentTransition(
+                fixture.segmentId, true);
+    }
+
+    @Test
+    void demandedReadySegmentCannotAutoStartBeforeEveryDemandIsIssued() {
+        Fixture fixture = fixture(
+                "READY", "10", "0", "DEMANDED", "ALLOCATED");
 
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> fixture.guard.validateDraft(
                         UUID.randomUUID(),
+                        fixture.workshopId,
                         List.of(fixture.line("2"))));
 
-        assertTrue(error.getMessage().contains("完成仓库发料并正式开工"));
+        assertTrue(error.getMessage().contains("仓库尚未完成全部生产领料"));
     }
 
     @Test
@@ -78,11 +101,12 @@ class DailyReportExecutionSegmentGuardTest {
 
         assertDoesNotThrow(() -> fixture.guard.validateDraft(
                 UUID.randomUUID(),
+                fixture.workshopId,
                 List.of(fixture.line("2"))));
     }
 
     @Test
-    void inaccessiblePlanSegmentCannotBeReportedByUuid() {
+    void exactWorkshopAssignmentDoesNotRequirePlanMakerVisibility() {
         Fixture fixture = fixture("IN_PROGRESS", "10", "0");
         doThrow(new ApiException(ErrorCode.NOT_FOUND, "执行段不存在"))
                 .when(fixture.access)
@@ -90,25 +114,96 @@ class DailyReportExecutionSegmentGuardTest {
                         fixture.planMakerId,
                         "报工关联的执行段不存在");
 
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(
+                UUID.randomUUID(),
+                fixture.workshopId,
+                List.of(fixture.line("2"))));
+    }
+
+    @Test
+    void missingWorkshopTaskPermissionCannotReportByKnownUuid() {
+        Fixture fixture = fixture("IN_PROGRESS", "10", "0");
+        when(fixture.access.hasAuthority("production_execution:view"))
+                .thenReturn(false);
+
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> fixture.guard.validateDraft(
                         UUID.randomUUID(),
+                        fixture.workshopId,
                         List.of(fixture.line("2"))));
 
-        assertTrue(error.getMessage().contains("执行段不存在"));
+        assertTrue(error.getMessage().contains("车间生产任务查看权限"));
+    }
+
+    @Test
+    void inactiveResponsibleCannotBypassWorkshopEligibility() {
+        Fixture fixture = fixture(
+                "IN_PROGRESS", "10", "0", "ZERO_MATERIAL", null, false);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> fixture.guard.validateDraft(
+                        UUID.randomUUID(),
+                        fixture.workshopId,
+                        List.of(fixture.line("2"))));
+
+        assertTrue(error.getMessage().contains("本人所属、兼职、负责或管理车间"));
+    }
+
+    @Test
+    void oneReportCannotMixAnotherWorkshopHeader() {
+        Fixture fixture = fixture("IN_PROGRESS", "10", "0");
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> fixture.guard.validateDraft(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        List.of(fixture.line("2"))));
+
+        assertTrue(error.getMessage().contains("车间必须与所选执行工单车间一致"));
     }
 
     private static Fixture fixture(
             String status, String planned, String existing) {
+        return fixture(
+                status, planned, existing, "ZERO_MATERIAL", null);
+    }
+
+    private static Fixture fixture(
+            String status,
+            String planned,
+            String existing,
+            String materialMode,
+            String demandStatus) {
+        return fixture(
+                status, planned, existing, materialMode, demandStatus, true);
+    }
+
+    private static Fixture fixture(
+            String status,
+            String planned,
+            String existing,
+            String materialMode,
+            String demandStatus,
+            boolean workshopEligible) {
         UUID segmentId = UUID.randomUUID();
         UUID planItemId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
         UUID planMakerId = UUID.randomUUID();
+        UUID workshopId = UUID.randomUUID();
+        UUID responsibleEmployeeId = UUID.randomUUID();
         EntityManager em = mock(EntityManager.class);
         ProductionDocumentAccessPolicy access =
                 mock(ProductionDocumentAccessPolicy.class);
+        SecurityContextCurrentUser currentUser =
+                mock(SecurityContextCurrentUser.class);
+        ChainNoticeService notices = mock(ChainNoticeService.class);
+        when(access.hasAuthority("production_execution:view")).thenReturn(true);
+        when(currentUser.requireEmployeeId()).thenReturn(responsibleEmployeeId);
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
 
         Query lock = query();
         when(lock.getResultList()).thenReturn(Collections.singletonList(new Object[]{
@@ -122,25 +217,71 @@ class DailyReportExecutionSegmentGuardTest {
                 status,
                 "SEG-001",
                 "CONFIRMED",
-                planMakerId
+                planMakerId,
+                workshopId,
+                responsibleEmployeeId,
+                materialMode,
+                7L
         }));
+        Query workshopEligibility = scalarQuery(workshopEligible);
+        Query allocation = query();
+        when(allocation.getResultList()).thenReturn(List.of());
         Query cumulative = query();
         when(cumulative.getSingleResult()).thenReturn(new BigDecimal(existing));
-        when(em.createNativeQuery(anyString())).thenReturn(lock, cumulative);
+        if ("IN_PROGRESS".equals(status)) {
+            when(em.createNativeQuery(anyString()))
+                    .thenReturn(lock, workshopEligibility, allocation, cumulative);
+        } else {
+            Query demands = query();
+            when(demands.getResultList()).thenReturn(
+                    demandStatus == null
+                            ? List.of()
+                            : Collections.singletonList(new Object[]{
+                                    UUID.randomUUID(), demandStatus
+                            }));
+            Query configOne = scalarQuery("");
+            Query configTwo = scalarQuery("");
+            Query update = query();
+            when(update.executeUpdate()).thenReturn(1);
+            Query event = query();
+            when(event.executeUpdate()).thenReturn(1);
+            Query clearOne = scalarQuery("");
+            Query clearTwo = scalarQuery("");
+            if ("ZERO_MATERIAL".equals(materialMode)) {
+                when(em.createNativeQuery(anyString())).thenReturn(
+                        lock, workshopEligibility,
+                        configOne, configTwo, update, event,
+                        clearOne, clearTwo, allocation, cumulative);
+            } else {
+                when(em.createNativeQuery(anyString())).thenReturn(
+                        lock, workshopEligibility, demands,
+                        configOne, configTwo, update, event,
+                        clearOne, clearTwo, allocation, cumulative);
+            }
+        }
         return new Fixture(
-                new DailyReportExecutionSegmentGuard(em, access),
+                new DailyReportExecutionSegmentGuard(
+                        em, access, currentUser, notices),
                 segmentId,
                 planItemId,
                 goodsId,
                 unitId,
                 planMakerId,
-                access);
+                workshopId,
+                access,
+                notices);
     }
 
     private static Query query() {
         Query query = mock(Query.class);
         when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(query);
+        return query;
+    }
+
+    private static Query scalarQuery(Object value) {
+        Query query = query();
+        when(query.getSingleResult()).thenReturn(value);
         return query;
     }
 
@@ -151,7 +292,9 @@ class DailyReportExecutionSegmentGuardTest {
             UUID goodsId,
             UUID unitId,
             UUID planMakerId,
-            ProductionDocumentAccessPolicy access) {
+            UUID workshopId,
+            ProductionDocumentAccessPolicy access,
+            ChainNoticeService notices) {
         DailyReportItemLine line(String qty) {
             DailyReportItemLine line = new DailyReportItemLine();
             line.setExecutionSegmentId(segmentId);

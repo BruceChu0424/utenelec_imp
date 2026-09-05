@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
@@ -97,9 +97,12 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  labelText: '当前批次实际到账汇率(必填)',
-                  helper: UtenFieldMessage.helper('每一批预收单独填写当批实际汇率；服务端以六位精度校验'),
+                decoration: InputDecoration(
+                  label: fieldLabel(
+                    '当前批次实际到账汇率(必填)',
+                    Theme.of(context),
+                    info: '每一批预收单独填写当批实际汇率；服务端以六位精度校验',
+                  ),
                 ),
               ),
               TextField(

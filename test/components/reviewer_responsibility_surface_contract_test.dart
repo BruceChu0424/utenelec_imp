@@ -34,9 +34,6 @@ void main() {
       'lib/features/production/pages/production_plan_list_page.dart': [
         "actionLabel: '批量审核'",
       ],
-      'lib/features/production/pages/production_plan_wizard_page.dart': [
-        "actionLabel: '生产计划审核下达'",
-      ],
       'lib/features/expense/pages/expense_approval_detail_page.dart': [
         "actionLabel: '报销审批'",
       ],

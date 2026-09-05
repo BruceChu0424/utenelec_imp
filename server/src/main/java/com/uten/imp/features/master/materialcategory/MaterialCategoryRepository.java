@@ -100,6 +100,15 @@ public interface MaterialCategoryRepository extends JpaRepository<MaterialCatego
             """, nativeQuery = true)
     long countGoodsByCategoryIds(@Param("ids") Collection<UUID> ids);
 
+    /** 每个分类的直接（非子树）未软删货品数：树端点 withGoodsCounts 用，Java 端后序累加成子树数。
+     *  返回行 [category_id uuid, count bigint]；无货品的分类不出现。 */
+    @Query(value = """
+            SELECT category_id, count(*) FROM goods
+            WHERE is_deleted = false AND category_id IS NOT NULL
+            GROUP BY category_id
+            """, nativeQuery = true)
+    List<Object[]> countGoodsPerCategory();
+
     /** 批量软删子树下货品：is_deleted=true + deleted_at 戳。单据/报表 JOIN goods 仅按 id 关联、
      *  不过滤 is_deleted，故历史单据货品名仍可解析；软删只是把它们从货品资料页/选择器隐藏。 */
     @Query(value = """

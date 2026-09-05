@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,51 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 const _reportId = '20000000-0000-0000-0000-000000000001';
 
 void main() {
+  testWidgets('自制单张登记右键移出一行后仅送检剩余行', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArrivalRegistrationApi(duplicateGoodsRows: true);
+    await _openPage(tester, api: api, canRegister: true);
+
+    await tester.tap(
+      find.byKey(const Key('production-finished-arrival-warehouse')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('成品仓').last);
+    await tester.pumpAndSettle();
+    await _revealGrid(tester);
+
+    final removedPlace = _placeField('30000000-0000-0000-0000-000000000002');
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('2').last),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await gesture.up();
+    await tester.pump();
+    await tester.tap(find.text('移出本批送检 (1)').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('仍保持待登记送检'), findsOneWidget);
+    await tester.tap(find.text('确认移出'));
+    await tester.pumpAndSettle();
+    expect(removedPlace, findsNothing);
+    expect(find.textContaining('未选行仍在待登记送检'), findsOneWidget);
+
+    await tester.enterText(
+      _placeField('30000000-0000-0000-0000-000000000001'),
+      'CP-A-01',
+    );
+    _pressSubmit(tester);
+    await tester.pumpAndSettle();
+    final items = (api.lastPostBody?['items'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(items, hasLength(1));
+    expect(
+      items.single['reportItemId'],
+      '30000000-0000-0000-0000-000000000001',
+    );
+  });
+
   testWidgets(
     'arrival registration is operable at 375px and posts exact warehouse places',
     (tester) async {
@@ -93,6 +139,10 @@ void main() {
         greaterThanOrEqualTo(8),
       );
       expect(api.rememberRequests, 1);
+      expect(
+        api.lastRememberRegistrationId,
+        '40000000-0000-0000-0000-000000000001',
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -734,6 +784,7 @@ class _ArrivalRegistrationApi extends ApiClient {
   Map<String, dynamic>? lastPostBody;
   int countRequests = 0;
   int rememberRequests = 0;
+  String? lastRememberRegistrationId;
   final List<String> suggestionWarehouses = [];
   bool _saved = false;
   String? _savedWarehouseId;
@@ -796,6 +847,7 @@ class _ArrivalRegistrationApi extends ApiClient {
   }) async {
     if (path.endsWith('/remember-places')) {
       rememberRequests++;
+      lastRememberRegistrationId = query?['registrationId']?.toString();
       if (failFirstRemember && rememberRequests == 1) {
         throw NetworkException('默认库位服务暂时不可用');
       }

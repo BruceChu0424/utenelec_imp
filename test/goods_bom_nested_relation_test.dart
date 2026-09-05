@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 class _FakeGoodsBomRepository implements GoodsBomRepository {
+  _FakeGoodsBomRepository({this.empty = false});
+
+  final bool empty;
   final listCalls = <String>[];
   final parent = const GoodsBomItem(
     id: 'row-b',
@@ -44,6 +48,7 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
   @override
   Future<List<GoodsBomItem>> list(String goodsId) async {
     listCalls.add(goodsId);
+    if (empty) return const [];
     return switch (goodsId) {
       'goods-a' => [parent],
       'goods-b' => [nested],
@@ -108,27 +113,70 @@ Future<void> _pumpBom(WidgetTester tester, _FakeGoodsBomRepository repo) async {
   );
   await tester.pumpAndSettle();
 
-  final parentRow = find
-      .ancestor(
-        of: find.text('Parent component'),
-        matching: find.byType(InkWell),
-      )
-      .first;
-  await tester.ensureVisible(parentRow);
-  // 新交互契约：单击只选中，双击才展开子级（onRowTap）。
-  await tester.tap(parentRow);
-  await tester.pump(const Duration(milliseconds: 50));
-  await tester.tap(parentRow);
+  final parentToggle = find.byKey(
+    const ValueKey('goods-bom-tree-toggle-row-b'),
+  );
+  await tester.ensureVisible(parentToggle);
+  // 层级列的明确箭头负责展开；整行单击只负责选择。
+  expect(tester.getSize(parentToggle), const Size(48, 48));
+  await tester.tap(parentToggle);
   await tester.pumpAndSettle();
   expect(repo.listCalls, contains('goods-b'));
   final nestedName = find.textContaining('Nested component');
   expect(nestedName, findsOneWidget);
+  expect(find.text('1.1'), findsOneWidget);
+  expect(find.text('组件 2 级'), findsOneWidget);
+  expect(find.textContaining('路径：组件树 1.1'), findsOneWidget);
   // 单击嵌套行：选中（onSelectionChanged 驱动 _selected），编辑/删除按钮随之可用。
   await tester.tap(nestedName);
   await tester.pumpAndSettle();
 }
 
 void main() {
+  testWidgets(
+    'goods:view + goods:bom:create shows the primary add button and opens flow',
+    (tester) async {
+      final repo = _FakeGoodsBomRepository(empty: true);
+      await tester.binding.setSurfaceSize(const Size(1600, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            goodsBomRepositoryProvider.overrideWithValue(repo),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.goodsView,
+              Perm.goodsBomCreate,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: GoodsBomTab(
+                goodsId: 'goods-a',
+                canCreate: true,
+                canEdit: false,
+                canDelete: false,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final add = find.byKey(const Key('goods-bom-add-component'));
+      expect(add, findsOneWidget);
+      expect(find.text('暂无组装信息，点上方「添加组件」录入'), findsOneWidget);
+      expect(find.text('编辑'), findsNothing);
+      expect(find.text('删除'), findsNothing);
+
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('添加位置'), findsOneWidget);
+      expect(find.text('选择组件'), findsOneWidget);
+    },
+  );
+
   testWidgets('nested delete uses the owning parent goods id', (tester) async {
     final repo = _FakeGoodsBomRepository();
     await _pumpBom(tester, repo);
@@ -140,6 +188,18 @@ void main() {
 
     expect(repo.deletedParentId, 'goods-b');
     expect(repo.deletedItemId, 'row-c');
+    expect(
+      tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '删除'))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '编辑'))
+          .onPressed,
+      isNull,
+    );
   });
 
   testWidgets('nested edit keeps row color and uses the owning parent', (
@@ -241,6 +301,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('审计模式'), findsNothing);
+    expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
   });
 
   test('BOM 详情解析 UUID 真源颜色和默认供应商', () {

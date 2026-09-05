@@ -69,6 +69,9 @@ public class SubcontractApplicationService {
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
     private final EntityManager em;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final ProductionSubcontractSupplyTransitionPort productionSupply;
@@ -268,6 +271,10 @@ public class SubcontractApplicationService {
         }
         r.setBillDate(req.getBillDate());
         r.setSupplierId(req.getSupplierId());
+        // V476 运营红线：委外申请仓库必须选具体叶子仓（后续订货/发料沿用）。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+        }
         r.setWarehouseId(req.getWarehouseId());
         r.setApplicantId(req.getApplicantId());
         r.setNeedDate(req.getNeedDate());

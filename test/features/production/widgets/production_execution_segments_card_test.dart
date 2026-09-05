@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/models/production_execution_planning.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
@@ -85,7 +84,7 @@ void main() {
     expect(find.text('调整分配'), findsNothing);
     expect(find.text('派工'), findsNothing);
     expect(find.textContaining('可开工'), findsNothing);
-    expect(find.text('已齐套·待派工'), findsWidgets);
+    expect(find.text('备料完毕·可报工'), findsWidgets);
   });
 
   testWidgets('detail shows only actions allowed by status and permission', (
@@ -97,10 +96,7 @@ void main() {
     await tester.pumpWidget(
       _app(
         repository: _repository(status: 'READY'),
-        permissions: const {
-          Perm.productionExecutionAssign,
-          Perm.productionExecutionDispatch,
-        },
+        permissions: const {Perm.productionExecutionAssign},
       ),
     );
     await tester.pumpAndSettle();
@@ -108,19 +104,17 @@ void main() {
       find.byKey(const ValueKey('production-execution-assign-segment-1')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey('production-execution-dispatch-segment-1')),
-      findsOneWidget,
-    );
+    expect(find.text('派工'), findsNothing);
+    expect(find.text('确认开工'), findsNothing);
     await tester.tap(find.text('SEG-001'));
     await tester.pumpAndSettle();
 
     expect(find.text('调整分配'), findsOneWidget);
-    expect(find.text('派工'), findsOneWidget);
+    expect(find.text('派工'), findsNothing);
     expect(find.text('分批报工'), findsNothing);
   });
 
-  testWidgets('dispatch permission does not imply assignment permission', (
+  testWidgets('legacy dispatch permission does not expose retired actions', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
@@ -136,7 +130,8 @@ void main() {
     await tester.tap(find.text('SEG-001'));
     await tester.pumpAndSettle();
 
-    expect(find.text('派工'), findsOneWidget);
+    expect(find.text('派工'), findsNothing);
+    expect(find.text('确认开工'), findsNothing);
     expect(find.text('调整分配'), findsNothing);
   });
 
@@ -437,51 +432,31 @@ void main() {
   });
 
   testWidgets(
-    'only fully issued dispatched segments support atomic batch start',
+    'fully issued confirmed segments expose direct report without start controls',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      RequestOptions? command;
-
       await tester.pumpWidget(
         _app(
-          repository: _repository(
-            status: 'DISPATCHED',
-            onCommand: (request) => command = request,
-          ),
-          permissions: const {Perm.productionExecutionStart},
+          repository: _repository(status: 'READY'),
+          permissions: const {
+            Perm.productionDailyReportView,
+            Perm.productionDailyReportCreate,
+          },
         ),
       );
       await tester.pumpAndSettle();
 
-      final checkbox = find.byKey(
-        const ValueKey('production-execution-start-select-segment-1'),
-      );
-      expect(checkbox, findsOneWidget);
       expect(
         find.byKey(const Key('production-execution-start-selection-toolbar')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('production-execution-report-segment-1')),
         findsOneWidget,
       );
-      await tester.tap(checkbox);
-      await tester.pump();
-      expect(find.text('已选 1 项 · 可开工 1 项'), findsOneWidget);
-      await tester.tap(
-        find.byKey(const Key('production-execution-batch-start')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('确认批量开工'));
-      await tester.pumpAndSettle();
-
-      expect(command?.path, endsWith('/execution-segments/batch-start'));
-      final data = command?.data as Map<String, dynamic>;
-      final items = data['items'] as List<dynamic>;
-      expect(items, hasLength(1));
-      expect(items.single, containsPair('segmentId', 'segment-1'));
-      expect(items.single, containsPair('expectedVersion', 1));
-      expect(
-        (items.single as Map<String, dynamic>)['idempotencyKey'],
-        isNotEmpty,
-      );
+      expect(find.text('派工'), findsNothing);
+      expect(find.text('确认开工'), findsNothing);
     },
   );
 
@@ -504,64 +479,90 @@ void main() {
     expect(find.text('执行子计划详情'), findsOneWidget);
   });
 
-  testWidgets('dispatched segment shows pending issue and disables start', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'confirmed segment shows preparation and blocks report until issue',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(
-      _app(
-        repository: _repository(
-          status: 'DISPATCHED',
-          fullyIssuedDemandCount: 1,
-          materialIssued: false,
+      await tester.pumpWidget(
+        _app(
+          repository: _repository(
+            status: 'DISPATCHED',
+            fullyIssuedDemandCount: 1,
+            materialIssued: false,
+          ),
+          permissions: const {
+            Perm.productionDailyReportView,
+            Perm.productionDailyReportCreate,
+          },
         ),
-        permissions: const {Perm.productionExecutionStart},
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('已派工·待发料'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('production-execution-start-select-segment-1')),
-      findsNothing,
-    );
-    await tester.tap(find.text('SEG-001'));
-    await tester.pumpAndSettle();
+      expect(find.text('物料齐套·备料中'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('production-execution-report-segment-1')),
+        findsNothing,
+      );
+      await tester.tap(find.text('SEG-001'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('待发料 · 1/2 项'), findsOneWidget);
-    expect(
-      tester
-          .widget<UtenButton>(find.widgetWithText(UtenButton, '确认开工'))
-          .onPressed,
-      isNull,
-    );
-  });
+      expect(find.text('待发料 · 1/2 项'), findsOneWidget);
+      expect(find.textContaining('全部实物出库前不能报工'), findsOneWidget);
+    },
+  );
 
-  testWidgets('fully issued segment enables start and explains the handoff', (
+  testWidgets(
+    'fully issued segment enables direct report and explains first report',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _app(
+          repository: _repository(status: 'DISPATCHED'),
+          permissions: const {
+            Perm.productionDailyReportView,
+            Perm.productionDailyReportCreate,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SEG-001'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('已全部发料 · 2/2 项'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('production-execution-report-segment-1')),
+        findsWidgets,
+      );
+      expect(find.textContaining('首次报工会在同一事务中登记实际开工'), findsOneWidget);
+    },
+  );
+
+  testWidgets('compact assignment dialog remains usable at 1.3 text scale', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    await tester.binding.setSurfaceSize(const Size(375, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
       _app(
-        repository: _repository(status: 'DISPATCHED'),
-        permissions: const {Perm.productionExecutionStart},
+        repository: _repository(status: 'READY'),
+        permissions: const {Perm.productionExecutionAssign},
+        textScale: 1.3,
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('SEG-001'));
+    await tester.tap(
+      find.byKey(const ValueKey('production-execution-assign-segment-1')),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('已全部发料 · 2/2 项'), findsOneWidget);
-    expect(
-      tester
-          .widget<UtenButton>(find.widgetWithText(UtenButton, '确认开工'))
-          .onPressed,
-      isNotNull,
-    );
+    expect(find.text('调整 SEG-001'), findsOneWidget);
+    expect(find.text('保存分配'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('returning from report creation reloads execution status', (
@@ -581,8 +582,6 @@ void main() {
                 planId: 'plan-1',
                 canAssign: false,
                 canReleaseDefer: false,
-                canDispatch: false,
-                canStart: false,
                 canReport: true,
               ),
             ),
@@ -632,10 +631,17 @@ Widget _app({
   required ProductionPlanRepository repository,
   required Set<String> permissions,
   String? initialSegmentId,
+  double textScale = 1,
 }) {
   return ProviderScope(
     overrides: [productionPlanRepositoryProvider.overrideWithValue(repository)],
     child: MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       home: Scaffold(
         body: SingleChildScrollView(
           child: ProductionExecutionSegmentsCard(
@@ -644,8 +650,6 @@ Widget _app({
             canReleaseDefer: permissions.contains(
               Perm.productionExecutionReleaseDefer,
             ),
-            canDispatch: permissions.contains(Perm.productionExecutionDispatch),
-            canStart: permissions.contains(Perm.productionExecutionStart),
             canReport:
                 permissions.contains(Perm.productionDailyReportView) &&
                 permissions.contains(Perm.productionDailyReportCreate),

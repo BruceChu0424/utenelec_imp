@@ -1,3 +1,7 @@
+import '../../../shared/models/inbound_allocation.dart';
+
+export '../../../shared/models/inbound_allocation.dart';
+
 /// 仓库侧永不回显的商业字段（价格/金额/币种/结算）；列表与详情解析都不得触碰。
 /// 2026-09-01 详情读路径合并进「品质部检查结果」后，本文件只剩入库确认命令
 /// 与来源类型；只读展示模型见 warehouse_quality_result.dart。
@@ -74,12 +78,14 @@ class WarehouseIqcStockInConfirmResult {
     required this.replayed,
     required this.confirmedCount,
     this.confirmedAt,
+    this.allocations = const [],
   });
 
   final String batchId;
   final bool replayed;
   final int confirmedCount;
   final String? confirmedAt;
+  final List<WarehouseInboundAllocation> allocations;
 
   factory WarehouseIqcStockInConfirmResult.fromJson(
     Map<String, dynamic> json,
@@ -88,6 +94,7 @@ class WarehouseIqcStockInConfirmResult {
     replayed: json['replayed'] == true,
     confirmedCount: _integer(json['confirmedCount']),
     confirmedAt: _text(json['confirmedAt']),
+    allocations: _allocationList(json['allocations']),
   );
 }
 
@@ -107,3 +114,10 @@ int _integer(Object? value) {
   if (value is num) return value.toInt();
   return int.tryParse(value?.toString() ?? '') ?? 0;
 }
+
+List<WarehouseInboundAllocation> _allocationList(Object? value) => value is List
+    ? [
+        for (final row in value.whereType<Map<Object?, Object?>>())
+          WarehouseInboundAllocation.fromJson(Map<String, dynamic>.from(row)),
+      ]
+    : const [];

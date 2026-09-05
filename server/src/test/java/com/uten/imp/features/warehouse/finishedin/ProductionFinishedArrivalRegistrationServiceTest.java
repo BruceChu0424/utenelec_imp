@@ -68,6 +68,21 @@ class ProductionFinishedArrivalRegistrationServiceTest {
     }
 
     @Test
+    void selectedPendingSubsetIsAcceptedButProcessedOrUnknownLineFailsClosed() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        ProductionFinishedArrivalRegistrationService.requireSelectedPending(
+                List.of(first, second), java.util.Set.of(second));
+
+        assertThatThrownBy(() ->
+                ProductionFinishedArrivalRegistrationService.requireSelectedPending(
+                        List.of(first), java.util.Set.of(second)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
     void rememberPlanMergesSameDimensionAndSeparatesColors() {
         UUID goodsId = UUID.randomUUID();
         UUID firstColor = UUID.randomUUID();
@@ -145,8 +160,6 @@ class ProductionFinishedArrivalRegistrationServiceTest {
                 .contains("report_item.goods_id")
                 .contains("history_report_item.color_id")
                 .contains("IS NOT DISTINCT FROM report_item.color_id")
-                .contains("history_registration.source_report_id <>")
-                .contains("report.id")
                 .contains("COUNT(DISTINCT BTRIM(")
                 .contains("GROUP BY history_registration.id,")
                 .contains("ORDER BY history_registration.created_at DESC,")
@@ -166,32 +179,67 @@ class ProductionFinishedArrivalRegistrationServiceTest {
         String service = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/warehouse/finishedin/"
                         + "ProductionFinishedArrivalRegistrationService.java"));
+        String contracts = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/finishedin/"
+                        + "ProductionFinishedArrivalContracts.java"));
 
         assertThat(controller)
                 .contains("/arrival-registrations/{reportId}")
                 .contains("/arrival-registrations/{reportId}/place-suggestions")
                 .contains("/arrival-registrations/{reportId}/remember-places")
+                .contains("/arrival-registrations/batch/remember-registration-batches")
+                .contains("@RequestParam(required = false) UUID registrationId")
                 .contains("hasAuthority('stock_doc:view')")
                 .contains("hasAuthority('stock_doc:approve')");
+        assertThat(contracts)
+                .contains("public record RegisteredReportView(")
+                .contains("UUID registrationId,");
         int insertItems = service.indexOf(
                 "INSERT INTO production_finished_arrival_registration_items");
         int registerFqc = service.indexOf(
-                "qualityInspection.registerApprovedReport(");
+                "qualityInspection.registerApprovedReportItems(");
         assertThat(insertItems).isGreaterThan(0);
         assertThat(registerFqc).isGreaterThan(insertItems);
         assertThat(service)
                 .contains("requireWarehouseTaskAccess")
                 .contains("pg_advisory_xact_lock")
-                .contains("Set.copyOf(reportItemIds)")
+                .contains("requireSelectedPending(")
                 .contains("request_hash")
                 .contains("warehouse_goods_place_preferences")
                 .contains("source_registered_at")
-                .contains("visible_registration")
+                .contains("registered_item.source_report_item_id")
                 .contains("production_fqc_inspections inspection")
                 .contains("production_fqc_legacy_exemptions exemption")
                 .contains("ON CONFLICT ON CONSTRAINT")
                 .contains("warehouse_goods_place_preference_dimension_uk")
                 .contains("buildRememberPlan")
                 .doesNotContain("UPDATE goods SET stock_place");
+    }
+
+    @Test
+    void selectedLinesRemainPartialAndReplayUsesExactRegistrationBatch()
+            throws Exception {
+        String service = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/finishedin/"
+                        + "ProductionFinishedArrivalRegistrationService.java"));
+
+        assertThat(service)
+                .contains("pendingReportItemIds")
+                .contains("containsAll(")
+                .contains("normalized.places().keySet()")
+                .contains("Unselected report lines remain pending")
+                .contains("detailInternal(reportId, (UUID) existing[0])")
+                .contains("detailInternal(reportId, registrationId)")
+                .contains("pendingItemRows(reportId)")
+                .contains("registration_item.registration_id = :registrationId")
+                .contains("rememberPlacesForRegistrations(")
+                .contains("registration.source_report_id = :reportId")
+                .contains("该报工已有多个登记批次")
+                .contains("BatchReportRegistrationRequest::reportId")
+                .contains("WHERE report_item.report_id IN (:reportIds)")
+                .contains("return placeSuggestionsInternal(ids, warehouseId)")
+                .doesNotContain("ids.stream().map(this::detailInternal)")
+                .doesNotContain("该生产报工已由其他登记命令完成")
+                .doesNotContain("逐行精确覆盖当前报工全部明细");
     }
 }

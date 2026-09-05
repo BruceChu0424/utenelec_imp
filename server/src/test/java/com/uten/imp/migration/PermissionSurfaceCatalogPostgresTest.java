@@ -103,8 +103,9 @@ class PermissionSurfaceCatalogPostgresTest {
             assertEquals(1, linkCount(
                     statement, "hr.visitor-security", "visitor:verify"));
             // V455 retired the zero-reference mrp codes (generate_draw /
-            // generate_finished_in); 14 = execution 6 + mrp 1 + package 4 + material 3.
-            assertEquals(14, scalarLong(statement, """
+            // generate_finished_in); V470 把 dispatch/start 从本面下架（工作台
+            // 不再广告手动派工/开工），12 = execution 4 + mrp 1 + package 4 + material 3。
+            assertEquals(12, scalarLong(statement, """
                     select count(*)
                     from permission_surface_permissions link
                     join permission_surfaces surface
@@ -119,7 +120,8 @@ class PermissionSurfaceCatalogPostgresTest {
                           or permission.code like 'production_material:%'
                       )
                     """));
-            assertEquals(1, linkCount(
+            // V470 下架后 production.plan 不再挂 dispatch/start。
+            assertEquals(0, linkCount(
                     statement, "production.plan", "production_execution:dispatch"));
             assertEquals(1, linkCount(
                     statement, "production.plan", "production_material:close"));
@@ -225,8 +227,6 @@ class PermissionSurfaceCatalogPostgresTest {
                 "production_daily_report:edit",
                 "production_execution:assign",
                 "production_execution:release_defer",
-                "production_execution:dispatch",
-                "production_execution:start",
                 "production_material_analysis:view",
                 "production_material:close",
                 "production_material:reverse",
@@ -281,7 +281,7 @@ class PermissionSurfaceCatalogPostgresTest {
                 registry.permissionsFor("warehouse.quality-results"));
         assertEquals(Set.of("production_plan:view"),
                 registry.permissionsFor("production.schedule"));
-        assertEquals(Set.of("production_plan:view"),
+        assertEquals(Set.of("production_execution:overview"),
                 registry.permissionsFor("production.progress"));
         assertEquals(Set.of("production_material_analysis:view"),
                 registry.permissionsFor("production.chain-health"));

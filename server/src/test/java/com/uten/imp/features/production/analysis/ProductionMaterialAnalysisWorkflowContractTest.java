@@ -150,17 +150,44 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
-    void makeNotificationIsRejectedWhileLowerLevelMaterialsArePending() throws Exception {
+    void rootSchedulingEligibilityIsSeparateFromMaterialReadiness() throws Exception {
+        String contracts = source(
+                "features/production/analysis/MaterialAnalysisContracts.java");
+        String service = source("features/production/analysis/MaterialAnalysisService.java");
+        String commands = source(
+                "features/production/analysis/MaterialAnalysisCommandService.java");
+
+        assertThat(contracts)
+                .contains("boolean canSchedule")
+                .contains("BigDecimal maxSchedulableQty")
+                .contains("String scheduleBlockedReason");
+        assertThat(service)
+                .contains("MATERIAL-ANALYSIS-PLAN-PREVIEW-V3")
+                .contains("canGenerate ? \"READY\" : \"WAITING\"")
+                .contains("product.maxSchedulableQty()");
+        assertThat(commands)
+                .contains("preview.items().stream().anyMatch(item -> !item.canSchedule())")
+                // V474 分批口径：混合「齐套 READY + 剩余 WAITING」按批次各归其位，
+                // 不再强制整单 WAITING（旧 ANALYSIS-WAITING 前缀随全量压扁口径退役）。
+                .contains("if (!Set.of(\"READY\", \"WAITING\").contains(requestedStatus))")
+                .contains("把混合结果重新压成一个全量 WAITING 会吞掉可立即生产的批次")
+                .contains("segment.setRequestedStatus(requestedStatus)")
+                .contains("segment.setDeferUntilManualRelease(false)")
+                .doesNotContain("if (!preview.allReady()");
+    }
+
+    @Test
+    void lowerLevelShortageIsDiagnosticAndChildCreationRemainsExplicit() throws Exception {
         String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
 
-        // V458/ADR-062 修订一②：MAKE 与有子层 SUBCONTRACT 同构——下层未齐套
-        // （lower_level_pending）一律拒绝下达，分路线文案。
-        assertThat(commands).contains("lines.stream().anyMatch(MaterialView::lowerLevelPending)");
-        assertThat(commands).contains("自制件的下层物料尚未齐套，请先完成底层备料再安排生产");
-        assertThat(commands).contains("该委外件的下层物料尚未齐套，请先完成底层备料再下达委外");
+        assertThat(commands)
+                .doesNotContain("lines.stream().anyMatch(MaterialView::lowerLevelPending)")
+                .contains("lowerLevelPending remains a diagnostic")
+                .contains("createsChildOwnership")
+                .contains("子件任务当前必须按全部剩余需求");
 
-        // lower_level_pending 的权威重算同样覆盖有子层 SUBCONTRACT（ADR-062 修订一②），
-        // 否则前端两段式门禁拿不到信号、notify 拦截也永远不触发。
+        // The diagnostic still covers child-bearing SUBCONTRACT so UI can
+        // explain that approval will be WAITING rather than falsely READY.
         String service = source("features/production/analysis/MaterialAnalysisService.java");
         assertThat(service).contains("SUBCONTRACT\".equals(effectiveRoute)");
     }
@@ -263,15 +290,18 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
-    void makeNotifyRequiresFullResidualUntilDelegatedQuantityExists() throws Exception {
+    void childOwnershipNotifyRequiresFullResidualUntilDelegatedQuantityExists()
+            throws Exception {
         String contracts = source("features/production/analysis/MaterialAnalysisContracts.java");
         String commands = source("features/production/analysis/MaterialAnalysisCommandService.java");
 
         assertThat(contracts).contains(
                 "MAKE 在显式 delegated_qty 落地前必须等于全部实时余量");
+        assertThat(commands).contains("boolean createsChildOwnership");
+        assertThat(commands).contains("hasActiveBomChildren");
         assertThat(commands).contains(
-                "\"MAKE\".equals(group.route()) && requested.compareTo(delta) != 0");
-        assertThat(commands).contains("自制任务当前必须按全部剩余需求");
+                "createsChildOwnership && requested.compareTo(delta) != 0");
+        assertThat(commands).contains("子件任务当前必须按全部剩余需求");
         assertThat(commands).contains("本批生产数量请在子件任务创建后的计划向导中填写");
     }
 
@@ -425,6 +455,35 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 "action == LifecycleAction.REVERSE && request.getStatus() == STATUS_REVERSED");
         assertThat(subcontractFacade).contains(
                 "application.getStatus() == STATUS_REVERSED");
+    }
+
+    @Test
+    void publicExtraNeverInflatesExactDemandAllocation() throws Exception {
+        String source = source("features/production/analysis/MaterialAnalysisCommandService.java");
+
+        assertThat(source)
+                .contains("if (requested.compareTo(delta) > 0) {")
+                .contains("publicExtraQty")
+                .contains("production_material_analysis:over_supply")
+                .contains("主动公共备货(不绑定来源物料分析)")
+                .contains("plan.demandQty(), plan.publicExtraQty()")
+                .contains("allocateAction(actionId, analysisId, group.materials(), plan.demandQty())")
+                .contains("'SHARED_FUTURE_CLAIM', :sourceActionId");
+        assertThat(source).doesNotContain(
+                "allocateAction(actionId, analysisId, group.materials(), plan.publicExtraQty())");
+    }
+
+    @Test
+    void routeLearningPrefetchReadsLatestConfirmedRoutePerGoodsDimension() throws Exception {
+        // 2026-09-04 路线学习预填：按货品+颜色+单位维度取最近一张未删分析里
+        // confirmed_route 的记忆；只读、跨分析共享。
+        String service = source("features/production/analysis/MaterialAnalysisService.java");
+        assertThat(service).contains("lastRoutesPerGoods");
+        assertThat(service).contains("DISTINCT ON (m.goods_id, m.color_id, m.unit_id)");
+        assertThat(service).contains("m.confirmed_route IS NOT NULL");
+        assertThat(service).contains("m.active = TRUE");
+        String controller = source("features/production/analysis/MaterialAnalysisController.java");
+        assertThat(controller).contains("\"/last-routes\"");
     }
 
     private static String source(String relative) throws Exception {

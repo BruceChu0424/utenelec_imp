@@ -52,10 +52,11 @@ class ResetBusinessDataScriptContractTest {
 
         // V458 委外先做后审账本加 2 张业务事实表（315→317，CLEAR 220→222）；
         // V459 兼职部门表属组织与权限治理数据（PRESERVE，317→318、95→96）；
-        // V463 订货行来源分配表加 2 张（CLEAR，318→320、222→224）。
-        assertThat(policy).hasSize(320);
+        // V463 订货行来源分配表加 2 张（CLEAR，318→320、222→224）；
+        // V474 运行时公共在途事件账加 1 张（CLEAR，320→321、224→225）。
+        assertThat(policy).hasSize(321);
         assertThat(policy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(224);
+                .isEqualTo(225);
         assertThat(policy.values().stream().filter("PRESERVE"::equals).count())
                 .isEqualTo(96);
 
@@ -72,6 +73,7 @@ class ResetBusinessDataScriptContractTest {
         assertThat(policy).containsEntry("notice_celebration_subjects", "CLEAR");
 
         assertThat(policy).containsAllEntriesOf(Map.of(
+                "preplan_public_supply_events", "CLEAR",
                 "preplan_analysis_stock_exact_pegs", "CLEAR",
                 "preplan_material_reallocations", "CLEAR",
                 "preplan_stock_entitlement_events", "CLEAR",
@@ -198,7 +200,16 @@ class ResetBusinessDataScriptContractTest {
                 .contains("(465, 427)")
                 .contains("(466, 428)")
                 .contains("(467, 429)")
-                .contains("仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428 或 V467/429 目录")
+                .contains("(468, 430)")
+                .contains("(469, 431)")
+                .contains("(470, 432)")
+                .contains("(471, 433)")
+                .contains("(472, 434)")
+                .contains("(473, 435)")
+                .contains("(474, 436)")
+                .contains("(475, 437)")
+                .contains("(476, 438)")
+                .contains("V474/436、V475/437 或 V476/438 目录")
                 .contains("V454 通知庆典主角表存在性 %/1 与目录版本 V% 不符")
                 .contains("V448 合并页读路径索引缺失 %/5")
                 .contains("V448 目录必须完整包含 V446 IQC 入库事实表与 V447 交接事实表")

@@ -66,7 +66,31 @@ public final class ProcurementIqcStockInContracts {
             String placeHint,
             String releaseNote,
             String releasedBy,
-            OffsetDateTime releasedAt) {
+            OffsetDateTime releasedAt,
+            List<InboundAllocation> expectedAllocations) {
+
+        public ReleasedSlice {
+            expectedAllocations = expectedAllocations == null
+                    ? List.of() : List.copyOf(expectedAllocations);
+        }
+
+        public ReleasedSlice(
+                UUID passEventId, UUID inspectionItemId, UUID goodsId,
+                String goodsCode, String goodsName, String colorName,
+                UUID unitId, String unitName, String sourceOrderNo,
+                BigDecimal receivedBaseQty, BigDecimal qualityPassedBaseQty,
+                BigDecimal warehouseStockedBaseQty, BigDecimal releasedBaseQty,
+                BigDecimal stockedForReleaseBaseQty, BigDecimal remainingBaseQty,
+                BigDecimal releasedWeight, UUID weightUnitId, String weightUnitName,
+                String placeHint, String releaseNote, String releasedBy,
+                OffsetDateTime releasedAt) {
+            this(passEventId, inspectionItemId, goodsId, goodsCode, goodsName,
+                    colorName, unitId, unitName, sourceOrderNo, receivedBaseQty,
+                    qualityPassedBaseQty, warehouseStockedBaseQty, releasedBaseQty,
+                    stockedForReleaseBaseQty, remainingBaseQty, releasedWeight,
+                    weightUnitId, weightUnitName, placeHint, releaseNote, releasedBy,
+                    releasedAt, List.of());
+        }
     }
 
     public record StockInHistoryItem(
@@ -83,7 +107,56 @@ public final class ProcurementIqcStockInContracts {
             String weightUnitName,
             String place,
             String confirmedBy,
-            OffsetDateTime confirmedAt) {
+            OffsetDateTime confirmedAt,
+            List<InboundAllocation> actualAllocations) {
+
+        public StockInHistoryItem {
+            actualAllocations = actualAllocations == null
+                    ? List.of() : List.copyOf(actualAllocations);
+        }
+
+        public StockInHistoryItem(
+                UUID stockInItemId, UUID batchId, UUID passEventId, UUID goodsId,
+                String goodsCode, String goodsName, String colorName, String unitName,
+                BigDecimal baseQty, BigDecimal weight, String weightUnitName,
+                String place, String confirmedBy, OffsetDateTime confirmedAt) {
+            this(stockInItemId, batchId, passEventId, goodsId, goodsCode, goodsName,
+                    colorName, unitName, baseQty, weight, weightUnitName, place,
+                    confirmedBy, confirmedAt, List.of());
+        }
+    }
+
+    /** Amount-free expected or actual production purpose for one warehouse slice. */
+    public record InboundAllocation(
+            @JsonSerialize(using = ToStringSerializer.class) UUID passEventId,
+            @JsonSerialize(using = ToStringSerializer.class) UUID stockInBatchItemId,
+            String kind,
+            BigDecimal qty,
+            @JsonSerialize(using = ToStringSerializer.class) UUID actualWarehouseId,
+            String actualWarehouseName,
+            @JsonSerialize(using = ToStringSerializer.class) UUID targetWarehouseId,
+            String targetWarehouseName,
+            List<String> intendedWarehouseNames,
+            boolean warehouseMatches,
+            @JsonSerialize(using = ToStringSerializer.class) UUID analysisId,
+            @JsonSerialize(using = ToStringSerializer.class) UUID analysisMaterialId,
+            String productCode,
+            String productName,
+            String sourceLabel,
+            @JsonSerialize(using = ToStringSerializer.class) UUID planId,
+            String planNo,
+            @JsonSerialize(using = ToStringSerializer.class) UUID executionSegmentId,
+            String executionSegmentCode,
+            @JsonSerialize(using = ToStringSerializer.class) UUID workshopDepartmentId,
+            String workshopName,
+            @JsonSerialize(using = ToStringSerializer.class) UUID responsibleEmployeeId,
+            String responsibleEmployeeName,
+            String formationStatus) {
+
+        public InboundAllocation {
+            intendedWarehouseNames = intendedWarehouseNames == null
+                    ? List.of() : List.copyOf(intendedWarehouseNames);
+        }
     }
 
     public record ConfirmRequest(
@@ -102,7 +175,18 @@ public final class ProcurementIqcStockInContracts {
             @JsonSerialize(using = ToStringSerializer.class) UUID batchId,
             boolean replayed,
             int confirmedCount,
-            OffsetDateTime confirmedAt) {
+            OffsetDateTime confirmedAt,
+            List<InboundAllocation> allocations) {
+
+        public ConfirmResult {
+            allocations = allocations == null ? List.of() : List.copyOf(allocations);
+        }
+
+        public ConfirmResult(
+                UUID batchId, boolean replayed, int confirmedCount,
+                OffsetDateTime confirmedAt) {
+            this(batchId, replayed, confirmedCount, confirmedAt, List.of());
+        }
     }
 
     /** 跨收货单批量入库：整批同事务，先校验全部集合再执行，任一冲突整批回滚。 */
@@ -133,6 +217,18 @@ public final class ProcurementIqcStockInContracts {
             @JsonSerialize(using = ToStringSerializer.class) UUID batchId,
             boolean replayed,
             int confirmedCount,
-            OffsetDateTime confirmedAt) {
+            OffsetDateTime confirmedAt,
+            List<InboundAllocation> allocations) {
+
+        public BatchConfirmEntryResult {
+            allocations = allocations == null ? List.of() : List.copyOf(allocations);
+        }
+
+        public BatchConfirmEntryResult(
+                String receiptType, UUID receiptId, UUID batchId,
+                boolean replayed, int confirmedCount, OffsetDateTime confirmedAt) {
+            this(receiptType, receiptId, batchId, replayed, confirmedCount,
+                    confirmedAt, List.of());
+        }
     }
 }

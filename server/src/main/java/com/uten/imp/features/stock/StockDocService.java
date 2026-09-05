@@ -107,6 +107,9 @@ public class StockDocService {
     private final StockBalanceRepository balanceRepo;
     private final StockService stockService;
     private final StockReservationService reservationService;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
     private final EntityManager em;
@@ -553,22 +556,31 @@ public class StockDocService {
         if (residualDocument != null) {
             chainNotice.notifyFinishedInboundPending(residualDocument.getId());
         }
-        return approveInternal(id, true);
+        return approveInternal(id, true, false);
     }
 
-    /** 审核：0→1，按 doc_type 写库存（流水+余额）。DRAW 例外：审核=确认领料单，库存由分轮出库产生。 */
+    /** 审核：0→1；生产链 DRAW 必须走审核并出库的一段式端点。 */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:approve')")
     public StockDocDetail approve(UUID id) {
         prelockProductionDocument(id);
-        return approveInternal(id, false);
+        return approveInternal(id, false, false);
     }
 
     private StockDocDetail approveInternal(
-            UUID id, boolean warehouseQuantityConfirmed) {
+            UUID id,
+            boolean warehouseQuantityConfirmed,
+            boolean allowProductionDrawApproveAndIssue) {
         tx.bind();
         taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument d = requireDocForUpdate(id);
+        if ("DRAW".equals(d.getDocType())
+                && isProductionLinked(id)
+                && !allowProductionDrawApproveAndIssue) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "生产领料单不能单独审核；请使用“出库”一次完成审核与实物出库");
+        }
         requireOperationWritable(
                 d, "stock_doc:approve", "无权审核此仓库单据");
         requireBalanceAdjustmentPermission(d);
@@ -631,7 +643,7 @@ public class StockDocService {
         return detail(id);
     }
 
-    /** 红冲：1→-1，反向冲销库存。DRAW 有已出库量时须先全部反出库。 */
+    /** 红冲：1→-1，反向冲销库存。DRAW 有已出库量时须先取消全部出库。 */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:reverse')")
     public StockDocDetail reverse(UUID id) {
@@ -682,7 +694,7 @@ public class StockDocService {
             boolean anyIssued = items.stream().anyMatch(it ->
                     it.getIssuedQty() != null && it.getIssuedQty().signum() > 0);
             if (anyIssued) {
-                throw new ApiException(ErrorCode.BUSINESS, "领料单已有出库记录，请先全部反出库再红冲");
+                throw new ApiException(ErrorCode.BUSINESS, "领料单已有出库记录，请先取消全部出库再红冲");
             }
         } else {
             if ("FINISHED_IN".equals(d.getDocType())) {
@@ -723,6 +735,31 @@ public class StockDocService {
 
     // ===== DRAW 部分出库（仓库部门需求：领料单引用 + 部分出库 + 未完成保留） =====
 
+    /** Draft DRAW: approval and first issue are atomic; an issue failure rolls approval back. */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:approve') and hasAuthority('stock_doc:issue')")
+    public StockDocDetail approveAndIssue(UUID id, StockDocIssueRequest req) {
+        prelockProductionDocument(id);
+        StockDocument document = requireDocForUpdate(id);
+        if (!"DRAW".equals(document.getDocType())
+                || document.getStatus() == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "只有草稿生产领料单可以直接出库");
+        }
+        // Response-loss retry: the first atomic call may already have committed
+        // approval + issue. The issue ledger owns the idempotency replay, so an
+        // approved DRAW must reach it instead of failing on the former draft
+        // precondition.
+        if (document.getStatus() == STATUS_APPROVED) {
+            return issue(id, req);
+        }
+        if (document.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT, "只有草稿生产领料单可以直接出库");
+        }
+        approveInternal(id, false, true);
+        return issue(id, req);
+    }
+
     /** 分轮领料：先消耗物料占用，再扣物理库存；同事务保证可用量不二次下降。 */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:issue')")
@@ -732,7 +769,13 @@ public class StockDocService {
         StockDocument d = requireDrawForIssue(id);
         requireOperationWritable(
                 d, "stock_doc:issue", "无权发出此生产领料单");
-        requireApprovedLinkedProductionPlan(d);
+        // 生产链 DRAW：出库即审核口径下必须能证明「已审关联计划 + 逐行唯一执行
+        // 工单映射」；手工单（isProductionLinked=false）没有这些事实，不套用
+        // 生产侧校验（其可发性由台账层 lockPackageForDraw 的计划包守卫统一收口）。
+        if (isProductionLinked(d.getId())) {
+            requireApprovedLinkedProductionPlan(d);
+            requireExactProductionDrawSegmentMappings(id);
+        }
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         lockInventory(items);
         ProductionMaterialStockLedgerService.PostingResult posted =
@@ -750,23 +793,125 @@ public class StockDocService {
             itemRepo.save(item);
         }
         recomputeIssueStatus(d, itemRepo.findByDocIdOrderByLineNoAsc(id));
-        if (d.getIssueStatus() == ISSUE_FULL) {
-            chainNotice.notifyProductionDrawIssued(
-                    d.getId(), req.getIdempotencyKey());
-        }
+        // Notify by exact execution segment after every issue slice. A DRAW may
+        // contain several segments; one fully-issued segment must not wait for
+        // unrelated rows on the same document.
+        chainNotice.notifyProductionDrawIssued(
+                d.getId(), req.getIdempotencyKey());
         return detail(id);
     }
 
-    /** 反出库：幂等预检后先恢复物理库存，再对称恢复 allocation.consumed_qty。 */
+    /**
+     * A DRAW line deliberately keeps stock_document_items.execution_segment_id
+     * null: V157 reserves that column for FINISHED_IN.  Its execution identity
+     * is the immutable package-item mapping to one material demand, cross-checked
+     * against the DRAW header mapping.  Never fall back to SKU, name or row order.
+     */
+    private void requireExactProductionDrawSegmentMappings(UUID documentId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT item.id, mapping.id, demand.id,
+                                       demand.execution_segment_id,
+                                       header.execution_segment_id,
+                                       mapping.package_id, demand.package_id,
+                                       header.package_id, segment.package_id,
+                                       package.status,
+                                       package.execution_model_version,
+                                       document.warehouse_id,
+                                       demand.warehouse_id,
+                                       item.goods_id, demand.goods_id,
+                                       item.color_id, demand.color_id,
+                                       item.unit_id, demand.unit_id,
+                                       item.unit_rate,
+                                       demand.is_deleted, demand.status,
+                                       segment.is_deleted,
+                                       demand.plan_id, segment.plan_id,
+                                       package.plan_id,
+                                       demand.source_plan_item_id,
+                                       segment.source_plan_item_id
+                                FROM stock_documents document
+                                JOIN stock_document_items item
+                                  ON item.doc_id = document.id
+                                 AND item.is_deleted = FALSE
+                                LEFT JOIN production_planning_package_document_items mapping
+                                  ON mapping.document_type = 'DRAW'
+                                 AND mapping.document_id = document.id
+                                 AND mapping.document_item_id = item.id
+                                LEFT JOIN production_material_demands demand
+                                  ON demand.id = mapping.demand_id
+                                LEFT JOIN production_planning_package_documents header
+                                  ON header.package_id = mapping.package_id
+                                 AND header.document_type = 'DRAW'
+                                 AND header.document_id = document.id
+                                LEFT JOIN production_planning_packages package
+                                  ON package.id = mapping.package_id
+                                LEFT JOIN production_execution_segments segment
+                                  ON segment.id = demand.execution_segment_id
+                                WHERE document.id = :documentId
+                                  AND document.doc_type = 'DRAW'
+                                  AND document.is_deleted = FALSE
+                                ORDER BY item.id, mapping.id
+                                """)
+                        .setParameter("documentId", documentId));
+        if (rows.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "生产领料单没有可证明执行工单归属的有效明细，禁止出库");
+        }
+        Set<UUID> mappedItems = new HashSet<>();
+        for (Object[] row : rows) {
+            UUID itemId = (UUID) row[0];
+            if (itemId == null || !mappedItems.add(itemId)) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "生产领料明细存在多个物料需求映射，无法唯一确定执行工单，禁止出库");
+            }
+            boolean exact = row[1] != null
+                    && row[2] != null
+                    && row[3] != null
+                    && Objects.equals(row[3], row[4])
+                    && Objects.equals(row[5], row[6])
+                    && Objects.equals(row[5], row[7])
+                    && Objects.equals(row[5], row[8])
+                    && "CONFIRMED".equals(row[9])
+                    && row[10] != null
+                    && ((Number) row[10]).intValue() == 1
+                    && Objects.equals(row[11], row[12])
+                    && Objects.equals(row[13], row[14])
+                    && Objects.equals(row[15], row[16])
+                    && Objects.equals(row[17], row[18])
+                    && row[19] instanceof Number
+                    && new BigDecimal(row[19].toString())
+                            .compareTo(BigDecimal.ONE) == 0
+                    && !Boolean.TRUE.equals(row[20])
+                    && !"RELEASED".equals(row[21])
+                    && !"REVERSED".equals(row[21])
+                    && !Boolean.TRUE.equals(row[22])
+                    && Objects.equals(row[23], row[24])
+                    && Objects.equals(row[23], row[25])
+                    && Objects.equals(row[26], row[27]);
+            if (!exact) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "生产领料明细缺少唯一且一致的物料需求→执行工单 UUID 映射，禁止出库");
+            }
+        }
+    }
+
+    /** 取消出库：幂等预检后先恢复物理库存，再对称恢复 allocation.consumed_qty。 */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:reverse_issue')")
     public StockDocDetail reverseIssue(UUID id, StockDocIssueRequest req) {
         tx.bind();
+        String cancellationReason = req == null ? null : req.getReason();
+        if (cancellationReason == null || cancellationReason.isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "取消出库必须填写原因");
+        }
         prelockProductionDocument(id);
         StockDocument d = requireDrawForIssue(id);
         boolean wasFullyIssued = d.getIssueStatus() == ISSUE_FULL;
         requireOperationWritable(
-                d, "stock_doc:reverse_issue", "无权反向此生产领料单");
+                d, "stock_doc:reverse_issue", "无权取消此生产领料单出库");
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         requireReverseIssueDimensions(d, items, req);
         lockInventory(items);
@@ -774,7 +919,8 @@ public class StockDocService {
                 productionMaterialLedger.prepareReverseIssue(
                         d.getId(), d.getWarehouseId(),
                         issueMaterialLines(d, items, req),
-                        req.getIdempotencyKey(), currentUser.requireId());
+                        req.getIdempotencyKey(), cancellationReason.strip(),
+                        currentUser.requireId());
         if (prepared.replayed()) return detail(id);
         validateIssueRequest(items, req, true);
         OffsetDateTime ts = OffsetDateTime.now();
@@ -805,7 +951,7 @@ public class StockDocService {
         Map<UUID, BigDecimal> totals = new HashMap<>();
         for (StockDocIssueRequest.Line line : req.getLines()) {
             StockDocumentItem item = findItem(items, line.getItemId());
-            requirePositiveStockItem(item, reverse ? "反出库" : "领料出库");
+            requirePositiveStockItem(item, reverse ? "取消出库" : "领料出库");
             totals.merge(item.getId(), line.getQty(), BigDecimal::add);
         }
         for (Map.Entry<UUID, BigDecimal> entry : totals.entrySet()) {
@@ -859,7 +1005,7 @@ public class StockDocService {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "历史领料行缺少仓库、货品、单位、正数数量或有效换算率，"
-                                + "禁止通用反出库；请走专用领料历史对账修复");
+                                + "禁止普通取消出库；请走专用领料历史对账修复");
             }
         }
     }
@@ -1813,9 +1959,9 @@ public class StockDocService {
     }
 
     /**
-     * 出库/反出库库存流水：数量按本次 qty（×unit_rate 转基本量），金额/实际总重量按
+     * 出库/取消出库库存流水：数量按本次 qty（×unit_rate 转基本量），金额/实际总重量按
      * 本次/行总量比例分摊；重量与数量换算率无关。
-     * sign +1=出库（DIR_OUT）/ -1=反出库（反向 DIR_IN）。
+     * sign +1=出库（DIR_OUT）/ -1=取消出库（反向 DIR_IN）。
      *
      * <p>正反向都要求完整、正数的库存维度。历史异常不得只减
      * issued_qty；必须走能够证明原物理流水的专用对账修复。</p>
@@ -1836,7 +1982,7 @@ public class StockDocService {
                 || rate.signum() <= 0
                 || baseQty.signum() <= 0) {
             String message = sign < 0
-                    ? "历史领料行无法证明原库存流水，禁止通用反出库；"
+                    ? "历史领料行无法证明原库存流水，禁止普通取消出库；"
                             + "请走专用领料历史对账修复"
                     : "领料行缺少仓库、货品、单位、正数数量或有效换算率，禁止出库";
             throw new ApiException(ErrorCode.CONFLICT, message);
@@ -2512,6 +2658,11 @@ public class StockDocService {
             }
         }
         d.setBillDate(req.getBillDate());
+        // V476 运营红线：仓库单据必须落到具体叶子仓；主仓库只作查询聚合。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+            warehouseScopes.requireLeafWarehouse(req.getToWarehouseId(), "调入仓");
+        }
         d.setWarehouseId(req.getWarehouseId());
         d.setToWarehouseId(req.getToWarehouseId());
         d.setSupplierId(req.getSupplierId());

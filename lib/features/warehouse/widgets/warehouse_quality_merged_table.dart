@@ -6,6 +6,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/warehouse_quality_result.dart';
+import 'warehouse_inbound_allocation_view.dart';
 import 'warehouse_quality_slice_table.dart'
     show
         WarehouseQualitySliceDraft,
@@ -214,6 +215,12 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         cellBuilder: (context, row) => _remainingCell(context, row),
       ),
       EditableGridColumn(
+        key: 'expectedAllocation',
+        label: '预计去向',
+        width: 220,
+        cellBuilder: (context, row) => _expectedAllocationCell(context, row),
+      ),
+      EditableGridColumn(
         key: 'release',
         label: '放行信息',
         width: 250,
@@ -308,6 +315,38 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     final remaining = slice?.remainingBaseQty ?? row.line.pendingStockBaseQty;
     if (remaining <= 0) return const Text('—');
     return Text(_qty(remaining, row.unitName));
+  }
+
+  Widget _expectedAllocationCell(
+    BuildContext context,
+    WarehouseQualityMergedRow row,
+  ) {
+    final draft = row.draft;
+    if (draft == null) return const Text('—');
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: draft.quantity,
+      builder: (context, _, _) {
+        final requested = double.tryParse(draft.quantity.text.trim()) ?? 0;
+        final section = WarehouseInboundAllocationSection(
+          id: draft.slice.passEventId,
+          goodsLabel: draft.slice.goodsLabel,
+          quantity: requested,
+          unitName: draft.slice.unitName,
+          sourceOrderNo: draft.slice.sourceOrderNo,
+          allocations: draft.slice.expectedAllocations,
+        );
+        return WarehouseInboundAllocationSummary(
+          allocations: draft.slice.expectedAllocations,
+          previewQty: requested,
+          qtyText: warehouseQualityQuantity,
+          onTap: () => showWarehouseInboundAllocationDetails(
+            context,
+            title: '预计去向 · ${draft.slice.goodsLabel}',
+            sections: [section],
+          ),
+        );
+      },
+    );
   }
 }
 

@@ -25,6 +25,7 @@ class ProductCategoryNode implements UtenTreeNode<ProductCategoryNode> {
     this.remark,
     this.codePrefix,
     this.systemManaged = false,
+    this.goodsCount,
   });
 
   @override
@@ -42,6 +43,10 @@ class ProductCategoryNode implements UtenTreeNode<ProductCategoryNode> {
   final String? remark;
   final String? codePrefix;
   final bool systemManaged;
+
+  /// 子树（含自身）未软删货品数；仅 treeWithGoodsCounts 请求时非空，
+  /// 即时库存页用它隐藏零货品分类分段（null=后端未给计数，不隐藏）。
+  final int? goodsCount;
   @override
   final List<ProductCategoryNode> children;
 
@@ -61,6 +66,7 @@ class ProductCategoryNode implements UtenTreeNode<ProductCategoryNode> {
       remark: json['remark'] as String?,
       codePrefix: json['codePrefix'] as String?,
       systemManaged: json['systemManaged'] as bool? ?? false,
+      goodsCount: (json['goodsCount'] as num?)?.toInt(),
       children: list
           .map((e) => ProductCategoryNode.fromJson(e as Map<String, dynamic>))
           .toList(),

@@ -28,7 +28,6 @@ abstract class _MaterialAnalysisSupplyActionsState
           '${actionGroupKey ?? group.representative.materialLineId}|'
           '${suggestion.wireName}',
     );
-    final preservedSelections = _supplySelectionSnapshot();
     setState(() => _savingRoutes = true);
     try {
       final view = await ref
@@ -42,7 +41,6 @@ abstract class _MaterialAnalysisSupplyActionsState
       setState(() {
         _savingRoutes = false;
         _applyAnalysis(view);
-        _restoreValidSupplySelections(preservedSelections);
       });
       context.appSuccess('已采用${suggestion.label}路线，可直接下达任务');
     } catch (error) {
@@ -74,7 +72,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       title: '填写路线覆盖原因',
       fieldKey: const Key('material-route-reason'),
       initialValue: _routeReasons[group.key] ?? '',
-      helperMessage:
+      info:
           '服务端建议 ${group.representative.sourceSuggestion?.label ?? '人工判断'}，'
           '当前选择 ${route.label}。取消不会改变原路线。',
       confirmLabel: '确认路线',
@@ -153,7 +151,6 @@ abstract class _MaterialAnalysisSupplyActionsState
       return;
     }
     changes.sort((left, right) => left.identity.compareTo(right.identity));
-    final preservedSelections = _supplySelectionSnapshot();
     var current = analysis;
     var completed = 0;
     final batches = _chunked(changes);
@@ -193,7 +190,6 @@ abstract class _MaterialAnalysisSupplyActionsState
         _savingRoutes = false;
         _clearBulkOperation();
         _applyAnalysis(current);
-        _restoreValidSupplySelections(preservedSelections);
       });
       context.appSuccess(
         batches.length == 1 ? '物料路线已确认' : '物料路线已分 ${batches.length} 批全部确认',
@@ -232,7 +228,7 @@ abstract class _MaterialAnalysisSupplyActionsState
           }
           _dirtyRouteGroups.add(groupKey);
         }
-        _restoreValidSupplySelections(preservedSelections);
+        _invalidateBucketRowsCache();
       });
       final message = productionErrorMessage(error, fallback: '路线确认失败，请刷新后重试');
       context.appError(
@@ -270,6 +266,7 @@ abstract class _MaterialAnalysisSupplyActionsState
         accepted++;
       }
       _planPreview = null;
+      if (accepted > 0) _invalidateBucketRowsCache();
     });
     if (accepted == 0) {
       context.appInfo(
@@ -368,12 +365,10 @@ abstract class _MaterialAnalysisSupplyActionsState
       group.actionable &&
       _routeDraft[group.key] == route &&
       !_dirtyRouteGroups.contains(group.key) &&
-      // V458/ADR-062：MAKE 与有子层 SUBCONTRACT 同构——下层未齐套不可勾选下达。
-      !group.representative.lowerLevelPending &&
       !_routeBlockedBySafetyGap(group, route) &&
       _hasSupplySubmitQty(group, route);
 
-  @override
+  /// 当前路线下仍可执行（路线已确认、有真实余量、未被通知闭合）的操作组。
   List<_MaterialGroup> _executableSupplyGroups(MaterialSupplyRoute route) {
     final analysis = _analysis;
     if (analysis == null) return const [];
@@ -382,375 +377,8 @@ abstract class _MaterialAnalysisSupplyActionsState
         .toList(growable: false);
   }
 
-  int _selectedExecutableCount(MaterialSupplyRoute route) {
-    final selected = _selectedSupplyGroups[route]!;
-    return _executableSupplyGroups(
-      route,
-    ).where((group) => selected.contains(group.key)).length;
-  }
-
-  String _notifyLabel(MaterialSupplyRoute route) {
-    final count = _selectedExecutableCount(route);
-    return switch (route) {
-      MaterialSupplyRoute.buy => '提交采购需求($count)',
-      // V458：无子层立即通知委外部；有子层由服务端转前置自制，不惊动委外。
-      MaterialSupplyRoute.subcontract => '下达委外($count)',
-      // 两段式第一步：创建任务后留在本页填数量，不直接进计划向导。
-      MaterialSupplyRoute.make =>
-        _canGenerate ? '创建子件并填写生产数量($count)' : '创建自制子件任务($count)',
-    };
-  }
-
-  bool? _supplyHeaderValue(MaterialSupplyRoute route) {
-    final eligible = _executableSupplyGroups(route);
-    if (eligible.isEmpty) return false;
-    final selected = _selectedSupplyGroups[route]!;
-    final selectedCount = eligible
-        .where((group) => selected.contains(group.key))
-        .length;
-    if (selectedCount == 0) return false;
-    if (selectedCount == eligible.length) return true;
-    return null;
-  }
-
-  void _toggleSupplyGroup(
-    MaterialSupplyRoute route,
-    _MaterialGroup group,
-    bool selected,
-  ) {
-    if (!_isExecutableSupplyGroup(group, route) || _busy) return;
-    setState(() {
-      final values = _selectedSupplyGroups[route]!;
-      selected ? values.add(group.key) : values.remove(group.key);
-      _planPreview = null;
-    });
-  }
-
-  void _toggleAllSupplyGroups(MaterialSupplyRoute route, bool selected) {
-    if (_busy) return;
-    final eligible = _executableSupplyGroups(route);
-    setState(() {
-      final values = _selectedSupplyGroups[route]!;
-      if (selected) {
-        values.addAll(eligible.map((group) => group.key));
-      } else {
-        values.removeAll(eligible.map((group) => group.key));
-      }
-      _planPreview = null;
-    });
-  }
-
-  /// 行首选择控件：固定 48px，只改变本地批量选择，不写业务事实。
-  ///
-  /// - 已下达且余量已闭合 → 显示「已下达」标记，不再参与勾选；
-  /// - 已下达但仍有剩余缺口（分批提交的第二批起）→ 继续显示勾选框，
-  ///   数量在提交对话框里按「缺口 − 在途」给默认与上限；
-  /// - 库存已覆盖（无缺口）→ 显示「已齐」标记，不出现死勾选框；
-  /// - 路线已确认且可执行 → 直接勾选/取消；
-  /// - 路线未确认但有主档建议 → 固定宽图标，点按给出明确引导，不把普通
-  ///   勾选伪装成一次 PUT 写入；
-  /// - 无建议路线 / 下层未齐套等 → 点按给出明确引导，不静默无响应。
-  Widget _nodeSelectionControl(
-    ThemeData theme,
-    ProductionMaterialAnalysisMaterial material,
-    _MaterialGroup group,
-    MaterialSupplyRoute? route,
-    bool selected,
-  ) {
-    final notified = _notifiedTargetOf(material);
-    if (material.requiredQty > 0 &&
-        notified != null &&
-        (route == null ||
-            (!_routeBlockedBySafetyGap(group, route) &&
-                !_hasSupplySubmitQty(group, route)))) {
-      return Tooltip(
-        message: '已下达${notified.target?.label ?? ''}任务，无需重复选择',
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Icon(
-            Icons.check_circle_rounded,
-            size: 22,
-            color: selected ? Colors.white : theme.colorScheme.primary,
-          ),
-        ),
-      );
-    }
-    if (material.requiredQty <= 0) {
-      final inactive = _requirementStateView(theme, material);
-      return Tooltip(
-        message: '${inactive.title}：${inactive.detail}',
-        child: Semantics(
-          container: true,
-          label: '${inactive.title}。${inactive.detail}',
-          child: ExcludeSemantics(
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: Center(
-                child: Text(
-                  '—',
-                  style: TextStyle(
-                    color: selected
-                        ? Colors.white70
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-    if (material.requiredQty > 0 && material.shortageQty <= 0) {
-      return Tooltip(
-        message: '库存已覆盖，无需下达',
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Icon(
-            Icons.inventory_2_outlined,
-            size: 20,
-            color: selected ? Colors.white70 : theme.colorScheme.primary,
-          ),
-        ),
-      );
-    }
-    final makeGated =
-        route == MaterialSupplyRoute.make && material.lowerLevelPending;
-    final label = '选择${material.goodsName ?? material.goodsCode ?? '当前物料'}';
-    if (!_canNotify) {
-      return _nodeGateIcon(
-        theme,
-        material,
-        label: '仅查看',
-        message: '没有下达采购、委外或生产任务的权限',
-        icon: Icons.visibility_outlined,
-      );
-    }
-    if (_dirtyRouteGroups.contains(group.key)) {
-      return _nodeGateIcon(
-        theme,
-        material,
-        label: '先保存路线',
-        message: '路线有未保存修改，保存后才可加入批量下达',
-        icon: Icons.save_outlined,
-      );
-    }
-    if (route == null || material.confirmedRoute == null) {
-      return _nodeGateIcon(
-        theme,
-        material,
-        label: '先确认路线',
-        message: '先采用建议路线，或在右侧详情中选择采购、委外或自制',
-        icon: Icons.route_outlined,
-      );
-    }
-    if (makeGated) {
-      return _nodeGateIcon(
-        theme,
-        material,
-        label: '下层未齐',
-        message: '下层物料未齐套，暂不能安排生产，请先处理下层缺料',
-        icon: Icons.account_tree_outlined,
-      );
-    }
-    if (_routeBlockedBySafetyGap(group, route)) {
-      return _nodeGateIcon(
-        theme,
-        material,
-        label: '仅采购可补安全库存',
-        message: '本版本仅采购路线支持公共安全补库；请改为采购路线，或先处理安全库存策略',
-        icon: Icons.policy_outlined,
-      );
-    }
-    if (!_isExecutableSupplyGroup(group, route)) {
-      return _nodeGateIcon(
-        theme,
-        material,
-        label: '暂不可选',
-        message: '当前节点暂不可加入批量下达，请查看右侧状态和详情',
-        icon: Icons.info_outline_rounded,
-      );
-    }
-    return Tooltip(
-      message: label,
-      child: Semantics(
-        container: true,
-        checked: selected,
-        enabled: !_busy,
-        label: label,
-        onTap: _busy
-            ? null
-            : () => _handleSupplyCheckbox(group, route, selected),
-        child: InkWell(
-          key: ValueKey('material-bom-select-${material.materialLineId}'),
-          borderRadius: UtenRadius.smAll,
-          onTap: _busy
-              ? null
-              : () => _handleSupplyCheckbox(group, route, selected),
-          child: SizedBox(
-            width: 48,
-            height: 48,
-            child: IgnorePointer(
-              child: ExcludeSemantics(
-                child: Checkbox(
-                  value: selected,
-                  onChanged: _busy ? null : (_) {},
-                  fillColor: selected
-                      ? const WidgetStatePropertyAll(Colors.white)
-                      : null,
-                  checkColor: selected ? UtenColors.deepGreen : null,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 固定 48px 的行首门禁图标：不撑开行头宽度，保持整列对齐；
-  /// 点按弹出大白话引导（适老：不依赖悬停 tooltip 才能看到原因）。
-  Widget _nodeGateIcon(
-    ThemeData theme,
-    ProductionMaterialAnalysisMaterial material, {
-    required String label,
-    required String message,
-    required IconData icon,
-  }) => Tooltip(
-    message: '$label：$message',
-    child: Semantics(
-      container: true,
-      button: true,
-      label: '$label：$message',
-      child: InkWell(
-        key: ValueKey('material-bom-gate-${material.materialLineId}'),
-        borderRadius: UtenRadius.smAll,
-        onTap: _busy ? null : () => context.appInfo(message),
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Icon(
-            icon,
-            size: 20,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    ),
-  );
-
-  /// 行首路线确认状态的视觉描述：待确认 / 已确认 / 已下达 / 分批在途 /
-  /// 已齐 / 需求未激活或已转交。汇总路径行的行首状态列使用（BOM 节点卡
-  /// 左栏已改为纯层级底色 + 竖向保障进度条，不再显示该图标）。
-  ({IconData icon, Color color, String tip, String? tapMessage})
-  _routeStateVisual(
-    ThemeData theme,
-    ProductionMaterialAnalysisMaterial material,
-    _MaterialGroup group,
-    MaterialSupplyRoute? route, {
-    required bool selected,
-  }) {
-    final onSelected = selected ? Colors.white : null;
-    final onSelectedSoft = selected ? Colors.white70 : null;
-    IconData icon;
-    Color color;
-    String tip;
-    String? tapMessage;
-    final notified = _notifiedTargetOf(material);
-    if (material.requiredQty > 0 && notified != null) {
-      final residual = route == null ? 0.0 : _residualSubmitQty(group, route);
-      final safetyGap = _groupSafetyReplenishmentGapQty(group);
-      if (route != null && _routeBlockedBySafetyGap(group, route)) {
-        icon = Icons.policy_outlined;
-        color = onSelected ?? theme.colorScheme.error;
-        tip = '本版本仅采购路线支持公共安全补库';
-        tapMessage =
-            '当前路线为${route.label}，公共安全库存还差 ${_qty(safetyGap)}；本版本不能沿该路线继续下达';
-      } else if (residual > 0 ||
-          (route == MaterialSupplyRoute.buy && safetyGap > 0)) {
-        icon = Icons.timelapse_rounded;
-        color = onSelected ?? theme.colorScheme.secondary;
-        tip = residual > 0 ? '分批在途：仍有本批生产需求可继续提交' : '本批生产需求已覆盖，仍有公共安全库存补库待确认';
-      } else {
-        icon = Icons.check_circle_rounded;
-        color = onSelected ?? theme.colorScheme.primary;
-        tip = '已下达${notified.target?.label ?? ''}任务';
-      }
-    } else if (material.requiredQty <= 0) {
-      final inactive = _requirementStateView(theme, material);
-      icon = Icons.remove_rounded;
-      color = onSelectedSoft ?? inactive.color;
-      tip = inactive.title;
-      tapMessage = inactive.detail;
-    } else if (material.shortageQty <= 0) {
-      icon = Icons.inventory_2_outlined;
-      color = onSelected ?? theme.colorScheme.primary;
-      tip = '库存已覆盖，本层已齐';
-    } else if (_dirtyRouteGroups.contains(group.key)) {
-      icon = Icons.save_outlined;
-      color = onSelected ?? Colors.orange.shade700;
-      tip = '路线已改未保存';
-      tapMessage = '路线有未保存修改，请先点底部「确认路线」保存，再提交任务';
-    } else if (material.confirmedRoute == null) {
-      icon = Icons.route_outlined;
-      color = onSelected ?? theme.colorScheme.error;
-      tip = '先确认路线';
-      tapMessage = '先点右侧「采用建议」或「更换路线」选择采购/委外/自制，再提交任务';
-    } else {
-      icon = Icons.check_circle_outline_rounded;
-      color = onSelected ?? theme.colorScheme.primary;
-      tip = '路线已确认(${route?.label ?? ''})，可勾选提交';
-    }
-    return (icon: icon, color: color, tip: tip, tapMessage: tapMessage);
-  }
-
-  /// 行首第一列（固定宽）：只显示「路线确认状态」一个图标。
-  /// 宽屏 56px，紧凑屏 44px（横向空间紧张时给物料名让位）。
-  Widget _routeStateCell(
-    ThemeData theme,
-    ProductionMaterialAnalysisMaterial material,
-    _MaterialGroup group,
-    MaterialSupplyRoute? route, {
-    required bool selected,
-    bool compact = false,
-  }) {
-    final visual = _routeStateVisual(
-      theme,
-      material,
-      group,
-      route,
-      selected: selected,
-    );
-    final child = SizedBox(
-      width: compact ? 44 : 56,
-      height: 48,
-      child: Center(child: Icon(visual.icon, size: 24, color: visual.color)),
-    );
-    return Tooltip(
-      message: visual.tip,
-      child: Semantics(
-        container: true,
-        button: visual.tapMessage != null,
-        label: visual.tip,
-        child: visual.tapMessage == null
-            ? child
-            : InkWell(
-                key: ValueKey(
-                  'material-route-state-${material.materialLineId}',
-                ),
-                borderRadius: UtenRadius.smAll,
-                onTap: _busy ? null : () => context.appInfo(visual.tapMessage!),
-                child: child,
-              ),
-      ),
-    );
-  }
-
-  /// 节点“本批生产需求”覆盖口径 =（需求 − demandSupplyGapQty）÷ 需求。
-  /// 安全库存保护与公共补库在途在卡片上独立展示，不能再把安全库存缺口伪装
-  /// 成本批生产需求未到货。不混用报工 fqty / 成品入库 iqty。
+  /// 本批生产需求覆盖口径 =（需求 − demandSupplyGapQty）÷ 需求。
+  /// 安全库存、公共补库与生产执行分别展示，不混进这个比例。
   ({double covered, double ratio})? _coverageOf(
     ProductionMaterialAnalysisMaterial material,
   ) {
@@ -763,16 +391,6 @@ abstract class _MaterialAnalysisSupplyActionsState
       covered: covered,
       ratio: (covered / material.requiredQty).clamp(0.0, 1.0),
     );
-  }
-
-  /// 覆盖进度配色：已齐=主题色，0%=错误色，中间=tertiary。
-  Color _coverageColor(
-    ThemeData theme,
-    ProductionMaterialAnalysisMaterial material,
-    double ratio,
-  ) {
-    if (material.demandSupplyGapQty <= 0) return theme.colorScheme.primary;
-    return ratio <= 0 ? theme.colorScheme.error : theme.colorScheme.tertiary;
   }
 
   /// A zero requirement is not one generic “no replenishment” state. The
@@ -881,192 +499,19 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// 生产执行进度；零需求节点按 requirementState 朗读原因和恢复路径。
   /// 状态栏独立整高，右侧内容不会侵入。2026-08-18 起移除栏顶路线状态图标
   /// （路线状态由数量行的状态文字承担），栏体只表达层级 + 进度。
-  Widget _nodeStatusRail(
-    ThemeData theme,
-    ProductionMaterialAnalysisMaterial material,
-    _MaterialGroup group,
-    MaterialSupplyRoute? route, {
-    required bool selected,
-  }) {
-    final bandColor = selected
-        ? Colors.white
-        : _levelBandColor(theme, material.level);
-    final coverage = _coverageOf(material);
-    final barColor = coverage == null
-        ? bandColor.withValues(alpha: selected ? 0.9 : 0.6)
-        : selected
-        ? Colors.white
-        : _coverageColor(theme, material, coverage.ratio);
-    final progressLabel = coverage == null
-        ? null
-        : '合格库存保障 ${_qty(coverage.covered)}/${_qty(material.requiredQty)}'
-              '(${(coverage.ratio * 100).toStringAsFixed(0)}%)';
-    final inactiveView = coverage == null
-        ? _requirementStateView(theme, material)
-        : null;
-    return Container(
-      width: 44,
-      decoration: BoxDecoration(
-        // 层级底色加明显（0.12 → 0.24），与右侧内容区一眼区分层级。
-        color: bandColor.withValues(alpha: selected ? 0.16 : 0.24),
-        border: Border(
-          right: BorderSide(
-            color: selected ? Colors.white24 : theme.colorScheme.outlineVariant,
-          ),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-        child: coverage == null
-            ? Semantics(
-                container: true,
-                label: '${inactiveView!.title}。${inactiveView.detail}',
-                child: ExcludeSemantics(
-                  child: Center(
-                    child: Container(
-                      width: 4,
-                      decoration: BoxDecoration(
-                        color: barColor,
-                        borderRadius: UtenRadius.smAll,
-                      ),
-                    ),
-                  ),
-                ),
-              )
-            : Tooltip(
-                message: progressLabel!,
-                child: Semantics(
-                  container: true,
-                  button: true,
-                  label: '$progressLabel，点按显示数字',
-                  child: GestureDetector(
-                    key: ValueKey(
-                      'material-node-rail-progress-${material.materialLineId}',
-                    ),
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _busy
-                        ? null
-                        : () => setState(
-                            () => _progressPeekLineId = material.materialLineId,
-                          ),
-                    // 整个 44px 状态栏都是点按热区；Stack 只把可见轨道固定
-                    // 在中间 10px，并继承整卡紧高度。避免 loose Container 高度
-                    // 退化为 0，也不用 IntrinsicHeight 不兼容的 double.infinity。
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Positioned(
-                          left: 17,
-                          right: 17,
-                          top: 0,
-                          bottom: 0,
-                          child: DecoratedBox(
-                            key: ValueKey(
-                              'material-node-rail-fill-${material.materialLineId}',
-                            ),
-                            decoration: _verticalRailProgressDecoration(
-                              background: selected
-                                  ? Colors.white24
-                                  : barColor.withValues(alpha: 0.22),
-                              fill: barColor,
-                              ratio: coverage.ratio,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-      ),
-    );
-  }
-
-  BoxDecoration _verticalRailProgressDecoration({
-    required Color background,
-    required Color fill,
-    required double ratio,
-  }) {
-    final progress = ratio.clamp(0.0, 1.0);
-    return BoxDecoration(
-      color: progress <= 0
-          ? background
-          : progress >= 1
-          ? fill
-          : null,
-      gradient: progress <= 0 || progress >= 1
-          ? null
-          : LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [fill, fill, background, background],
-              stops: [0, progress, progress, 1],
-            ),
-      borderRadius: UtenRadius.smAll,
-    );
-  }
-
-  /// 勾选框统一点按入口。可执行节点只切换本地选择；路线确认、任务下达
-  /// 都由旁边的显式操作或底部批量按钮完成。
-  Future<void> _handleSupplyCheckbox(
-    _MaterialGroup group,
-    MaterialSupplyRoute? route,
-    bool selected,
-  ) async {
-    if (_busy) return;
-    final material = group.representative;
-    if (!_canNotify) {
-      context.appWarning('没有下达采购/委外/生产任务的权限');
-      return;
-    }
-    if (route == null) {
-      context.appInfo('该物料没有建议路线，请点右侧「选择路线」');
-      return;
-    }
-    if (_routeBlockedBySafetyGap(group, route)) {
-      context.appWarning('本版本仅采购路线支持公共安全补库；当前${route.label}路线不能继续下达');
-      return;
-    }
-    if (_isExecutableSupplyGroup(group, route)) {
-      _toggleSupplyGroup(route, group, !selected);
-      return;
-    }
-    if (_dirtyRouteGroups.contains(group.key)) {
-      context.appInfo('该物料的路线有未保存修改，请先保存路线');
-      return;
-    }
-    if (material.confirmedRoute == null && material.sourceSuggestion == route) {
-      context.appInfo('请先点右侧“采用${route.label}”确认路线，再勾选加入批量下达');
-      return;
-    }
-    if (material.lowerLevelPending) {
-      context.appInfo(
-        route == MaterialSupplyRoute.subcontract
-            ? '下层物料未齐套，暂不能下达委外，请先处理下层缺料'
-            : '下层物料未齐套，暂不能安排生产，请先处理下层缺料',
-      );
-      return;
-    }
-    context.appInfo('当前节点暂不可选择，请展开节点详情查看原因');
-  }
-
-  /// 创建自制子件任务（两段式第一步，与采购/委外批量下达同款交互）：按全部
-  /// 剩余需求幂等创建 MAKE_COMPONENT 子任务后**留在本页**——已可生产的子件
-  /// 自动勾选并预填「最多可生产量」，员工核对后点底部「安排子件生产」才进入
-  /// 计划向导。取消勾选或关闭页面都不会撤销已创建的子件任务（需求登记是既成
-  /// 事实，与旧流程「取消向导不撤销 child」口径一致）。仅勾选可安排（下层已
-  /// 齐套）的候选；提交时快照变化导致子件暂不可生产的，留在本页继续备料。
-  Future<void> _arrangeMakeProduction({_MaterialGroup? onlyGroup}) async {
+  Future<void> _arrangeMakeProduction({
+    _MaterialGroup? onlyGroup,
+    Set<String>? onlyGroupKeys,
+  }) async {
     final analysis = _analysis;
     if (analysis == null || !_canNotify || _notifyingRoute != null) return;
-    final groups = onlyGroup != null
+    final groups = onlyGroupKeys != null
+        ? _executableSupplyGroups(MaterialSupplyRoute.make)
+              .where((group) => onlyGroupKeys.contains(group.key))
+              .toList(growable: false)
+        : onlyGroup != null
         ? <_MaterialGroup>[onlyGroup]
-        : _executableSupplyGroups(MaterialSupplyRoute.make)
-              .where(
-                (group) => _selectedSupplyGroups[MaterialSupplyRoute.make]!
-                    .contains(group.key),
-              )
-              .toList(growable: false);
+        : const <_MaterialGroup>[];
     if (groups.isEmpty) {
       context.appInfo('请先勾选要创建子件任务的自制件');
       return;
@@ -1102,10 +547,7 @@ abstract class _MaterialAnalysisSupplyActionsState
           continue;
         }
         _selectedPlanLineIds.add(child.analysisLineId);
-        final controller = _batchQtyControllers[child.analysisLineId];
-        if (controller != null && controller.text.trim().isEmpty) {
-          controller.text = _qty(child.readyNowQty);
-        }
+        _seedSuggestedPlanBatchQty(child);
         readySelected++;
       }
       _planPreview = null;
@@ -1117,7 +559,7 @@ abstract class _MaterialAnalysisSupplyActionsState
     final parts = <String>[
       '已创建 $created 个自制子件任务',
       if (readySelected > 0) '$readySelected 个已进入填写数量，核对后点「安排子件生产」提交计划单',
-      if (waiting > 0) '$waiting 个待下层齐套后继续备料',
+      if (waiting > 0) '$waiting 个子件状态已变化，请刷新后核对',
       if (refreshing > 0) '$refreshing 个子件分析正在刷新，稍后从本页继续',
       if (needPermission > 0) '请由有生产计划权限的员工继续填写计划单',
     ];
@@ -1128,15 +570,16 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// 建 SUBCONTRACT_MAKE 前置自制任务后**留在本页**，已可生产的委外子件自动
   /// 勾选并预填「最多可生产量」，员工核对后点底部「安排子件生产」进入计划
   /// 向导；同批无子层委外件仍由服务端立即合并生成委外申请并通知委外部。
-  Future<void> _arrangeSubcontractProduction() async {
+  Future<void> _arrangeSubcontractProduction({
+    Set<String>? onlyGroupKeys,
+  }) async {
     final analysis = _analysis;
     if (analysis == null || !_canNotify || _notifyingRoute != null) return;
-    final groups = _executableSupplyGroups(MaterialSupplyRoute.subcontract)
-        .where(
-          (group) => _selectedSupplyGroups[MaterialSupplyRoute.subcontract]!
-              .contains(group.key),
-        )
-        .toList(growable: false);
+    final groups = onlyGroupKeys != null
+        ? _executableSupplyGroups(MaterialSupplyRoute.subcontract)
+              .where((group) => onlyGroupKeys.contains(group.key))
+              .toList(growable: false)
+        : const <_MaterialGroup>[];
     if (groups.isEmpty) {
       context.appInfo('请先勾选要下达的委外件');
       return;
@@ -1169,10 +612,7 @@ abstract class _MaterialAnalysisSupplyActionsState
           continue;
         }
         _selectedPlanLineIds.add(child.analysisLineId);
-        final controller = _batchQtyControllers[child.analysisLineId];
-        if (controller != null && controller.text.trim().isEmpty) {
-          controller.text = _qty(child.readyNowQty);
-        }
+        _seedSuggestedPlanBatchQty(child);
         readySelected++;
       }
       _planPreview = null;
@@ -1182,175 +622,94 @@ abstract class _MaterialAnalysisSupplyActionsState
     final parts = <String>[
       '已创建 $created 个委外子件任务',
       if (readySelected > 0) '$readySelected 个已进入填写数量，核对后点「安排子件生产」提交计划单',
-      if (waiting > 0) '$waiting 个待下层齐套后继续备料',
+      if (waiting > 0) '$waiting 个子件状态已变化，请刷新后核对',
       if (needPermission > 0) '请由有生产计划权限的员工继续填写计划单',
     ];
     context.appSuccess(parts.join('；'));
   }
 
-  /// 一段式（2026-09-04 用户拍板）：进入物料分析准备页后，凡路线已确认
-  /// （「采用」过）且下层齐套、尚无子件任务的自制/委外件，自动创建子件
-  /// 任务并预填「最多可生产量」——计划员直接落在第二阶段（核对数量 →
-  /// 安排子件生产）。未确认路线的节点不自动建（采用路线保存后由
-  /// [_applyAnalysis] 的挂点随即补建）；无下达权限、路线有未保存修改或
-  /// 页面正忙时静默跳过。无子层委外件不自动建：它一下达就生成委外申请
-  /// 并通知委外部，必须保持显式点击。
-  void _scheduleAutoCreateChildTasks() {
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => unawaited(_autoCreateChildTasks()),
-    );
-  }
-
-  Future<void> _autoCreateChildTasks() async {
-    if (!mounted || _autoCreateInFlight) return;
-    final analysis = _analysis;
-    if (analysis == null ||
-        _booting ||
-        _isFqcReplenishmentOnly ||
-        !_canNotify ||
-        _busy ||
-        _dirtyRouteGroups.isNotEmpty) {
-      return;
-    }
-    // 收敛守卫：同一分析的同一版本里，每个操作组只自动尝试一次——
-    // 通知成功后服务端会给出 child 指针（自然出局），失败/无变化也不
-    // 会在后续帧里反复打接口；版本前进（服务端事实变化）才重置重试。
-    final epoch = '${analysis.analysisId}|${analysis.version}';
-    if (epoch != _autoCreateAttemptedEpoch) {
-      _autoCreateAttemptedEpoch = epoch;
-      _autoCreateAttemptedGroupKeys.clear();
-    }
-    final pending = <MaterialSupplyRoute, List<_MaterialGroup>>{};
-    for (final route in const [
-      MaterialSupplyRoute.make,
-      MaterialSupplyRoute.subcontract,
-    ]) {
-      final groups = _executableSupplyGroups(route)
-          .where(
-            (group) =>
-                !_autoCreateAttemptedGroupKeys.contains(group.key) &&
-                _taskChildProductOf(group.representative) == null &&
-                // 委外只有「有子层级」才走前置自制两段式；无子层叶子
-                // 通知即生成委外申请，不属于自动创建范围。
-                (route == MaterialSupplyRoute.make ||
-                    _analysisMaterialHasChildren(group.representative)),
-          )
-          .toList(growable: false);
-      if (groups.isNotEmpty) pending[route] = groups;
-    }
-    if (pending.isEmpty) return;
-    _autoCreateInFlight = true;
-    try {
-      var created = 0;
-      var readySelected = 0;
-      var waiting = 0;
-      for (final entry in pending.entries) {
-        for (final group in entry.value) {
-          _autoCreateAttemptedGroupKeys.add(group.key);
-        }
-        final requestedLineIds = {
-          for (final group in entry.value) group.representative.materialLineId,
-        };
-        final view = await _notifyRoute(
-          entry.key,
-          onlyGroupKeys: {for (final group in entry.value) group.key},
-          auto: true,
-        );
-        if (!mounted) return;
-        if (view == null) continue;
-        final counts = _selectDelegatedChildren(
-          view,
-          requestedLineIds,
-          entry.key == MaterialSupplyRoute.make
-              ? _makeChildProductOf
-              : _subcontractMakeChildProductOf,
-        );
-        created += counts.created;
-        readySelected += counts.readySelected;
-        waiting += counts.waiting;
-      }
-      if (!mounted || created == 0) return;
-      final parts = <String>[
-        '已按确认路线自动创建 $created 个子件任务',
-        if (readySelected > 0) '$readySelected 个已预填数量，核对后点「安排子件生产」',
-        if (waiting > 0) '$waiting 个待下层齐套后继续备料',
-      ];
-      context.appSuccess(parts.join('；'));
-    } finally {
-      _autoCreateInFlight = false;
-    }
-  }
-
-  /// 通知返回后把新子件任务勾选进待安排区并预填数量（与手动两段式第一步
-  /// 之后的落位完全一致）。返回计数供调用方汇总提示。
-  ({
-    int created,
-    int readySelected,
-    int waiting,
-    int needPermission,
-    int refreshing,
-  })
-  _selectDelegatedChildren(
-    ProductionMaterialAnalysisView view,
-    Set<String> requestedLineIds,
-    ProductionMaterialAnalysisProduct? Function(
-      ProductionMaterialAnalysisMaterial material,
-    )
-    childOf,
-  ) {
-    var created = 0;
-    var readySelected = 0;
-    var waiting = 0;
-    var needPermission = 0;
-    var refreshing = 0;
-    setState(() {
-      for (final material in view.materials) {
-        if (!requestedLineIds.contains(material.materialLineId)) continue;
-        final child = childOf(material);
-        if (child == null) {
-          refreshing++;
-          continue;
-        }
-        created++;
-        if (!_canSelectProduct(child)) {
-          waiting++;
-          continue;
-        }
-        if (!_canGenerate) {
-          needPermission++;
-          continue;
-        }
-        _selectedPlanLineIds.add(child.analysisLineId);
-        final controller = _batchQtyControllers[child.analysisLineId];
-        if (controller != null && controller.text.trim().isEmpty) {
-          controller.text = _qty(child.readyNowQty);
-        }
-        readySelected++;
-      }
-      _planPreview = null;
-    });
-    return (
-      created: created,
-      readySelected: readySelected,
-      waiting: waiting,
-      needPermission: needPermission,
-      refreshing: refreshing,
-    );
-  }
-
   /// 该分析节点在当前快照内是否还有下层节点（与服务端「有子层级委外件」
   /// 的 BOM 分流同向：分析节点来自货品 BOM，节点有子 ⇒ 货品必有活动子层，
-  /// 不会把无子层叶子误当两段式自动下达）。
+  /// 不会把无子层叶子误当两段式自动下达）。经父节点索引判定（原为全表扫描）。
   bool _analysisMaterialHasChildren(
     ProductionMaterialAnalysisMaterial material,
   ) {
     final analysis = _analysis;
     final nodeKey = material.nodeKey;
     if (analysis == null || nodeKey == null || nodeKey.isEmpty) return false;
-    for (final other in analysis.materials) {
-      if (other.parentNodeKey == nodeKey) return true;
+    return _analysisIndexes(analysis).childrenByParentNodeKey.containsKey((
+      analysisLineId: material.analysisLineId,
+      parentNodeKey: nodeKey,
+    ));
+  }
+
+  /// 路线「学习预填」（/last-routes）：对新快照中「未确认路线」的缺料组带出
+  /// 上次同物料（货品+颜色+单位）确认过的路线——无建议路线的物料、或上次确认
+  /// 与本次建议不同的物料，默认带出上次选择（草稿态，须「确认路线」保存）。
+  /// 记忆与本次建议一致的组保持建议待采用，不制造无谓的确认负担。
+  /// 已有未保存路线修改时不打扰（轮询也会因草稿暂停，不会反复覆盖）。
+  Future<void> _prefillRememberedRoutes(
+    ProductionMaterialAnalysisView view,
+  ) async {
+    if (!_canRoute || !view.allowedActions.contains('CONFIRM_ROUTES')) return;
+    if (_dirtyRouteGroups.isNotEmpty) return;
+    final pendingGroups = _materialGroups(view)
+        .where(
+          (group) =>
+              group.actionable &&
+              group.representative.shortageQty > 0 &&
+              group.representative.confirmedRoute == null,
+        )
+        .toList(growable: false);
+    if (pendingGroups.isEmpty) return;
+    final goodsIds = <String>{
+      for (final group in pendingGroups)
+        if (group.representative.goodsId != null) group.representative.goodsId!,
+    };
+    if (goodsIds.isEmpty) return;
+    Map<String, List<MaterialRouteMemory>> memory;
+    try {
+      memory = await ref
+          .read(productionPlanRepositoryProvider)
+          .materialAnalysisLastRoutes(goodsIds);
+    } catch (_) {
+      return; // 学习预填失败静默：路线仍可手选/采用建议。
     }
-    return false;
+    if (!mounted || _dirtyRouteGroups.isNotEmpty) return;
+    MaterialRouteMemory? memoryFor(_MaterialGroup group) {
+      final material = group.representative;
+      for (final entry
+          in memory[material.goodsId] ?? const <MaterialRouteMemory>[]) {
+        final colorMatch =
+            (entry.colorId == null &&
+                (material.colorId == null || material.colorId!.isEmpty)) ||
+            entry.colorId == material.colorId;
+        if (colorMatch && entry.unitId == material.unitId) return entry;
+      }
+      return null;
+    }
+
+    var applied = 0;
+    for (final group in pendingGroups) {
+      final entry = memoryFor(group);
+      if (entry == null) continue;
+      final suggestion = group.representative.sourceSuggestion;
+      if (suggestion == entry.route) continue; // 与建议一致：保持建议待采用
+      _routeDraft[group.key] = entry.route;
+      final reason = entry.reason?.trim();
+      if (reason?.isNotEmpty == true) {
+        _routeReasons[group.key] = reason!;
+      } else {
+        _routeReasons.remove(group.key);
+      }
+      _dirtyRouteGroups.add(group.key);
+      applied++;
+    }
+    if (applied > 0) {
+      _invalidateBucketRowsCache();
+      setState(() {}); // 底部出现「确认路线(applied)」
+      context.appInfo('已按上次选择带出 $applied 条路线草稿，请核对后点「确认路线」保存');
+    }
   }
 
   List<_SupplyNotificationTarget> _notificationTargetsForGroups(
@@ -1385,35 +744,57 @@ abstract class _MaterialAnalysisSupplyActionsState
   Future<ProductionMaterialAnalysisView?> _notifyRoute(
     MaterialSupplyRoute route, {
     Set<String>? onlyGroupKeys,
-    bool auto = false,
   }) async {
     final analysis = _analysis;
     if (analysis == null || !_canNotify || _notifyingRoute != null) {
       return null;
     }
-    final selected = _selectedSupplyGroups[route]!;
     final groups = _executableSupplyGroups(route)
-        .where((group) {
-          if (onlyGroupKeys != null) return onlyGroupKeys.contains(group.key);
-          return selected.contains(group.key);
-        })
+        .where(
+          (group) => onlyGroupKeys == null || onlyGroupKeys.contains(group.key),
+        )
         .toList(growable: false);
     if (groups.isEmpty) {
-      if (!auto) context.appInfo('请先勾选要提交的${route.label}缺料');
+      context.appInfo('请先勾选要提交的${route.label}缺料');
       return null;
     }
     if (_dirtyRouteGroups.isNotEmpty) {
-      if (!auto) context.appWarning('请先确认路线，再通知对应部门');
+      context.appWarning('请先确认路线，再通知对应部门');
       return null;
     }
     final targets = _notificationTargetsForGroups(groups);
-    // BUY/SUBCONTRACT 允许按余量分批提交；MAKE 当前只有节点级 child
-    // ownership，没有父件输出层 delegated_qty，必须全量创建 child，真正
-    // 的本批生产数量在 child 返回后的计划向导中填写。auto（一段式自动
-    // 创建）与 MAKE 同理：任务接管全部剩余需求，本批数量留给第二阶段填。
-    final quantities = route == MaterialSupplyRoute.make || auto
-        ? _fullResidualSupplyQuantities(route, targets)
-        : await _promptSupplyQuantities(route, targets);
+    // MAKE / 有子层委外当前仍是整节点 ownership，显式创建
+    // child 时必须全量接管剩余需求。下层未齐不再阻止创建；
+    // child 后续可按 maxSchedulableQty 先排车间，审批后进 WAITING。
+    // 无子层委外和采购仍可分批/公共超量。
+    List<MaterialSupplyQuantityInput>? quantities;
+    if (route == MaterialSupplyRoute.make) {
+      quantities = _fullResidualSupplyQuantities(route, targets);
+    } else if (route == MaterialSupplyRoute.subcontract) {
+      final childGroups = groups
+          .where((group) => _analysisMaterialHasChildren(group.representative))
+          .toList(growable: false);
+      final leafGroups = groups
+          .where((group) => !_analysisMaterialHasChildren(group.representative))
+          .toList(growable: false);
+      final childQuantities = childGroups.isEmpty
+          ? <MaterialSupplyQuantityInput>[]
+          : _fullResidualSupplyQuantities(
+              route,
+              _notificationTargetsForGroups(childGroups),
+            );
+      if (childQuantities == null) return null;
+      final leafQuantities = leafGroups.isEmpty
+          ? <MaterialSupplyQuantityInput>[]
+          : await _promptSupplyQuantities(
+              route,
+              _notificationTargetsForGroups(leafGroups),
+            );
+      if (leafQuantities == null) return null;
+      quantities = [...childQuantities, ...leafQuantities];
+    } else {
+      quantities = await _promptSupplyQuantities(route, targets);
+    }
     if (quantities == null || !mounted) return null;
     final quantityByIdentity = {
       for (final input in quantities)
@@ -1423,7 +804,6 @@ abstract class _MaterialAnalysisSupplyActionsState
             input,
     };
     final batches = _chunked(targets);
-    final preservedSelections = _supplySelectionSnapshot();
     var current = analysis;
     var completed = 0;
     setState(() {
@@ -1462,7 +842,8 @@ abstract class _MaterialAnalysisSupplyActionsState
             ...materialLineIds,
             for (final input in batchQuantities)
               '${input.actionGroupKey ?? input.materialLineId}:'
-                  '${input.qty}:${input.safetyReplenishmentQty}',
+                  '${input.qty}:${input.safetyReplenishmentQty}:'
+                  '${input.publicExtraQty}',
           ].join('|'),
         );
         current = await ref
@@ -1484,7 +865,6 @@ abstract class _MaterialAnalysisSupplyActionsState
         _notifyingRoute = null;
         _clearBulkOperation();
         _applyAnalysis(current);
-        _restoreValidSupplySelections(preservedSelections);
       });
       final message = switch (route) {
         // ADR-065：同批多货品在服务端合并为一张采购需求单（明细逐货品），
@@ -1499,8 +879,7 @@ abstract class _MaterialAnalysisSupplyActionsState
               '${batches.length} 张委外申请并通知委外部；有子层已转前置自制，入库后自动通知',
         MaterialSupplyRoute.make => '自制备料任务已创建（${groups.length} 条）',
       };
-      // auto 模式由调用方汇总一段式提示，不重复弹提交流程文案。
-      if (!auto) context.appSuccess(message);
+      context.appSuccess(message);
       return current;
     } catch (error) {
       if (!mounted) return null;
@@ -1520,7 +899,6 @@ abstract class _MaterialAnalysisSupplyActionsState
         _notifyingRoute = null;
         _clearBulkOperation();
         _applyAnalysis(current);
-        _restoreValidSupplySelections(preservedSelections);
       });
       final message = productionErrorMessage(error, fallback: '通知失败，请稍后重试');
       context.appError(
@@ -1544,25 +922,10 @@ abstract class _MaterialAnalysisSupplyActionsState
       context.appWarning('当前自制任务已无可安排余量，请刷新后重试');
       return null;
     }
-    return [for (final entry in entries) entry.toInput(entry.maxQty)];
-  }
-
-  String _fullMakeQuantityLabel(_MaterialGroup group) {
-    final entries = [
-      for (final target in _notificationTargetsForGroups([group]))
-        _supplyQuantityEntry(target, MaterialSupplyRoute.make),
+    return [
+      for (final entry in entries)
+        entry.toInput(entry.maxQty, allowOverDemand: false),
     ];
-    if (entries.isEmpty || entries.any((entry) => entry.maxQty <= 0)) {
-      return '全部剩余需求';
-    }
-    final units = entries
-        .map((entry) => entry.unitName?.trim())
-        .whereType<String>()
-        .where((unit) => unit.isNotEmpty)
-        .toSet();
-    if (units.length > 1) return '全部剩余需求';
-    final total = entries.fold<double>(0, (sum, entry) => sum + entry.maxQty);
-    return '全部 ${_qty(total)} ${units.isEmpty ? '个' : units.single}';
   }
 
   /// 「提交采购/委外」前的数量确认：每个提交单元一行。
@@ -1610,6 +973,12 @@ abstract class _MaterialAnalysisSupplyActionsState
         route: route,
         entries: entries,
         qtyText: _qty,
+        // 采购/委外允许超量下单（富余入库后转公共可用，供后续分析使用）；
+        // 自制走全量剩余需求，不弹本对话框。
+        allowOverDemand:
+            _canOverSupply &&
+            (route == MaterialSupplyRoute.buy ||
+                route == MaterialSupplyRoute.subcontract),
       ),
     );
   }
@@ -1672,6 +1041,21 @@ abstract class _MaterialAnalysisSupplyActionsState
       }
     }
     final residual = demandGap - open;
+    final nodeKey = representative?.nodeKey;
+    final analysis = _analysis;
+    final hasProductionChildren =
+        representative != null &&
+        nodeKey != null &&
+        analysis != null &&
+        (_analysisIndexes(analysis).childrenByParentNodeKey[(
+                  analysisLineId: representative.analysisLineId,
+                  parentNodeKey: nodeKey,
+                )] ??
+                const <ProductionMaterialAnalysisMaterial>[])
+            .any((child) {
+              final stage = child.controlStage?.trim().toUpperCase();
+              return stage != 'SHIP' && stage != 'REFERENCE';
+            });
     return MaterialSupplyQuantityEntry(
       actionGroupKey: target.actionGroupKey,
       materialLineId: target.materialLineId,
@@ -1687,6 +1071,9 @@ abstract class _MaterialAnalysisSupplyActionsState
       publicAvailableQty: publicAvailable,
       openSafetySupplyQty: openSafetySupply,
       safetyReplenishmentGapQty: safetyGap,
+      allowPublicExtra:
+          route == MaterialSupplyRoute.buy ||
+          (route == MaterialSupplyRoute.subcontract && !hasProductionChildren),
     );
   }
 
@@ -1694,9 +1081,8 @@ abstract class _MaterialAnalysisSupplyActionsState
   Widget? _nodeRouteButton(
     ThemeData theme,
     _MaterialGroup group,
-    MaterialSupplyRoute? route, {
-    required bool selected,
-  }) {
+    MaterialSupplyRoute? route,
+  ) {
     final material = group.representative;
     if (!group.actionable || !_canRoute) return null;
     if (_notifiedTargetOf(material) != null) return null;
@@ -1706,9 +1092,9 @@ abstract class _MaterialAnalysisSupplyActionsState
       return FilledButton.icon(
         key: ValueKey('material-route-change-${material.materialLineId}'),
         style: FilledButton.styleFrom(
-          minimumSize: const Size(48, 40),
-          backgroundColor: selected ? Colors.white : UtenColors.deepGreen,
-          foregroundColor: selected ? UtenColors.deepGreen : Colors.white,
+          minimumSize: const Size(48, 48),
+          backgroundColor: UtenColors.deepGreen,
+          foregroundColor: Colors.white,
         ),
         onPressed: _busy ? null : () => _pickRoute(group),
         icon: const Icon(Icons.alt_route_rounded, size: 18),
@@ -1718,10 +1104,7 @@ abstract class _MaterialAnalysisSupplyActionsState
     if (confirmed == null && material.sourceSuggestion == null) {
       return OutlinedButton.icon(
         key: ValueKey('material-route-pick-${material.materialLineId}'),
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(48, 40),
-          foregroundColor: selected ? Colors.white : null,
-        ),
+        style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
         onPressed: _busy ? null : () => _pickRoute(group),
         icon: const Icon(Icons.alt_route_rounded, size: 18),
         label: const Text('选择路线'),
@@ -1729,10 +1112,7 @@ abstract class _MaterialAnalysisSupplyActionsState
     }
     return OutlinedButton.icon(
       key: ValueKey('material-route-change-${material.materialLineId}'),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(48, 40),
-        foregroundColor: selected ? Colors.white : null,
-      ),
+      style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
       onPressed: _busy ? null : () => _pickRoute(group),
       icon: const Icon(Icons.alt_route_rounded, size: 18),
       label: const Text('更换路线'),
@@ -1857,7 +1237,6 @@ abstract class _MaterialAnalysisSupplyActionsState
           '${actionGroupKey ?? group.representative.materialLineId}|'
           '${route.wireName}|${reason ?? ''}',
     );
-    final preservedSelections = _supplySelectionSnapshot();
     setState(() => _savingRoutes = true);
     try {
       final view = await ref
@@ -1871,7 +1250,6 @@ abstract class _MaterialAnalysisSupplyActionsState
       setState(() {
         _savingRoutes = false;
         _applyAnalysis(view);
-        _restoreValidSupplySelections(preservedSelections);
       });
       context.appSuccess('已确认${route.label}路线');
     } catch (error) {

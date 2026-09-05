@@ -1,7 +1,7 @@
 # ProcurementCommercialGrid 采购/委外订货明细行级商业条款组件
 
 > 源码：[`lib/shared/widgets/procurement_commercial_grid.dart`](../../lib/shared/widgets/procurement_commercial_grid.dart)
-> 引入：2026-09-03（ADR-068 行级商业条款改造）；最后核对：2026-09-03。
+> 引入：2026-09-03（ADR-068 行级商业条款改造）；最后核对：2026-09-04。
 
 ## 一、职责与边界
 
@@ -20,7 +20,8 @@
 
 | 成员 | 说明 |
 |---|---|
-| `mixin CommercialTermsRowMixin on EditableGridRow implements CommercialTermsGridRow` | 币种/结账方式 `ValueNotifier`（批量赋值与预填即时刷新）+ 汇率/税率 `TextEditingController`；`copyCommercialFrom` 供行克隆 |
+| `mixin CommercialTermsRowMixin on EditableGridRow implements CommercialTermsGridRow` | 币种/结账方式 `ValueNotifier`（批量赋值与预填即时刷新）+ 汇率/税率 `TextEditingController`；`copyCommercialFrom` 供行克隆（**不拷预填黄标**，克隆行是用户显式复制） |
+| `termsAutofilledNotifier` / `markTermsAutofilled(key, value)` / `clearTermsAutofilled(key)` | **学习预填黄标**（2026-09-04）：`/last-terms` 学习带入即标记（key：`supplier/currency/rate/tax/settlement`），单元格黄框提醒核对；下拉经页面落值回调清除，汇率/税率文本控制器由内置监听按「改动≠带入值」清除。黄框样式复用 `required_field_decoration.dart` 的 `applyAutofillHint`，优先级：错误(红) > 必填空(红) > 预填(黄) |
 | `mixin RemarkRowMixin on EditableGridRow implements RemarkGridRow` | 行备注控制器（随行提交 `remark`） |
 | `CommercialTermsGridRow` / `RemarkGridRow` | 抽象契约（Dart 无交集类型，列构建泛型约束走契约类） |
 
@@ -28,8 +29,8 @@
 
 | 成员 | 说明 |
 |---|---|
-| `ProcurementTermDropdownCell` | grid 内紧凑下拉选择格（outlined+弹菜单）；`requiredEmpty` 红字提示 |
-| `procurementCommercialColumns<R>` | 币种(必填)/汇率(必填>0)/税率(0-100)/结账方式(必填) 四列；`settlementLabel` 采购「结账方式」/委外「结算方式」；`onPickCurrency/onPickSettlement` 由页面按多选范围落值 |
+| `ProcurementTermDropdownCell` | grid 内紧凑下拉选择格（outlined+弹菜单）；`requiredEmpty` 红字提示；`autofilled` 黄框提醒核对（学习预填值） |
+| `procurementCommercialColumns<R>` | 币种(必填)/汇率(必填>0)/税率(0-100)/结账方式(必填) 四列，全部接入预填黄标；`settlementLabel` 采购「结账方式」/委外「结算方式」；`onPickCurrency/onPickSettlement` 由页面按多选范围落值（页面负责对全部落值行清黄标） |
 | `procurementRemarkColumn<R>` | 明细末列备注（textOf+listenableOf 自动加宽） |
 
 ## 三、已接入页面
@@ -39,6 +40,8 @@
 - 委外订货单专属编辑页（`subcontract_order_edit_page.dart`，
   `subcontractGridColumns(showCommercial: true, settlementLabel: '结算方式', showRemark: true)`）。
 - 采购/委外共享单据编辑页的备注列（`showRemark`）。
+- 行级供应商列的 `ProcurementSupplierCell` 同步支持 `autofilled` 黄标
+  （学习预填供应商时提醒核对）。
 
 ## 四、验证
 

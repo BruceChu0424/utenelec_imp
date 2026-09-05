@@ -45,6 +45,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/models/procurement_commercial_terms.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/repositories/task_claim_repository.dart';
@@ -422,26 +423,31 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
             terms.supplierId!.isNotEmpty &&
             !names.isSupplierDisabled(terms.supplierId)) {
           r.supplierId = terms.supplierId;
+          r.markTermsAutofilled('supplier', terms.supplierId!);
           changed = true;
         }
         if (r.settlementMethodId == null &&
             terms.settlementMethodId != null &&
             settlementEntries.containsKey(terms.settlementMethodId)) {
           r.settlementMethodId = terms.settlementMethodId;
+          r.markTermsAutofilled('settlement', terms.settlementMethodId!);
           changed = true;
         }
         if (r.currencyId == null &&
             terms.currencyId != null &&
             currencyEntries.containsKey(terms.currencyId)) {
           r.currencyId = terms.currencyId;
+          r.markTermsAutofilled('currency', terms.currencyId!);
           changed = true;
         }
         if (r.exchangeRate.text.trim().isEmpty && terms.exchangeRate != null) {
           r.exchangeRate.text = terms.exchangeRate.toString();
+          r.markTermsAutofilled('rate', r.exchangeRate.text);
           changed = true;
         }
         if (r.taxRate.text.trim().isEmpty && terms.taxRate != null) {
           r.taxRate.text = terms.taxRate.toString();
+          r.markTermsAutofilled('tax', r.taxRate.text);
           changed = true;
         }
       }
@@ -498,6 +504,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
     if (!mounted) return;
     for (final r in targets) {
       r.settlementMethodId = candidate;
+      // 供应商主档默认也是系统带入：黄标提醒核对。
+      r.markTermsAutofilled('settlement', candidate);
     }
     setState(() {});
   }
@@ -529,15 +537,27 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
     // 编辑既有单只能一套条款：批量写全部行。
     final targets = _isCreate ? rows : _grid.rows;
     for (final r in targets) {
-      if (result.supplierId != null) r.supplierId = result.supplierId;
+      // 用户显式批量设置=已核对：写到的字段清掉学习预填黄标。
+      if (result.supplierId != null) {
+        r.supplierId = result.supplierId;
+        r.clearTermsAutofilled('supplier');
+      }
       if (result.settlementMethodId != null) {
         r.settlementMethodId = result.settlementMethodId;
+        r.clearTermsAutofilled('settlement');
       }
-      if (result.currencyId != null) r.currencyId = result.currencyId;
+      if (result.currencyId != null) {
+        r.currencyId = result.currencyId;
+        r.clearTermsAutofilled('currency');
+      }
       if (result.exchangeRate != null) {
         r.exchangeRate.text = result.exchangeRate.toString();
+        r.clearTermsAutofilled('rate');
       }
-      if (result.taxRate != null) r.taxRate.text = result.taxRate.toString();
+      if (result.taxRate != null) {
+        r.taxRate.text = result.taxRate.toString();
+        r.clearTermsAutofilled('tax');
+      }
     }
     setState(() {});
     if (result.supplierId != null) {
@@ -559,6 +579,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
     final targets = _writeTargets(row);
     for (final r in targets) {
       r.supplierId = value;
+      // 用户手选=已核对，清掉学习预填黄标。
+      r.clearTermsAutofilled('supplier');
     }
     if (!_isCreate) {
       context.appInfo('既有订货单保持一单一商，已同步全部明细行');
@@ -572,13 +594,16 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
   }
 
   /// 行级币种/结账方式选择落值（下拉菜单）：多选联动同供应商。
+  /// [clearKey] 本次改的条款 key：对全部落值行清掉学习预填黄标（用户改=已核对）。
   void _applyRowTerm(
     PurchaseGridRow row,
-    void Function(PurchaseGridRow r) write,
-  ) {
+    void Function(PurchaseGridRow r) write, {
+    String? clearKey,
+  }) {
     final targets = _writeTargets(row);
     for (final r in targets) {
       write(r);
+      if (clearKey != null) r.clearTermsAutofilled(clearKey);
     }
     setState(() {});
   }
@@ -1090,65 +1115,81 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage> {
                           ),
                         ],
                       ),
-                      UtenEditableGrid<PurchaseGridRow>(
-                        controller: _grid,
-                        batchActionsBuilder: (ctx, ctl) => [
-                          TextButton.icon(
-                            onPressed: ctl.selectedCount > 0
-                                ? _batchSetTerms
-                                : null,
-                            icon: const Icon(Icons.tune_rounded, size: 16),
-                            label: Text('统一设置条款 (${ctl.selectedCount})'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Theme.of(
-                                ctx,
-                              ).colorScheme.primary,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 2,
+                      // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
+                      Builder(
+                        builder: (_) {
+                          final columnPrefs = ref.watch(
+                            purchaseOrderGridColumnPrefsProvider,
+                          )['order'];
+                          return UtenEditableGrid<PurchaseGridRow>(
+                            controller: _grid,
+                            showColumnSettings: true,
+                            initialColumnOrder: columnPrefs?.order,
+                            initialHiddenColumnKeys: columnPrefs?.hidden,
+                            onColumnSettingsChanged: (order, hidden) => ref
+                                .read(
+                                  purchaseOrderGridColumnPrefsProvider.notifier,
+                                )
+                                .updateFor('order', order, hidden),
+                            batchActionsBuilder: (ctx, ctl) => [
+                              TextButton.icon(
+                                onPressed: ctl.selectedCount > 0
+                                    ? _batchSetTerms
+                                    : null,
+                                icon: const Icon(Icons.tune_rounded, size: 16),
+                                label: Text('统一设置条款 (${ctl.selectedCount})'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Theme.of(
+                                    ctx,
+                                  ).colorScheme.primary,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 2,
+                                  ),
+                                  minimumSize: const Size(0, 36),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  textStyle: Theme.of(ctx).textTheme.titleSmall,
+                                ),
                               ),
-                              minimumSize: const Size(0, 36),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              textStyle: Theme.of(ctx).textTheme.titleSmall,
+                            ],
+                            columns: purchaseGridColumns(
+                              _pickGoods,
+                              unitEntries: names.unitEntries,
+                              supplierEntries: _supplierDropdownEntries(),
+                              supplierRequired: true,
+                              onPickSupplier: _pickRowSupplier,
+                              showSource: true,
+                              onOpenSource: _openSourceRequest,
+                              // 行级商业条款（2026-09）：单头不再录，逐行选择/填写。
+                              showCommercial: true,
+                              currencyEntries: names.currencyEntries,
+                              settlementEntries:
+                                  ref
+                                      .watch(settlementMethodOptionsProvider)
+                                      .valueOrNull
+                                      ?.asEntries() ??
+                                  const {},
+                              onPickCurrency: (row) =>
+                                  (value) => _applyRowTerm(
+                                    row,
+                                    (r) => r.currencyId = value,
+                                    clearKey: 'currency',
+                                  ),
+                              onPickSettlement: (row) =>
+                                  (value) => _applyRowTerm(row, (r) {
+                                    r.settlementMethodId = value;
+                                  }, clearKey: 'settlement'),
+                              // 每行末尾备注列。
+                              showRemark: true,
                             ),
-                          ),
-                        ],
-                        columns: purchaseGridColumns(
-                          _pickGoods,
-                          unitEntries: names.unitEntries,
-                          // 订货单列序（2026-09-03 用户口径）：单位紧跟「实际重量」之后。
-                          unitAfterWeight: true,
-                          supplierEntries: _supplierDropdownEntries(),
-                          supplierRequired: true,
-                          onPickSupplier: _pickRowSupplier,
-                          showSource: true,
-                          onOpenSource: _openSourceRequest,
-                          // 行级商业条款（2026-09）：单头不再录，逐行选择/填写。
-                          showCommercial: true,
-                          currencyEntries: names.currencyEntries,
-                          settlementEntries:
-                              ref
-                                  .watch(settlementMethodOptionsProvider)
-                                  .valueOrNull
-                                  ?.asEntries() ??
-                              const {},
-                          onPickCurrency: (row) =>
-                              (value) => _applyRowTerm(
-                                row,
-                                (r) => r.currencyId = value,
-                              ),
-                          onPickSettlement: (row) =>
-                              (value) => _applyRowTerm(row, (r) {
-                                r.settlementMethodId = value;
-                              }),
-                          // 每行末尾备注列。
-                          showRemark: true,
-                        ),
-                        createBlankRow: () => PurchaseGridRow()
-                          ..currencyId = _defaultCurrencyId
-                          ..exchangeRate.text = '1'
-                          ..taxRate.text = '0',
-                        cloneRow: (r) => r.clone(),
+                            createBlankRow: () => PurchaseGridRow()
+                              ..currencyId = _defaultCurrencyId
+                              ..exchangeRate.text = '1'
+                              ..taxRate.text = '0',
+                            cloneRow: (r) => r.clone(),
+                          );
+                        },
                       ),
                     ],
                   ),

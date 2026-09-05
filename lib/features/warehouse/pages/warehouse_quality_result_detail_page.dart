@@ -6,7 +6,6 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -29,6 +28,7 @@ import '../repositories/warehouse_iqc_stock_in_repository.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
 import '../widgets/warehouse_quality_merged_table.dart';
 import '../widgets/warehouse_quality_slice_table.dart';
+import '../widgets/warehouse_inbound_allocation_view.dart';
 
 /// 品质检查结果详情（完整页面，非弹窗）：上方单据信息卡，随后**合并明细表**——
 /// 每个货品行一列到底：判定结果（合格绿对勾 / 不合格红禁止 / 部分合格黄警告 /
@@ -199,12 +199,24 @@ class _WarehouseQualityResultDetailPageState
     final fingerprint = warehouseQualitySliceFingerprint(items);
     final key = businessIdempotencyKey('warehouse-iqc-stock-in', fingerprint);
     final ownRelease = _detail?.containsOwnRelease == true;
-    final approved = await showUtenReviewerConfirmDialog(
+    final sections = [
+      for (final draft in selected)
+        WarehouseInboundAllocationSection(
+          id: draft.slice.passEventId,
+          goodsLabel: draft.slice.goodsLabel,
+          quantity: double.parse(draft.quantity.text.trim()),
+          unitName: draft.slice.unitName,
+          sourceOrderNo: draft.slice.sourceOrderNo,
+          allocations: draft.slice.expectedAllocations,
+        ),
+    ];
+    final approved = await showWarehouseInboundAllocationConfirmDialog(
       context,
       title: '确认 IQC 合格品入库',
       actionLabel: '仓库实物入库确认',
-      confirmLabel: '确认入库',
-      message: ownRelease
+      ownRelease: ownRelease,
+      sections: sections,
+      description: ownRelease
           ? '注意：本单品质放行由当前账号执行（单人兼任品质与仓库）。'
                 '请再次核对实物数量与实际库位后确认；提交成功后才会增加可用库存。'
           : '本次将确认 ${items.length} 条品质放行切片的实收数量与实际库位，'
@@ -228,11 +240,35 @@ class _WarehouseQualityResultDetailPageState
           );
       if (!mounted) return;
       ref.invalidate(warehouseQualityResultPendingCountProvider);
-      context.appSuccess(
-        result.replayed
-            ? '该入库命令已完成，已安全重放 ${result.confirmedCount} 条结果'
-            : '已确认入库 ${result.confirmedCount} 条品质放行明细',
+      setState(() => _saving = false);
+      final allocationsByPassEvent =
+          <String, List<WarehouseInboundAllocation>>{};
+      for (final allocation in result.allocations) {
+        final passEventId = allocation.passEventId;
+        if (passEventId == null) continue;
+        allocationsByPassEvent
+            .putIfAbsent(passEventId, () => [])
+            .add(allocation);
+      }
+      await showWarehouseInboundAllocationResultDialog(
+        context,
+        title: result.replayed ? '入库结果 · 安全重放' : '入库完成 · 实际去向',
+        description: result.replayed
+            ? '该命令此前已经完成；以下为服务端重放的 ${result.confirmedCount} 条实际分配事实。'
+            : '已确认入库 ${result.confirmedCount} 条品质放行明细；以下为本次实际形成的预留与公共库存。',
+        sections: [
+          for (final section in sections)
+            WarehouseInboundAllocationSection(
+              id: section.id,
+              goodsLabel: section.goodsLabel,
+              quantity: section.quantity,
+              unitName: section.unitName,
+              sourceOrderNo: section.sourceOrderNo,
+              allocations: allocationsByPassEvent[section.id] ?? const [],
+            ),
+        ],
       );
+      if (!mounted) return;
       await _load();
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -633,6 +669,25 @@ class _WarehouseQualityResultDetailPageState
                       '确认时间 ${warehouseQualityDateTime(item.confirmedAt)}',
                     ].join(' · '),
                     style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  WarehouseInboundAllocationSummary(
+                    allocations: item.actualAllocations,
+                    qtyText: warehouseQualityQuantity,
+                    onTap: () => showWarehouseInboundAllocationDetails(
+                      context,
+                      title: '实际入库去向 · ${item.goodsLabel}',
+                      actual: true,
+                      sections: [
+                        WarehouseInboundAllocationSection(
+                          id: item.stockInItemId,
+                          goodsLabel: item.goodsLabel,
+                          quantity: item.baseQty,
+                          unitName: item.unitName,
+                          allocations: item.actualAllocations,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

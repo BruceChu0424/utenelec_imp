@@ -82,6 +82,10 @@ void main() {
         'server/src/main/resources/db/migration/'
         'V455__permission_surface_closure_and_orphan_code_retirement.sql',
       );
+      final v475 = File(
+        'server/src/main/resources/db/migration/'
+        'V475__permission_surface_completion_and_viewcontext_retirement.sql',
+      );
       expect(v328.existsSync(), isTrue);
       expect(v437.existsSync(), isTrue);
       expect(v440.existsSync(), isTrue);
@@ -89,6 +93,7 @@ void main() {
       expect(v446.existsSync(), isTrue);
       expect(v450.existsSync(), isTrue);
       expect(v455.existsSync(), isTrue);
+      expect(v475.existsSync(), isTrue);
       final source = v328.readAsStringSync();
       final seedStart = source.indexOf('INSERT INTO permission_surfaces');
       final seedEnd = source.indexOf(
@@ -104,7 +109,8 @@ void main() {
           '${v443.readAsStringSync()}\n'
           '${v446.readAsStringSync()}\n'
           '${v450.readAsStringSync()}\n'
-          '${v455.readAsStringSync()}';
+          '${v455.readAsStringSync()}\n'
+          '${v475.readAsStringSync()}';
       final surfaceKeys = {
         for (final path in _businessPaths())
           pagePermissionScopeFor(path)!.surfaceKey,
@@ -241,6 +247,7 @@ Iterable<String> _businessPaths() sync* {
     '/warehouse/quality-results',
     '/quality/task-center',
     '/quality/production-inspections',
+    '/quality/inspection-records',
     '/warehouse/inbound/expectations',
     '/warehouse/inbound/arrival-exceptions',
     '/warehouse/inbound/receipts/new',
@@ -278,8 +285,6 @@ Iterable<String> _businessPaths() sync* {
     '/production/daily-reports/report-1/edit',
     '/production/reports/plan-detail',
     '/production/reports/plan-summary',
-    '/production/reports/daily-detail',
-    '/production/reports/daily-summary',
     '/production/where-used',
     '/finance',
     '/finance/procurement-approvals',
@@ -298,6 +303,7 @@ Iterable<String> _businessPaths() sync* {
     '/finance/report/cost',
     '/finance/report/gl',
     '/finance/ar-ap',
+    '/finance/payables',
     '/finance/reconciliations',
     '/finance/checks',
     '/finance/assets',

@@ -9,6 +9,11 @@ import '../models/product_category_node.dart';
 
 abstract interface class ProductCategoryRepository {
   Future<List<ProductCategoryNode>> tree();
+
+  /// 树 + 每节点子树（含自身）未软删货品数（withGoodsCounts=true）。
+  /// 即时库存等页面用它隐藏零货品分类的分段；默认实现退化为普通树（计数缺失=不隐藏）。
+  Future<List<ProductCategoryNode>> treeWithGoodsCounts() => tree();
+
   Future<List<ProductCategoryNode>> subtree(String id);
   Future<ProductCategoryDetail> detail(String id);
   Future<CategoryPrefixPreview> prefixPreview(
@@ -32,6 +37,15 @@ class DioProductCategoryRepository implements ProductCategoryRepository {
   @override
   Future<List<ProductCategoryNode>> tree() async {
     final list = await api.getList(ApiEndpoints.materialCategoryTree);
+    return list.map(ProductCategoryNode.fromJson).toList();
+  }
+
+  @override
+  Future<List<ProductCategoryNode>> treeWithGoodsCounts() async {
+    final list = await api.getList(
+      ApiEndpoints.materialCategoryTree,
+      query: {'withGoodsCounts': true},
+    );
     return list.map(ProductCategoryNode.fromJson).toList();
   }
 

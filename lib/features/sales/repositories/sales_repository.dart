@@ -87,6 +87,21 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
+  /// 客户 → 最近一次销售订货条款（新建单「学习预填」：选客户后带出上次的
+  /// 结账方式/发运策略/币种；端点挂在 orders 下，5 类单据通用）。
+  /// 无历史订单或取数失败返回 null（预填静默失败，不阻塞开单）。
+  Future<SalesClientLastTerms?> lastTermsForClient(String clientId) async {
+    try {
+      final json = await api.get(
+        '/sales/orders/last-terms',
+        query: {'clientId': clientId},
+      );
+      return SalesClientLastTerms.tryFromJson(json);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 排产进度（仅订货）：每行 订货/可发/已排/已产/已发 + 关联生产计划溯源。
   Future<List<OrderPlanProgressLine>> planProgress(String id) async {
     final list = await api.getList('${_doc(id)}/plan-progress'); // ENDPOINT
@@ -341,3 +356,26 @@ class SalesRepository {
 final salesRepositoryProvider = Provider.family<SalesRepository, SalesDocType>(
   (ref, type) => SalesRepository(ref.watch(apiClientProvider), type),
 );
+
+/// 客户最近一次销售订货条款（/sales/orders/last-terms 学习预填）。
+/// 三字段均可空——历史单未必全填；前端只回填空字段并黄标提醒核对。
+class SalesClientLastTerms {
+  const SalesClientLastTerms({
+    this.settlementMethodId,
+    this.shipmentPolicy,
+    this.currencyId,
+  });
+
+  final String? settlementMethodId;
+  final String? shipmentPolicy;
+  final String? currencyId;
+
+  static SalesClientLastTerms? tryFromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    return SalesClientLastTerms(
+      settlementMethodId: json['settlementMethodId'] as String?,
+      shipmentPolicy: json['shipmentPolicy'] as String?,
+      currencyId: json['currencyId'] as String?,
+    );
+  }
+}

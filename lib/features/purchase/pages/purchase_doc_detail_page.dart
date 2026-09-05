@@ -511,13 +511,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
             ),
-            MasterColumnDef(
-              key: 'weight',
-              label: '实际重量',
-              width: 100,
-              type: 'number',
-              value: (it) => it.weight?.toStringAsFixed(4),
-            ),
+            // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
             if (widget.docType != PurchaseDocType.request &&
                 canViewCommercialAmounts) ...[
               MasterColumnDef(

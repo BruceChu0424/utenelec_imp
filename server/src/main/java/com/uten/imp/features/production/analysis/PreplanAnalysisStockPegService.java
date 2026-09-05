@@ -89,28 +89,63 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         // 先到先得，各来源的分摊容量（action allocation）仍逐来源封顶防重复归属。
         List<Object[]> anchors = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT DISTINCT inspection.goods_id, inspection.color_id,
-                               order_item.id, src.%s AS external_item_id,
-                               src.line_no, src.id
+                               order_item.id, src.%1$s AS external_item_id,
+                               src.line_no, src.id,
+                               CASE WHEN EXISTS (
+                                   SELECT 1
+                                   FROM preplan_supply_action_allocations original_allocation
+                                   JOIN preplan_supply_actions original_action
+                                     ON original_action.id = original_allocation.action_id
+                                    AND original_action.operation_type = 'SUPPLY'
+                                   WHERE original_allocation.external_item_id = src.%1$s
+                               ) THEN 0 ELSE 1 END AS claimant_priority,
+                               order_item.order_id,
+                               %5$s(order_item.id,src.%1$s,
+                                   order_item.qty*COALESCE(order_item.unit_rate,1))
+                                   AS source_base_qty,
+                               COALESCE(fn_preplan_order_public_source_qty(
+                                   public_source.source_action_id,src.%1$s,
+                                   :receiptType,order_item.order_id),0)
+                                   AS public_base_qty,
+                               fn_preplan_order_exact_attributed_qty(
+                                   :receiptType,order_item.order_id,src.%1$s,'SUPPLY')
+                                   AS exact_used_qty,
+                               fn_preplan_order_exact_attributed_qty(
+                                   :receiptType,order_item.order_id,src.%1$s,
+                                   'SHARED_FUTURE_CLAIM') AS claim_used_qty
                         FROM procurement_inspection_items inspection
-                        JOIN %s receipt_item
+                        JOIN %2$s receipt_item
                           ON receipt_item.id = inspection.receipt_item_id
                          AND receipt_item.is_deleted = FALSE
-                        JOIN %s order_item
+                        JOIN %3$s order_item
                           ON order_item.id = receipt_item.order_item_id
                          AND order_item.is_deleted = FALSE
-                        JOIN %s src
+                        JOIN %4$s src
                           ON src.order_item_id = order_item.id
+                        LEFT JOIN LATERAL (
+                            SELECT public.source_action_id
+                            FROM v_preplan_public_supply_sources_v474 public
+                            JOIN preplan_supply_actions source_action
+                              ON source_action.id=public.source_action_id
+                             AND source_action.status <> 'CANCELLED'
+                            WHERE public.external_item_id=src.%1$s
+                            ORDER BY source_action.created_at,source_action.id
+                            LIMIT 1
+                        ) public_source ON TRUE
                         WHERE inspection.id = :inspectionItemId
                           AND inspection.receipt_type = :receiptType
                           AND inspection.receipt_id = :receiptId
-                        ORDER BY src.line_no, src.id
+                        ORDER BY claimant_priority, src.line_no, src.id
                         """.formatted(
                         purchase ? "request_item_id" : "application_item_id",
                         purchase ? "purchase_receipt_items" : "subcontract_receipt_items",
                         purchase ? "purchase_order_items" : "subcontract_order_items",
                         purchase
                                 ? "purchase_order_item_sources"
-                                : "subcontract_order_item_sources"))
+                                : "subcontract_order_item_sources",
+                        purchase
+                                ? "fn_purchase_order_source_share"
+                                : "fn_subcontract_order_source_share"))
                 .setParameter("inspectionItemId", inspectionItemId)
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId));
@@ -118,12 +153,15 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             // 无 sources 的历史/手工行：退回订货行主锚点单来源（V463 前行为）。
             anchors = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                             SELECT DISTINCT inspection.goods_id, inspection.color_id,
-                                   order_item.id, order_item.%s
+                                   order_item.id, order_item.%1$s,
+                                   0,NULL,0,order_item.order_id,
+                                   order_item.qty*COALESCE(order_item.unit_rate,1),
+                                   0,0,0
                             FROM procurement_inspection_items inspection
-                            JOIN %s receipt_item
+                            JOIN %2$s receipt_item
                               ON receipt_item.id = inspection.receipt_item_id
                              AND receipt_item.is_deleted = FALSE
-                            JOIN %s order_item
+                            JOIN %3$s order_item
                               ON order_item.id = receipt_item.order_item_id
                              AND order_item.is_deleted = FALSE
                             WHERE inspection.id = :inspectionItemId
@@ -151,7 +189,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 : SUPPLY_SUBCONTRACT_APPLICATION_ITEM;
         // 先锁定全部来源的候选分析（analysis.id 全序），再逐来源 FIFO 分摊。
         for (Object[] anchor : anchors) {
-            lockClaimantAnalyses((UUID) anchor[3], goodsId, colorId);
+            lockClaimantAnalyses(
+                    (UUID) anchor[3], warehouseId, goodsId, colorId);
         }
 
         // 精确归属候选：按供应行动分摊行（analysis_material_id）逐行锁定容量。
@@ -164,18 +203,27 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 break;
             }
             UUID externalItemId = (UUID) anchor[3];
+            BigDecimal exactOrderBudget = decimal(anchor[8])
+                    .subtract(decimal(anchor[9]))
+                    .subtract(decimal(anchor[10])).max(BigDecimal.ZERO);
+            BigDecimal sharedOrderBudget = decimal(anchor[9])
+                    .subtract(decimal(anchor[11])).max(BigDecimal.ZERO);
             List<Object[]> claimants = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT allocation.id, allocation.analysis_id,
                                allocation.analysis_material_id,
-                               allocation.allocated_qty
+                               allocation.allocated_qty, analysis.status,
+                               action.operation_type
                         FROM preplan_supply_action_allocations allocation
                         JOIN preplan_supply_actions action
                           ON action.id = allocation.action_id
                          AND action.status <> 'CANCELLED'
+                         AND action.warehouse_id = :warehouseId
                         JOIN production_material_analyses analysis
                           ON analysis.id = allocation.analysis_id
                          AND analysis.is_deleted = FALSE
-                         AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
+                         AND analysis.warehouse_id = :warehouseId
+                         AND analysis.status IN (
+                             'ACTIVE', 'PARTIALLY_PLANNED', 'COMPLETED')
                         JOIN production_material_analysis_materials material
                           ON material.id = allocation.analysis_material_id
                          AND material.analysis_id = allocation.analysis_id
@@ -183,11 +231,14 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         WHERE allocation.external_item_id = :externalItemId
                           AND material.goods_id = :goodsId
                           AND material.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
-                        ORDER BY allocation.analysis_id,
+                        ORDER BY CASE WHEN action.operation_type =
+                                      'SHARED_FUTURE_CLAIM' THEN 1 ELSE 0 END,
+                                 action.created_at, action.id,
                                  allocation.created_at, allocation.id
                         FOR UPDATE OF action, allocation
                         """)
                     .setParameter("externalItemId", externalItemId)
+                    .setParameter("warehouseId", warehouseId)
                     .setParameter("goodsId", goodsId)
                     .setParameter("colorId", colorId));
 
@@ -198,6 +249,15 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 UUID allocationId = (UUID) claimant[0];
                 UUID analysisId = (UUID) claimant[1];
                 UUID analysisMaterialId = (UUID) claimant[2];
+                String analysisStatus = Objects.toString(claimant[4], "");
+                // 全量先排 WAITING 后 analysis 会按数量守恒进入 COMPLETED。
+                // 只有该精确物料仍存在已批准、可自动提升的 WAITING demand 时，
+                // 才允许继续承接原 action/allocation 的到仓权益；公共库存不兜底。
+                if ("COMPLETED".equals(analysisStatus)
+                        && !hasAutoPromotableWaitingDemand(
+                                analysisId, analysisMaterialId)) {
+                    continue;
+                }
                 BigDecimal allocatedCap = decimal(claimant[3]);
                 BigDecimal exactAttributed = exactAttributed(allocationId);
                 // 历史 V298 预留没有 exact 子账。它们仍保留分析级池语义，但必须
@@ -211,7 +271,12 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 legacyRemainingByAnalysis.put(
                         analysisId, legacyRemaining.subtract(legacyUse));
                 BigDecimal headroom = capacityAfterExact.subtract(legacyUse);
-                BigDecimal take = remaining.min(headroom.max(BigDecimal.ZERO));
+                boolean sharedClaim = "SHARED_FUTURE_CLAIM".equals(
+                        Objects.toString(claimant[5], ""));
+                BigDecimal orderBudget = sharedClaim
+                        ? sharedOrderBudget : exactOrderBudget;
+                BigDecimal take = remaining.min(headroom.max(BigDecimal.ZERO))
+                        .min(orderBudget);
                 if (take.signum() <= 0) {
                     continue;
                 }
@@ -221,6 +286,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         supplyType, externalItemId, receiptType, receiptId,
                         dispositionEventId, warehouseStockInItemId);
                 remaining = remaining.subtract(take);
+                if (sharedClaim) {
+                    sharedOrderBudget = sharedOrderBudget.subtract(take);
+                } else {
+                    exactOrderBudget = exactOrderBudget.subtract(take);
+                }
             }
         }
         // 超出分析分摊量的部分（含财务特批超收）不绑定，按公共现货处理。
@@ -269,7 +339,13 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         UUID parentAnalysisMaterialId = (UUID) context[3];
         String sourceType = Objects.toString(context[2], "");
         String analysisStatus = Objects.toString(context[4], "");
-        if (!List.of("ACTIVE", "PARTIALLY_PLANNED").contains(analysisStatus)) {
+        boolean activeAnalysis = List.of("ACTIVE", "PARTIALLY_PLANNED")
+                .contains(analysisStatus);
+        boolean completedWaitingOwner = "COMPLETED".equals(analysisStatus)
+                && parentAnalysisMaterialId != null
+                && hasAutoPromotableWaitingDemand(
+                        analysisId, parentAnalysisMaterialId);
+        if (!activeAnalysis && !completedWaitingOwner) {
             return;
         }
         if ("SUBCONTRACT_PREPARATION".equals(sourceType)
@@ -458,23 +534,27 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     }
 
     private void lockClaimantAnalyses(
-            UUID externalItemId, UUID goodsId, UUID colorId) {
+            UUID externalItemId, UUID warehouseId,
+            UUID goodsId, UUID colorId) {
         em.createNativeQuery("""
                         SELECT analysis.id
                         FROM production_material_analyses analysis
                         WHERE analysis.is_deleted = FALSE
-                          AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
+                          AND analysis.status IN (
+                              'ACTIVE', 'PARTIALLY_PLANNED', 'COMPLETED')
                           AND analysis.id IN (
                               SELECT allocation.analysis_id
                               FROM preplan_supply_action_allocations allocation
                               JOIN preplan_supply_actions action
                                 ON action.id = allocation.action_id
                                AND action.status <> 'CANCELLED'
+                               AND action.warehouse_id = :warehouseId
                               JOIN production_material_analysis_materials material
                                 ON material.id = allocation.analysis_material_id
                                AND material.analysis_id = allocation.analysis_id
                                AND material.active = TRUE
                               WHERE allocation.external_item_id = :externalItemId
+                                AND analysis.warehouse_id = :warehouseId
                                 AND material.goods_id = :goodsId
                                 AND material.color_id IS NOT DISTINCT FROM
                                     CAST(:colorId AS uuid)
@@ -483,9 +563,62 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         FOR UPDATE OF analysis
                         """)
                 .setParameter("externalItemId", externalItemId)
+                .setParameter("warehouseId", warehouseId)
                 .setParameter("goodsId", goodsId)
                 .setParameter("colorId", colorId)
                 .getResultList();
+    }
+
+    /**
+     * Narrow compatibility for an analysis whose full remaining quantity has
+     * already become approved WAITING work.  The exact analysis material must
+     * still back a live demand on an auto-promotable segment; analysis status or
+     * matching goods alone is never sufficient to claim public stock.
+     */
+    boolean hasAutoPromotableWaitingDemand(
+            UUID analysisId, UUID analysisMaterialId) {
+        if (analysisId == null || analysisMaterialId == null) return false;
+        Object value = em.createNativeQuery("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM production_material_analysis_materials material
+                    JOIN production_material_analysis_plan_links analysis_link
+                      ON analysis_link.analysis_id = material.analysis_id
+                     AND analysis_link.analysis_item_id = material.analysis_item_id
+                     AND analysis_link.allocation_status = 'APPROVED'
+                    JOIN production_plans plan
+                      ON plan.id = analysis_link.plan_id
+                     AND plan.material_analysis_id = material.analysis_id
+                     AND plan.material_analysis_item_id = material.analysis_item_id
+                     AND plan.status = 1
+                     AND plan.is_deleted = FALSE
+                     AND plan.is_canceled = FALSE
+                    JOIN production_planning_packages package
+                      ON package.plan_id = plan.id
+                     AND package.status = 'CONFIRMED'
+                     AND package.is_deleted = FALSE
+                    JOIN production_execution_segments segment
+                      ON segment.package_id = package.id
+                     AND segment.plan_id = plan.id
+                     AND segment.status = 'WAITING'
+                     AND segment.auto_promote_when_ready = TRUE
+                     AND segment.is_deleted = FALSE
+                    JOIN production_material_demands demand
+                      ON demand.execution_segment_id = segment.id
+                     AND demand.goods_id = material.goods_id
+                     AND demand.color_id IS NOT DISTINCT FROM material.color_id
+                     AND demand.unit_id = material.unit_id
+                     AND demand.status NOT IN ('RELEASED', 'REVERSED')
+                     AND demand.is_deleted = FALSE
+                    WHERE material.analysis_id = :analysisId
+                      AND material.id = :analysisMaterialId
+                      AND material.active = TRUE
+                )
+                """)
+                .setParameter("analysisId", analysisId)
+                .setParameter("analysisMaterialId", analysisMaterialId)
+                .getSingleResult();
+        return Boolean.TRUE.equals(value);
     }
     // ============================ 对称释放 ============================
 
@@ -619,6 +752,22 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 "r.owner_id = :analysisId AND r.supply_id IN (:supplyIds)",
                 Map.of("analysisId", analysisId, "supplyIds", externalItemIds),
                 normalizeReason(reason, "PREPLAN_ACTION_CANCELLED"));
+    }
+
+    /** Release only exact rows sourced by one claim action's allocations. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void releaseForAction(
+            UUID analysisId, UUID actionId, String reason) {
+        tx.bind();
+        releaseRows(
+                "r.owner_id = :analysisId AND EXISTS ("
+                        + "SELECT 1 FROM preplan_analysis_stock_exact_pegs exact "
+                        + "JOIN preplan_supply_action_allocations allocation "
+                        + "ON allocation.id = exact.supply_action_allocation_id "
+                        + "WHERE exact.stock_reservation_id = r.id "
+                        + "AND allocation.action_id = :actionId)",
+                Map.of("analysisId", analysisId, "actionId", actionId),
+                normalizeReason(reason, "PREPLAN_SHARED_FUTURE_CLAIM_CANCELLED"));
     }
 
     // ============================ 下达计划包转移 ============================

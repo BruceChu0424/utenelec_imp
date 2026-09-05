@@ -161,9 +161,13 @@ class SubcontractTargetOutboundPreparationPostgresTest {
                 execute(connection, """
                         INSERT INTO production_material_analyses(
                             id, warehouse_id, status, version, fingerprint,
-                            initial_idempotency_key, maker_id)
-                        VALUES (?, ?, 'ACTIVE', 0, repeat('b', 64),
-                                ?, ?)
+                            initial_idempotency_key, maker_id,
+                            participating_warehouse_ids)
+                        SELECT v.id, v.wid, 'ACTIVE', 0, v.fp, v.k, v.maker,
+                               ARRAY[v.wid]::UUID[]
+                        FROM (VALUES (?::uuid, ?::uuid, repeat('b', 64),
+                                     ?::text, ?::uuid))
+                             AS v(id, wid, fp, k, maker)
                         """, analysisId, fixture.warehouseId(),
                         "wrong-lineage-" + analysisId,
                         fixture.actorEmployeeId());

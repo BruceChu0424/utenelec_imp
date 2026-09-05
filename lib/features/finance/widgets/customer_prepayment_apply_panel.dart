@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -250,13 +250,17 @@ class _CustomerPrepaymentApplyPanelState
       builder: (dialogContext) => AlertDialog(
         title: const Text('反转本次预收抵销'),
         content: TextField(
+          key: const ValueKey('customer-prepayment-reverse-reason'),
           onChanged: (value) => reason = value,
           autofocus: true,
           maxLength: 2000,
           maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: '反转原因(必填)',
-            helper: UtenFieldMessage.helper('反转会恢复预收和目标应收余额，并保留审计记录'),
+          decoration: InputDecoration(
+            label: fieldLabel(
+              '反转原因(必填)',
+              Theme.of(dialogContext),
+              info: '反转会恢复预收和目标应收余额，并保留审计记录',
+            ),
           ),
         ),
         actions: [
@@ -397,13 +401,17 @@ class _CustomerPrepaymentApplyPanelState
             ),
         const SizedBox(height: UtenSpacing.s12),
         TextField(
+          key: const ValueKey('customer-prepayment-apply-reason'),
           controller: _reason,
           maxLength: 2000,
           maxLines: 3,
           enabled: !_busy && _lastResult == null,
-          decoration: const InputDecoration(
-            labelText: '应用原因(必填)',
-            helper: UtenFieldMessage.helper('说明订单、客户通知或其它核销依据；服务端保留完整审计记录'),
+          decoration: InputDecoration(
+            label: fieldLabel(
+              '应用原因(必填)',
+              theme,
+              info: '说明订单、客户通知或其它核销依据；服务端保留完整审计记录',
+            ),
           ),
         ),
         if (_lastResult case final result?) ...[

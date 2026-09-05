@@ -215,7 +215,7 @@ class MaterialAnalysisServiceBehaviorTest {
         MaterialView material = material(materialId, false, null);
         AnalysisView view = new AnalysisView(
                 UUID.randomUUID(), "ACTIVE", 1L, "a".repeat(64), "b".repeat(64),
-                UUID.randomUUID(), OffsetDateTime.now(), List.of(), List.of(material),
+                UUID.randomUUID(), List.of(), OffsetDateTime.now(), List.of(), List.of(material),
                 List.of(), List.of(), List.of(), false, null);
         NotifyRequest request = new NotifyRequest(
                 1L, "a".repeat(64), "notify-0001", null,
@@ -245,7 +245,7 @@ class MaterialAnalysisServiceBehaviorTest {
         }
         AnalysisView view = new AnalysisView(
                 UUID.randomUUID(), "ACTIVE", 1L, "a".repeat(64), "b".repeat(64),
-                UUID.randomUUID(), OffsetDateTime.now(), List.of(), materials,
+                UUID.randomUUID(), List.of(), OffsetDateTime.now(), List.of(), materials,
                 List.of(), List.of(), List.of(), false, null);
         NotifyRequest request = new NotifyRequest(
                 1L, "a".repeat(64), "notify-limit-500", "BUY",
@@ -279,7 +279,7 @@ class MaterialAnalysisServiceBehaviorTest {
         }
         AnalysisView view = new AnalysisView(
                 UUID.randomUUID(), "ACTIVE", 1L, "a".repeat(64), "b".repeat(64),
-                UUID.randomUUID(), OffsetDateTime.now(), List.of(), materials,
+                UUID.randomUUID(), List.of(), OffsetDateTime.now(), List.of(), materials,
                 List.of(), List.of(), List.of(), false, null);
         NotifyRequest request = new NotifyRequest(
                 1L, "a".repeat(64), "notify-limit-501", "BUY",
@@ -1644,7 +1644,8 @@ class MaterialAnalysisServiceBehaviorTest {
             EntityManager em, ProductionDocumentAccessPolicy access) {
         return new MaterialAnalysisService(
                 em, mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class),
-                access, mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
+                access, mock(com.uten.imp.security.OwnerVisibility.class),
+                mock(com.uten.imp.application.port.SubcontractPreparationPort.class));
     }
 
     private static MaterialAnalysisService.SourceLine allocationSource(
@@ -1735,6 +1736,40 @@ class MaterialAnalysisServiceBehaviorTest {
         };
     }
 
+    @Test
+    void sharedFutureProjectionFiltersRouteNeedDateAndCurrentAnalysis() {
+        UUID warehouseId = UUID.randomUUID();
+        var dimension = new MaterialAnalysisService.MaterialDimension(
+                UUID.randomUUID(), null, UUID.randomUUID());
+        var buyOnTime = new SharedFutureSupplyRef(
+                "BUY", bd("500"), bd("500"), LocalDate.of(2026, 9, 10),
+                null, null, null, null, false);
+        var subcontract = new SharedFutureSupplyRef(
+                "SUBCONTRACT", bd("1000"), bd("1000"), LocalDate.of(2026, 9, 9),
+                null, null, null, null, false);
+        var buyLate = new SharedFutureSupplyRef(
+                "BUY", bd("1000"), bd("1000"), LocalDate.of(2026, 9, 20),
+                null, null, null, null, false);
+        var buyOwn = new SharedFutureSupplyRef(
+                "BUY", bd("1500"), bd("500"), LocalDate.of(2026, 9, 8),
+                null, null, null, null, true);
+        var aggregate = MaterialAnalysisService.SharedFutureAggregate.ZERO
+                .plus(buyOnTime).plus(subcontract).plus(buyLate).plus(buyOwn);
+        var index = new MaterialAnalysisService.SharedFutureIndex(Map.of(
+                new MaterialAnalysisService.WarehouseMaterialDimension(
+                        warehouseId, dimension), aggregate));
+
+        var buy = index.forMaterial(
+                warehouseId, dimension, "BUY", LocalDate.of(2026, 9, 15));
+        assertThat(buy.approvedInboundQty()).isEqualByComparingTo("3000");
+        assertThat(buy.availableQty()).isEqualByComparingTo("500");
+        assertThat(buy.refs()).extracting(SharedFutureSupplyRef::route)
+                .containsOnly("BUY");
+        var subcontractOnly = index.forMaterial(
+                warehouseId, dimension, "SUBCONTRACT", LocalDate.of(2026, 9, 15));
+        assertThat(subcontractOnly.availableQty()).isEqualByComparingTo("1000");
+    }
+
     private static MaterialView material(
             UUID materialId, boolean routeConfirmed, String confirmedRoute) {
         return material(materialId, "group-1", routeConfirmed, confirmedRoute);
@@ -1760,7 +1795,10 @@ class MaterialAnalysisServiceBehaviorTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, List.of(),
                 List.of(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, List.of());
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(

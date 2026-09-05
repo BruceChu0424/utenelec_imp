@@ -6,6 +6,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../models/warehouse_iqc_stock_in.dart'
     show WarehouseIqcStockInConfirmItem;
 import '../models/warehouse_quality_result.dart';
+import 'warehouse_inbound_allocation_view.dart';
 
 /// 品质放行切片的可编辑草稿（勾选 + 本次数量 + 实际库位 + 所属收货单）。
 /// 详情页待入库表格与批量入库弹窗共用同一草稿形态，保证键与校验一致。
@@ -138,6 +139,7 @@ class WarehouseQualitySliceTable extends StatelessWidget {
             const DataColumn(label: Text('本次实收 *'), numeric: true),
             const DataColumn(label: Text('实际库位 *')),
           ],
+          const DataColumn(label: Text('预计去向')),
           const DataColumn(label: Text('放行信息')),
         ],
         rows: [
@@ -224,6 +226,39 @@ class WarehouseQualitySliceTable extends StatelessWidget {
                     ),
                   ),
                 ],
+                DataCell(
+                  SizedBox(
+                    width: 220,
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: draft.quantity,
+                      builder: (context, _, _) {
+                        final requested =
+                            double.tryParse(draft.quantity.text.trim()) ?? 0;
+                        return WarehouseInboundAllocationSummary(
+                          allocations: draft.slice.expectedAllocations,
+                          previewQty: requested,
+                          qtyText: warehouseQualityQuantity,
+                          onTap: () => showWarehouseInboundAllocationDetails(
+                            context,
+                            title: '预计去向 · ${draft.slice.goodsLabel}',
+                            sections: [
+                              WarehouseInboundAllocationSection(
+                                id: draft.slice.passEventId,
+                                goodsLabel: draft.slice.goodsLabel,
+                                quantity: requested,
+                                unitName: draft.slice.unitName,
+                                sourceOrderNo:
+                                    draft.receiptNo ??
+                                    draft.slice.sourceOrderNo,
+                                allocations: draft.slice.expectedAllocations,
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
                 DataCell(
                   SizedBox(
                     width: 210,

@@ -10,6 +10,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,6 +52,31 @@ class ProcurementArrivalExpectationQueryContractTest {
                     .contains("visible_item.expectation_id = expectation.id")
                     .doesNotContain("procurement_iqc_replacement_allocations");
         }
+    }
+
+    @Test
+    void destinationPreviewUsesBasicUnitsAndIsBatchMappedOnce() throws Exception {
+        assertThat(ProcurementArrivalControlService.receivableBaseQty(
+                new BigDecimal("2"), BigDecimal.ZERO, new BigDecimal("24")))
+                .isEqualByComparingTo("48");
+        assertThat(Arrays.stream(ProcurementArrivalContracts.InboundExpectationItem.class
+                        .getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName).toList())
+                .contains("baseUnitId", "baseUnitName", "expectedAllocations");
+        String source = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/inbound/"
+                        + "ProcurementArrivalControlService.java"),
+                StandardCharsets.UTF_8);
+        assertThat(source)
+                .contains("inboundAllocationRead.expectedForOrderItems(")
+                .contains("base_unit.name AS base_unit_name")
+                .contains("OrderItemQuantity(");
+        assertThat(count(source, "inboundAllocationRead.expectedForOrderItems("))
+                .isEqualTo(1);
+    }
+
+    private static int count(String value, String token) {
+        return (value.length() - value.replace(token, "").length()) / token.length();
     }
 
     private static int parenthesisBalance(String sql) {

@@ -400,6 +400,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
 
   @override
   Widget build(BuildContext context) {
+    // 权限变化（登录恢复/管理员刷新授权）即整页重建：详情面板的
+    // 组件信息「添加组件」等按钮用 ref.read 取权限，随这里的 watch 联动。
+    ref.watch(currentPermissionsProvider);
     return buildShell(
       context,
       detailPaneBuilder: (selected) => _DetailPane(

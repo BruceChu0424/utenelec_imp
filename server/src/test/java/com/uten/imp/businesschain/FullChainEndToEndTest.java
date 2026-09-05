@@ -42,6 +42,7 @@ import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContr
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
 import com.uten.imp.features.stock.StockDocService;
+import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.features.attachment.AttachmentService;
 import com.uten.imp.features.attachment.AttachmentUploadGrantService;
@@ -71,6 +72,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Base64;
@@ -1026,12 +1028,12 @@ class FullChainEndToEndTest {
     // ---------------------------------------------------------------------------------------------
     // V234 material-analysis path (analysis-first, the NEW pre-plan flow). Drives the real
     // Controller→Service→DB chain: preview builds the full BOM tree with shortages, routes are
-    // confirmed, MAKE delegation is blocked until the node's lower-level materials are kitted,
-    // and the root plan remains blocked until its direct components are kitted. The plan-first
+    // confirmed, MAKE child ownership is created explicitly even while lower-level materials
+    // are short, and both child/root plans may honestly enter WAITING. The plan-first
     // confirm path is s21w above.
     // ---------------------------------------------------------------------------------------------
     @Test
-    void materialAnalysis_previewBuildsTreeNotifySpawnsMakeChildAndBlocksUntilKitted() {
+    void materialAnalysis_explicitMakeChildCanScheduleWaitingBeforeLowerLevelKit() {
         World w = seedWorld("sMA1");
         UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100");
         UUID orderItemId = orderItemId(orderId);
@@ -1072,58 +1074,115 @@ class FullChainEndToEndTest {
         assertTrue(routed.flatMaterials().stream().anyMatch(m ->
                 m.goodsId().equals(w.goodsB()) && m.routeConfirmed()), "B 路线已确认");
 
-        // (4) ADR-033: B cannot be delegated while its direct C/D materials are unready.
-        ApiException makeBlocked = assertThrows(ApiException.class, () ->
-                analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
-                        routed.fingerprint(), "notify-make-blocked-" + analysisId, "MAKE",
-                        List.of(b.materialLineId()), List.of(), null)));
-        assertTrue(makeBlocked.getMessage().contains("下层物料尚未齐套"),
-                "MAKE 下层未齐套应拒绝委派(实际：" + makeBlocked.getMessage() + ")");
-        assertEquals(0, count("select count(*) from production_material_analysis_items "
-                        + "where analysis_id = ? and source_type = 'MAKE_COMPONENT' and is_deleted = false",
-                analysisId), "门禁失败不能留下 MAKE_COMPONENT 子需求");
-
-        // B=20; its BOM requires C=60 and D=100. Once both are qualified stock, the same
-        // server-authoritative notify path may create B's MAKE_COMPONENT child analysis.
-        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
-                w.warehouseId(), w.goodsC(), new BigDecimal("60"));
-        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
-                w.warehouseId(), w.goodsD(), new BigDecimal("100"));
+        // (4) Child creation stays explicit and full-remaining because the current
+        // ownership model has no partial delegated_qty. Lower-level C/D shortage no
+        // longer blocks the full child task; it only makes the child plan WAITING.
         ApiException partialMake = assertThrows(ApiException.class, () ->
                 analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
                         routed.fingerprint(), "notify-make-partial-" + analysisId, "MAKE",
                         List.of(b.materialLineId()), List.of(), List.of(
                                 new SupplyQuantityInput(null, b.materialLineId(),
                                         new BigDecimal("5"), BigDecimal.ZERO)))));
-        assertTrue(partialMake.getMessage().contains("自制任务当前必须按全部剩余需求"),
+        assertTrue(partialMake.getMessage().contains("子件任务当前必须按全部剩余需求"),
                 "无 delegated_qty 时部分 MAKE 委派必须 fail-closed(实际："
                         + partialMake.getMessage() + ")");
         assertEquals(0, count("select count(*) from production_material_analysis_items "
                         + "where analysis_id = ? and source_type = 'MAKE_COMPONENT' and is_deleted = false",
-                analysisId), "部分 MAKE 拒绝不能留下 child");
-        analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
-                routed.fingerprint(), "notify-make-ready-" + analysisId, "MAKE",
-                List.of(b.materialLineId()), List.of(), null));
-        assertTrue(count("select count(*) from production_material_analysis_items "
-                        + "where analysis_id = ? and source_type = 'MAKE_COMPONENT' and is_deleted = false",
-                analysisId) >= 1, "MAKE 下层齐套后通知 → 生成 MAKE_COMPONENT 子需求");
+                analysisId), "部分 ownership 拒绝不能留下 child");
 
-        // (5) plan preview reports NOT ready (direct components B & E have no stock); generation refuses.
-        //     planPreview refreshes the snapshot (bumping version/fingerprint), so re-read the header
-        //     before generate-plan to satisfy requireCurrent.
+        AnalysisView childCreated = analysisCommandService.notifySupply(
+                analysisId, new NotifyRequest(routed.version(), routed.fingerprint(),
+                        "notify-make-explicit-" + analysisId, "MAKE",
+                        List.of(b.materialLineId()), List.of(), null));
+        ProductView makeChild = childCreated.products().stream()
+                .filter(product -> "MAKE_COMPONENT".equals(product.sourceType()))
+                .findFirst().orElseThrow();
+        assertTrue(makeChild.canSchedule(), "下层缺料的 child 仍可先排车间");
+        assertEquals(0, makeChild.readyNowQty().compareTo(BigDecimal.ZERO));
+        assertTrue(makeChild.maxSchedulableQty().signum() > 0);
+        ProductionAssignment assignment = productionAssignment("sMA1");
+        PlanQuantity childQuantity = new PlanQuantity(
+                makeChild.analysisLineId(), makeChild.maxSchedulableQty(),
+                LocalDate.of(2026, 8, 8), null,
+                assignment.workshopId(), null, assignment.workerId(), null);
+        PlanPreview childPreview = analysisService.planPreview(
+                analysisId, new PlanPreviewRequest(
+                        childCreated.version(), childCreated.fingerprint(),
+                        w.warehouseId(), List.of(childQuantity), null));
+        AnalysisView childRefreshed = analysisService.detail(analysisId);
+        GenerateResult childWaitingResult = analysisCommandService.generatePlan(
+                analysisId, new GeneratePlanRequest(
+                        childRefreshed.version(), childRefreshed.fingerprint(),
+                        childPreview.previewFingerprint(),
+                        "gen-make-child-waiting-" + analysisId,
+                        w.warehouseId(), LocalDate.of(2026, 8, 8), null,
+                        assignment.workshopId(), null, assignment.workerId(), true,
+                        List.of(childQuantity), null));
+        assertTrue(hasSegmentStatus(
+                childWaitingResult.plans().getFirst().planId(), "WAITING"));
+        assertTrue(childWaitingResult.plans().getFirst().drawIds().isEmpty(),
+                "子件下层未齐时 WAITING 必须零 DRAW");
+
+        // B=20; its BOM requires C=60 and D=100. Stock arrival may later promote
+        // readiness, but it must not create a second child task implicitly.
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsC(), new BigDecimal("60"));
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsD(), new BigDecimal("100"));
+        assertEquals(1, count("select count(*) from production_material_analysis_items "
+                        + "where analysis_id = ? and source_type = 'MAKE_COMPONENT' and is_deleted = false",
+                analysisId), "刷新/到货不得隐式重复创建 MAKE_COMPONENT");
+
+        // (5) Direct components B & E still have no stock. This is not READY, but the
+        //     root product may now be scheduled for its whole remaining quantity so the
+        //     workshop/owner assignment is frozen early. Approval must create an honest
+        //     auto-promotable WAITING segment with no reservation or DRAW.
+        //     planPreview refreshes the snapshot (bumping version/fingerprint), so re-read
+        //     the header before generate-plan to satisfy requireCurrent.
         AnalysisView afterMake = analysisService.detail(analysisId);
+        PlanQuantity rootQuantity = new PlanQuantity(
+                productLineId, new BigDecimal("10"),
+                LocalDate.of(2026, 8, 8), null,
+                assignment.workshopId(), null, assignment.workerId(), null);
         PlanPreview plan = analysisService.planPreview(analysisId, new PlanPreviewRequest(
                 afterMake.version(), afterMake.fingerprint(), w.warehouseId(),
-                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null));
+                List.of(rootQuantity), null));
         assertFalse(plan.allReady(), "无库存 → 不可立即生产");
+        assertTrue(plan.items().getFirst().canSchedule(), "无库存仍可先排给车间");
+        assertEquals(0, new BigDecimal("10").compareTo(
+                        plan.items().getFirst().maxSchedulableQty()),
+                "可排产上限取当前需求剩余量，不取 readyNowQty");
         AnalysisView refreshed = analysisService.detail(analysisId);
-        ApiException blocked = assertThrows(ApiException.class, () -> analysisCommandService.generatePlan(
+        GenerateResult waitingResult = analysisCommandService.generatePlan(
                 analysisId, new GeneratePlanRequest(refreshed.version(), refreshed.fingerprint(),
                         plan.previewFingerprint(), "gen-ma1-" + analysisId, w.warehouseId(),
-                        LocalDate.of(2026, 8, 8), null, w.departmentId(), null, null, true,
-                        List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null)));
-        assertTrue(blocked.getMessage().contains("齐套"),
-                "未齐套生成应被拒(实际：" + blocked.getMessage() + ")");
+                        LocalDate.of(2026, 8, 8), null,
+                        assignment.workshopId(), null, assignment.workerId(), true,
+                        List.of(rootQuantity), null));
+        GeneratedPlan waitingPlan = waitingResult.plans().getFirst();
+        assertEquals("APPROVED", waitingPlan.status(), "待料计划也可显式审核下达");
+        assertTrue(hasSegmentStatus(waitingPlan.planId(), "WAITING"),
+                "未齐套批次必须形成 WAITING 执行段");
+        assertFalse(hasSegmentStatus(waitingPlan.planId(), "READY"),
+                "未齐套批次不得伪造 READY 分段");
+        assertTrue(waitingPlan.drawIds().isEmpty(), "WAITING 不得生成 DRAW");
+        assertEquals(0, count("""
+                select count(*)
+                from stock_reservations reservation
+                join production_material_demands demand
+                  on demand.id = reservation.owner_id
+                 and reservation.owner_type = 'PRODUCTION_MATERIAL_DEMAND'
+                join production_execution_segments segment
+                  on segment.id = demand.execution_segment_id
+                where segment.plan_id = ? and reservation.status = 0
+                """, waitingPlan.planId()), "WAITING 不得占用零散库存");
+        assertEquals("true", strFor("""
+                select auto_promote_when_ready::text
+                from production_execution_segments
+                where plan_id = ? and status = 'WAITING' and is_deleted = false
+                """, waitingPlan.planId()), "客观缺料 WAITING 应在合格到仓后自动提升");
+        assertEquals(0, new BigDecimal("10").compareTo(plannedQty(orderId)),
+                "先排车间也必须按销售来源精确记入已排量");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1181,6 +1240,320 @@ class FullChainEndToEndTest {
         assertEquals("COMPLETED",
                 strFor("select status from production_material_analyses where id=?", analysisId),
                 "全量分批下达 → 分析头 COMPLETED");
+    }
+
+    @Test
+    void productionDrawAtomicIssueLifecycleUsesExactSegmentMapping() {
+        World w = seedWorld("sDrawLifecycle");
+        jdbc.update("""
+                insert into stock_balances(
+                    warehouse_id, goods_id, color_id, qty)
+                values (?,?,NULL,?)
+                """, w.warehouseId(), w.goodsB(), new BigDecimal("20"));
+        jdbc.update("""
+                insert into stock_balances(
+                    warehouse_id, goods_id, color_id, qty)
+                values (?,?,NULL,?)
+                """, w.warehouseId(), w.goodsE(), new BigDecimal("10"));
+        UUID orderId = createApprovedOrder(
+                w, w.goodsA(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        UUID planner = createUserWithPerms(
+                w, "draw-life-planner",
+                "production_material_analysis:view",
+                "production_material_analysis:manage",
+                "production_material_analysis:generate",
+                "production_plan:approve");
+        ProductionAssignment assignment =
+                productionAssignment("draw-life");
+        UUID workshopUser = createUserWithPerms(
+                w, "draw-life-workshop",
+                "notice:read", "production_execution:view",
+                "production_daily_report:create");
+        jdbc.update("""
+                update employees
+                set department_id = ?
+                where id = (
+                    select employee_id from users where id = ?)
+                """, assignment.workshopId(), workshopUser);
+        UUID workshopEmployee = jdbc.queryForObject(
+                "select employee_id from users where id = ?",
+                UUID.class, workshopUser);
+        UUID outsideUser = createUserWithPerms(
+                w, "draw-life-outside",
+                "notice:read", "production_execution:view");
+        loginAs(planner);
+
+        AnalysisView analysis = analysisService.preview(
+                new PreviewRequest(
+                        null, null, null, w.warehouseId(),
+                        "draw-life-analysis-" + orderItemId,
+                        List.of(new PreviewItem(
+                                "SALES_ORDER_ITEM", orderItemId,
+                                null, null, null, null, null,
+                                LocalDate.of(2026, 9, 1),
+                                new BigDecimal("10")))));
+        UUID analysisId = analysis.analysisId();
+        UUID analysisLineId =
+                analysis.products().getFirst().analysisLineId();
+        PlanQuantity quantity = new PlanQuantity(
+                analysisLineId, new BigDecimal("10"),
+                LocalDate.of(2026, 8, 8), null,
+                assignment.workshopId(), null,
+                assignment.workerId(), null);
+        AnalysisView current = analysisService.detail(analysisId);
+        PlanPreview preview = analysisService.planPreview(
+                analysisId,
+                new PlanPreviewRequest(
+                        current.version(), current.fingerprint(),
+                        w.warehouseId(), List.of(quantity), null));
+        AnalysisView beforeGenerate = analysisService.detail(analysisId);
+        GeneratedPlan generated = analysisCommandService.generatePlan(
+                analysisId,
+                new GeneratePlanRequest(
+                        beforeGenerate.version(),
+                        beforeGenerate.fingerprint(),
+                        preview.previewFingerprint(),
+                        "draw-life-generate-" + analysisId,
+                        w.warehouseId(), LocalDate.of(2026, 8, 8),
+                        null, assignment.workshopId(), null,
+                        assignment.workerId(), true,
+                        List.of(quantity), null))
+                .plans().getFirst();
+        UUID drawId = generated.drawIds().getFirst();
+        UUID segmentId = generated.segmentIds().getFirst();
+        assertEquals(0, count("""
+                select count(*)
+                from stock_document_items
+                where doc_id = ?
+                  and execution_segment_id is not null
+                """, drawId),
+                "V157 要求 DRAW 行保持 NULL，执行归属只走 demand mapping");
+        assertEquals(0, count("""
+                select count(*)
+                from stock_document_items
+                where doc_id = ?
+                  and (unit_id is null or unit_rate is distinct from 1)
+                """, drawId),
+                "正式 DRAW 行必须使用需求基本单位且 unit_rate=1");
+        assertEquals(count("""
+                        select count(*)
+                        from stock_document_items
+                        where doc_id = ? and is_deleted = false
+                        """, drawId),
+                count("""
+                        select count(*)
+                        from production_planning_package_document_items mapping
+                        join production_material_demands demand
+                          on demand.id = mapping.demand_id
+                        join production_planning_package_documents header
+                          on header.package_id = mapping.package_id
+                         and header.document_type = mapping.document_type
+                         and header.document_id = mapping.document_id
+                        where mapping.document_id = ?
+                          and mapping.document_type = 'DRAW'
+                          and demand.execution_segment_id = ?
+                          and header.execution_segment_id =
+                              demand.execution_segment_id
+                        """, drawId, segmentId),
+                "每条 DRAW 行必须精确映射同一执行工单");
+        BigDecimal initialPhysicalStock = bigDecimalFor("""
+                select coalesce(sum(qty),0)
+                from stock_balances
+                where warehouse_id = ?
+                  and goods_id in (?,?)
+                """, w.warehouseId(), w.goodsB(), w.goodsE());
+        BigDecimal drawBaseQty = bigDecimalFor("""
+                select coalesce(sum(base_qty),0)
+                from stock_document_items
+                where doc_id = ? and is_deleted = false
+                """, drawId);
+
+        loginAs(w.superAdminUserId());
+        StockDocIssueRequest tooMuch = drawIssueRequest(
+                drawId, "draw-life-too-much", null, BigDecimal.ONE);
+        assertThrows(
+                ApiException.class,
+                () -> stockDocService.approveAndIssue(drawId, tooMuch));
+        assertEquals("0|0", strFor("""
+                select status::text || '|' || issue_status::text
+                from stock_documents where id = ?
+                """, drawId), "issue 失败必须回滚审核状态");
+        assertEquals(0, count("""
+                select count(*) from production_material_stock_events
+                where stock_document_id = ?
+                """, drawId), "失败不得留下领料事件");
+        assertEquals(0, count("""
+                select count(*) from stock_movements
+                where source_doc_type = 'STOCK_DOC'
+                  and source_doc_id = ?
+                """, drawId), "失败不得留下物理库存流水");
+        assertEquals(0, initialPhysicalStock.compareTo(bigDecimalFor("""
+                select coalesce(sum(qty),0)
+                from stock_balances
+                where warehouse_id = ?
+                  and goods_id in (?,?)
+                """, w.warehouseId(), w.goodsB(), w.goodsE())),
+                "失败不得改变物理库存余额");
+        assertEquals(0, bigDecimalFor("""
+                select coalesce(sum(reservation.consumed_qty),0)
+                from stock_reservations reservation
+                join production_material_demands demand
+                  on demand.id = reservation.demand_id
+                where demand.execution_segment_id = ?
+                """, segmentId).compareTo(BigDecimal.ZERO),
+                "失败不得消耗正式预留");
+
+        StockDocIssueRequest issue = drawIssueRequest(
+                drawId, "draw-life-issue-0001", null, BigDecimal.ZERO);
+        stockDocService.approveAndIssue(drawId, issue);
+        assertEquals("1|2", strFor("""
+                select status::text || '|' || issue_status::text
+                from stock_documents where id = ?
+                """, drawId), "首次出库原子完成审核与全量实发");
+        BigDecimal issuedPhysicalStock =
+                initialPhysicalStock.subtract(drawBaseQty);
+        assertEquals(0, issuedPhysicalStock.compareTo(bigDecimalFor("""
+                select coalesce(sum(qty),0)
+                from stock_balances
+                where warehouse_id = ?
+                  and goods_id in (?,?)
+                """, w.warehouseId(), w.goodsB(), w.goodsE())),
+                "首次合法出库必须按 DRAW 基本量扣减物理库存");
+        long issueEvents = count("""
+                select count(*) from production_material_stock_events
+                where stock_document_id = ? and event_type = 'ISSUE'
+                """, drawId);
+        long movementRows = count("""
+                select count(*) from stock_movements
+                where source_doc_type = 'STOCK_DOC'
+                  and source_doc_id = ?
+                """, drawId);
+        stockDocService.approveAndIssue(drawId, issue);
+        assertEquals(issueEvents, count("""
+                select count(*) from production_material_stock_events
+                where stock_document_id = ? and event_type = 'ISSUE'
+                """, drawId), "同 key 重放不得重复写领料事件");
+        assertEquals(movementRows, count("""
+                select count(*) from stock_movements
+                where source_doc_type = 'STOCK_DOC'
+                  and source_doc_id = ?
+                """, drawId), "同 key 重放不得重复扣库存");
+        assertEquals(0, issuedPhysicalStock.compareTo(bigDecimalFor("""
+                select coalesce(sum(qty),0)
+                from stock_balances
+                where warehouse_id = ?
+                  and goods_id in (?,?)
+                """, w.warehouseId(), w.goodsB(), w.goodsE())),
+                "同 key 重放后物理库存必须保持一次扣减");
+
+        while (businessOutboxProcessor.processNext()) {
+            // Drain plan/DRAW events so the active workshop card is current.
+        }
+        assertEquals(1, count("""
+                select count(*) from notices
+                where audience_user_id = ?
+                  and source_event =
+                      'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                  and aggregate_kind =
+                      'PRODUCTION_EXECUTION_SEGMENT'
+                  and aggregate_id = ?
+                  and resolved_at is null
+                """, workshopUser, segmentId),
+                "全量实发只通知精确执行工单所属车间");
+        assertEquals(0, count("""
+                select count(*) from notices
+                where audience_user_id = ?
+                  and source_event =
+                      'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                  and aggregate_id = ?
+                  and resolved_at is null
+                """, outsideUser, segmentId),
+                "车间外同权限人员不得收到该工单通知");
+
+        StockDocIssueRequest cancel = drawIssueRequest(
+                drawId, "draw-life-cancel-0001",
+                "仓库发现本轮发料需撤回", BigDecimal.ZERO);
+        stockDocService.reverseIssue(drawId, cancel);
+        assertEquals("1|0", strFor("""
+                select status::text || '|' || issue_status::text
+                from stock_documents where id = ?
+                """, drawId), "首次报工前取消出库恢复为待出库");
+        assertEquals(0, bigDecimalFor("""
+                select coalesce(sum(reservation.consumed_qty),0)
+                from stock_reservations reservation
+                join production_material_demands demand
+                  on demand.id = reservation.demand_id
+                where demand.execution_segment_id = ?
+                """, segmentId).compareTo(BigDecimal.ZERO),
+                "取消出库必须恢复正式预留");
+        assertEquals(0, initialPhysicalStock.compareTo(bigDecimalFor("""
+                select coalesce(sum(qty),0)
+                from stock_balances
+                where warehouse_id = ?
+                  and goods_id in (?,?)
+                """, w.warehouseId(), w.goodsB(), w.goodsE())),
+                "取消出库必须把物理库存恢复到首次出库前");
+        long cancelEvents = count("""
+                select count(*) from production_material_stock_events
+                where stock_document_id = ?
+                  and event_type = 'ISSUE_REVERSE'
+                """, drawId);
+        stockDocService.reverseIssue(drawId, cancel);
+        assertEquals(cancelEvents, count("""
+                select count(*) from production_material_stock_events
+                where stock_document_id = ?
+                  and event_type = 'ISSUE_REVERSE'
+                """, drawId), "取消出库同 key 重放不得重复恢复");
+
+        stockDocService.issue(
+                drawId,
+                drawIssueRequest(
+                        drawId, "draw-life-issue-0002",
+                        null, BigDecimal.ZERO));
+        UUID planItemId = planItemIdFor(
+                generated.planId(), w.goodsA());
+        DailyReportSaveRequest reportRequest =
+                new DailyReportSaveRequest();
+        reportRequest.setIdempotencyKey(
+                "draw-life-report-" + segmentId);
+        reportRequest.setBillDate(LocalDate.of(2026, 8, 9));
+        reportRequest.setWarehouseId(w.warehouseId());
+        reportRequest.setDepartmentId(assignment.workshopId());
+        reportRequest.setWorkerId(workshopEmployee);
+        reportRequest.setWorkerIds(List.of(workshopEmployee));
+        DailyReportItemLine reportLine = new DailyReportItemLine();
+        reportLine.setGoodsId(w.goodsA());
+        reportLine.setUnitId(w.unitId());
+        reportLine.setUnitRate(BigDecimal.ONE);
+        reportLine.setQty(BigDecimal.ONE);
+        reportLine.setPlanItemId(planItemId);
+        reportLine.setSalesOrderItemId(orderItemId);
+        reportLine.setExecutionSegmentId(segmentId);
+        reportLine.setExecutionSegmentSalesAllocationId(
+                salesAllocationOf(segmentId, orderItemId));
+        reportRequest.setItems(List.of(reportLine));
+        loginAs(workshopUser);
+        reportService.create(reportRequest);
+
+        loginAs(w.superAdminUserId());
+        StockDocIssueRequest lateCancel = drawIssueRequest(
+                drawId, "draw-life-cancel-after-report",
+                "已报工后错误尝试取消", BigDecimal.ZERO);
+        assertThrows(
+                ApiException.class,
+                () -> stockDocService.reverseIssue(drawId, lateCancel));
+        assertEquals("1|2", strFor("""
+                select status::text || '|' || issue_status::text
+                from stock_documents where id = ?
+                """, drawId), "存在报工后取消必须失败且保持全量实发");
+        assertEquals(0, issuedPhysicalStock.compareTo(bigDecimalFor("""
+                select coalesce(sum(qty),0)
+                from stock_balances
+                where warehouse_id = ?
+                  and goods_id in (?,?)
+                """, w.warehouseId(), w.goodsB(), w.goodsE())),
+                "报工后取消失败不得改变物理库存");
     }
 
     @Test
@@ -1796,6 +2169,7 @@ class FullChainEndToEndTest {
         loginAs(reviewer);
         approvePendingFinance("PURCHASE", orderId);
         loginAs(w.superAdminUserId());
+
         assertEquals(0, jdbc.queryForObject(
                         "select ordered_qty from purchase_request_items where id = ?",
                         BigDecimal.class, itemA)
@@ -1841,6 +2215,317 @@ class FullChainEndToEndTest {
                           and r.owner_id in (?, ?)
                         """, analysisA, analysisB),
                 "两个分析各得一条 exact-peg（合并行不串归属）");
+    }
+
+    @Test
+    void publicSurplus_claimAcrossAnalyses_partialStockInKeepsDemandFirst() {
+        World w = seedWorld("sMA72");
+        UUID productA = UUID.randomUUID();
+        UUID productB = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        insertGoods(productA, "PA-sMA72", "公共余量成品A", "自制",
+                w.unitId(), w.unitLegacy());
+        insertGoods(productB, "PB-sMA72", "公共余量成品B", "自制",
+                w.unitId(), w.unitLegacy());
+        insertGoods(material, "M-sMA72", "公共余量采购件", "采购",
+                w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id = ?",
+                w.supplierId(), material);
+        insertBom(productA, material, "1");
+        insertBom(productB, material, "1");
+        loginAs(w.superAdminUserId());
+
+        AnalysisView a = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "sma72-analysis-a",
+                List.of(new PreviewItem("OTHER", null, productA, null, w.unitId(),
+                        "sMA72-A", "A需求500并公共备货1500",
+                        LocalDate.of(2026, 9, 15), new BigDecimal("500")))));
+        MaterialView aMaterial = a.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material) && row.actionable())
+                .findFirst().orElseThrow();
+        AnalysisView aRouted = analysisService.saveRoutes(a.analysisId(),
+                new RouteRequest(a.version(), a.fingerprint(), "route-sma72-a",
+                        List.of(new RouteDecision(aMaterial.materialLineId(),
+                                aMaterial.actionGroupKey(), "BUY", null))));
+        AnalysisView aNotified = analysisCommandService.notifySupply(a.analysisId(),
+                new NotifyRequest(aRouted.version(), aRouted.fingerprint(),
+                        "notify-sma72-a", "BUY",
+                        List.of(aMaterial.materialLineId()), List.of(),
+                        List.of(new SupplyQuantityInput(
+                                aMaterial.actionGroupKey(), null,
+                                new BigDecimal("500"), BigDecimal.ZERO,
+                                new BigDecimal("1500")))));
+
+        Object[] source = jdbc.queryForObject("""
+                select action.id, allocation.external_item_id,
+                       action.public_surplus_external_item_id
+                from preplan_supply_actions action
+                join preplan_supply_action_allocations allocation
+                  on allocation.action_id = action.id
+                where action.analysis_id = ? and action.operation_type = 'SUPPLY'
+                  and action.route = 'BUY' and action.status = 'CREATED'
+                """, (rs, rowNum) -> new Object[]{
+                rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
+                rs.getObject(3, UUID.class)}, a.analysisId());
+        UUID sourceActionId = (UUID) source[0];
+        UUID demandItemId = (UUID) source[1];
+        UUID publicItemId = (UUID) source[2];
+        assertNotNull(publicItemId);
+        assertEquals(0, jdbc.queryForObject(
+                        "select requested_qty from preplan_supply_actions where id = ?",
+                        BigDecimal.class, sourceActionId)
+                .compareTo(new BigDecimal("500")));
+        assertEquals(0, jdbc.queryForObject(
+                        "select public_surplus_qty from preplan_supply_actions where id = ?",
+                        BigDecimal.class, sourceActionId)
+                .compareTo(new BigDecimal("1500")));
+        assertEquals(0, jdbc.queryForObject(
+                        "select sum(allocated_qty) from preplan_supply_action_allocations where action_id = ?",
+                        BigDecimal.class, sourceActionId)
+                .compareTo(new BigDecimal("500")),
+                "公共1500绝不能进入A的需求allocation");
+
+        com.uten.imp.features.purchase.order.dto.OrderSaveRequest order =
+                new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        order.setSettlementMethodId(activeSettlementMethodId());
+        order.setBillDate(LocalDate.of(2026, 9, 2));
+        order.setSupplierId(w.supplierId());
+        order.setWarehouseId(null);
+        order.setCurrencyId(w.currencyId());
+        order.setExchangeRate(BigDecimal.ONE);
+        order.setTaxRate(BigDecimal.ZERO);
+        com.uten.imp.features.purchase.order.dto.OrderItemLine orderLine =
+                ma65OrderLine(w, demandItemId, material, "2000");
+        orderLine.setRequestItemIds(List.of(demandItemId, publicItemId));
+        orderLine.setDeliverDate(LocalDate.of(2026, 9, 10));
+        order.setItems(List.of(orderLine));
+        purchaseOrderService.createBatch(order);
+        UUID orderItemId = jdbc.queryForObject("""
+                select item.id from purchase_order_items item
+                join purchase_order_item_sources source on source.order_item_id = item.id
+                where source.request_item_id = ? and item.is_deleted = false
+                """, UUID.class, demandItemId);
+        UUID orderId = jdbc.queryForObject(
+                "select order_id from purchase_order_items where id = ?",
+                UUID.class, orderItemId);
+        assertNull(jdbc.queryForObject(
+                "select warehouse_id from purchase_orders where id = ?",
+                UUID.class, orderId), "订货仓为空，预计仓必须回到source action意图");
+        UUID reviewer = createApprover(w);
+        financeApproval.submit("PURCHASE", orderId);
+        loginAs(reviewer);
+        approvePendingFinance("PURCHASE", orderId);
+        loginAs(w.superAdminUserId());
+
+        AnalysisView aRefreshed = analysisService.preview(new PreviewRequest(
+                a.analysisId(), aNotified.version(), aNotified.fingerprint(),
+                w.warehouseId(), "sma72-analysis-a-refresh",
+                List.of(new PreviewItem("OTHER", null, productA, null, w.unitId(),
+                        "sMA72-A", "A需求500并公共备货1500",
+                        LocalDate.of(2026, 9, 15), new BigDecimal("500")))));
+        MaterialView aAfterOrder = aRefreshed.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material)).findFirst().orElseThrow();
+        assertEquals(0, aAfterOrder.inboundQty().compareTo(new BigDecimal("500")));
+        assertEquals(0, aAfterOrder.publicSurplusApprovedInboundQty()
+                .compareTo(new BigDecimal("1500")));
+        assertEquals(0, aAfterOrder.publicSurplusRemainingQty()
+                .compareTo(BigDecimal.ZERO), "本分析自己的公共备货只展示，不自我claim");
+        assertEquals(0, aAfterOrder.additionalSupplyRecommendedQty()
+                .compareTo(BigDecimal.ZERO));
+        assertTrue(aAfterOrder.sharedFutureSupplyRefs().stream()
+                .anyMatch(ref -> ref.sourceIsCurrentAnalysis()
+                        && "BUY".equals(ref.route())
+                        && LocalDate.of(2026, 9, 10).equals(ref.expectedDate())));
+
+        AnalysisView b = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "sma72-analysis-b",
+                List.of(new PreviewItem("OTHER", null, productB, null, w.unitId(),
+                        "sMA72-B", "B需求1000采用A公共在途",
+                        LocalDate.of(2026, 9, 15), new BigDecimal("1000")))));
+        MaterialView bMaterial = b.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material) && row.actionable())
+                .findFirst().orElseThrow();
+        AnalysisView bRouted = analysisService.saveRoutes(b.analysisId(),
+                new RouteRequest(b.version(), b.fingerprint(), "route-sma72-b",
+                        List.of(new RouteDecision(bMaterial.materialLineId(),
+                                bMaterial.actionGroupKey(), "BUY", null))));
+        MaterialView beforeClaim = bRouted.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material)).findFirst().orElseThrow();
+        assertEquals(0, beforeClaim.publicSurplusRemainingQty()
+                .compareTo(new BigDecimal("1500")));
+        assertTrue(beforeClaim.sharedFutureSupplyRefs().stream()
+                .anyMatch(ref -> !ref.sourceIsCurrentAnalysis()
+                        && "BUY".equals(ref.route())
+                        && LocalDate.of(2026, 9, 10).equals(ref.expectedDate())));
+
+        AnalysisView claimed = analysisCommandService.claimSharedFuture(
+                b.analysisId(), new ClaimSharedFutureRequest(
+                        bRouted.version(), bRouted.fingerprint(),
+                        "claim-sma72-b", List.of(bMaterial.actionGroupKey())));
+        MaterialView claimedMaterial = claimed.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material)).findFirst().orElseThrow();
+        assertEquals(0, claimedMaterial.sharedFutureClaimedQty()
+                .compareTo(new BigDecimal("1000")));
+        assertEquals(0, claimedMaterial.additionalSupplyRecommendedQty()
+                .compareTo(BigDecimal.ZERO));
+        assertEquals(0, claimedMaterial.publicSurplusRemainingQty()
+                .compareTo(new BigDecimal("500")));
+
+        receiveAndPassPurchase(w, orderItemId, material,
+                new BigDecimal("800"), "sma72-partial");
+        // Warehouse confirmation helper intentionally switches to a scoped
+        // warehouse employee. Restore the analysis owner before reading B.
+        loginAs(w.superAdminUserId());
+        assertEquals(0, jdbc.queryForObject("""
+                        select coalesce(sum(r.qty-r.consumed_qty-r.released_qty),0)
+                        from stock_reservations r
+                        where r.owner_type='PREPLAN_ANALYSIS' and r.owner_id=?
+                          and r.goods_id=? and r.status=0 and r.is_deleted=false
+                        """, BigDecimal.class, a.analysisId(), material)
+                .compareTo(new BigDecimal("500")));
+        assertEquals(0, jdbc.queryForObject("""
+                        select coalesce(sum(r.qty-r.consumed_qty-r.released_qty),0)
+                        from stock_reservations r
+                        where r.owner_type='PREPLAN_ANALYSIS' and r.owner_id=?
+                          and r.goods_id=? and r.status=0 and r.is_deleted=false
+                        """, BigDecimal.class, b.analysisId(), material)
+                .compareTo(new BigDecimal("300")));
+
+        MaterialView afterPartial = analysisService.detail(b.analysisId())
+                .flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material)).findFirst().orElseThrow();
+        assertEquals(0, afterPartial.inboundQty().compareTo(new BigDecimal("700")),
+                "B采用1000，部分入库exact 300后仍有700在途");
+        assertEquals(0, afterPartial.publicSurplusRemainingQty()
+                .compareTo(new BigDecimal("500")),
+                "公共未认领500不被A/B重复占用");
+        assertEquals(0, afterPartial.additionalSupplyRecommendedQty()
+                .compareTo(BigDecimal.ZERO));
+        assertEquals(0, jdbc.queryForObject(
+                        "select available_to_claim_qty from v_preplan_public_surplus_source_state where source_action_id = ?",
+                        BigDecimal.class, sourceActionId)
+                .compareTo(new BigDecimal("500")));
+        assertEquals(aNotified.analysisId(), a.analysisId());
+    }
+
+    @Test
+    void runtimeDirectOverorder_becomesClaimableWithoutMutatingExactDemand() {
+        World w = seedWorld("sMA74");
+        UUID productA = UUID.randomUUID();
+        UUID productB = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        insertGoods(productA, "PA-sMA74", "运行时超采成品A", "自制",
+                w.unitId(), w.unitLegacy());
+        insertGoods(productB, "PB-sMA74", "运行时超采成品B", "自制",
+                w.unitId(), w.unitLegacy());
+        insertGoods(material, "M-sMA74", "运行时超采件", "采购",
+                w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id = ?",
+                w.supplierId(), material);
+        insertBom(productA, material, "1");
+        insertBom(productB, material, "1");
+        loginAs(w.superAdminUserId());
+
+        AnalysisView a = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "sma74-analysis-a",
+                List.of(new PreviewItem("OTHER", null, productA, null, w.unitId(),
+                        "sMA74-A", "A需求500直接订2000",
+                        LocalDate.of(2026, 9, 20), new BigDecimal("500")))));
+        MaterialView aMaterial = a.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material) && row.actionable())
+                .findFirst().orElseThrow();
+        AnalysisView routedA = analysisService.saveRoutes(a.analysisId(),
+                new RouteRequest(a.version(), a.fingerprint(), "route-sma74-a",
+                        List.of(new RouteDecision(aMaterial.materialLineId(),
+                                aMaterial.actionGroupKey(), "BUY", null))));
+        AnalysisView notifiedA = analysisCommandService.notifySupply(a.analysisId(),
+                new NotifyRequest(routedA.version(), routedA.fingerprint(),
+                        "notify-sma74-a", "BUY",
+                        List.of(aMaterial.materialLineId()), List.of(),
+                        List.of(new SupplyQuantityInput(
+                                aMaterial.actionGroupKey(), null,
+                                new BigDecimal("500"), BigDecimal.ZERO,
+                                BigDecimal.ZERO))));
+        Object[] source = jdbc.queryForObject("""
+                select action.id, allocation.external_item_id
+                from preplan_supply_actions action
+                join preplan_supply_action_allocations allocation
+                  on allocation.action_id=action.id
+                where action.analysis_id=? and action.operation_type='SUPPLY'
+                  and action.route='BUY' and action.status='CREATED'
+                """, (rs, rowNum) -> new Object[]{
+                rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)},
+                a.analysisId());
+        UUID sourceActionId = (UUID) source[0];
+        UUID demandItemId = (UUID) source[1];
+
+        com.uten.imp.features.purchase.order.dto.OrderSaveRequest order =
+                new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        order.setSettlementMethodId(activeSettlementMethodId());
+        order.setBillDate(LocalDate.of(2026, 9, 4));
+        order.setSupplierId(w.supplierId());
+        order.setCurrencyId(w.currencyId());
+        order.setExchangeRate(BigDecimal.ONE);
+        order.setTaxRate(BigDecimal.ZERO);
+        var orderLine = ma65OrderLine(w, demandItemId, material, "2000");
+        orderLine.setDeliverDate(LocalDate.of(2026, 9, 12));
+        order.setItems(List.of(orderLine));
+        purchaseOrderService.createBatch(order);
+        UUID orderId = jdbc.queryForObject("""
+                select item.order_id from purchase_order_items item
+                join purchase_order_item_sources source
+                  on source.order_item_id=item.id
+                where source.request_item_id=? and item.is_deleted=false
+                order by item.created_at desc limit 1
+                """, UUID.class, demandItemId);
+        UUID reviewer = createApprover(w);
+        financeApproval.submit("PURCHASE", orderId);
+        loginAs(reviewer);
+        approvePendingFinance("PURCHASE", orderId);
+        loginAs(w.superAdminUserId());
+
+        assertEquals(0, jdbc.queryForObject(
+                        "select requested_qty from preplan_supply_actions where id=?",
+                        BigDecimal.class, sourceActionId)
+                .compareTo(new BigDecimal("500")));
+        assertEquals(0, jdbc.queryForObject(
+                        "select public_surplus_qty from preplan_supply_actions where id=?",
+                        BigDecimal.class, sourceActionId).compareTo(BigDecimal.ZERO),
+                "运行时超采不得改写已外部化action的冻结字段");
+        assertEquals(0, jdbc.queryForObject("""
+                        select sum(case event_type when 'GRANT' then qty else -qty end)
+                        from preplan_public_supply_events
+                        where source_action_id=? and source_external_item_id=?
+                        """, BigDecimal.class, sourceActionId, demandItemId)
+                .compareTo(new BigDecimal("1500")));
+        assertEquals(orderId, jdbc.queryForObject("""
+                select trigger_order_id from preplan_public_supply_events
+                where source_action_id=? and event_type='GRANT'
+                """, UUID.class, sourceActionId));
+
+        AnalysisView b = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "sma74-analysis-b",
+                List.of(new PreviewItem("OTHER", null, productB, null, w.unitId(),
+                        "sMA74-B", "B采用A运行时公共在途",
+                        LocalDate.of(2026, 9, 20), new BigDecimal("1000")))));
+        MaterialView bMaterial = b.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material) && row.actionable())
+                .findFirst().orElseThrow();
+        AnalysisView routedB = analysisService.saveRoutes(b.analysisId(),
+                new RouteRequest(b.version(), b.fingerprint(), "route-sma74-b",
+                        List.of(new RouteDecision(bMaterial.materialLineId(),
+                                bMaterial.actionGroupKey(), "BUY", null))));
+        assertEquals(0, routedB.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material)).findFirst().orElseThrow()
+                .publicSurplusRemainingQty().compareTo(new BigDecimal("1500")));
+        AnalysisView claimed = analysisCommandService.claimSharedFuture(
+                b.analysisId(), new ClaimSharedFutureRequest(
+                        routedB.version(), routedB.fingerprint(),
+                        "claim-sma74-b", List.of(bMaterial.actionGroupKey())));
+        assertEquals(0, claimed.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material)).findFirst().orElseThrow()
+                .sharedFutureClaimedQty().compareTo(new BigDecimal("1000")));
+        assertEquals(notifiedA.analysisId(), a.analysisId());
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1927,6 +2612,88 @@ class FullChainEndToEndTest {
         assertEquals("PARTIALLY_PLANNED",
                 strFor("select status from production_material_analyses where id=?", analysisId),
                 "分批未全量 → PARTIALLY_PLANNED");
+    }
+
+    @Test
+    void materialAnalysis_fullPlanKeepsReadyAndWaitingSegments() {
+        World w = seedWorld("sMA74split");
+        UUID product = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        insertGoods(product, "P-sMA74split", "分批成品", "自制",
+                w.unitId(), w.unitLegacy());
+        insertGoods(material, "M-sMA74split", "分批物料", "采购",
+                w.unitId(), w.unitLegacy());
+        insertBom(product, material, "1");
+        jdbc.update("""
+                insert into stock_balances(warehouse_id,goods_id,color_id,qty)
+                values (?,?,NULL,?)
+                """, w.warehouseId(), material, new BigDecimal("50"));
+        loginAs(w.superAdminUserId());
+        AnalysisView view = analysisService.preview(new PreviewRequest(
+                null,null,null,w.warehouseId(),"sma74-split-analysis",
+                List.of(new PreviewItem("OTHER",null,product,null,w.unitId(),
+                        "sMA74-split","计划100现货先做50",
+                        LocalDate.of(2026,9,25),new BigDecimal("100")))));
+        UUID analysisId = view.analysisId();
+        UUID productLineId = view.products().getFirst().analysisLineId();
+        assertEquals(0, view.products().getFirst().readyNowQty()
+                .compareTo(new BigDecimal("50")));
+        PlanPreview preview = analysisService.planPreview(
+                analysisId,new PlanPreviewRequest(
+                        view.version(),view.fingerprint(),w.warehouseId(),
+                        List.of(new PlanQuantity(
+                                productLineId,new BigDecimal("100"))),null));
+        assertFalse(preview.allReady());
+        AnalysisView current = analysisService.detail(analysisId);
+        GenerateResult generated = analysisCommandService.generatePlan(
+                analysisId,new GeneratePlanRequest(
+                        current.version(),current.fingerprint(),
+                        preview.previewFingerprint(),"sma74-split-generate",
+                        w.warehouseId(),LocalDate.of(2026,9,4),null,
+                        null,null,null,true,
+                        List.of(new PlanQuantity(
+                                productLineId,new BigDecimal("100"))),null));
+        UUID planId = generated.plans().getFirst().planId();
+        Map<String, BigDecimal> segmentQty = new java.util.HashMap<>();
+        jdbc.query("""
+                select status,sum(planned_qty)
+                from production_execution_segments
+                where plan_id=? and is_deleted=false
+                group by status
+                """, rs -> {
+                    segmentQty.put(rs.getString(1),rs.getBigDecimal(2));
+                }, planId);
+        assertEquals(0, segmentQty.get("READY").compareTo(new BigDecimal("50")));
+        assertEquals(0, segmentQty.get("WAITING").compareTo(new BigDecimal("50")));
+        assertEquals(0, jdbc.queryForObject("""
+                select coalesce(sum(reservation.qty),0)
+                from stock_reservations reservation
+                join production_material_demands demand
+                  on demand.id=reservation.demand_id
+                join production_execution_segments segment
+                  on segment.id=demand.execution_segment_id
+                where segment.plan_id=? and segment.status='READY'
+                  and reservation.is_deleted=false
+                """, BigDecimal.class, planId).compareTo(new BigDecimal("50")));
+        assertEquals(0, jdbc.queryForObject("""
+                select coalesce(sum(reservation.qty),0)
+                from stock_reservations reservation
+                join production_material_demands demand
+                  on demand.id=reservation.demand_id
+                join production_execution_segments segment
+                  on segment.id=demand.execution_segment_id
+                where segment.plan_id=? and segment.status='WAITING'
+                  and reservation.is_deleted=false
+                """, BigDecimal.class, planId).compareTo(BigDecimal.ZERO));
+        assertEquals(1, count("""
+                select count(distinct document.id)
+                from production_planning_package_documents link
+                join stock_documents document on document.id=link.document_id
+                join production_execution_segments segment
+                  on segment.id=link.execution_segment_id
+                where segment.plan_id=? and segment.status='READY'
+                  and link.document_type='DRAW' and document.is_deleted=false
+                """, planId));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -2188,6 +2955,38 @@ class FullChainEndToEndTest {
 
     private String strFor(String sql, Object... args) {
         return jdbc.queryForObject(sql, String.class, args);
+    }
+
+    private StockDocIssueRequest drawIssueRequest(
+            UUID drawId,
+            String idempotencyKey,
+            String reason,
+            BigDecimal firstLineExtra) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                select id, qty
+                from stock_document_items
+                where doc_id = ? and is_deleted = false
+                order by line_no nulls last, id
+                """, drawId);
+        StockDocIssueRequest request = new StockDocIssueRequest();
+        request.setIdempotencyKey(idempotencyKey);
+        request.setReason(reason);
+        List<StockDocIssueRequest.Line> lines = new ArrayList<>();
+        boolean first = true;
+        for (Map<String, Object> row : rows) {
+            StockDocIssueRequest.Line line =
+                    new StockDocIssueRequest.Line();
+            line.setItemId((UUID) row.get("id"));
+            BigDecimal quantity = (BigDecimal) row.get("qty");
+            if (first && firstLineExtra != null) {
+                quantity = quantity.add(firstLineExtra);
+            }
+            line.setQty(quantity);
+            lines.add(line);
+            first = false;
+        }
+        request.setLines(List.copyOf(lines));
+        return request;
     }
 
     /** Seed a non-super-admin explicitly granted the current approve action. */
@@ -3355,10 +4154,13 @@ class FullChainEndToEndTest {
                                 new BigDecimal("10"))),
                         null)).plans().getFirst();
         for (UUID drawId : makeGenerated.drawIds()) {
-            stockDocService.approve(drawId);
             var drawLines = jdbc.queryForList(
                     "select id, qty from stock_document_items where doc_id = ? and is_deleted = false",
                     drawId);
+            assertEquals(0, count("""
+                    select count(*) from stock_document_items
+                    where doc_id = ? and execution_segment_id is not null
+                    """, drawId), "DRAW 行的执行归属必须走 demand mapping，V157 禁止直接写行列");
             var issueReq = new com.uten.imp.features.stock.dto.StockDocIssueRequest();
             issueReq.setIdempotencyKey("make-draw-issue-" + drawId);
             issueReq.setLines(drawLines.stream().map(row -> {
@@ -3367,11 +4169,30 @@ class FullChainEndToEndTest {
                 line.setQty((BigDecimal) row.get("qty"));
                 return line;
             }).toList());
-            stockDocService.issue(drawId, issueReq);
+            stockDocService.approveAndIssue(drawId, issueReq);
         }
         UUID makeProductionPlanItem = planItemOfPlan(makeGenerated.planId());
-        UUID makeReportId = reportAndApprove(
-                w, makeProductionPlanItem, null, subcontracted, "10");
+        StartedSegment makeSegment = startedSegmentFor(
+                w, makeGenerated.planId(), makeProductionPlanItem, null);
+        UUID makeWorkshopId = jdbc.queryForObject("""
+                select workshop_department_id
+                from production_execution_segments
+                where id = ? and is_deleted = false
+                """, UUID.class, makeSegment.segmentId());
+        UUID superAdminEmployeeId = employeeIdOf(w.superAdminUserId());
+        jdbc.update("""
+                insert into employee_secondary_departments(
+                    employee_id, department_id, note, created_by, updated_by)
+                select ?, ?, 's23c production report fixture', ?, ?
+                where (select department_id from employees where id = ?)
+                      is distinct from ?
+                on conflict (employee_id, department_id) do nothing
+                """, superAdminEmployeeId, makeWorkshopId,
+                w.superAdminUserId(), w.superAdminUserId(),
+                superAdminEmployeeId, makeWorkshopId);
+        UUID makeReportId = reportAndApproveExecutionSegment(
+                w, makeProductionPlanItem, null, subcontracted,
+                makeSegment.segmentId(), makeSegment.salesAllocationId(), "10");
         confirmFinishedInboundFully(finishedInDocForReport(makeReportId));
 
         // 满批实收入仓 → 账本 produced=10 → 入库事务内自动生成委外申请并通知委外部。
@@ -6385,10 +7206,22 @@ class FullChainEndToEndTest {
             UUID executionSegmentId,
             UUID salesAllocationId,
             String qty) {
+        Map<String, Object> segmentReportingScope = jdbc.queryForMap("""
+                select workshop_department_id, responsible_employee_id
+                from production_execution_segments
+                where id = ? and is_deleted = false
+                """, executionSegmentId);
+        UUID workshopDepartmentId =
+                (UUID) segmentReportingScope.get("workshop_department_id");
+        UUID responsibleEmployeeId =
+                (UUID) segmentReportingScope.get("responsible_employee_id");
         DailyReportSaveRequest req = new DailyReportSaveRequest();
         req.setIdempotencyKey("e2e-report-" + UUID.randomUUID());
         req.setBillDate(LocalDate.of(2026, 1, 25));
         req.setWarehouseId(w.warehouseId());
+        req.setDepartmentId(workshopDepartmentId);
+        req.setWorkerId(responsibleEmployeeId);
+        req.setWorkerIds(List.of(responsibleEmployeeId));
         DailyReportItemLine line = new DailyReportItemLine();
         line.setGoodsId(goodsId);
         line.setUnitId(w.unitId());
@@ -6399,8 +7232,29 @@ class FullChainEndToEndTest {
         line.setExecutionSegmentId(executionSegmentId);
         line.setExecutionSegmentSalesAllocationId(salesAllocationId);
         req.setItems(List.of(line));
-        DailyReportDetail report = reportService.create(req);
-        reportService.approve(report.getId());
+        // V470 车间任务写侧对象范围：报工操作者必须属于执行段车间（超管不豁免）。
+        // E2E 用车间员工身份执行 create/approve，随后还原调用者身份。
+        org.springframework.security.core.Authentication previousAuth =
+                SecurityContextHolder.getContext().getAuthentication();
+        UUID workshopReporter = createUserWithPerms(
+                w, "wsrep-" + UUID.randomUUID().toString().substring(0, 8),
+                "production_execution:view",
+                "production_daily_report:create",
+                "production_daily_report:edit",
+                "production_daily_report:approve",
+                "production_daily_report:reverse");
+        jdbc.update("""
+                update employees set department_id = ?
+                where id = (select employee_id from users where id = ?)
+                """, workshopDepartmentId, workshopReporter);
+        loginAs(workshopReporter);
+        DailyReportDetail report;
+        try {
+            report = reportService.create(req);
+            reportService.approve(report.getId());
+        } finally {
+            SecurityContextHolder.getContext().setAuthentication(previousAuth);
+        }
         assertEquals(0, count("""
                 SELECT COUNT(*)
                 FROM production_fqc_inspections
@@ -6977,8 +7831,8 @@ class FullChainEndToEndTest {
 
     private void insertGoods(UUID id, String code, String name, String sourceType,
                              UUID unitId, int unitLegacy) {
-        jdbc.update("insert into goods(id, code, name, source_type, status, unit_id, unit_legacy_id, code_sequence) "
-                        + "values (?, ?, ?, ?, '使用', ?, ?, "
+        jdbc.update("insert into goods(id, code, name, source_type, status, unit_id, unit_legacy_id, price, code_sequence) "
+                        + "values (?, ?, ?, ?, '使用', ?, ?, 100, "
                         + "(select coalesce(max(code_sequence), 0) + 1 from goods))",
                 id, code, name, sourceType, unitId, unitLegacy);
     }

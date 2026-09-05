@@ -2,15 +2,15 @@
 //
 // 与采购 purchase_grid_columns 同构（货品 ValueNotifier / 数量 / 单价→金额自动），
 // 但委外 8 单据差异更大，列由 SubcontractDocConfig 显隐：
-//  - 货品 / 数量 永远在；
+//  - 货品 / 数量 永远在；数量之后紧跟单位（2026-09-04 口径）；
 //  - 单价 / 金额 仅 itemHasPrice（询价/申请/订货/进仓/退货）；
-//  - 重量 itemHasWeight；围数 itemHasGirth；胶箱数 itemHasBoxQty；
+//  - 重量列已下线（2026-09-04：单位已表达重量；itemHasWeight 仍驱动保存透传）；
+//  围数 itemHasGirth；胶箱数 itemHasBoxQty；
 //  - 损耗 4 列（标准用量/结存数/损耗率/损耗原因）仅 itemHasWasteFields（损耗单）。
 // 颜色/单位/上游明细 id 为透传（引入或回填时预填，保存时随行写回，UI 不单独编辑）。
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../../../shared/widgets/procurement_commercial_grid.dart';
 import '../../../shared/widgets/procurement_supplier_cell.dart';
@@ -79,10 +79,6 @@ class SubcontractGridRow extends EditableGridRow
   String? get supplierId => supplierIdNotifier.value;
   set supplierId(String? v) => supplierIdNotifier.value = v;
 
-  /// 预计到货登记模式（[subcontractGridColumns] arrivalMode）：该行财务批准剩余量，
-  /// 只读对照列展示；不实设 maxQty，仓库须能如实登记超量实到数。
-  num? approvedQty;
-
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
   factory SubcontractGridRow.fromLinked(LinkedItem li, GoodsOption goods) {
     final r = SubcontractGridRow(sourceLocked: li.upstreamItemId != null)
@@ -107,7 +103,7 @@ class SubcontractGridRow extends EditableGridRow
 
   /// 深拷贝（明细复制/粘贴用）：语义同 PurchaseGridRow.clone——拷用户录入（数量/
   /// 单价/重量/围数/胶箱数/行委外商/行级商业条款/备注/损耗单四列）与主档透传；
-  /// 不拷上游 id、planItemId、来源谱系、到货门控（maxQty/approvedQty）与 sourceLocked。
+  /// 不拷上游 id、planItemId、来源谱系、数量门控 maxQty 与 sourceLocked。
   SubcontractGridRow clone() {
     final c = SubcontractGridRow()
       ..goods = goods
@@ -148,21 +144,17 @@ class SubcontractGridRow extends EditableGridRow
   }
 }
 
-/// 委外明细列：货品（点选）/ 数量 / 单价? / 金额? / 重量? / 围数? / 胶箱数? /
+/// 委外明细列：货品（点选）/ 数量 / 单位 / 单价? / 金额? / 围数? / 胶箱数? /
 /// 损耗(标准用量?/结存数?/损耗率?/损耗原因?)，全部按 [cfg] 的 itemHas* 显隐。
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
-/// [arrivalMode]=true（预计到货「登记实际到货」预填场景）：列改为
-/// 货品 / 单位 / 批准剩余（只读对照）/ 实到数量 / 实际重量——价格列隐藏。
 /// [showCommercial]+[currencyEntries]/[settlementEntries]/[onPickCurrency]/[onPickSettlement]
 /// （订货单）：金额列后加「币种/汇率/税率/结算方式」四列（行级商业条款，保存按组合拆单）。
 /// [showRemark]：明细末尾加「备注」列（随行提交 remark）。
-/// [unitAfterWeight]（订货单，2026-09-03 用户口径）：单位列放在「实际重量」之后；
-/// 默认 false 时单位在委外商前（其余单据原布局不变）。
+/// 列序（2026-09-04 口径）：数量之后紧跟单位；实际重量列下线（cfg.itemHasWeight
+/// 仍驱动保存透传，行模型 weight 保留既有单回填/回写）。
 List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   Future<void> Function(SubcontractGridRow row) onPickGoods,
   SubcontractDocConfig cfg, {
-  bool arrivalMode = false,
-  bool unitAfterWeight = false,
   Map<String, String> unitEntries = const {},
   Map<String, String> supplierEntries = const {},
   bool supplierRequired = false,
@@ -175,8 +167,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   ValueChanged<String?> Function(SubcontractGridRow row)? onPickSettlement,
   bool showRemark = false,
 }) {
-  final showSupplier =
-      !arrivalMode && supplierEntries.isNotEmpty && cfg.hasSupplier;
+  final showSupplier = supplierEntries.isNotEmpty && cfg.hasSupplier;
   return [
     EditableGridColumn<SubcontractGridRow>(
       key: 'goods',
@@ -217,7 +208,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ),
-    if (cfg.itemHasStockPlace && !arrivalMode)
+    if (cfg.itemHasStockPlace)
       EditableGridColumn<SubcontractGridRow>(
         key: 'stockPlace',
         label: '库位号',
@@ -237,21 +228,6 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           ),
         ),
       ),
-    if (!unitAfterWeight)
-      EditableGridColumn<SubcontractGridRow>(
-        key: 'unit',
-        label: '单位',
-        width: 84,
-        textOf: (r) => unitEntries[r.unitId] ?? '',
-        cellBuilder: (context, row) => Text(
-          unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
-          style: TextStyle(
-            color: row.unitId == null
-                ? Theme.of(context).colorScheme.error
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
     if (showSupplier)
       EditableGridColumn<SubcontractGridRow>(
         key: 'supplier',
@@ -260,31 +236,24 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         required: supplierRequired,
         textOf: (r) => supplierEntries[r.supplierId] ?? '',
         listenableOf: (r) => r.supplierIdNotifier,
-        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
-          valueListenable: row.supplierIdNotifier,
-          builder: (_, v, _) => ProcurementSupplierCell(
-            value: v,
-            fallback: headerSupplierId,
-            entries: supplierEntries,
-            requiredEmpty: supplierRequired && v == null,
-            onPick: onPickSupplier == null ? null : () => onPickSupplier(row),
+        cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+          valueListenable: row.termsAutofilledNotifier,
+          builder: (_, marks, _) => ValueListenableBuilder<String?>(
+            valueListenable: row.supplierIdNotifier,
+            builder: (_, v, _) => ProcurementSupplierCell(
+              value: v,
+              fallback: headerSupplierId,
+              entries: supplierEntries,
+              requiredEmpty: supplierRequired && v == null,
+              autofilled: marks.contains('supplier'),
+              onPick: onPickSupplier == null ? null : () => onPickSupplier(row),
+            ),
           ),
-        ),
-      ),
-    // 批准剩余：只读对照（财务批准还能收多少），超量实到不拦截，由服务端审核隔离。
-    if (arrivalMode)
-      EditableGridColumn<SubcontractGridRow>(
-        key: 'approvedQty',
-        label: '批准剩余',
-        width: 96,
-        numeric: true,
-        cellBuilder: (context, row) => Text(
-          row.approvedQty == null ? '—' : procurementQty(row.approvedQty!),
         ),
       ),
     EditableGridColumn<SubcontractGridRow>(
       key: 'qty',
-      label: arrivalMode ? '实到数量' : '数量',
+      label: '数量',
       width: 96,
       numeric: true,
       required: true,
@@ -299,7 +268,22 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ),
-    if (!arrivalMode && cfg.itemHasPrice)
+    // 单位紧跟数量（2026-09-04 口径）：单位已表达重量，实际重量列下线。
+    EditableGridColumn<SubcontractGridRow>(
+      key: 'unit',
+      label: '单位',
+      width: 84,
+      textOf: (r) => unitEntries[r.unitId] ?? '',
+      cellBuilder: (context, row) => Text(
+        unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
+        style: TextStyle(
+          color: row.unitId == null
+              ? Theme.of(context).colorScheme.error
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    ),
+    if (cfg.itemHasPrice)
       EditableGridColumn<SubcontractGridRow>(
         key: 'price',
         label: '单价',
@@ -319,7 +303,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           ),
         ),
       ),
-    if (!arrivalMode && cfg.itemHasPrice)
+    if (cfg.itemHasPrice)
       EditableGridColumn<SubcontractGridRow>(
         key: 'amount',
         label: '金额',
@@ -330,36 +314,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
         ),
       ),
-    if (cfg.itemHasWeight)
-      EditableGridColumn<SubcontractGridRow>(
-        key: 'weight',
-        label: '实际重量',
-        width: 96,
-        numeric: true,
-        cellBuilder: (context, row) => TextField(
-          controller: row.weight,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
-        ),
-      ),
-    // 订货单口径（2026-09-03）：单位列紧跟「实际重量」之后。
-    if (unitAfterWeight)
-      EditableGridColumn<SubcontractGridRow>(
-        key: 'unit',
-        label: '单位',
-        width: 84,
-        textOf: (r) => unitEntries[r.unitId] ?? '',
-        cellBuilder: (context, row) => Text(
-          unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
-          style: TextStyle(
-            color: row.unitId == null
-                ? Theme.of(context).colorScheme.error
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    if (!arrivalMode && cfg.itemHasGirth)
+    if (cfg.itemHasGirth)
       EditableGridColumn<SubcontractGridRow>(
         key: 'girth',
         label: '围数',
@@ -372,7 +327,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
       ),
-    if (!arrivalMode && cfg.itemHasBoxQty)
+    if (cfg.itemHasBoxQty)
       EditableGridColumn<SubcontractGridRow>(
         key: 'boxQty',
         label: '胶箱数',
@@ -385,7 +340,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
       ),
-    if (!arrivalMode && cfg.itemHasWasteFields) ...[
+    if (cfg.itemHasWasteFields) ...[
       EditableGridColumn<SubcontractGridRow>(
         key: 'standardQty',
         label: '标准用量',
@@ -434,7 +389,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       ),
     ],
     // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
-    if (showCommercial && !arrivalMode)
+    if (showCommercial)
       ...procurementCommercialColumns<SubcontractGridRow>(
         currencyEntries: currencyEntries,
         settlementEntries: settlementEntries,

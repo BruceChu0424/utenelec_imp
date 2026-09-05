@@ -336,9 +336,9 @@ class _ProgressList extends ConsumerWidget {
     required bool canViewPlan,
   }) {
     final statusLabel = switch (segment.status) {
-      'READY' => '待派工',
+      'READY' => '备料中',
       'WAITING' => '待料',
-      'DISPATCHED' => '已派工',
+      'DISPATCHED' => '历史工单备料中',
       'IN_PROGRESS' => '生产中',
       'COMPLETED' => '已完成',
       'CANCELLED' => '已取消',

@@ -120,13 +120,27 @@ public class ProductionExecutionSegmentService {
                 requestHash,
                 request.expectedVersion(),
                 resultingVersion);
-        if (request.workshopDepartmentId() != null
-                && !Objects.equals(segment.workshopDepartmentId(),
-                        request.workshopDepartmentId())) {
+        boolean workshopChanged = !Objects.equals(
+                segment.workshopDepartmentId(), request.workshopDepartmentId());
+        boolean responsibleChanged = !Objects.equals(
+                segment.responsibleEmployeeId(),
+                request.responsibleEmployeeId());
+        if (request.workshopDepartmentId() != null && workshopChanged) {
             workshopPreferences.learnSelection(
                     segment.productGoodsId(),
                     request.workshopDepartmentId(),
                     currentUser.requireEmployeeId());
+        }
+        // 车间/负责人后补或变更必须重建车间任务卡：计划下达时车间为空的段，
+        // publishWorkshopTask 会直接早退，首张通知只能在这里补发；换车间时旧
+        // 卡先办结再投给新车间，清空车间则把残留弹窗一并办结。
+        if (workshopChanged || responsibleChanged) {
+            if (request.workshopDepartmentId() == null) {
+                chainNotice.resolveProductionWorkshopTasks(
+                        List.of(segmentId), "WORKSHOP_UNASSIGNED");
+            } else {
+                chainNotice.notifyExecutionSegmentWorkshopAssigned(segmentId);
+            }
         }
         return one(planId, segmentId);
     }
@@ -414,7 +428,7 @@ public class ProductionExecutionSegmentService {
                         ProductionExecutionSegment.STATUS_READY,
                         ProductionExecutionSegment.STATUS_WAITING)
                 .contains(segment.status())) {
-            throw conflict("已派工或已开工执行段不能直接取消/红冲");
+            throw conflict("历史已确认或已进入生产的执行工单不能直接取消/红冲");
         }
         if (hasExecutionActivity(segmentId)) {
             throw conflict("执行段已有发料、报工或入库记录，必须先完成精确反向处理");
@@ -432,6 +446,8 @@ public class ProductionExecutionSegmentService {
                 requestHash,
                 request.expectedVersion(),
                 resultingVersion);
+        chainNotice.resolveProductionWorkshopTasks(
+                List.of(segmentId), terminalStatus);
         return one(planId, segmentId);
     }
 
@@ -464,6 +480,7 @@ public class ProductionExecutionSegmentService {
                                        plan.status, plan.is_closed,
                                        plan.is_canceled, plan.is_stopped,
                                        s.product_goods_id, s.workshop_department_id,
+                                       s.responsible_employee_id,
                                        s.auto_promote_when_ready,
                                        s.material_requirement_mode,
                                        plan.maker_id
@@ -499,9 +516,10 @@ public class ProductionExecutionSegmentService {
                 Boolean.TRUE.equals(row[9]),
                 (UUID) row[10],
                 (UUID) row[11],
-                Boolean.TRUE.equals(row[12]),
-                (String) row[13],
-                (UUID) row[14]);
+                (UUID) row[12],
+                Boolean.TRUE.equals(row[13]),
+                (String) row[14],
+                (UUID) row[15]);
     }
 
     /**
@@ -1011,6 +1029,7 @@ public class ProductionExecutionSegmentService {
             boolean planStopped,
             UUID productGoodsId,
             UUID workshopDepartmentId,
+            UUID responsibleEmployeeId,
             boolean autoPromoteWhenReady,
             String materialRequirementMode,
             UUID planMakerId) {

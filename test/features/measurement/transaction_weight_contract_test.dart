@@ -34,9 +34,16 @@ void main() {
       'lib/features/production/pages/production_daily_report_edit_page.dart',
     );
 
-    for (final grid in [stockGrid, purchaseGrid, salesGrid, dailyGrid]) {
+    // 2026-09-04 口径：采购/销售单据编辑网格下线「实际重量」列（单位已表达重量）；
+    // 行模型 weight 字段保留，编辑既有单回填并随保存透传。仓库/生产等实物单据
+    // （过磅/收发料）仍保留重量录入。
+    for (final grid in [stockGrid, dailyGrid]) {
       expect(grid, contains("key: 'weight'"));
       expect(grid, contains("label: '实际重量'"));
+    }
+    for (final grid in [purchaseGrid, salesGrid]) {
+      expect(grid, isNot(contains("key: 'weight'")));
+      expect(grid, isNot(contains("label: '实际重量'")));
     }
     for (final edit in [
       stockEdit,

@@ -289,6 +289,7 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.productionQualityInspectionView];
   }
   if (location == RouteName.warehouseInboundExpectations ||
+      location.startsWith('${RouteName.warehouseInboundExpectations}/') ||
       location == RouteName.warehouseArrivalExceptions) {
     return const [Perm.warehouseInboundView];
   }
@@ -382,6 +383,7 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.webinquiryView];
   }
   // 基础资料：hub 按任一主档查看权限放行；详情页使用对应主档权限。
+  // 列表须与 hub 卡片（basic_data_hub_page）一一对应——漏码=持码用户看不到入口。
   if (location == RouteName.basicinfo) {
     return const [
       Perm.goodsView,
@@ -394,6 +396,7 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.warehouseView,
       Perm.accountView,
       Perm.paymentStyleView,
+      Perm.settlementMethodView,
     ];
   }
   if (location == '${RouteName.basicinfoGoods}/new') {
@@ -540,7 +543,10 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.productionPlanView];
   }
   if (location == RouteName.productionProgress) {
-    return const [Perm.productionPlanView];
+    return const [Perm.productionExecutionOverview];
+  }
+  if (location == RouteName.productionWorkshopTasks) {
+    return const [Perm.productionExecutionView];
   }
   if (location == RouteName.productionMaterialAnalysis) {
     return const [

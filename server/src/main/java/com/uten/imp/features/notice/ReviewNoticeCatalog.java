@@ -4,9 +4,9 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 审核待办弹卡事件目录（V459 配套，ADR-063）。
+ * 可行动待办弹卡事件目录（V459 配套，ADR-063；V470 扩展车间任务）。
  *
- * <p>注册后的 source_event 视为「可操作审核卡」：到达链弹带双按钮（去审核/稍后再看）
+ * <p>注册后的 source_event 视为「可操作行动卡」：到达链弹带双按钮（去办理/稍后再看）
  * 的非阻塞卡片，通知 DTO 的 {@code interactive=true}；弹卡与收件台按
  * aggregate 定位查认领状态（他人正在审核）与办结撤回（已办结不弹）。
  *
@@ -35,12 +35,17 @@ public final class ReviewNoticeCatalog {
             // 订单生产全部完工 → 通知负责销售可发货（归属人定向，无 claim）
             Map.entry(
                     "SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP",
-                    new Entry("SALES_ORDER", null)));
+                    new Entry("SALES_ORDER", null)),
+            // 生产计划下达、待料转齐套和仓库实发共用同一执行段任务。
+            // 无排他认领：同一车间可协作办理；首次报工后按聚合办结。
+            Map.entry(
+                    "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED",
+                    new Entry("PRODUCTION_EXECUTION_SEGMENT", null)));
 
     private ReviewNoticeCatalog() {
     }
 
-    /** 全部注册事件（登录检查/待审查询用）。 */
+    /** 全部注册事件（登录检查/待办查询用）。 */
     public static java.util.Set<String> events() {
         return ENTRIES.keySet();
     }

@@ -1,13 +1,14 @@
 // 采购单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
-// PurchaseGridRow：货品(选择)/单位/数量/实际重量/单价→金额自动（AmountRowMixin）；
+// PurchaseGridRow：货品(选择)/数量/单位/单价→金额自动（AmountRowMixin）；
 // 颜色/单位换算率/上游明细 id
 // 为透传（从上游引入或详情回填时预填，保存时随行写回，UI 不单独编辑）。
+// 2026-09-04 口径：实际重量不再录入（单位已表达重量，行模型 weight 字段保留
+// 供既有单回填/保存透传），单位列紧跟数量之后。
 // purchaseGridColumns：货品/数量/单价/金额 四列。
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/procurement_commercial_grid.dart';
 import '../../../shared/widgets/procurement_supplier_cell.dart';
@@ -90,10 +91,6 @@ class PurchaseGridRow extends EditableGridRow
   String? get supplierId => supplierIdNotifier.value;
   set supplierId(String? v) => supplierIdNotifier.value = v;
 
-  /// 预计到货登记模式（[purchaseGridColumns] arrivalMode）：该行财务批准剩余量，
-  /// 只读对照列展示；不实设 maxQty，仓库须能如实登记超量实到数。
-  num? approvedQty;
-
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
   factory PurchaseGridRow.fromLinked(LinkedItem li, GoodsOption goods) {
     final r = PurchaseGridRow(sourceLocked: true)
@@ -118,7 +115,7 @@ class PurchaseGridRow extends EditableGridRow
 
   /// 深拷贝（明细复制/粘贴用）：拷用户录入（数量/重量/单价/行供应商/行级商业条款/
   /// 备注）与货品主档透传描述（颜色/单位/换算率/库位显示）。不拷上游明细 id、来源谱系、
-  /// 到货门控（maxQty/approvedQty）——粘贴行是自由新明细，不得双引用上游行；sourceLocked
+  /// 数量门控 maxQty——粘贴行是自由新明细，不得双引用上游行；sourceLocked
   /// 也不拷（无上游绑定的行可改货品）。
   PurchaseGridRow clone() {
     final c = PurchaseGridRow()
@@ -150,8 +147,6 @@ class PurchaseGridRow extends EditableGridRow
 
 /// 采购明细列：货品（点选）/ 数量 / 单价 / 金额（自动）。
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
-/// [arrivalMode]=true（预计到货「登记实际到货」预填场景）：列改为
-/// 货品 / 批准剩余（只读对照）/ 实到数量——不显示单价/金额，仓库只关心到货数量。
 /// [supplierEntries]+[onPickSupplier]：订货单显示「供应商」明细列（逐行选不同供应商，
 /// 保存时按供应商自动拆单）；收货/退货不传，沿用表头单一供应商。点击单元格由
 /// [onPickSupplier] 打开供应商滑入面板，页面按多选范围落值（联动填写）。
@@ -162,15 +157,12 @@ class PurchaseGridRow extends EditableGridRow
 /// [showCommercial]+[currencyEntries]/[settlementEntries]/[onPickCurrency]/[onPickSettlement]
 /// （订货单）：金额列后加「币种/汇率/税率/结账方式」四列（行级商业条款，保存按组合拆单）。
 /// [showRemark]：明细末尾加「备注」列（随行提交 remark）。
-/// [unitAfterWeight]（订货单，2026-09-03 用户口径）：单位列放在「实际重量」之后
-///（货品/来源/供应商之后紧跟数量、重量、单位、单价…）；默认 false 时单位在供应商前
-///（申请/收货/退货原布局不变）。
+/// 列序（2026-09-04 口径）：数量之后紧跟单位（实际重量列已下线，行模型 weight
+/// 字段保留供既有单回填/保存透传）。
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   Future<void> Function(PurchaseGridRow row) onPickGoods, {
-  bool arrivalMode = false,
   bool showStockPlace = false,
   bool showSource = false,
-  bool unitAfterWeight = false,
   Map<String, String> unitEntries = const {},
   Map<String, String> supplierEntries = const {},
   bool supplierRequired = false,
@@ -184,7 +176,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   ValueChanged<String?> Function(PurchaseGridRow row)? onPickSettlement,
   bool showRemark = false,
 }) {
-  final showSupplier = !arrivalMode && supplierEntries.isNotEmpty;
+  final showSupplier = supplierEntries.isNotEmpty;
   return [
     EditableGridColumn<PurchaseGridRow>(
       key: 'goods',
@@ -302,21 +294,6 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           ),
         ),
       ),
-    if (!unitAfterWeight)
-      EditableGridColumn<PurchaseGridRow>(
-        key: 'unit',
-        label: '单位',
-        width: 84,
-        textOf: (r) => unitEntries[r.unitId] ?? '',
-        cellBuilder: (context, row) => Text(
-          unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
-          style: TextStyle(
-            color: row.unitId == null
-                ? Theme.of(context).colorScheme.error
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
     if (showSupplier)
       EditableGridColumn<PurchaseGridRow>(
         key: 'supplier',
@@ -325,31 +302,24 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         required: supplierRequired,
         textOf: (r) => supplierEntries[r.supplierId] ?? '',
         listenableOf: (r) => r.supplierIdNotifier,
-        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
-          valueListenable: row.supplierIdNotifier,
-          builder: (_, v, _) => ProcurementSupplierCell(
-            value: v,
-            fallback: headerSupplierId,
-            entries: supplierEntries,
-            requiredEmpty: supplierRequired && v == null,
-            onPick: onPickSupplier == null ? null : () => onPickSupplier(row),
+        cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+          valueListenable: row.termsAutofilledNotifier,
+          builder: (_, marks, _) => ValueListenableBuilder<String?>(
+            valueListenable: row.supplierIdNotifier,
+            builder: (_, v, _) => ProcurementSupplierCell(
+              value: v,
+              fallback: headerSupplierId,
+              entries: supplierEntries,
+              requiredEmpty: supplierRequired && v == null,
+              autofilled: marks.contains('supplier'),
+              onPick: onPickSupplier == null ? null : () => onPickSupplier(row),
+            ),
           ),
-        ),
-      ),
-    // 批准剩余：只读对照（财务批准还能收多少），超量实到不拦截，由服务端审核隔离。
-    if (arrivalMode)
-      EditableGridColumn<PurchaseGridRow>(
-        key: 'approvedQty',
-        label: '批准剩余',
-        width: 96,
-        numeric: true,
-        cellBuilder: (context, row) => Text(
-          row.approvedQty == null ? '—' : procurementQty(row.approvedQty!),
         ),
       ),
     EditableGridColumn<PurchaseGridRow>(
       key: 'qty',
-      label: arrivalMode ? '实到数量' : '数量',
+      label: '数量',
       width: 96,
       numeric: true,
       required: true,
@@ -364,67 +334,52 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         ),
       ),
     ),
+    // 单位紧跟数量（2026-09-04 口径）：单位已表达重量，实际重量列下线。
     EditableGridColumn<PurchaseGridRow>(
-      key: 'weight',
-      label: '实际重量',
-      width: 104,
-      numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.weight,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '可选'),
+      key: 'unit',
+      label: '单位',
+      width: 84,
+      textOf: (r) => unitEntries[r.unitId] ?? '',
+      cellBuilder: (context, row) => Text(
+        unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
+        style: TextStyle(
+          color: row.unitId == null
+              ? Theme.of(context).colorScheme.error
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     ),
-    // 订货单口径（2026-09-03）：单位列紧跟「实际重量」之后。
-    if (unitAfterWeight)
-      EditableGridColumn<PurchaseGridRow>(
-        key: 'unit',
-        label: '单位',
-        width: 84,
-        textOf: (r) => unitEntries[r.unitId] ?? '',
-        cellBuilder: (context, row) => Text(
-          unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
-          style: TextStyle(
-            color: row.unitId == null
-                ? Theme.of(context).colorScheme.error
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+    EditableGridColumn<PurchaseGridRow>(
+      key: 'price',
+      label: '单价',
+      width: 96,
+      numeric: true,
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.price,
+        isEmpty: () =>
+            row.price.text.trim().isEmpty ||
+            double.tryParse(row.price.text.trim()) == null,
+        child: TextField(
+          controller: row.price,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
       ),
-    if (!arrivalMode)
-      EditableGridColumn<PurchaseGridRow>(
-        key: 'price',
-        label: '单价',
-        width: 96,
-        numeric: true,
-        required: true,
-        cellBuilder: (context, row) => RequiredCellFrame(
-          listenable: row.price,
-          isEmpty: () =>
-              row.price.text.trim().isEmpty ||
-              double.tryParse(row.price.text.trim()) == null,
-          child: TextField(
-            controller: row.price,
-            textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(isDense: true, hintText: '0'),
-          ),
-        ),
+    ),
+    EditableGridColumn<PurchaseGridRow>(
+      key: 'amount',
+      label: '金额',
+      width: 110,
+      numeric: true,
+      cellBuilder: (context, row) => ValueListenableBuilder<double>(
+        valueListenable: row.amountNotifier,
+        builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
       ),
-    if (!arrivalMode)
-      EditableGridColumn<PurchaseGridRow>(
-        key: 'amount',
-        label: '金额',
-        width: 110,
-        numeric: true,
-        cellBuilder: (context, row) => ValueListenableBuilder<double>(
-          valueListenable: row.amountNotifier,
-          builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
-        ),
-      ),
+    ),
     // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
-    if (showCommercial && !arrivalMode)
+    if (showCommercial)
       ...procurementCommercialColumns<PurchaseGridRow>(
         currencyEntries: currencyEntries,
         settlementEntries: settlementEntries,

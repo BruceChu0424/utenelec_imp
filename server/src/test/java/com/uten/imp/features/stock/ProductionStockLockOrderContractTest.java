@@ -18,7 +18,9 @@ class ProductionStockLockOrderContractTest {
 
         String[][] commands = new String[][]{
                 {"public stockdocdetail approve(uuid id)",
-                        "approveinternal(id, false)"},
+                        "approveinternal(id, false, false)"},
+                {"public stockdocdetail approveandissue(uuid id, stockdocissuerequest req)",
+                        "requiredocforupdate(id)"},
                 {"private stockdocdetail reverseinternal( uuid id, boolean finishedinboundconfirmationlane)",
                         "requiredocforupdate(id)"},
                 {"public stockdocdetail issue(uuid id, stockdocissuerequest req)",

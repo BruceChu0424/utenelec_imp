@@ -138,6 +138,14 @@ void main() {
         },
       );
 
+      final discountField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && widget.controller?.text.trim() == '0.8',
+      );
+      expect(discountField, findsOneWidget);
+      await tester.enterText(discountField, '0.75');
+      await tester.pump();
+
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
 
@@ -153,7 +161,8 @@ void main() {
       expect(item['unitId'], 'unit-box');
       expect(item['unitRate'], 10);
       expect(item['weight'], 5.25);
-      expect(item['amountOriginal'], 16);
+      expect(item['discount'], 0.75);
+      expect(item['amountOriginal'], 15);
       expect(item.containsKey('amountLocal'), isFalse);
     },
   );

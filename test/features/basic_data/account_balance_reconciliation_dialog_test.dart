@@ -38,10 +38,7 @@ void main() {
         (widget) =>
             widget is TextField && widget.decoration?.hintText == '重新输入',
       );
-      final reason = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.decoration?.labelText == '核对原因 *',
-      );
+      final reason = find.byKey(const ValueKey('account-balance-reason'));
       expect(target, findsOneWidget);
       expect((tester.widget<TextField>(target).controller?.text), isEmpty);
 
@@ -98,10 +95,7 @@ void main() {
         (widget) =>
             widget is TextField && widget.decoration?.hintText == '重新输入',
       );
-      final reason = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.decoration?.labelText == '核对原因 *',
-      );
+      final reason = find.byKey(const ValueKey('account-balance-reason'));
       await tester.enterText(target, '101.0000');
       await tester.pump();
 
@@ -109,7 +103,8 @@ void main() {
         const ValueKey('account-local-delta-account-usd'),
       );
       expect(localDelta, findsOneWidget);
-      expect(find.text('只用于总账，不改变账户原币余额'), findsOneWidget);
+      // 说明收进标签旁 ⓘ 悬停提示（fieldLabel 约定）。
+      expect(find.byTooltip('只用于总账，不改变账户原币余额'), findsOneWidget);
 
       await tester.enterText(reason, '美元账户上线余额复核');
       await tester.tap(find.text('提交核对（1）'));

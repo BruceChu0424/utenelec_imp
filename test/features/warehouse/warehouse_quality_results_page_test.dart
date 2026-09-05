@@ -100,10 +100,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 2026-09-04 修复回归锁：子类徽章与列表加载解耦——进页面（未选任何
+      // 分类、不发列表请求）即拉一次全来源状态计数；否则徽章要等点中某个
+      // 状态段才随列表加载出现。
+      expect(gateway.statusCountsCalls, 1);
+
       // 2026-09-03 分类范式：来源/状态两行默认不选（不发请求），
       // 先选来源「采购收货」解锁状态行，再选「全部合格」才加载列表。
       await tester.tap(find.text('采购收货'));
       await tester.pumpAndSettle();
+      // 切换来源即按新口径重拉子类计数。
+      expect(gateway.statusCountsCalls, 2);
       await tester.tap(find.text('全部合格'));
       await tester.pumpAndSettle();
 
@@ -178,8 +185,22 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('warehouse-quality-batch-confirm')));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '确认批量入库'));
-    await tester.pumpAndSettle();
+
+    // 2026-09-04 用户口径：批量表明细表即唯一确认——不再叠加第二层确认弹窗，
+    // 成功直接入库、不弹结果弹窗（成功反馈走全局通知服务，测试宿主不挂载）。
+    expect(
+      find.byKey(const Key('warehouse-inbound-allocation-confirm')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('warehouse-inbound-allocation-result-dialog')),
+      findsNothing,
+    );
+    // 批量弹窗已随成功提交关闭。
+    expect(
+      find.byKey(const Key('warehouse-quality-batch-confirm')),
+      findsNothing,
+    );
 
     final command = gateway.lastBatchCommand;
     expect(command, isNotNull);
@@ -229,6 +250,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
 
   final List<WarehouseQualityResultTask> tasks;
   int batchConfirmCalls = 0;
+  int statusCountsCalls = 0;
   WarehouseQualityBatchConfirmCommand? lastBatchCommand;
 
   @override
@@ -252,13 +274,16 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
-  }) async => const {
-    WarehouseQualityWorkStatus.waitingInspection: 0,
-    WarehouseQualityWorkStatus.allPassed: 1,
-    WarehouseQualityWorkStatus.partialPassed: 0,
-    WarehouseQualityWorkStatus.returnRequired: 0,
-    WarehouseQualityWorkStatus.completed: 0,
-  };
+  }) async {
+    statusCountsCalls++;
+    return const {
+      WarehouseQualityWorkStatus.waitingInspection: 0,
+      WarehouseQualityWorkStatus.allPassed: 1,
+      WarehouseQualityWorkStatus.partialPassed: 0,
+      WarehouseQualityWorkStatus.returnRequired: 0,
+      WarehouseQualityWorkStatus.completed: 0,
+    };
+  }
 
   @override
   Future<int> pendingCount() async => tasks.length;
@@ -284,7 +309,27 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     return WarehouseQualityBatchConfirmResult(
       confirmedReceipts: 1,
       confirmedItemCount: command.batches.first.items.length,
-      results: const [],
+      results: [
+        WarehouseQualityBatchConfirmEntryResult(
+          receiptType: 'PURCHASE',
+          receiptId: 'receipt-1',
+          batchId: 'batch-1',
+          replayed: false,
+          confirmedCount: 1,
+          allocations: [
+            WarehouseInboundAllocation.fromJson({
+              ..._allocationJson(kind: 'FORMAL_DEMAND', qty: 3.5),
+              'passEventId': 'pass-1',
+              'stockInBatchItemId': 'stock-in-1',
+              'planNo': 'SC-001',
+              'executionSegmentId': 'segment-1',
+              'executionSegmentCode': 'GD-001',
+              'workshopName': '装配车间',
+              'responsibleEmployeeName': '张负责人',
+            }),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -355,8 +400,32 @@ Map<String, dynamic> get _detailJson => {
       'releaseNote': '抽检合格',
       'releasedBy': '品质员',
       'releasedAt': '2026-08-31T09:00:00Z',
+      'expectedAllocations': [
+        _allocationJson(kind: 'EXACT_ANALYSIS', qty: 4),
+        _allocationJson(kind: 'PUBLIC', qty: 1),
+      ],
     },
   ],
   'history': <Map<String, dynamic>>[],
   'rejections': <Map<String, dynamic>>[],
+};
+
+Map<String, dynamic> _allocationJson({
+  required String kind,
+  required num qty,
+}) => {
+  'kind': kind,
+  'qty': qty,
+  'actualWarehouseId': 'warehouse-1',
+  'actualWarehouseName': '原料仓',
+  'targetWarehouseId': kind == 'PUBLIC' ? null : 'warehouse-1',
+  'targetWarehouseName': kind == 'PUBLIC' ? null : '原料仓',
+  'intendedWarehouseNames': kind == 'PUBLIC' ? <String>[] : ['原料仓'],
+  'warehouseMatches': true,
+  'analysisId': kind == 'PUBLIC' ? null : 'analysis-1',
+  'analysisMaterialId': kind == 'PUBLIC' ? null : 'material-1',
+  'productCode': kind == 'PUBLIC' ? null : 'CP-001',
+  'productName': kind == 'PUBLIC' ? null : '成品一',
+  'sourceLabel': kind == 'PUBLIC' ? '公共库存' : '销售订单 XS-001',
+  'formationStatus': kind == 'PUBLIC' ? '未被生产需求预定，按实际仓公共入库' : '尚未形成生产计划或工单',
 };

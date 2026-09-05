@@ -80,7 +80,7 @@ class ProductionFinishedRememberPlacesResult {
   );
 }
 
-/// 多报工单汇总登记结果：一次提交逐单登记送检（每单一份 FQC）。
+/// 多报工单汇总登记结果：一次提交逐单登记所选明细并逐行送检。
 class ProductionFinishedBatchRegistrationResult {
   const ProductionFinishedBatchRegistrationResult({
     required this.registeredCount,
@@ -105,12 +105,14 @@ class ProductionFinishedBatchRegistrationResult {
 
 class ProductionFinishedRegisteredReport {
   const ProductionFinishedRegisteredReport({
+    this.registrationId,
     required this.reportId,
     this.reportNo,
     this.warehouseId,
     this.warehouseName,
   });
 
+  final String? registrationId;
   final String reportId;
   final String? reportNo;
   final String? warehouseId;
@@ -119,6 +121,7 @@ class ProductionFinishedRegisteredReport {
   factory ProductionFinishedRegisteredReport.fromJson(
     Map<String, dynamic> json,
   ) => ProductionFinishedRegisteredReport(
+    registrationId: json['registrationId'] as String?,
     reportId: json['reportId'] as String? ?? '',
     reportNo: json['reportNo'] as String?,
     warehouseId: json['warehouseId'] as String?,

@@ -245,6 +245,9 @@ class SubcontractPreparationEntitlementHandoffMigrationPostgresTest {
         UUID bomItemId = UUID.randomUUID();
         UUID sourceDocumentId = UUID.randomUUID();
         UUID sourceDocumentItemId = UUID.randomUUID();
+        String analysisFingerprint = "a".repeat(64);
+        String sourceAnalysisKey = "V447-A-" + sourceAnalysisId;
+        String targetAnalysisKey = "V447-A-" + targetAnalysisId;
         try (Statement statement = connection.createStatement()) {
             statement.execute("SET LOCAL session_replication_role = replica");
         }
@@ -273,8 +276,11 @@ class SubcontractPreparationEntitlementHandoffMigrationPostgresTest {
             execute(connection, """
                     INSERT INTO production_material_analyses(
                         id,warehouse_id,status,fingerprint,initial_idempotency_key,
-                        maker_id,created_by,updated_by)
-                    VALUES (?,?,'ACTIVE',repeat('a',64),?,?,?,?)
+                        maker_id,created_by,updated_by,participating_warehouse_ids)
+                    SELECT v.id, v.wid, 'ACTIVE', v.fp, v.k, v.maker, v.cb, v.ub,
+                           ARRAY[v.wid]::UUID[]
+                    FROM (VALUES (?::uuid,?::uuid,repeat('a',64),?::text,?::uuid,?::uuid,?::uuid))
+                         AS v(id,wid,fp,k,maker,cb,ub)
                     """, analysisId, warehouseId, "V447-A-" + analysisId,
                     UUID.randomUUID(), userId, userId);
         }

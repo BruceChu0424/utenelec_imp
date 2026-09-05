@@ -31,6 +31,7 @@ class ProductionPlanningRequestValidatorTest {
     private EntityManager em;
     private ProductionExecutionPlanningService planning;
     private Query warehouseQuery;
+    private Query analysisPlanQuery;
     private ProductionPlanningRequestValidator validator;
 
     @BeforeEach
@@ -39,10 +40,16 @@ class ProductionPlanningRequestValidatorTest {
         planning = mock(ProductionExecutionPlanningService.class);
         warehouseQuery = query();
         when(warehouseQuery.getSingleResult()).thenReturn(1L);
+        analysisPlanQuery = query();
+        when(analysisPlanQuery.getSingleResult()).thenReturn(0L);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("FROM warehouses")) {
                 return warehouseQuery;
+            }
+            if (sql.contains("FROM production_plans")
+                    && sql.contains("material_analysis_id IS NOT NULL")) {
+                return analysisPlanQuery;
             }
             throw new AssertionError("unexpected SQL: " + sql);
         });
@@ -163,6 +170,23 @@ class ProductionPlanningRequestValidatorTest {
                 .satisfies(error -> assertThat(((ApiException) error).getCode())
                         .isEqualTo(ErrorCode.VALIDATION_FAILED))
                 .hasMessageContaining("采购申请草稿");
+    }
+
+    @Test
+    void analysisManagedBuyShortageCanPersistWaitingDraftWithoutDuplicateRequest() {
+        GeneratePlanningPackageRequest request = request("a".repeat(64));
+        CompleteKitAllocator.ProductLine line = productLine(
+                ProductionMaterialDemand.ROUTE_BUY);
+        ProductionExecutionPlanningService.Snapshot snapshot = snapshot(
+                request.getPreviewFingerprint(), List.of(line), List.of());
+        when(planning.preview(any(), any())).thenReturn(snapshot);
+        when(planning.applyRequested(snapshot, request.getSegments()))
+                .thenReturn(allocation(line,
+                        ProductionMaterialDemand.ROUTE_BUY, "1"));
+        when(analysisPlanQuery.getSingleResult()).thenReturn(1L);
+
+        assertThatCode(() -> validator.validateCurrent(
+                snapshot.planId(), request)).doesNotThrowAnyException();
     }
 
     private static GeneratePlanningPackageRequest request(String fingerprint) {

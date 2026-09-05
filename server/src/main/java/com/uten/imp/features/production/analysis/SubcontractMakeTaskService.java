@@ -394,7 +394,9 @@ public class SubcontractMakeTaskService {
             throw new ApiException(ErrorCode.NOT_FOUND, "委外前置自制任务不存在");
         }
         Object[] row = rows.getFirst();
-        if (!"ACTIVE".equals(Objects.toString(row[13], ""))) {
+        // SELECT 顺序：row[12] 是任务状态，row[13] 才是需求日期。这里若取
+        // row[13]，所有有交期的 ACTIVE 任务都会被误判成已取消，分批通知恒失败。
+        if (!"ACTIVE".equals(Objects.toString(row[12], ""))) {
             throw new ApiException(ErrorCode.CONFLICT, "委外前置自制任务已取消");
         }
         BigDecimal available = decimal(row[9]).min(decimal(row[10]))

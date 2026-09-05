@@ -255,13 +255,16 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 - `Goods.java` 字段 `zk` → `discount`，`@Column(name = "zk", precision = 18, scale = 4)` 保留 DB 列名 → **不加列、不改 checksum、不改迁移**。
 - **倍率语义**：`1.00` = 原价、`0.90` = 9 折（优惠 10%），有效售价 = 单价 × 折扣。
 - 接入 `GoodsSaveRequest`/`GoodsDetail`/`GoodsListItem` + `GoodsService.apply/toDetail/toList`；前端基本信息 Tab「价格」旁加「折扣」列、详情行、成本 Tab 保存体回传、货品资料列表「折扣」列。
-- 销售订货单选品时自动带入货品折扣并锁定（见 [20-销售管理](20-销售管理-新库与迁移.md)）。
+- 销售订货单选品时把货品折扣作为建议初值；订单单价锁定，订单行折扣允许销售调整，
+  新写限制为大于 0、不大于 1 且最多四位小数(见 [20-销售管理](20-销售管理-新库与迁移.md))。
 
 ### 2. 售价/折扣编辑授权 + 成本可见性（两新权限点）
 
 详见 [54-部门默认权限矩阵 §V226](54-部门默认权限矩阵.md)。要点：
 
 - **`goods:price:edit`（写侧字段级）**：未持权者改 `price`/`discount` → 后端 403；前端对无权者锁定售价/折扣只读（`MasterEditForm.readOnlyKeys`，仅禁 UI、仍以原值回传，后端判「未改」放行）。
+- `goods:price:edit` 只控制**货品主档**售价/默认折扣，不控制销售订单行折扣；订单行折扣随
+  `sales_order:create/edit` 办理，且不能反向改写 `goods.zk`。
 - **`goods:cost:view`（读侧脱敏）**：未持权时 `GoodsDetail` 的 18 个成本字段置 null + `costMasked=true`，前端**隐藏「成本预算」Tab**（非打码）。列表/导出本就不含成本。
 - 两者默认授 `DEPT_FIN`，并在 V226 给财务部补 `goods:edit`（改价须走 `PUT /master/goods/{id}`）。
 

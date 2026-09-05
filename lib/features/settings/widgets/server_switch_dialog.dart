@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/network/server_selection.dart';
@@ -93,11 +93,14 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
                 if (kDebugMode)
                   TextField(
                     controller: _ctrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Debug 云端地址覆盖',
+                    decoration: InputDecoration(
+                      label: fieldLabel(
+                        'Debug 云端地址覆盖',
+                        theme,
+                        info: '仅调试构建保存；生产构建会忽略并清除此值',
+                      ),
                       hintText: 'https://cloud.example.com/api',
-                      helper: UtenFieldMessage.helper('仅调试构建保存；生产构建会忽略并清除此值'),
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
                     keyboardType: TextInputType.url,

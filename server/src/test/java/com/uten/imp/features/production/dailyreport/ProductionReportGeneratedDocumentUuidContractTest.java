@@ -53,7 +53,8 @@ class ProductionReportGeneratedDocumentUuidContractTest {
                 .contains("item -> item.getExecutionSegmentId() != null")
                 .contains("chainNotice.notifyProductionFinishedArrivalPending(r.getId())");
         assertThat(arrival)
-                .contains("qualityInspection.registerApprovedReport((UUID) report[0])")
+                .contains("qualityInspection.registerApprovedReportItems(")
+                .contains("normalized.places().keySet().stream().sorted().toList()")
                 .contains("production_finished_arrival_registrations");
         assertThat(finishedInbound)
                 .contains("document.setSourceDailyReportId((UUID) row[0])")

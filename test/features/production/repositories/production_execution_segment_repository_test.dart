@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/features/production/models/production_execution_planning.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 
 void main() {
@@ -72,75 +71,33 @@ void main() {
     expect(result.lockVersion, 2);
   });
 
-  test('dispatch transition is a version checked command', () async {
+  test('release defer is the only client-exposed segment transition', () async {
     late RequestOptions captured;
     final repository = ProductionPlanRepository(
       _api((request) {
         captured = request;
-        return _segmentJson(status: 'DISPATCHED', lockVersion: 3);
+        return _segmentJson(status: 'WAITING', lockVersion: 3);
       }),
     );
 
-    final result = await repository.transitionExecutionSegment(
+    final result = await repository.releaseDeferredExecutionSegment(
       'plan-1',
       'segment-1',
-      action: 'dispatch',
       expectedVersion: 2,
-      idempotencyKey: 'segment-dispatch-001',
+      idempotencyKey: 'segment-release-defer-001',
     );
 
     expect(captured.method, 'POST');
     expect(
       captured.path,
-      '/production/plans/plan-1/execution-segments/segment-1/dispatch',
+      '/production/plans/plan-1/execution-segments/segment-1/release-defer',
     );
     expect(captured.data, {
       'expectedVersion': 2,
-      'idempotencyKey': 'segment-dispatch-001',
+      'idempotencyKey': 'segment-release-defer-001',
     });
-    expect(result.status, 'DISPATCHED');
+    expect(result.status, 'WAITING');
   });
-
-  test(
-    'batch start posts one atomic list of version checked commands',
-    () async {
-      late RequestOptions captured;
-      final repository = ProductionPlanRepository(
-        _api((request) {
-          captured = request;
-          return [_segmentJson(status: 'IN_PROGRESS', lockVersion: 5)];
-        }),
-      );
-
-      final result = await repository.batchStartExecutionSegments(
-        'plan-1',
-        items: const [
-          ProductionExecutionBatchStartItem(
-            segmentId: 'segment-1',
-            expectedVersion: 4,
-            idempotencyKey: 'segment-batch-start-001',
-          ),
-        ],
-      );
-
-      expect(captured.method, 'POST');
-      expect(
-        captured.path,
-        '/production/plans/plan-1/execution-segments/batch-start',
-      );
-      expect(captured.data, {
-        'items': [
-          {
-            'segmentId': 'segment-1',
-            'expectedVersion': 4,
-            'idempotencyKey': 'segment-batch-start-001',
-          },
-        ],
-      });
-      expect(result.single.status, 'IN_PROGRESS');
-      expect(result.single.lockVersion, 5);
-    },
-  );
 }
 
 Map<String, dynamic> _segmentJson({

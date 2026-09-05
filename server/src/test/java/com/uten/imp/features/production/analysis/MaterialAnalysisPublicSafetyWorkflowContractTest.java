@@ -67,7 +67,7 @@ class MaterialAnalysisPublicSafetyWorkflowContractTest {
         assertThat(command)
                 .contains("progress.demand_future_qty")
                 .contains("new ActionDraft(")
-                .contains("plan.demandQty(), safetyQty")
+                .contains("plan.demandQty(), plan.publicExtraQty()")
                 .contains("safety_replenishment_qty, safety_stock_snapshot_qty");
         assertThat(progress)
                 .contains("生产需求绑定 ")

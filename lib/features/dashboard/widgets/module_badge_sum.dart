@@ -7,6 +7,7 @@ import '../../finance/providers/finance_procurement_approval_count_provider.dart
 import '../../finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import '../../hr_task/providers/hr_task_count_provider.dart';
 import '../../production/providers/production_pending_provider.dart';
+import '../../production/providers/production_workshop_task_count_provider.dart';
 import '../../purchase/providers/purchase_task_count_provider.dart';
 import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../../subcontract/providers/subcontract_task_count_provider.dart';
@@ -29,6 +30,7 @@ enum WorkbenchBadgeKind {
   hrReview, // 信息变更审核
   hrTask, // HR 任务中心（今日转正/逾期转正/今日生日/今日周年）
   production, // 生产管理（待排产）
+  productionWorkshop, // 我的车间任务（仅当前可行动执行段）
   rdTask, // 任务中心
   warehouse, // 仓库管理（三张任务中心卡角标之和：出库+入库+领料+品质结果）
   purchase, // 采购管理（待分解 + 待采购完成）
@@ -127,6 +129,8 @@ int _resolveCount(
       return watch(hrTaskCountProvider);
     case WorkbenchBadgeKind.production:
       return watch(productionPendingCountProvider).count;
+    case WorkbenchBadgeKind.productionWorkshop:
+      return watch(productionWorkshopTaskCountProvider);
     case WorkbenchBadgeKind.rdTask:
       return watch(rdTaskCountProvider);
     case WorkbenchBadgeKind.purchase:

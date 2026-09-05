@@ -99,6 +99,9 @@ public class ProductionDailyReportService {
     private final DocNumberService docNumberService;
     private final ProductionProductNoAllocator productNoAllocator;
     private final EntityManager em;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final ProductionDocumentAccessPolicy access;
     private final ProductionQualityInspectionPort qualityInspection;
@@ -1415,6 +1418,10 @@ public class ProductionDailyReportService {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PRODUCTION_DAILY_REPORT));
         }
         r.setBillDate(req.getBillDate());
+        // V476 运营红线：报工入仓必须落到具体叶子仓。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+        }
         r.setWarehouseId(req.getWarehouseId());
         r.setDepartmentId(req.getDepartmentId());
         r.setWorkshopName(req.getWorkshopName());
@@ -1431,7 +1438,7 @@ public class ProductionDailyReportService {
                     ErrorCode.VALIDATION_FAILED,
                     "生产日报只记录数量事实；客户端单价/金额不是计件工资依据，已停止写入");
         }
-        executionSegments.validateDraft(r.getId(), lines);
+        executionSegments.validateDraft(r.getId(), r.getDepartmentId(), lines);
         canonicalizeSourceSnapshots(lines);
         List<DailyReportItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;

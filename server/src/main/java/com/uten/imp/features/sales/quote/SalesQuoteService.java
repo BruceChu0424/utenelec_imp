@@ -196,7 +196,8 @@ public class SalesQuoteService {
      * 报价转订货（SOP §三1）：已审报价一键生成订货草稿。
      * 行带入货品/颜色/单位/数量/价格；主表与各行 sourceDocNo=报价单号，
      * 订货详情据此回联来源报价（sourceQuoteId + 行级 quotePrice 比对，价格留痕）。
-     * 转入为普通草稿：数量/价格可再改，审核才走库存检查+软预留（订货既有链路）。
+     * 转入为普通草稿：数量/折扣可再改，报价单价作为受信任来源快照锁定不可改；
+     * 审核才走库存检查+软预留(订货既有链路)。
      */
     @Transactional
     @PreAuthorize("hasAuthority('sales_quote:convert') and hasAuthority('sales_order:create')")

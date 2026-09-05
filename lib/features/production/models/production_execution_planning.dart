@@ -1009,25 +1009,6 @@ class ProductionExecutionSegmentView {
   }
 }
 
-/// One version-checked command item in an atomic execution-segment batch start.
-class ProductionExecutionBatchStartItem {
-  const ProductionExecutionBatchStartItem({
-    required this.segmentId,
-    required this.expectedVersion,
-    required this.idempotencyKey,
-  });
-
-  final String segmentId;
-  final int expectedVersion;
-  final String idempotencyKey;
-
-  Map<String, dynamic> toJson() => <String, dynamic>{
-    'segmentId': segmentId,
-    'expectedVersion': expectedVersion,
-    'idempotencyKey': idempotencyKey,
-  };
-}
-
 double _requiredDouble(Object? value) => (value as num).toDouble();
 
 double? _optionalDouble(Object? value) => (value as num?)?.toDouble();

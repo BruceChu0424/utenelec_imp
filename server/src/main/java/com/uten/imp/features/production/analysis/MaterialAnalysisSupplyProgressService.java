@@ -117,14 +117,15 @@ public class MaterialAnalysisSupplyProgressService {
         String actorName = nameResolver.nameWithCodeOf((UUID) action[6]);
         UUID supplyActionId = (UUID) action[0];
 
-        if ("MAKE".equals(route)) {
-            UUID makeChildAnalysisItemId =
-                    "PREPLAN_MAKE_TASK".equals(externalType)
-                            ? (UUID) action[3]
-                            : null;
+        if ("PREPLAN_MAKE_TASK".equals(externalType)
+                || "SUBCONTRACT_MAKE_TASK".equals(externalType)) {
+            UUID makeChildAnalysisItemId = (UUID) action[3];
+            boolean subcontractMake = "SUBCONTRACT_MAKE_TASK".equals(externalType);
             steps = makeSteps(
                     analysisId, materialLineId, makeChildAnalysisItemId, supplyActionId,
-                    requiredQty, shortageQty, actionAt, actorName);
+                    requiredQty, shortageQty, actionAt, actorName,
+                    subcontractMake ? "SUBCONTRACT_MAKE" : "MAKE_COMPONENT",
+                    subcontractMake);
         } else {
             boolean purchase = !"SUBCONTRACT_APPLICATION".equals(externalType);
             steps = procurementSteps(
@@ -636,10 +637,13 @@ public class MaterialAnalysisSupplyProgressService {
             UUID analysisId, UUID materialLineId, UUID makeChildAnalysisItemId,
             UUID supplyActionId,
             BigDecimal requiredQty, BigDecimal shortageQty,
-            OffsetDateTime actionAt, String actorName) {
+            OffsetDateTime actionAt, String actorName,
+            String childSourceType, boolean subcontractMake) {
         List<MaterialAnalysisContracts.SupplyProgressStep> steps = new ArrayList<>();
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                "MAKE_TASK", "已创建自制备料任务", DONE, null, null, iso(actionAt), actorName));
+                "MAKE_TASK",
+                subcontractMake ? "已创建委外前置自制任务" : "已创建自制备料任务",
+                DONE, null, null, iso(actionAt), actorName));
 
         List<Object[]> planRows = makeChildAnalysisItemId == null
                 ? List.of()
@@ -650,7 +654,7 @@ public class MaterialAnalysisSupplyProgressService {
                         JOIN production_material_analysis_items child
                           ON child.id = plan.material_analysis_item_id
                          AND child.analysis_id = plan.material_analysis_id
-                         AND child.source_type = 'MAKE_COMPONENT'
+                         AND child.source_type = :childSourceType
                          AND child.is_deleted = FALSE
                         WHERE plan.material_analysis_id = :analysisId
                           AND plan.material_analysis_item_id = :makeChildAnalysisItemId
@@ -659,7 +663,8 @@ public class MaterialAnalysisSupplyProgressService {
                         LIMIT 1
                         """)
                         .setParameter("analysisId", analysisId)
-                        .setParameter("makeChildAnalysisItemId", makeChildAnalysisItemId));
+                        .setParameter("makeChildAnalysisItemId", makeChildAnalysisItemId)
+                        .setParameter("childSourceType", childSourceType));
         if (planRows.isEmpty()) {
             steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                     "PLAN", "生产计划", CURRENT, "待计划员安排生产", null, null, null));
@@ -680,7 +685,9 @@ public class MaterialAnalysisSupplyProgressService {
                 nameResolver.nameWithCodeOf((UUID) plan[5]),
                 "PRODUCTION_PLAN", planId));
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
-                "PRODUCTION", "生产完工入库", closed ? DONE : (planStatus == 1 ? CURRENT : WAITING),
+                "PRODUCTION",
+                subcontractMake ? "委外目标件前置自制入库" : "生产完工入库",
+                closed ? DONE : (planStatus == 1 ? CURRENT : WAITING),
                 closed ? null : (planStatus == 1 ? "生产进行中" : null), null, null, null));
         steps.add(stockedStep(
                 materialLineId, supplyActionId, requiredQty, shortageQty));

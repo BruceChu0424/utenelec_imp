@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -319,9 +319,8 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 controller: _sortCtl,
                 readOnly: _isEdit && !widget.canReorder,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: '显示顺序',
-                  helper: UtenFieldMessage.helper('数字越小越靠前'),
+                decoration: InputDecoration(
+                  label: fieldLabel('显示顺序', theme, info: '数字越小越靠前'),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s12),
@@ -330,14 +329,16 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 readOnly: _isEdit && !widget.canEditFields,
                 textCapitalization: TextCapitalization.characters,
                 maxLength: 8,
-                decoration: const InputDecoration(
-                  labelText: '编号前缀',
-                  hintText: '例如 V6',
-                  helper: UtenFieldMessage.helper(
-                    '留空继承最近上级。显式前缀是全系统专用 token，'
-                    '忽略大小写且终身保留；保存以服务端事务校验为准。'
-                    '若返回 409 冲突，当前输入会保留供修改。',
+                decoration: InputDecoration(
+                  label: fieldLabel(
+                    '编号前缀',
+                    theme,
+                    info:
+                        '留空继承最近上级。显式前缀是全系统专用 token，'
+                        '忽略大小写且终身保留；保存以服务端事务校验为准。'
+                        '若返回 409 冲突，当前输入会保留供修改。',
                   ),
+                  hintText: '例如 V6',
                   counterText: '',
                 ),
               ),
@@ -355,9 +356,8 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 readOnly: _isEdit && !widget.canEditFields,
                 minLines: 2,
                 maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: '备注',
-                  helper: UtenFieldMessage.helper('旧分类编码已迁移到这里，可按业务需要修改'),
+                decoration: InputDecoration(
+                  label: fieldLabel('备注', theme, info: '旧分类编码已迁移到这里，可按业务需要修改'),
                 ),
               ),
               if (_formError != null) ...[

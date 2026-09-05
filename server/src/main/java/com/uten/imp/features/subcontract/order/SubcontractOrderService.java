@@ -5,6 +5,7 @@ import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
+import com.uten.imp.application.port.PreplanPublicSupplyCapturePort;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -42,6 +43,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,10 +88,20 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final TxSessionVars tx;
     private final EntityManager em;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
     private final ProductionSubcontractSupplyTransitionPort productionSupply;
+    private PreplanPublicSupplyCapturePort publicSupplyCapture =
+            PreplanPublicSupplyCapturePort.NOOP;
+
+    @Autowired
+    void setPublicSupplyCapture(PreplanPublicSupplyCapturePort value) {
+        this.publicSupplyCapture = value;
+    }
     private final ProductionSupplySourceGuard productionSourceGuard;
     private final ProcurementApprovalProjectionQuery approvalProjection;
     private final ProcurementArrivalControlPort arrivalControl;
@@ -502,6 +514,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         order.setStatus(STATUS_APPROVED);
         order.setApproverId(approverEmployeeId);
         orderRepo.save(order);
+        orderRepo.flush();
+        publicSupplyCapture.afterOrderApproved(
+                PreplanPublicSupplyCapturePort.SUBCONTRACT, id);
         // V304：按批准时 BOM 展开发料计划并自动生成仓库出仓草稿（无 BOM 子件=委外商自备料则不建）。
         materialPlanService.createPlanOnApproval(id);
     }
@@ -564,6 +579,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         materialPlanService.cancelForOrderReversal(id);
         r.setStatus(STATUS_REVERSED);
         orderRepo.save(r);
+        orderRepo.flush();
+        publicSupplyCapture.afterOrderReversed(
+                PreplanPublicSupplyCapturePort.SUBCONTRACT, id);
         return assembleDetail(r);
     }
 
@@ -862,6 +880,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         r.setBillDate(req.getBillDate());
         r.setSupplierId(req.getSupplierId());
+        // V476 运营红线：委外订货仓库必须选具体叶子仓（发料/回厂沿用）。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+        }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());
         r.setExchangeRate(req.getExchangeRate());
@@ -1100,7 +1122,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                             GROUP BY src.application_item_id
                         ) pending ON pending.application_item_id = item.id
                         WHERE item.id IN (:ids)
-                        ORDER BY application.need_date NULLS LAST, item.id
+                        ORDER BY CASE WHEN EXISTS (
+                                     SELECT 1 FROM preplan_supply_actions action
+                                     WHERE action.public_surplus_external_item_id = item.id
+                                   ) THEN 1 ELSE 0 END,
+                                 application.need_date NULLS LAST, item.id
                         """).setParameter("ids", allIds));
         Map<UUID, BigDecimal> remaining = new java.util.HashMap<>();
         List<UUID> stableOrder = new ArrayList<>();

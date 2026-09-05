@@ -60,6 +60,9 @@ public class PurchaseRequestService {
 
     private final PurchaseRequestRepository requestRepo;
     private final PurchaseRequestItemRepository itemRepo;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
@@ -262,6 +265,10 @@ public class PurchaseRequestService {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST));
         }
         r.setBillDate(req.getBillDate());
+        // V476 运营红线：申请仓库必须选具体叶子仓（后续订货/收货沿用）。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+        }
         r.setWarehouseId(req.getWarehouseId());
         applyDepartmentReference(req, r);
         r.setApplicantId(req.getApplicantId());

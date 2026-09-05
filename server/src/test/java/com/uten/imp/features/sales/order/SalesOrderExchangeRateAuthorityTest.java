@@ -13,6 +13,7 @@ import com.uten.imp.features.sales.SalesMasterReferenceValidator;
 import com.uten.imp.features.sales.order.dto.OrderItemLine;
 import com.uten.imp.features.sales.order.dto.OrderSaveRequest;
 import com.uten.imp.features.sales.quote.SalesQuote;
+import com.uten.imp.features.sales.quote.SalesQuoteItem;
 import com.uten.imp.features.sales.quote.SalesQuoteItemRepository;
 import com.uten.imp.features.sales.quote.SalesQuoteRepository;
 import com.uten.imp.features.stock.StockReservationService;
@@ -88,6 +89,19 @@ class SalesOrderExchangeRateAuthorityTest {
         lenient().when(goodsQuery.getResultList()).thenAnswer(invocation -> ids.get().stream()
                 .map(id -> new Object[]{id, "HP000001", "测试货品"})
                 .toList());
+        Query priceQuery = mock(Query.class);
+        AtomicReference<List<UUID>> priceIds = new AtomicReference<>(List.of());
+        lenient().when(em.createNativeQuery(contains("SELECT goods.id, goods.price")))
+                .thenReturn(priceQuery);
+        lenient().when(priceQuery.setParameter(eq("ids"), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<UUID> requested = invocation.getArgument(1);
+            priceIds.set(requested);
+            return priceQuery;
+        });
+        lenient().when(priceQuery.getResultList()).thenAnswer(invocation -> priceIds.get().stream()
+                .map(id -> new Object[]{id, new BigDecimal("10.0000")})
+                .toList());
         // 订单详情的出货单聚合（V290 物流单号/SOP §三.7）：默认空聚合。
         Query shipmentsQuery = mock(Query.class);
         lenient().when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains(
@@ -100,7 +114,7 @@ class SalesOrderExchangeRateAuthorityTest {
     }
 
     @Test
-    void createRequiresOnlyActiveCurrencyAndNeverReadsOrPersistsRate() {
+    void createUsesMasterPriceAndEditableDiscountButNeverClientRateOrAmounts() {
         UUID currencyId = UUID.randomUUID();
         when(currentUser.requireEmployeeId()).thenReturn(makerId);
         when(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER))
@@ -108,15 +122,42 @@ class SalesOrderExchangeRateAuthorityTest {
         stubActiveCurrency(currencyId);
         when(priceMasker.canView()).thenReturn(true);
 
-        var detail = service.create(request(currencyId, "999999"));
+        OrderSaveRequest request = request(currencyId, "999999");
+        OrderItemLine line = request.getItems().getFirst();
+        line.setPrice(null);
+        line.setAmountOriginal(new BigDecimal("0.01"));
+        line.setAmountLocal(new BigDecimal("0.02"));
+        line.setDiscount(new BigDecimal("0.8"));
+
+        var detail = service.create(request);
 
         assertThat(detail.getExchangeRate()).isNull();
-        assertThat(detail.getTotalOriginal()).isEqualByComparingTo("20.0000");
+        assertThat(detail.getTotalOriginal()).isEqualByComparingTo("16.0000");
         assertThat(detail.getTotalLocal()).isNull();
         assertThat(detail.getItems().getFirst().getAmountOriginal())
-                .isEqualByComparingTo("20.0000");
+                .isEqualByComparingTo("16.0000");
+        assertThat(detail.getItems().getFirst().getPrice())
+                .isEqualByComparingTo("10.0000");
+        assertThat(detail.getItems().getFirst().getDiscount())
+                .isEqualByComparingTo("0.8000");
         assertThat(detail.getItems().getFirst().getAmountLocal()).isNull();
         verify(em, never()).createNativeQuery(contains("currency.exchange_rate"));
+    }
+
+    @Test
+    void createRejectsClientUnitPriceDifferentFromMasterAuthority() {
+        UUID currencyId = UUID.randomUUID();
+        when(currentUser.requireEmployeeId()).thenReturn(makerId);
+        when(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER))
+                .thenReturn("XD202608080002");
+        stubActiveCurrency(currencyId);
+
+        OrderSaveRequest request = request(currencyId, "1");
+        request.getItems().getFirst().setPrice(new BigDecimal("999999"));
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("单价");
     }
 
     @Test
@@ -149,6 +190,38 @@ class SalesOrderExchangeRateAuthorityTest {
         assertThat(detail.getCurrencyId()).isEqualTo(newCurrencyId);
         assertThat(detail.getExchangeRate()).isNull();
         assertThat(detail.getItems().getFirst().getAmountLocal()).isNull();
+    }
+
+    @Test
+    void draftUpdatePreservesFrozenLinePriceAndAppliesSalesDiscountChange() {
+        UUID currencyId = UUID.randomUUID();
+        SalesOrder order = editableOrder(currencyId, "6.8");
+        prepareUpdate(order);
+        stubActiveCurrency(currencyId);
+        when(priceMasker.canView()).thenReturn(true);
+
+        OrderSaveRequest request = request(currencyId, "999999");
+        OrderItemLine requested = request.getItems().getFirst();
+        requested.setPrice(new BigDecimal("7"));
+        requested.setDiscount(new BigDecimal("0.75"));
+        SalesOrderItem existing = new SalesOrderItem();
+        existing.setOrderId(order.getId());
+        existing.setGoodsId(requested.getGoodsId());
+        existing.setColorId(requested.getColorId());
+        existing.setUnitId(requested.getUnitId());
+        existing.setUnitRate(requested.getUnitRate());
+        existing.setPrice(new BigDecimal("7"));
+        requested.setId(existing.getId());
+        when(itemRepo.findByOrderIdAndDeletedFalseOrderByLineNoAsc(order.getId()))
+                .thenReturn(List.of(existing));
+
+        var detail = service.update(order.getId(), request);
+
+        assertThat(detail.getItems().getFirst().getPrice()).isEqualByComparingTo("7");
+        assertThat(detail.getItems().getFirst().getDiscount()).isEqualByComparingTo("0.7500");
+        assertThat(detail.getItems().getFirst().getAmountOriginal())
+                .isEqualByComparingTo("10.5000");
+        verify(em, never()).createNativeQuery(contains("SELECT goods.id, goods.price"));
     }
 
     @Test
@@ -195,10 +268,23 @@ class SalesOrderExchangeRateAuthorityTest {
         when(accessPolicy.hasAuthority("sales_quote:view")).thenReturn(true);
         OrderSaveRequest request = request(null, "999999");
         request.setSourceDocNo(source.getBillNo());
+        OrderItemLine requestLine = request.getItems().getFirst();
+        requestLine.setPrice(new BigDecimal("10"));
+        SalesQuoteItem quoteItem = new SalesQuoteItem();
+        quoteItem.setQuoteId(source.getId());
+        quoteItem.setLineNo(requestLine.getLineNo());
+        quoteItem.setGoodsId(requestLine.getGoodsId());
+        quoteItem.setColorId(requestLine.getColorId());
+        quoteItem.setUnitId(requestLine.getUnitId());
+        quoteItem.setUnitRate(requestLine.getUnitRate());
+        quoteItem.setPrice(new BigDecimal("10"));
+        when(quoteItemRepo.findByQuoteIdOrderByLineNoAsc(source.getId()))
+                .thenReturn(List.of(quoteItem));
 
         var detail = service.createFromQuote(request, source.getId(), quoteOwner);
 
         assertThat(detail.getCurrencyId()).isEqualTo(currencyId);
+        assertThat(detail.getItems().getFirst().getPrice()).isEqualByComparingTo("10");
         assertThat(detail.getExchangeRate()).isNull();
         assertThat(detail.getTotalLocal()).isNull();
         verify(em, never()).createNativeQuery(contains("UPPER(BTRIM"));
@@ -272,6 +358,7 @@ class SalesOrderExchangeRateAuthorityTest {
         request.setShipmentPolicy(SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL);
 
         OrderItemLine line = new OrderItemLine();
+        line.setLineNo(1);
         line.setGoodsId(UUID.randomUUID());
         line.setUnitId(UUID.randomUUID());
         line.setUnitRate(BigDecimal.ONE);

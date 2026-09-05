@@ -1,16 +1,33 @@
 // 销售单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
-// SalesGridRow：货品(选择)/单位/数量/实际重量/单价→金额自动（AmountRowMixin）；
+// SalesGridRow：货品(选择)/数量/单位/单价→金额自动（AmountRowMixin）；
 // 颜色/单位换算率 + 上游明细 id
 // 为透传（从上游引入或详情回填时预填，保存时随行写回）；报表补列（机加价/围数/进仓/
 // 材料价/压铸价/折扣）按 docType 显隐对应列。
-// salesGridColumns：货品/颜色/单位/数量/单价/金额 + 补列（条件）。
+// 2026-09-04 口径：实际重量列下线（单位已表达重量；行模型 weight 保留透传），
+// 单位列紧跟数量。折扣列表头 ⓘ 悬停说明「1 = 原价；0.9 = 9折」。
+// salesGridColumns：货品/颜色/数量/单位/单价/金额 + 补列（条件）。
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import 'sales_doc_link_picker.dart';
+
+final _salesOrderDiscountPattern = RegExp(r'^(?:0\.\d{1,4}|1(?:\.0{1,4})?)$');
+
+/// 销售订单折扣的新写口径：倍率大于 0 且不大于 1，最多四位小数。
+/// 科学计数法、NaN/Infinity 和超过数据库 NUMERIC(18,4) 精度的输入均拒绝，
+/// 避免客户端预览与服务端落库舍入不一致。
+bool isValidSalesOrderDiscountText(String raw) {
+  final text = raw.trim();
+  final value = double.tryParse(text);
+  if (value == null || !value.isFinite || value <= 0 || value > 1) {
+    return false;
+  }
+  return _salesOrderDiscountPattern.hasMatch(text);
+}
 
 /// 销售明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier）。
@@ -20,7 +37,8 @@ import 'sales_doc_link_picker.dart';
 /// UI 单元格只读/下拉同步到 row 字段）。报表补列（ machiningPrice 等）
 /// 按 docType 在列定义中显隐对应列。
 class SalesGridRow extends EditableGridRow with AmountRowMixin {
-  /// 订单：金额 = 数量 × 单价 × 折扣（折扣由货品主档带入、锁定）；其它单据类型仍 = 数量 × 单价。
+  /// 订单：金额 = 数量 × 单价 × 折扣(主档折扣仅作默认值，销售可在订单行调整)；
+  /// 其它单据类型仍 = 数量 × 单价。
   /// 标志隔离订单折扣语义，避免出货/退货等单据的折扣列影响其金额（与各自后端口径一致）。
   final bool amountUsesDiscount;
 
@@ -32,6 +50,9 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     goodsNotifier.addListener(_clearInvalid);
     qty.addListener(_clearInvalid);
     price.addListener(_clearInvalid);
+    discount.addListener(_clearInvalid);
+    // 新销售订单默认原价倍率；货品主档折扣或用户输入随后可覆盖。
+    if (amountUsesDiscount) discount.text = '1';
   }
 
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
@@ -43,6 +64,17 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController qty = TextEditingController();
   final TextEditingController weight = TextEditingController();
   final TextEditingController price = TextEditingController();
+
+  /// 复制既有销售订货行时，冻结价不能直接成为“新行”的价格预览。
+  /// true 表示必须重新选择货品，从当前主档取得价格后才允许保存。
+  bool requiresOrderPriceRefresh = false;
+
+  /// 货品选择后的只读价格预览。即使当前货品未维护售价也必须清空旧值，
+  /// 避免换货后仍显示上一货品的价格。
+  void applyLockedPricePreview(num? value) {
+    requiresOrderPriceRefresh = false;
+    price.text = value?.toString() ?? '';
+  }
 
   /// 当前单据自身明细 UUID。仅受控更新既有销售订货行时回传为 JSON `id`。
   ///
@@ -120,14 +152,18 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     final q = double.tryParse(qty.text) ?? 0;
     final p = double.tryParse(price.text) ?? 0;
     if (!amountUsesDiscount) return q * p;
-    // 订单：金额 = 数量 × 单价 × 折扣倍率；折扣空/0 → 不打折（倍率 1，兼容无折扣行）。
+    // 订单：金额 = 数量 × 单价 × 折扣倍率；空/0 的 1 倍兼容仅用于旧数据回填。
     final d = double.tryParse(discount.text);
-    final mult = (d == null || d == 0) ? 1.0 : d;
+    final mult = (d == null || !d.isFinite)
+        ? 0.0
+        : d == 0
+        ? 1.0
+        : (d * 10000).roundToDouble() / 10000;
     return q * p * mult;
   });
 
   /// 深拷贝（明细复制/粘贴用）：新建行 + 拷贝各控制器文本 + 透传字段 + 自动重算金额。
-  SalesGridRow clone() {
+  SalesGridRow clone({bool requireOrderPriceRefresh = false}) {
     // 复制产生的是新明细，绝不能复制当前单据行 UUID；否则受控修订会覆盖原行。
     final c = SalesGridRow(amountUsesDiscount: amountUsesDiscount)
       ..goods = goods
@@ -138,7 +174,9 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
       ..unitRate = unitRate;
     c.qty.text = qty.text;
     c.weight.text = weight.text;
-    c.price.text = price.text;
+    c.requiresOrderPriceRefresh =
+        requireOrderPriceRefresh && amountUsesDiscount && goods != null;
+    if (!c.requiresOrderPriceRefresh) c.price.text = price.text;
     c.machiningPrice.text = machiningPrice.text;
     c.circumference.text = circumference.text;
     c.inboundQty.text = inboundQty.text;
@@ -254,15 +292,6 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         ),
       ),
     EditableGridColumn<SalesGridRow>(
-      key: 'unit',
-      label: '单位',
-      width: 110,
-      textOf: (r) => unitEntries[r.unitId ?? ''] ?? '',
-      listenableOf: (r) => r.unitIdNotifier,
-      cellBuilder: (context, row) =>
-          _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
-    ),
-    EditableGridColumn<SalesGridRow>(
       key: 'qty',
       label: '数量',
       width: 96,
@@ -279,17 +308,16 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         ),
       ),
     ),
+    // 单位紧跟数量（2026-09-04 口径）：单位已表达重量，实际重量列下线（行模型
+    // weight 字段保留，编辑既有单回填并随保存透传，不丢历史数据）。
     EditableGridColumn<SalesGridRow>(
-      key: 'weight',
-      label: '实际重量',
-      width: 104,
-      numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.weight,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '可选'),
-      ),
+      key: 'unit',
+      label: '单位',
+      width: 110,
+      textOf: (r) => unitEntries[r.unitId ?? ''] ?? '',
+      listenableOf: (r) => r.unitIdNotifier,
+      cellBuilder: (context, row) =>
+          _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
     ),
     EditableGridColumn<SalesGridRow>(
       key: 'price',
@@ -303,10 +331,17 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             priceRequired &&
             (row.price.text.trim().isEmpty ||
                 double.tryParse(row.price.text.trim()) == null),
-        // 订单/出货：单价由货品主档（出货亦可由来源订货单引入）带入、锁定不可改。
+        // 订单/出货：单价由货品主档或受信任来源单据带入、锁定不可改。
+        // 复制订单行会清空冻结价；重新选择货品即可取得当前主档价。
         child:
             (docType == SalesDocType.order || docType == SalesDocType.shipment)
-            ? _lockedCell(context, row.price)
+            ? _lockedCell(
+                context,
+                row.price,
+                message:
+                    '单价由货品资料或来源单据带入，并由服务端锁定，不可在订货单修改。'
+                    '复制的新行如单价为空，请重新选择货品取得当前价格',
+              )
             : TextField(
                 controller: row.price,
                 textAlign: TextAlign.right,
@@ -317,14 +352,26 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
               ),
       ),
     ),
-    // 订单折扣：紧跟单价，由货品主档（zk 倍率，1=原价）自动带入、锁定。
+    // 订单折扣：紧跟单价；货品主档 zk 仅作为初始建议，销售可按订单调整。
     if (docType == SalesDocType.order)
       EditableGridColumn<SalesGridRow>(
         key: 'discount',
         label: '折扣',
-        width: 80,
+        width: 104,
         numeric: true,
-        cellBuilder: (context, row) => _lockedCell(context, row.discount),
+        required: true,
+        // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）。
+        headerInfo: '折扣按小数填写：1 = 保持原价；0.9 = 9折；0.8 = 8折，以此类推',
+        cellBuilder: (context, row) => RequiredCellFrame(
+          listenable: row.discount,
+          isEmpty: () => !isValidSalesOrderDiscountText(row.discount.text),
+          child: TextField(
+            controller: row.discount,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(isDense: true, hintText: '1=原价'),
+          ),
+        ),
       ),
     EditableGridColumn<SalesGridRow>(
       key: 'amount',
@@ -422,14 +469,21 @@ Widget _readOnlyMasterCell(
   );
 }
 
-/// 锁定单元格（订单单价/折扣由货品主档带入、不可改）：禁用输入框显既有值，
-/// 控制器值仍随保存提交（后端按主档价/折扣计算金额）。
-Widget _lockedCell(BuildContext context, TextEditingController ctl) {
+/// 锁定单元格(订单/出货单价)：readOnly 保持正文字色，不用 enabled:false 的禁用浅灰；
+/// 点击说明权威来源。控制器值可用于客户端预览，但服务端不信任请求体中的单价/金额。
+Widget _lockedCell(
+  BuildContext context,
+  TextEditingController ctl, {
+  required String message,
+}) {
+  final theme = Theme.of(context);
   return TextField(
     controller: ctl,
-    enabled: false,
+    readOnly: true,
     textAlign: TextAlign.right,
-    decoration: const InputDecoration(isDense: true),
+    style: TextStyle(color: theme.colorScheme.onSurface),
+    decoration: const InputDecoration(isDense: true, hintText: '请重新选择货品取价'),
+    onTap: () => context.appInfo(message),
   );
 }
 

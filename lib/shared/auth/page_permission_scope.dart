@@ -102,6 +102,9 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   if (path == '/quality/production-inspections') {
     return _productionFqcInspectionsScope;
   }
+  if (path == '/quality/inspection-records') {
+    return _qualityInspectionRecordsScope;
+  }
   if (segments.first == 'sales') return _salesScopeFor(segments);
   if (segments.first == 'subcontract') return _subcontractScopeFor(segments);
   if (segments.first == 'production') return _productionScopeFor(segments);
@@ -151,6 +154,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _accountScope,
   _paymentStyleScope,
   _settlementMethodScope,
+  _productionWorkshopTasksScope,
   _basicDataHubScope,
   _warehouseWorkbenchScope,
   _operationsPurchaseScope,
@@ -169,6 +173,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _inspectionScope,
   _qualityInspectionScope,
   _productionFqcInspectionsScope,
+  _qualityInspectionRecordsScope,
   _warehouseInboundScope,
   _warehousePurchaseReceiptHistoryScope,
   _warehouseSubcontractReceiptHistoryScope,
@@ -225,6 +230,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _financeShipmentAuditScope,
   _financeReportScope,
   _arApScope,
+  _financePayablesScope,
   _reconciliationScope,
   _financeAssetScope,
   _financeChecksScope,
@@ -356,6 +362,8 @@ PagePermissionScope? _productionScopeFor(List<String> segments) {
       return segments.length == 2 ? _productionProgressScope : null;
     case 'material-analysis':
       return segments.length == 2 ? _materialAnalysisScope : null;
+    case 'workshop-tasks':
+      return segments.length == 2 ? _productionWorkshopTasksScope : null;
     case 'material-analyses':
       if (segments.length == 2) return _materialAnalysisHistoryScope;
       return segments.length == 4 && segments[3] == 'summary'
@@ -400,6 +408,7 @@ PagePermissionScope? _financeScopeFor(String path, List<String> segments) {
     return _financeReportScope;
   }
   if (path == '/finance/ar-ap') return _arApScope;
+  if (path == '/finance/payables') return _financePayablesScope;
   if (path == '/finance/reconciliations') return _reconciliationScope;
   if (path == '/finance/checks') return _financeChecksScope;
   if (path == '/finance/assets') return _financeAssetScope;
@@ -602,6 +611,11 @@ const _qualityInspectionScope = PagePermissionScope(
 const _productionFqcInspectionsScope = PagePermissionScope(
   surfaceKey: 'quality.production-fqc',
   title: '生产成品质检',
+);
+const _qualityInspectionRecordsScope = PagePermissionScope(
+  // V475：品质检测记录页补挂专属面（V455 全量收口的漏网，2 码只读）。
+  surfaceKey: 'quality.inspection-records',
+  title: '品质检测记录',
 );
 const _warehouseInboundScope = PagePermissionScope(
   surfaceKey: 'warehouse.inbound',
@@ -829,6 +843,10 @@ const _materialAnalysisScope = PagePermissionScope(
   surfaceKey: 'production.material-analysis',
   title: '物料分析',
 );
+const _productionWorkshopTasksScope = PagePermissionScope(
+  surfaceKey: 'production.workshop-tasks',
+  title: '我的车间任务',
+);
 const _materialAnalysisHistoryScope = PagePermissionScope(
   surfaceKey: 'production.material-analysis-history',
   title: '物料分析记录',
@@ -845,12 +863,9 @@ const _whereUsedScope = PagePermissionScope(
   surfaceKey: 'production.where-used',
   title: '物料反查',
 );
-const _productionReportKinds = <String>{
-  'plan-detail',
-  'plan-summary',
-  'daily-detail',
-  'daily-summary',
-};
+// 生产报表 surface 只登记已接路由的两段（plan-detail/plan-summary）；
+// 日报明细/汇总报表尚未接线，登记即误导，接线时再加。
+const _productionReportKinds = <String>{'plan-detail', 'plan-summary'};
 
 const _financeHubScope = PagePermissionScope(
   surfaceKey: 'finance.hub',
@@ -875,6 +890,11 @@ const _financeReportScope = PagePermissionScope(
 const _arApScope = PagePermissionScope(
   surfaceKey: 'finance.ar-ap',
   title: '应收应付台账',
+);
+const _financePayablesScope = PagePermissionScope(
+  // V475：应付结算工作台补挂专属面（V455 全量收口的漏网）。
+  surfaceKey: 'finance.payables',
+  title: '采购委外应付结算工作台',
 );
 const _reconciliationScope = PagePermissionScope(
   surfaceKey: 'finance.reconciliation',

@@ -533,11 +533,13 @@ public class ProductionPlanningPackageService {
                         SELECT COUNT(*)
                         FROM warehouses
                         WHERE id = :id AND is_deleted = FALSE
+                          AND NOT EXISTS (SELECT 1 FROM warehouses c
+                                          WHERE c.parent_id = warehouses.id AND c.is_deleted = FALSE)
                         """)
                 .setParameter("id", warehouseId)
                 .getSingleResult();
         if (((Number) count).longValue() != 1) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "目标仓库不存在或已停用");
+            throw new ApiException(ErrorCode.NOT_FOUND, "目标仓库不存在、已停用或不是具体子仓库");
         }
     }
 

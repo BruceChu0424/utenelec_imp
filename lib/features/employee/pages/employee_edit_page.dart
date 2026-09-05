@@ -436,11 +436,11 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                     ]),
                     _section(l10n.employeeEditOrg, [
                       InputDecorator(
-                        decoration: _deco(l10n.employeeFieldDepartment)
-                            .copyWith(
-                              helper: const UtenFieldMessage.helper(
-                                '调整部门请使用员工详情中的「调岗」功能',
-                              ),
+                        decoration:
+                            _deco(
+                              l10n.employeeFieldDepartment,
+                              info: '调整部门请使用员工详情中的「调岗」功能',
+                            ).copyWith(
                               prefixIcon: const Icon(
                                 Icons.account_tree_outlined,
                               ),
@@ -477,12 +477,12 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                         )
                       else
                         InputDecorator(
-                          decoration: _deco('兼职部门').copyWith(
-                            helper: const UtenFieldMessage.helper(
-                              '兼职部门维护需要员工编辑权限',
-                            ),
-                            prefixIcon: const Icon(Icons.group_add_outlined),
-                          ),
+                          decoration: _deco('兼职部门', info: '兼职部门维护需要员工编辑权限')
+                              .copyWith(
+                                prefixIcon: const Icon(
+                                  Icons.group_add_outlined,
+                                ),
+                              ),
                           child: Text(
                             _secondaryDepartments.isEmpty
                                 ? '—'
@@ -509,10 +509,9 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                       DropdownButtonFormField<String>(
                         key: const ValueKey('employee-edit-status-readonly'),
                         initialValue: _status,
-                        decoration: _deco(l10n.employeeFieldStatus).copyWith(
-                          helper: const UtenFieldMessage.helper(
-                            '状态变更请使用员工详情中的转正、离职或复职专用按钮',
-                          ),
+                        decoration: _deco(
+                          l10n.employeeFieldStatus,
+                          info: '状态变更请使用员工详情中的转正、离职或复职专用按钮',
                         ),
                         // 离职/复职走专用流程（账号冻结/启用+任职记录），编辑页不可直改：
                         // 在职员工选项剔除 resigned；已离职员工锁定为 resigned。
@@ -642,8 +641,9 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     );
   }
 
-  InputDecoration _deco(String label) => InputDecoration(
-    labelText: label,
+  /// [info] 非空时说明收进标签旁 ⓘ（全站约定），不常驻框下。
+  InputDecoration _deco(String label, {String? info}) => InputDecoration(
+    label: fieldLabel(label, Theme.of(context), info: info),
     isDense: true,
     border: const OutlineInputBorder(),
   );

@@ -21,6 +21,8 @@
 //     onMenuOpening: () => 先选中该行,
 //     child: 行内容,
 //   )
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
@@ -48,7 +50,10 @@ class UtenMenuItem extends UtenContextMenuEntry {
   final bool destructive;
 
   /// 点击回调（菜单先关闭，再执行回调——回调里可以安全弹对话框）。
-  final VoidCallback onTap;
+  ///
+  /// 同时接受同步与异步动作；菜单返回的 Future 会等待本回调完成，让表格能在
+  /// 对话框/网络动作结束后再收口临时选中态。
+  final FutureOr<void> Function() onTap;
 }
 
 /// 菜单分组分隔线。
@@ -56,25 +61,60 @@ class UtenMenuDivider extends UtenContextMenuEntry {
   const UtenMenuDivider();
 }
 
+/// 上下文菜单关闭原因。
+enum UtenContextMenuCloseReason {
+  /// 点菜单外、再次右击空白等，仅取消菜单，没有执行条目。
+  dismissed,
+
+  /// 已选择可用条目，并且该条目的同步/异步回调已经完成。
+  actionCompleted,
+}
+
 /// 在 [globalPosition]（全局坐标，通常取手势事件的 globalPosition）弹出菜单。
-/// 条目为空时什么都不弹。返回的 Future 在菜单关闭后完成。
-Future<void> showUtenContextMenu(
+/// 条目为空时什么都不弹。返回的 Future 在菜单关闭后完成；选择条目时会继续等待
+/// 条目的动作回调完成，并返回 [UtenContextMenuCloseReason.actionCompleted]。
+Future<UtenContextMenuCloseReason> showUtenContextMenu(
   BuildContext context, {
   required Offset globalPosition,
   required List<UtenContextMenuEntry> entries,
 }) {
-  if (entries.isEmpty) return Future.value();
+  if (entries.isEmpty) {
+    return Future.value(UtenContextMenuCloseReason.dismissed);
+  }
   final overlay = Overlay.of(context, rootOverlay: true);
+  final completer = Completer<UtenContextMenuCloseReason>();
   late OverlayEntry entry;
+  var closed = false;
+
+  void dismiss() {
+    if (closed) return;
+    closed = true;
+    entry.remove();
+    completer.complete(UtenContextMenuCloseReason.dismissed);
+  }
+
+  Future<void> runAction(UtenMenuItem item) async {
+    if (closed) return;
+    closed = true;
+    // 必须先移除菜单，业务动作才能安全地继续弹确认框/详情框。
+    entry.remove();
+    try {
+      await Future<void>.sync(item.onTap);
+    } finally {
+      completer.complete(UtenContextMenuCloseReason.actionCompleted);
+    }
+  }
+
   entry = OverlayEntry(
     builder: (ctx) => _UtenContextMenuOverlay(
       position: globalPosition,
       entries: entries,
-      onDismiss: () => entry.remove(),
+      onDismiss: dismiss,
+      onItemSelected: (item) => unawaited(runAction(item)),
     ),
   );
   overlay.insert(entry);
-  return Future.value();
+  return completer.future;
 }
 
 /// 给子树挂「右击/长按出菜单」能力的包裹组件。
@@ -86,21 +126,26 @@ class UtenContextMenuRegion extends StatelessWidget {
     required this.entriesBuilder,
     required this.child,
     this.onMenuOpening,
+    this.onActionCompleted,
   });
 
   final List<UtenContextMenuEntry> Function() entriesBuilder;
   final VoidCallback? onMenuOpening;
+  final FutureOr<void> Function()? onActionCompleted;
   final Widget child;
 
-  void _open(BuildContext context, Offset globalPosition) {
+  Future<void> _open(BuildContext context, Offset globalPosition) async {
     final entries = entriesBuilder();
     if (entries.isEmpty) return;
     onMenuOpening?.call();
-    showUtenContextMenu(
+    final reason = await showUtenContextMenu(
       context,
       globalPosition: globalPosition,
       entries: entries,
     );
+    if (reason == UtenContextMenuCloseReason.actionCompleted) {
+      await Future<void>.sync(() => onActionCompleted?.call());
+    }
   }
 
   @override
@@ -108,10 +153,10 @@ class UtenContextMenuRegion extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       // 桌面/Web：鼠标右击。不抢单/双击（不同按键，手势竞技场互不冲突）。
-      onSecondaryTapDown: (d) => _open(context, d.globalPosition),
+      onSecondaryTapDown: (d) => unawaited(_open(context, d.globalPosition)),
       // 手机/触屏：长按出同一个菜单。与单击选中/双击打开共存：
       // 长按与 tap 是不同识别器，tap 先赢则长按自动取消，行为符合直觉。
-      onLongPressStart: (d) => _open(context, d.globalPosition),
+      onLongPressStart: (d) => unawaited(_open(context, d.globalPosition)),
       child: child,
     );
   }
@@ -122,11 +167,13 @@ class _UtenContextMenuOverlay extends StatelessWidget {
     required this.position,
     required this.entries,
     required this.onDismiss,
+    required this.onItemSelected,
   });
 
   final Offset position;
   final List<UtenContextMenuEntry> entries;
   final VoidCallback onDismiss;
+  final ValueChanged<UtenMenuItem> onItemSelected;
 
   static const double _menuWidth = 216;
   static const double _itemHeight = 40;
@@ -204,12 +251,7 @@ class _UtenContextMenuOverlay extends StatelessWidget {
         ? UtenColors.error
         : theme.colorScheme.onSurface;
     return InkWell(
-      onTap: item.enabled
-          ? () {
-              onDismiss();
-              item.onTap();
-            }
-          : null,
+      onTap: item.enabled ? () => onItemSelected(item) : null,
       child: SizedBox(
         height: _itemHeight,
         child: Padding(

@@ -227,6 +227,10 @@ class _OperationsWorkbenchPageState
     switch (widget.department) {
       case OperationsWorkbenchDepartment.purchase:
         if (!data.capabilities.canCreatePurchaseOrder) return null;
+        // 批量生成订货单只对「申请待分解」段有意义：其余阶段的行=已生成的
+        // 订货单/收货单（V466 收口后补货走原订单），在这些段提供勾选只会
+        // 制造永远点不动的批量按钮（用户感知为「按钮坏了」）。
+        if (_seg?.code != 'WAITING_ORDER') return null;
         final issue = _loading
             ? '正在刷新采购任务，请稍候'
             : _purchaseSelectionIssue(selected);

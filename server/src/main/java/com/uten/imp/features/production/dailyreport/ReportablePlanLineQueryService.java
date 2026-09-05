@@ -4,6 +4,7 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -144,7 +146,27 @@ public class ReportablePlanLineQueryService {
                 LEFT JOIN production_execution_segments segment
                   ON segment.source_plan_item_id = i.id
                  AND segment.is_deleted = FALSE
-                 AND segment.status = 'IN_PROGRESS'
+                 AND segment.status IN ('READY', 'DISPATCHED', 'IN_PROGRESS')
+                 AND segment.workshop_department_id IS NOT NULL
+                 AND segment.responsible_employee_id IS NOT NULL
+                 AND (
+                     segment.material_requirement_mode = 'ZERO_MATERIAL'
+                     OR (
+                         EXISTS (
+                             SELECT 1
+                             FROM production_material_demands demand
+                             WHERE demand.execution_segment_id = segment.id
+                               AND demand.is_deleted = FALSE
+                               AND demand.status NOT IN ('RELEASED', 'REVERSED'))
+                         AND NOT EXISTS (
+                             SELECT 1
+                             FROM production_material_demands demand
+                             WHERE demand.execution_segment_id = segment.id
+                               AND demand.is_deleted = FALSE
+                               AND demand.status NOT IN (
+                                   'FULFILLED', 'RELEASED', 'REVERSED'))
+                     )
+                 )
                 LEFT JOIN segment_progress segment_done
                   ON segment_done.execution_segment_id = segment.id
                 LEFT JOIN departments segment_workshop
@@ -271,12 +293,15 @@ public class ReportablePlanLineQueryService {
 
     private final JdbcTemplate jdbc;
     private final ProductionDocumentAccessPolicy access;
+    private final SecurityContextCurrentUser currentUser;
 
     public ReportablePlanLineQueryService(
             JdbcTemplate jdbc,
-            ProductionDocumentAccessPolicy access) {
+            ProductionDocumentAccessPolicy access,
+            SecurityContextCurrentUser currentUser) {
         this.jdbc = jdbc;
         this.access = access;
+        this.currentUser = currentUser;
     }
 
     @Transactional(readOnly = true)
@@ -286,7 +311,7 @@ public class ReportablePlanLineQueryService {
             String keyword,
             UUID departmentId) {
         return list(
-                requestedPage, requestedSize, keyword, departmentId, null);
+                requestedPage, requestedSize, keyword, departmentId, List.of());
     }
 
     @Transactional(readOnly = true)
@@ -296,6 +321,29 @@ public class ReportablePlanLineQueryService {
             String keyword,
             UUID departmentId,
             UUID executionSegmentId) {
+        return list(requestedPage, requestedSize, keyword, departmentId,
+                executionSegmentId == null
+                        ? List.of() : List.of(executionSegmentId));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ReportablePlanLine> list(
+            int requestedPage,
+            int requestedSize,
+            String keyword,
+            UUID departmentId,
+            List<UUID> executionSegmentIds) {
+        LinkedHashSet<UUID> exactIds = new LinkedHashSet<>();
+        if (executionSegmentIds != null) {
+            executionSegmentIds.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .forEach(exactIds::add);
+        }
+        if (exactIds.size() > 100) {
+            throw new com.uten.imp.common.web.ApiException(
+                    com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
+                    "一次最多查询 100 个执行工单");
+        }
         PageRequest pageable = Pageables.of(requestedPage, requestedSize);
         int page = pageable.getPageNumber() + 1;
         int size = pageable.getPageSize();
@@ -317,6 +365,13 @@ public class ReportablePlanLineQueryService {
                                     visibleOwners.size(), "?"))
                     + "))";
             ownerArgs.addAll(visibleOwners);
+        }
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        if (employeeId != null
+                && access.hasAuthority("production_execution:view")) {
+            ownerPredicate = "(" + ownerPredicate + " OR "
+                    + workshopAssignmentPredicate() + ")";
+            ownerArgs.add(employeeId);
         }
         String scopedSql = BASE_SQL.replace(
                 "/*OWNER_SCOPE*/", ownerPredicate);
@@ -346,9 +401,12 @@ public class ReportablePlanLineQueryService {
             filter.append(" AND department_id = ?");
             args.add(departmentId);
         }
-        if (executionSegmentId != null) {
-            filter.append(" AND execution_segment_id = ?");
-            args.add(executionSegmentId);
+        if (!exactIds.isEmpty()) {
+            filter.append(" AND execution_segment_id IN (")
+                    .append(String.join(",", java.util.Collections.nCopies(
+                            exactIds.size(), "?")))
+                    .append(')');
+            args.addAll(exactIds);
         }
 
         Long totalValue = jdbc.queryForObject(
@@ -422,5 +480,54 @@ public class ReportablePlanLineQueryService {
 
         int totalPages = total == 0 ? 0 : (int) ((total + size - 1) / size);
         return new PageResponse<>(items, page, size, total, totalPages);
+    }
+
+    /**
+     * Exact execution assignment is an independent object scope from plan
+     * authorship. This mirrors the workshop task endpoint: responsible person,
+     * main/secondary workshop subtree member, or workshop manager.
+     */
+    private static String workshopAssignmentPredicate() {
+        return """
+                (
+                    segment.id IS NOT NULL
+                    AND EXISTS (
+                            WITH RECURSIVE workshop_tree(id) AS (
+                                SELECT segment.workshop_department_id
+                                WHERE segment.workshop_department_id IS NOT NULL
+                                UNION ALL
+                                SELECT child.id
+                                FROM departments child
+                                JOIN workshop_tree parent
+                                  ON child.parent_id = parent.id
+                                WHERE child.is_deleted = FALSE
+                            )
+                            SELECT 1
+                            FROM employees employee
+                            WHERE employee.id = ?
+                              AND employee.is_deleted = FALSE
+                              AND employee.status IN (
+                                  'active','probation','onLeave')
+                              AND (
+                                  segment.responsible_employee_id = employee.id
+                                  OR employee.department_id IN (
+                                      SELECT id FROM workshop_tree)
+                                  OR EXISTS (
+                                      SELECT 1
+                                      FROM employee_secondary_departments secondary
+                                      WHERE secondary.employee_id=employee.id
+                                        AND secondary.department_id IN (
+                                            SELECT id FROM workshop_tree))
+                                  OR EXISTS (
+                                      SELECT 1
+                                      FROM departments managed
+                                      WHERE managed.id IN (
+                                          SELECT id FROM workshop_tree)
+                                        AND managed.manager_id=employee.id
+                                        AND managed.is_deleted=FALSE)
+                              )
+                        )
+                )
+                """;
     }
 }

@@ -21,7 +21,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
-import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -32,6 +32,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -483,15 +484,15 @@ class _WarehouseSubcontractOutboundEditPageState
                       value: _billDate,
                       onChanged: (d) => setState(() => _billDate = d),
                     ),
-                    DropdownButtonFormField<String>(
+                    // V476：主/子层级（父仓置灰分组，出仓落具体仓）。
+                    WarehouseHierarchyDropdown(
                       key: ValueKey('warehouse_$_warehouseId'),
-                      initialValue: _warehouseId,
-                      decoration: const InputDecoration(labelText: '发出仓(必选)'),
-                      items: [
-                        for (final e in names.warehouseEntries.entries)
-                          DropdownMenuItem(value: e.key, child: Text(e.value)),
-                      ],
-                      onChanged: (v) => setState(() => _warehouseId = v),
+                      entries: names.warehouseHierarchy,
+                      value: _warehouseId,
+                      labelText: '发出仓(必选)',
+                      onChanged: (v) {
+                        if (v != null) setState(() => _warehouseId = v);
+                      },
                     ),
                     UtenEmployeePicker(
                       key: ValueKey('worker_$_workerId'),
@@ -755,9 +756,10 @@ class _WarehouseSubcontractOutboundEditPageState
                 FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}')),
               ],
               decoration: InputDecoration(
-                labelText: '本次出仓',
-                helper: UtenFieldMessage.helper(
-                  '本次最多 ${_fmtQty(line.maxEditableQty)}',
+                label: fieldLabel(
+                  '本次出仓',
+                  theme,
+                  info: '本次最多 ${_fmtQty(line.maxEditableQty)}',
                 ),
               ),
               onChanged: (_) => setState(() {}),

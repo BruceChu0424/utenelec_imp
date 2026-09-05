@@ -97,6 +97,9 @@ public class SalesShipmentService {
     private final SalesShipmentRepository shipmentRepo;
     private final SalesShipmentItemRepository itemRepo;
     private final StockService stockService;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
     private final StockReservationService reservationService;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
@@ -2410,6 +2413,10 @@ public class SalesShipmentService {
         }
         s.setBillDate(req.getBillDate());
         s.setClientId(req.getClientId());
+        // V476 运营红线：出货必须落到具体叶子仓；主仓库只作查询聚合。
+        if (warehouseScopes != null) {
+            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "出货仓库");
+        }
         s.setWarehouseId(req.getWarehouseId());
         s.setCurrencyId(req.getCurrencyId());
         // Draft shipments do not carry a sales-authored posting rate.

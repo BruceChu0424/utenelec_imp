@@ -78,15 +78,29 @@ public class ProductionFqcInspectionService
 
     /**
      * Called by the warehouse-arrival registration transaction after the
-     * source report status is 1 and every exact line has a placement snapshot.
+     * source report status is 1 and the selected exact lines have placement
+     * snapshots. Unselected report lines remain in the warehouse registration
+     * queue and are not silently turned into FQC facts.
      * There is intentionally no historical batch/backfill entry point.
      */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void registerApprovedReport(UUID reportId) {
+    public void registerApprovedReportItems(
+            UUID reportId,
+            List<UUID> reportItemIds,
+            UUID registrationId) {
         tx.bind();
-        if (reportId == null) {
-            throw validation("生产质检登记缺少报工单 UUID");
+        if (reportId == null || registrationId == null
+                || reportItemIds == null || reportItemIds.isEmpty()
+                || reportItemIds.stream().anyMatch(Objects::isNull)) {
+            throw validation("生产质检登记缺少报工单、登记批次或明细 UUID");
+        }
+        List<UUID> requestedIds = reportItemIds.stream()
+                .distinct()
+                .sorted(UUID_ORDER)
+                .toList();
+        if (requestedIds.size() != reportItemIds.size()) {
+            throw validation("生产质检登记不能重复选择同一报工明细");
         }
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -116,16 +130,17 @@ public class ProductionFqcInspectionService
                                 LEFT JOIN production_planning_packages package
                                   ON package.id = segment.package_id
                                 WHERE report.id = :reportId
+                                  AND registration.id = :registrationId
+                                  AND item.id IN (:reportItemIds)
                                   AND item.execution_segment_id IS NOT NULL
                                 ORDER BY item.line_no NULLS LAST, item.id
                                 FOR UPDATE OF report, item
                                 """)
-                        .setParameter("reportId", reportId));
-        if (rows.isEmpty()) {
-            // Pre-execution-V1 historical plan lines have no exact segment.
-            // They stay on the explicit legacy compatibility path and are
-            // never relabelled as having passed FQC.
-            return;
+                        .setParameter("reportId", reportId)
+                        .setParameter("registrationId", registrationId)
+                        .setParameter("reportItemIds", requestedIds));
+        if (rows.size() != requestedIds.size()) {
+            throw conflict("送检登记明细已变化或不属于当前登记批次，请刷新后重试");
         }
         UUID actorId = currentUser.requireId();
         for (Object[] row : rows) {
@@ -143,7 +158,6 @@ public class ProductionFqcInspectionService
                                 :planItemId, :segmentId, :salesAllocationId,
                                 :warehouseId, :goodsId, :colorId, :unitId,
                                 :unitRate, :reportedQty, :makerId, :actorId)
-                            ON CONFLICT (source_report_item_id) DO NOTHING
                             """)
                     .setParameter("id", UUID.randomUUID())
                     .setParameter("reportId", row[0])
@@ -165,8 +179,10 @@ public class ProductionFqcInspectionService
                 EVENT_PENDING,
                 "PRODUCTION_DAILY_REPORT",
                 reportId,
-                Map.of("inspectionCount", rows.size()),
-                EVENT_PENDING + ':' + reportId);
+                Map.of(
+                        "inspectionCount", rows.size(),
+                        "registrationId", registrationId.toString()),
+                EVENT_PENDING + ':' + registrationId);
     }
 
     @Transactional(readOnly = true)

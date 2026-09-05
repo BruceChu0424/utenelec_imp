@@ -78,7 +78,10 @@ void main() {
       expect(source, contains('确认成品实收数量'));
       expect(source, contains('已审核报工或 FQC PASS 形成的待点收上限'));
       expect(source, contains("label: '待点收上限'"));
-      expect(source, contains("labelText: '仓库实收'"));
+      // 说明收进标签旁 ⓘ（fieldLabel 约定），不再 labelText+框下常驻文字。
+      expect(source, contains('fieldLabel('));
+      expect(source, contains("'仓库实收'"));
+      expect(source, contains("'少收差异原因'"));
       expect(source, contains('少收时必须填写差异原因'));
       expect(source, contains("label: const Text('确认实收并入库')"));
       expect(source, contains('.confirmFinishedInbound('));
@@ -98,4 +101,63 @@ void main() {
     expect(page, contains('repository.reverseFinishedInbound(widget.id)'));
     expect(page, contains('按原实收量重建待点收草稿'));
   });
+
+  test(
+    'production DRAW sends atomic first issue and audited cancellation',
+    () async {
+      final captured = <RequestOptions>[];
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            captured.add(request);
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: {
+                  'id': 'draw-1',
+                  'docType': 'DRAW',
+                  'status': 1,
+                  'productionLinked': true,
+                  'items': const <Map<String, dynamic>>[],
+                },
+              ),
+            );
+          },
+        ),
+      );
+      final repository = StockDocRepository(ApiClient(dio), StockDocType.draw);
+      const lines = [
+        {'itemId': 'draw-line-1', 'qty': 3},
+      ];
+
+      await repository.approveAndIssue(
+        'draw-1',
+        lines,
+        'draw-first-issue-key-0001',
+      );
+      await repository.reverseIssue(
+        'draw-1',
+        lines,
+        'draw-cancel-issue-key-0001',
+        '本轮实物交接取消',
+      );
+
+      expect(captured, hasLength(2));
+      expect(captured.first.method, 'POST');
+      expect(captured.first.path, '/stock/docs/draw-1/approve-and-issue');
+      expect(captured.first.data, {
+        'lines': lines,
+        'idempotencyKey': 'draw-first-issue-key-0001',
+      });
+      expect(captured.last.method, 'POST');
+      expect(captured.last.path, '/stock/docs/draw-1/issue/reverse');
+      expect(captured.last.data, {
+        'lines': lines,
+        'idempotencyKey': 'draw-cancel-issue-key-0001',
+        'reason': '本轮实物交接取消',
+      });
+    },
+  );
 }

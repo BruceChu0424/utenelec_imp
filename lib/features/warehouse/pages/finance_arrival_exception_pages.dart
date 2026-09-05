@@ -9,7 +9,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -786,9 +786,11 @@ class _FinanceDecisionPanel extends StatelessWidget {
                   FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}')),
                 ],
                 decoration: InputDecoration(
-                  labelText: '批准的额外超量',
-                  helper: UtenFieldMessage.helper(
-                    '必须大于 0，且小于 ${procurementQty(task.requestedExcessQty)} ${task.unitName ?? ''}',
+                  label: fieldLabel(
+                    '批准的额外超量',
+                    theme,
+                    info:
+                        '必须大于 0，且小于 ${procurementQty(task.requestedExcessQty)} ${task.unitName ?? ''}',
                   ),
                 ),
               ),

@@ -2,55 +2,6 @@ part of 'production_material_analysis_page.dart';
 
 abstract class _MaterialAnalysisPlanActionsState
     extends _MaterialAnalysisSupplyActionsState {
-  List<MaterialAnalysisPlanItemInput>? _planItems() {
-    final items = <MaterialAnalysisPlanItemInput>[];
-    final products = {
-      for (final product
-          in _analysis?.products ?? const <ProductionMaterialAnalysisProduct>[])
-        product.analysisLineId: product,
-    };
-    for (final analysisLineId in _selectedPlanLineIds) {
-      final product = products[analysisLineId];
-      final controller = _batchQtyControllers[analysisLineId];
-      if (product == null ||
-          controller == null ||
-          !_canSelectProduct(product)) {
-        context.appWarning('所选产品状态已变化，请重新勾选');
-        return null;
-      }
-      final raw = controller.text.trim();
-      final quantity = double.tryParse(raw);
-      if (raw.isEmpty || quantity == null || !quantity.isFinite) {
-        context.appWarning('请填写本批生产数量');
-        return null;
-      }
-      if (quantity <= 0) {
-        context.appWarning('本批生产数量必须大于 0');
-        return null;
-      }
-      // The headline "最多可生产" is the cap. The server re-checks on preview
-      // (its recomputed ready-now qty is authoritative), but blocking an
-      // over-cap entry here avoids a pointless round-trip and a confusing
-      // rejection deeper in the wizard.
-      final maxQty = product.readyNowQty;
-      if (quantity > maxQty) {
-        context.appWarning('本批生产数量不能超过最多可生产 ${_qty(maxQty)} 个');
-        return null;
-      }
-      items.add(
-        MaterialAnalysisPlanItemInput(
-          analysisLineId: analysisLineId,
-          qty: quantity,
-        ),
-      );
-    }
-    if (items.isEmpty) {
-      context.appWarning('请至少勾选一个可生产产品或自制备料项');
-      return null;
-    }
-    return items;
-  }
-
   Future<bool> _previewPlan(List<MaterialAnalysisPlanItemInput> items) async {
     final analysis = _analysis;
     final warehouseId = _warehouseId;
@@ -79,13 +30,16 @@ abstract class _MaterialAnalysisPlanActionsState
         _previewingPlan = false;
         _planPreview = preview;
       });
-      if (!preview.canGenerate) {
-        context.appWarning('计划预览发现仍有不可生成批次，请按行内原因调整数量');
+      if (!preview.canSchedule) {
+        context.appWarning('计划预览发现不可排产批次，请按行内原因调整数量');
         return false;
-      } else {
-        context.appSuccess('计划预览通过，可提交生成');
-        return true;
       }
+      if (preview.allReady) {
+        context.appSuccess('计划预览通过，所选批次物料已齐套');
+      } else {
+        context.appInfo('计划预览通过；缺料批次将以待料状态下达，不占用零散库存');
+      }
+      return true;
     } catch (error) {
       if (!mounted) return false;
       if (await _recoverLatestAnalysisAfterConflict(
@@ -113,7 +67,7 @@ abstract class _MaterialAnalysisPlanActionsState
     final preview = _planPreview;
     final warehouseId = _warehouseId;
     if (preview == null || warehouseId == null || _generating) return;
-    if (!preview.canGenerate) {
+    if (!preview.canSchedule) {
       context.appWarning('计划预览未通过，不能生成生产计划');
       return;
     }
@@ -149,8 +103,23 @@ abstract class _MaterialAnalysisPlanActionsState
       setState(() {
         _generating = false;
         _applyAnalysis(result.analysis);
+        // The submitted quantities are now persisted business facts. Clear
+        // only those drafts so a later planning round receives a fresh
+        // complete-kit-first suggestion; unrelated hand-entered rows remain.
+        for (final item in items) {
+          _batchQtyControllers[item.analysisLineId]?.clear();
+          _systemSeededBatchQtyTexts.remove(item.analysisLineId);
+        }
       });
-      context.appSuccess(approveNow ? '生产计划已审核下达，物料提货单已生成' : '生产计划已生成并提交审批');
+      context.appSuccess(
+        approveNow
+            ? preview.allReady
+                  ? '生产计划已审核下达，物料提货单已生成'
+                  : _previewHasPartialReadySplit(preview)
+                  ? '生产计划已审核下达并拆批；齐套部分已生成提货单，余量继续待料'
+                  : '生产计划已审核下达并分配车间；当前待料，齐套后才生成提货单'
+            : '生产计划已生成并提交审批',
+      );
       await _showGeneratedPlans(result.plans);
     } catch (error) {
       if (!mounted) return;
@@ -183,81 +152,6 @@ abstract class _MaterialAnalysisPlanActionsState
       RoutePath.productionMaterialAnalysisSummary(analysis.analysisId),
       extra: analysis,
     );
-  }
-
-  Future<void> _openPlanWizard() async {
-    if (!_canGenerate || _busy || _editingPriorities) return;
-    if (_dirtyRouteGroups.isNotEmpty) {
-      context.appWarning('请先确认物料路线');
-      return;
-    }
-    final initialItems = _planItems();
-    final analysis = _analysis;
-    if (initialItems == null || analysis == null) return;
-    final products = {
-      for (final product in analysis.products) product.analysisLineId: product,
-    };
-    final masterNames = ref.read(masterNameServiceProvider);
-    // 默认车间预填：读取正式排产确认学习出的偏好；seed 显式指定优先。
-    // 接口失败降级为空表——向导照常打开，未预填的行在计划单上红色提示补填。
-    Map<String, ({String departmentId, String? departmentName})>
-    defaultWorkshops = const {};
-    try {
-      defaultWorkshops = await ref
-          .read(productionPlanRepositoryProvider)
-          .defaultWorkshops({
-            for (final item in initialItems)
-              if (products[item.analysisLineId]?.goodsId != null)
-                products[item.analysisLineId]!.goodsId!,
-          });
-    } catch (_) {
-      defaultWorkshops = const {};
-    }
-    if (!mounted) return;
-    final result = await Navigator.of(context).push<ProductionPlanWizardResult>(
-      MaterialPageRoute(
-        builder: (_) => ProductionPlanWizardPage(
-          canApprove: _permissions.contains(Perm.productionPlanApprove),
-          entries: [
-            for (final item in initialItems)
-              ProductionPlanWizardEntry(
-                product: products[item.analysisLineId]!,
-                qty: item.qty,
-                productNo: widget.seed.initialProductNoFor(
-                  products[item.analysisLineId]!,
-                ),
-                billDate: _billDate,
-                deliveryDate: _deliveryDate,
-                departmentId:
-                    widget.seed.departmentId ??
-                    defaultWorkshops[products[item.analysisLineId]!.goodsId]
-                        ?.departmentId,
-                workshopName:
-                    widget.seed.workshopName ??
-                    defaultWorkshops[products[item.analysisLineId]!.goodsId]
-                        ?.departmentName,
-                workerId: widget.seed.workerId,
-                workerName: widget.seed.workerId == null
-                    ? null
-                    : masterNames.employee(widget.seed.workerId) == '—'
-                    ? null
-                    : masterNames.employee(widget.seed.workerId),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted || result == null || result.items.isEmpty) return;
-    setState(() => _planSubmissionApproveNow = result.approveNow);
-    try {
-      final previewPassed = await _previewPlan(result.items);
-      if (!mounted || !previewPassed) return;
-      await _generatePlan(result.items, approveNow: result.approveNow);
-    } finally {
-      if (mounted && _planSubmissionApproveNow) {
-        setState(() => _planSubmissionApproveNow = false);
-      }
-    }
   }
 
   /// 生成结果对话框：把「生产计划单 + 物料提货单（领料单）」摆在同一屏。
@@ -391,9 +285,10 @@ abstract class _MaterialAnalysisPlanActionsState
                     Text(
                       approved
                           ? '本批没有下层领用物料，不生成领料单；'
-                                '计划审核后直接进入派工、报工、FQC 与完工入库。'
+                                '计划审核后可直接报工，再进入 FQC 与完工入库。'
                           : '计划审核并正式下达后，系统自动生成物料提货单(领料单)，'
-                                '仓库按单发料；可在「生产计划详情」查看进度。',
+                                '仓库按单出库后标记备料完毕，车间可直接报工；'
+                                '可在「生产计划详情」查看进度。',
                       style: Theme.of(dialogContext).textTheme.bodyMedium
                           ?.copyWith(
                             color: Theme.of(
@@ -583,52 +478,15 @@ abstract class _MaterialAnalysisPlanActionsState
     }
   }
 
-  String get _planActionLabel {
-    final analysis = _analysis;
-    if (analysis == null || _selectedPlanLineIds.isEmpty) {
-      return '生成生产计划';
-    }
-    final selected = analysis.products
-        .where(
-          (product) => _selectedPlanLineIds.contains(product.analysisLineId),
-        )
-        .toList(growable: false);
-    final childCount = selected
-        .where(
-          (product) =>
-              product.sourceType == 'MAKE_COMPONENT' ||
-              product.sourceType == 'SUBCONTRACT_MAKE',
-        )
-        .length;
-    if (childCount == selected.length) return '安排子件生产';
-    if (childCount == 0) return '生成总装计划';
-    return '生成生产计划';
-  }
-
   /// 底部悬浮动作区的按钮集合（按需出现，见 §3.5）。
-  /// 2026-09-03：可点击的主动作统一 danger（红底白字）——出现在悬浮区即表示
-  /// 当前有可执行的下一步，用最强的视觉权重把员工视线引到唯一动作上；
+  /// 2026-09-04 改版：采购/委外/自制的批量下达与生成生产计划入口移入顶部
+  /// 分桶详情页；本页悬浮区只保留路线类动作（采纳建议/确认路线）。
+  /// 可点击的主动作统一 danger（红底白字）——出现在悬浮区即表示当前有
+  /// 可执行的下一步，用最强的视觉权重把员工视线引到唯一动作上；
   /// 置灰/加载态由 UtenButton 自行呈现。
   List<Widget> _bottomActionButtons() {
     if (_isFqcReplenishmentOnly) return const <Widget>[];
     return <Widget>[
-      for (final route in MaterialSupplyRoute.values)
-        if (_canNotify && _selectedExecutableCount(route) > 0)
-          UtenButton(
-            key: Key('material-analysis-notify-${route.wireName}'),
-            type: UtenButtonType.danger,
-            size: UtenButtonSize.large,
-            icon: Icons.notifications_active_outlined,
-            isLoading: _notifyingRoute == route,
-            onPressed: _busy
-                ? null
-                : route == MaterialSupplyRoute.make
-                ? () => _arrangeMakeProduction()
-                : route == MaterialSupplyRoute.subcontract
-                ? () => _arrangeSubcontractProduction()
-                : () => _notifyRoute(route),
-            child: Text(_notifyLabel(route)),
-          ),
       if (_canRoute && _unconfirmedSuggestedRouteCount > 0)
         UtenButton(
           key: const Key('material-analysis-accept-routes'),
@@ -647,23 +505,6 @@ abstract class _MaterialAnalysisPlanActionsState
           onPressed: !_canRoute || _busy ? null : _saveRoutes,
           child: Text('确认路线(${_dirtyRouteGroups.length})'),
         ),
-      if (_selectedPlanLineIds.isNotEmpty)
-        UtenButton(
-          key: const Key('material-analysis-generate'),
-          type: UtenButtonType.danger,
-          size: UtenButtonSize.large,
-          icon: Icons.description_outlined,
-          isLoading: _generating || _previewingPlan,
-          onPressed: !_canGenerate || _busy || _editingPriorities
-              ? null
-              : _openPlanWizard,
-          onDisabledTap: !_canGenerate
-              ? () => context.appWarning('没有生成生产计划权限')
-              : _editingPriorities
-              ? () => context.appWarning('请先确认或取消生产优先级调整')
-              : null,
-          child: Text('$_planActionLabel(${_selectedPlanLineIds.length})'),
-        ),
     ];
   }
 
@@ -679,9 +520,12 @@ abstract class _MaterialAnalysisPlanActionsState
     ThemeData theme,
     ProductionMaterialPlanPreview preview,
   ) {
-    final color = preview.canGenerate
+    final hasPartialSplit = _previewHasPartialReadySplit(preview);
+    final color = !preview.canSchedule
+        ? theme.colorScheme.error
+        : preview.allReady
         ? theme.colorScheme.primary
-        : theme.colorScheme.error;
+        : theme.colorScheme.tertiary;
     return Container(
       key: const Key('material-analysis-plan-preview-result'),
       padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -696,10 +540,18 @@ abstract class _MaterialAnalysisPlanActionsState
           _statusLabel(
             theme,
             _StatusView(
-              preview.canGenerate ? '计划预览通过' : '计划预览未通过',
-              preview.canGenerate
+              !preview.canSchedule
+                  ? '计划预览不可提交'
+                  : preview.allReady
+                  ? '可排产 · 物料已齐套'
+                  : hasPartialSplit
+                  ? '可排产 · 将拆可开工批与待料批'
+                  : '可排产 · 当前待料',
+              !preview.canSchedule
+                  ? Icons.gpp_maybe_outlined
+                  : preview.allReady
                   ? Icons.verified_outlined
-                  : Icons.gpp_maybe_outlined,
+                  : Icons.hourglass_top_rounded,
               color,
             ),
           ),
@@ -710,20 +562,29 @@ abstract class _MaterialAnalysisPlanActionsState
               child: Row(
                 children: [
                   Icon(
-                    item.canGenerate
+                    !item.canSchedule
+                        ? Icons.error_outline
+                        : item.materialReady
                         ? Icons.check_circle_outline
-                        : Icons.error_outline,
+                        : _previewItemHasPartialReadySplit(item)
+                        ? Icons.call_split_rounded
+                        : Icons.hourglass_top_rounded,
                     size: 18,
-                    color: item.canGenerate
+                    color: !item.canSchedule
+                        ? theme.colorScheme.error
+                        : item.materialReady
                         ? theme.colorScheme.primary
-                        : theme.colorScheme.error,
+                        : theme.colorScheme.tertiary,
                   ),
                   const SizedBox(width: UtenSpacing.s4),
                   Expanded(
                     child: Text(
                       '批次 ${item.analysisLineId}：选择 ${_qty(item.selectedQty)} · '
-                      '服务端可生产 ${_qty(item.readyNowQty)}'
-                      '${item.reason == null ? '' : ' · ${item.reason}'}',
+                      '可排产上限 ${_qty(item.maxSchedulableQty)} · '
+                      '当前齐套 ${_qty(item.readyNowQty)} · '
+                      '${_previewItemDisposition(item)}'
+                      '${item.materialReadinessReason == null ? '' : ' · ${item.materialReadinessReason}'}'
+                      '${item.scheduleBlockedReason == null ? '' : ' · ${item.scheduleBlockedReason}'}',
                     ),
                   ),
                 ],
@@ -732,6 +593,25 @@ abstract class _MaterialAnalysisPlanActionsState
         ],
       ),
     );
+  }
+
+  bool _previewHasPartialReadySplit(ProductionMaterialPlanPreview preview) =>
+      preview.items.any(_previewItemHasPartialReadySplit);
+
+  bool _previewItemHasPartialReadySplit(
+    ProductionMaterialPlanPreviewItem item,
+  ) =>
+      item.canSchedule &&
+      item.readyNowQty > 0 &&
+      item.selectedQty > item.readyNowQty;
+
+  String _previewItemDisposition(ProductionMaterialPlanPreviewItem item) {
+    if (item.materialReady) return '生成 READY';
+    if (_previewItemHasPartialReadySplit(item)) {
+      return '拆分 READY ${_qty(item.readyNowQty)} + '
+          'WAITING ${_qty(item.selectedQty - item.readyNowQty)}';
+    }
+    return '生成 WAITING(待料)';
   }
 }
 

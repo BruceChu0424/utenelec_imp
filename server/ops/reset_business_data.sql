@@ -23,6 +23,7 @@
 --     V463 新增两张订货行来源分配表 purchase_order_item_sources / subcontract_order_item_sources
 --     （CLEAR 222→224），V464 重发 business_data_reset() 孪生同步该清单；
 --     V465 只替换 ordered_qty 守卫触发器（不新增表，CLEAR 维持 224 张）；
+--     V474 新增运行时公共在途追加事件账（CLEAR 224→225），并前向同步数据库函数；
 --     建议、任务认领和业务 outbox。
 --   · PRESERVE 96 张（V459 前为 95）：V442 的四张单位/迁移计量治理证据表明确保留；PostGIS 扩展表不进入业务策略计数；其余为主档、人事、账号/权限、系统配置、Flyway、审计日志、
 --     人事附件、导入/迁移证据、编号终身占用和单调流水。账户主档保留，
@@ -256,6 +257,7 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('preplan_material_reallocations', 'CLEAR'),
 ('preplan_stock_entitlement_events', 'CLEAR'),
 ('preplan_supply_action_allocations', 'CLEAR'),
+('preplan_public_supply_events', 'CLEAR'),
 ('preplan_supply_actions', 'CLEAR'),
 ('procurement_arrival_exception_events', 'CLEAR'),
 ('procurement_arrival_exceptions', 'CLEAR'),
@@ -751,10 +753,19 @@ BEGIN
         (464, 426),
         (465, 427),
         (466, 428),
-        (467, 429)
+        (467, 429),
+        (468, 430),
+        (469, 431),
+        (470, 432),
+        (471, 433),
+        (472, 434),
+        (473, 435),
+        (474, 436),
+        (475, 437),
+        (476, 438)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428 或 V467/429 目录，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 或 V476/438 目录，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -864,6 +875,10 @@ BEGIN
            OR (v446_business_table_count = 2
                 AND v447_business_table_count = 5
                 AND clear_count - v454_celebration_table_count = 223)
+           -- V474 adds one CLEAR runtime public-supply event ledger.
+           OR (v446_business_table_count = 2
+                AND v447_business_table_count = 5
+                AND clear_count - v454_celebration_table_count = 224)
        ) THEN
         RAISE EXCEPTION
             'V443/V446/V447 白名单数量异常：CLEAR %，PRESERVE %，V442表 %/8，V440表 %/6，V443表 %/1，V446表 %/2，V447表 %/5，V454表 %/1',

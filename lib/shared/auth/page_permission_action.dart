@@ -67,6 +67,14 @@ class _PagePermissionButton extends StatelessWidget {
 
 PagePermissionScope? _scopeFromRouter(BuildContext context) {
   try {
+    // 只认「直接挂载本组件的 go_router 页路由」。命令式 Navigator.push 的
+    // 子弹层（分桶详情、向导、抽屉页等）没有独立路由 scope，必须 fail-closed：
+    // 若放任 GoRouterState.of 向上爬到宿主路由，会在 LayoutBuilder 布局期对
+    // GoRouterStateRegistry（InheritedNotifier/ChangeNotifier）建立跨路由
+    // inherited 依赖，go_router 14.8 下触发无限重挂载循环——真机点开分桶
+    // 详情即整站卡死（栈 600+ 层直至进程栈溢出死亡）。
+    final settings = ModalRoute.of(context)?.settings;
+    if (settings is! Page) return null;
     return pagePermissionScopeFor(GoRouterState.of(context).uri.toString());
   } catch (_) {
     // 独立预览或 widget test 可能不在 go_router 下；fail closed。

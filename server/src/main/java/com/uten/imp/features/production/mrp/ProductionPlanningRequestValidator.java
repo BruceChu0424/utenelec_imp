@@ -46,8 +46,26 @@ public class ProductionPlanningRequestValidator {
         }
         CompleteKitAllocator.Allocation allocation =
                 planning.applyRequested(snapshot, request.getSegments());
-        requirePurchaseGeneration(request, allocation);
+        // Material-analysis plans already have an explicit, path-owned supply
+        // chain in preplan_supply_actions. Requiring the legacy package to
+        // generate another purchase request would either reject a legitimate
+        // WAITING work order or duplicate the planner's existing request.
+        requirePurchaseGeneration(
+                request, allocation, !analysisManagesSupply(snapshot.planId()));
         return new Validated(snapshot, routes, allocation);
+    }
+
+    private boolean analysisManagesSupply(UUID planId) {
+        Number count = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_plans
+                        WHERE id = :planId
+                          AND material_analysis_id IS NOT NULL
+                          AND is_deleted = FALSE
+                        """)
+                .setParameter("planId", planId)
+                .getSingleResult();
+        return count.longValue() > 0;
     }
 
     public void validateRequestShape(GeneratePlanningPackageRequest request) {
@@ -116,7 +134,9 @@ public class ProductionPlanningRequestValidator {
 
     private static void requirePurchaseGeneration(
             GeneratePlanningPackageRequest request,
-            CompleteKitAllocator.Allocation allocation) {
+            CompleteKitAllocator.Allocation allocation,
+            boolean packageManagesSupply) {
+        if (!packageManagesSupply) return;
         boolean hasBuyShortage = allocation.segments().stream()
                 .flatMap(segment -> segment.materials().stream())
                 .anyMatch(material ->

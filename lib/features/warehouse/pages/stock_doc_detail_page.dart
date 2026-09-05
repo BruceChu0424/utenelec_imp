@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
-import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -143,7 +143,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
   }
 
-  /// DRAW 出库/反出库对话框：按行输入本次数量（默认填满剩余/已出），提交后刷新。
+  /// DRAW 出库/取消出库对话框：按行输入本次数量；取消必须说明原因。
   Future<void> _issueDialog({required bool reverse}) async {
     if (_busy || _d == null) return;
     final names = ref.read(masterNameServiceProvider);
@@ -157,10 +157,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
               .toStringAsFixed(2),
         ),
     };
+    final reasonController = reverse ? TextEditingController() : null;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(reverse ? '反出库(退回数量)' : '出库(本次数量)'),
+        title: Text(reverse ? '取消出库' : '出库'),
         content: SizedBox(
           width: 420,
           child: ListView(
@@ -174,7 +175,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                       Expanded(
                         flex: 3,
                         child: Text(
-                          '${names.goods(it.goodsId)}\n${reverse ? '已出库 ${(it.issuedQty ?? 0).toStringAsFixed(2)}' : '剩余 ${it.remainingQty.toStringAsFixed(2)}'}',
+                          '${names.goods(it.goodsId)}\n${reverse ? '可取消 ${(it.issuedQty ?? 0).toStringAsFixed(2)}' : '本次最多 ${it.remainingQty.toStringAsFixed(2)}'}',
                           style: Theme.of(context).textTheme.labelMedium
                               ?.copyWith(fontWeight: FontWeight.w400),
                         ),
@@ -196,6 +197,19 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                     ],
                   ),
                 ),
+              if (reasonController != null) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                TextField(
+                  controller: reasonController,
+                  maxLength: 1000,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: '取消原因(必填)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -207,7 +221,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(reverse ? '反出库' : '出库'),
+            child: Text(reverse ? '确认取消出库' : '确认出库'),
           ),
         ],
       ),
@@ -216,6 +230,17 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       for (final c in ctrls.values) {
         c.dispose();
       }
+      reasonController?.dispose();
+      return;
+    }
+    final cancellationReason = reasonController?.text.trim();
+    reasonController?.dispose();
+    if (reverse &&
+        (cancellationReason == null || cancellationReason.length < 2)) {
+      for (final c in ctrls.values) {
+        c.dispose();
+      }
+      if (mounted) context.appError('取消出库必须填写至少 2 个字的原因');
       return;
     }
 
@@ -250,12 +275,19 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     try {
       final repo = ref.read(stockDocRepositoryProvider(widget.docType));
       if (reverse) {
-        await repo.reverseIssue(widget.id, body, idempotencyKey);
+        await repo.reverseIssue(
+          widget.id,
+          body,
+          idempotencyKey,
+          cancellationReason!,
+        );
+      } else if (_d!.status == 0) {
+        await repo.approveAndIssue(widget.id, body, idempotencyKey);
       } else {
         await repo.issue(widget.id, body, idempotencyKey);
       }
       if (!mounted) return;
-      context.appSuccess(reverse ? '已反出库' : '已出库');
+      context.appSuccess(reverse ? '已取消出库' : '已出库');
       bumpListRefresh(ref, widget.docType.refreshKey);
       ref.invalidate(warehouseProductionDrawPendingCountProvider);
       ref.invalidate(warehouseProductionFinishedInboundPendingCountProvider);
@@ -263,7 +295,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
     } catch (_) {
-      if (mounted) context.appError(reverse ? '反出库失败' : '出库失败');
+      if (mounted) context.appError(reverse ? '取消出库失败' : '出库失败');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -326,12 +358,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: const InputDecoration(
-                                labelText: '仓库实收',
-                                helper: UtenFieldMessage.helper(
-                                  '不超过待点收上限；整单全部填 0 表示拒收退回生产',
+                              decoration: InputDecoration(
+                                label: fieldLabel(
+                                  '仓库实收',
+                                  Theme.of(context),
+                                  info: '不超过待点收上限；整单全部填 0 表示拒收退回生产',
                                 ),
-                                border: OutlineInputBorder(),
+                                border: const OutlineInputBorder(),
                               ),
                             ),
                           ),
@@ -342,12 +375,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                     controller: reasonController,
                     minLines: 2,
                     maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: '少收差异原因',
-                      helper: UtenFieldMessage.helper(
-                        '任一行实收少于申报量时必填，例如：本次只交接 80 件，余量待下批。',
+                    decoration: InputDecoration(
+                      label: fieldLabel(
+                        '少收差异原因',
+                        Theme.of(context),
+                        info: '任一行实收少于申报量时必填，例如：本次只交接 80 件，余量待下批。',
                       ),
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                   if (dialogError != null) ...[
@@ -504,6 +538,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Action buttons include issue/reverse permissions that are not part of
+    // the document-owner scope provider. Watch the session permission snapshot
+    // explicitly so grants/revokes update the DRAW toolbar without reopening.
+    ref.watch(currentPermissionsProvider);
     final scopeCapability = ref.watch(
       documentScopeCapabilityProvider(DocumentDataScope.stockDocument),
     );
@@ -874,7 +912,25 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           ),
         );
       }
-      if (_canApprove && (detail.productionLinked || _ordinaryWritable)) {
+      if (widget.docType == StockDocType.draw &&
+          (_canApprove || _canIssue) &&
+          (detail.productionLinked || _ordinaryWritable)) {
+        addAction(
+          UtenButton(
+            icon: Icons.logout_rounded,
+            onPressed: _canApprove && _canIssue
+                ? () => _issueDialog(reverse: false)
+                : null,
+            onDisabledTap: () => context.appWarning(
+              '草稿生产领料单只允许“出库即审核”；当前账号需要同时具备审核和出库权限。',
+              force: true,
+            ),
+            child: const Text('出库'),
+          ),
+        );
+      } else if (widget.docType != StockDocType.draw &&
+          _canApprove &&
+          (detail.productionLinked || _ordinaryWritable)) {
         addAction(
           UtenButton(
             icon:
@@ -934,7 +990,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
               type: UtenButtonType.secondary,
               icon: Icons.undo_rounded,
               onPressed: () => _issueDialog(reverse: true),
-              child: const Text('反出库'),
+              child: const Text('取消出库'),
             ),
           );
         }

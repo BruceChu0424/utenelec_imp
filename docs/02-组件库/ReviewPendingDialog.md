@@ -1,4 +1,4 @@
-# ReviewPendingDialog —— 审核待办居中弹窗
+# ReviewPendingDialog —— 可操作待办居中弹窗
 
 > 位置：`lib/features/notice/widgets/review_pending_dialog.dart` · 新增于 2026-09-02
 > （V459 / [ADR-063](../99-决策记录-ADR/ADR-063-部门定向审核待办弹窗与通知办结撤回.md) 第二轮）
@@ -6,13 +6,14 @@
 
 ## 一、定位与形态
 
-一个待审事件的**三种提醒形态并存**（同一份 notices 数据，不重复落库）：
+一个可操作待办事件的**三种提醒形态并存**（同一份 notices 数据，不重复落库；
+既可用于审核，也可用于无需排他认领的车间执行任务）：
 
 | 形态 | 载体 | 时机 | 交互 |
 |---|---|---|---|
 | 通知中心条目 | `/notice` 列表 | 落库即有 | 点开详情；已办结灰显 |
 | 顶部通知条 | `AppNotification`（纯显示，无按钮/状态行） | 在线到达 | 20s 自然收起 |
-| **居中审核弹窗（本组件）** | `showReviewPendingDialog` | 在线到达 + **每次登录检查** | 主交互（下述） |
+| **居中待办弹窗（本组件）** | `showReviewPendingDialog` | 在线到达 + **每次登录检查** | 主交互（下述） |
 
 ## 二、API
 
@@ -37,7 +38,8 @@ resetReviewPendingDialogForTest();
 - **【去工作台处理】（主按钮，2026-09-03 第四轮口径）**：不再直达单据详情——
   全部待办同域 → 该域任务工作台（`workbenchRouteFor`：销售财务确认→
   `/finance/sales-order-confirmations`、采购财务审批→`/finance/procurement-approvals`、
-  IQC 待检→`/quality/task-center`、完工可发货→`/sales/progress`）；跨域混合 →
+  IQC 待检→`/quality/task-center`、完工可发货→`/sales/progress`、生产车间任务→
+  `/production/workshop-tasks`）；跨域混合 →
   待审收件台 `/reviews/inbox`。**单条也去工作台**（行为统一）；弹窗内全部条目
   标已读（提醒已响应；已读不吞待办——未办结下次登录仍会弹）。
 - **点列表行/大卡**：跳该条所属域的工作台（混合列表的精确快捷通道），仅该条标已读。
@@ -55,7 +57,7 @@ resetReviewPendingDialogForTest();
   1 条≈300、多条随行数增长，列表内部滚动，弹窗保持正常卡片比例不再接近全屏。
   （坑：大卡内部 Column 忘写 `mainAxisSize.min` 会在 Flexible 的 loose 约束下
   占满剩余高度——单条曾被顶到 560 上限、下方一片空白，测试已锁定。）
-- 头部：52×52 圆角图标容器（primaryContainer + `fact_check_rounded`）+「待办审核」
+- 头部：52×52 圆角图标容器（primaryContainer + 事件域图标）+「待办提醒」
   titleLarge w700 + 条数副标题。
 - 单条大卡：secondaryContainer 35% 底 + outlineVariant 描边 + 圆角 16；
   多条紧凑卡：surfaceContainerLow + 圆角 12。
@@ -78,5 +80,6 @@ resetReviewPendingDialogForTest();
 
 ## 七、接入新业务线
 
-无需改本组件：`ReviewNoticeCatalog` 注册事件（后端）后，该事件的 interactive 通知
-自动进入三形态（图标映射在 `_eventIcon` 加一行即可）。
+`ReviewNoticeCatalog` 注册事件（后端）后，该事件的 interactive 通知自动进入三形态；
+同时须在 `workbenchRouteFor` 和 `_eventIcon` 登记对应工作台与图标。无排他认领的任务可把
+`claimTargetType` 设为 null，但必须实现可验证的办结条件，防止弹窗永久悬挂。

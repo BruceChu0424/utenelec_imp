@@ -87,8 +87,9 @@ class BusinessDataResetServicePostgresTest {
 
         var result = service.reset(UUID.randomUUID(), "superadmin");
 
-        // V463/V464：+purchase/subcontract_order_item_sources 两张 CLEAR 表（222→224）。
-        assertThat(result.clearedTableCount()).isEqualTo(224);
+        // V463/V464：+purchase/subcontract_order_item_sources 两张 CLEAR 表（222→224）；
+        // V474 运行时补丁再 +preplan_public_supply_events（224→225）。
+        assertThat(result.clearedTableCount()).isEqualTo(225);
         assertThat(result.preservedTableCount()).isEqualTo(96);
         // cleared_rows 只统计 CLEAR 表：2 条 business_outbox（refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）

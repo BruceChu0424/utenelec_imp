@@ -287,6 +287,8 @@ abstract final class Perm {
 
   // ===== 生产管理（生产部）=====
   static const productionPlanView = 'production_plan:view';
+  static const productionExecutionView = 'production_execution:view';
+  static const productionExecutionOverview = 'production_execution:overview';
   static const productionPlanEdit = 'production_plan:edit';
   static const productionPlanCostView = 'production_plan_cost:view';
   static const planningSupplyRequestView = 'planning_supply_request:view';
@@ -305,6 +307,10 @@ abstract final class Perm {
       'production_material_analysis:reallocate';
   static const productionMaterialAnalysisCrossReallocate =
       'production_material_analysis:cross_reallocate';
+  static const productionMaterialAnalysisOverSupply =
+      'production_material_analysis:over_supply';
+  static const productionMaterialAnalysisClaimSharedFuture =
+      'production_material_analysis:claim_shared_future';
   static const productionDailyReportView = 'production_daily_report:view';
   static const productionDailyReportEdit = 'production_daily_report:edit';
   static const productionQualityInspectionView =
@@ -843,6 +849,8 @@ abstract final class Perm {
     productionMaterialAnalysisCreate,
     productionMaterialAnalysisRefresh,
     productionMaterialAnalysisCancel,
+    productionMaterialAnalysisOverSupply,
+    productionMaterialAnalysisClaimSharedFuture,
     webinquiryClaim,
     webinquiryClose,
     webinquiryConvertClient,
@@ -1032,6 +1040,8 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.subcontractViewAll,
       // 生产管理
       Perm.productionPlanView, Perm.productionPlanEdit,
+      Perm.productionExecutionView,
+      Perm.productionExecutionOverview,
       Perm.productionPlanCostView,
       Perm.planningSupplyRequestView,
       Perm.productionPlanApprove,
@@ -1042,6 +1052,8 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.productionMaterialAnalysisGenerate,
       Perm.productionMaterialAnalysisReallocate,
       Perm.productionMaterialAnalysisCrossReallocate,
+      Perm.productionMaterialAnalysisOverSupply,
+      Perm.productionMaterialAnalysisClaimSharedFuture,
       Perm.productionDailyReportView, Perm.productionDailyReportEdit,
       Perm.productionQualityInspectionView,
       Perm.productionQualityInspectionApprove,
@@ -1079,6 +1091,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.financeReconciliationView,
       Perm.financeViewAll,
       Perm.paymentStyleView,
+      Perm.settlementMethodView,
       Perm.noticeRead,
       Perm.noticePublish,
       Perm.suggestionSubmit,

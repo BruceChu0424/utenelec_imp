@@ -23,6 +23,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -1523,10 +1524,12 @@ class _InspectionDecisionDialogState extends State<_InspectionDecisionDialog> {
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  labelText: '${pass ? '合格数量' : '不合格数量'}（${widget.unitName}）',
-                  helper: UtenFieldMessage.helper(
-                    widget.requireQuantity ? '必填；部分处置后本行继续保留' : '留空 = 全部剩余待检量',
-                    maxLines: 2,
+                  label: fieldLabel(
+                    '${pass ? '合格数量' : '不合格数量'}（${widget.unitName}）',
+                    theme,
+                    info: widget.requireQuantity
+                        ? '必填；部分处置后本行继续保留'
+                        : '留空 = 全部剩余待检量',
                   ),
                   error: _qtyError == null
                       ? null

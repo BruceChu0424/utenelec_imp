@@ -23,5 +23,7 @@ public class MaterialCategoryNode {
     private Integer sortOrder;
     private Integer legacyId;
     private boolean systemManaged;
+    /** 子树（含自身）未软删货品数；仅 tree?withGoodsCounts=true 时返回，其余调用为 null。 */
+    private Long goodsCount;
     private List<MaterialCategoryNode> children = new ArrayList<>();
 }

@@ -231,7 +231,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('转订货单'),
-        content: const Text('将按报价行生成订货草稿(货品/数量/价格带入，可再修改)，确认转入？'),
+        content: const Text(
+          '将按报价行生成订货草稿：货品、数量和报价单价带入，其中单价锁定不可修改，'
+          '折扣可在订货草稿中调整。确认转入？',
+        ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
@@ -1526,13 +1529,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
             ),
-            MasterColumnDef(
-              key: 'weight',
-              label: '实际重量',
-              width: 100,
-              type: 'number',
-              value: (it) => it.weight?.toStringAsFixed(4),
-            ),
+            // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
             // 实物出入库单据（出货/其它出货/退货）：库位号（主档带出，拣货/上架指引）。
             if (_cfg.hasWarehouse)
               MasterColumnDef(

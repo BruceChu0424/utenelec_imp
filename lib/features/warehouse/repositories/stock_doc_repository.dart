@@ -121,15 +121,32 @@ class StockDocRepository {
     ),
   );
 
-  /// DRAW 反出库：对称回退已出库量
-  Future<StockDocDetail> reverseIssue(
+  /// 草稿 DRAW 一键审核并完成首轮实际出库；任一步失败整笔回滚。
+  Future<StockDocDetail> approveAndIssue(
     String id,
     List<Map<String, dynamic>> lines,
     String idempotencyKey,
   ) async => StockDocDetail.fromJson(
     await api.post(
-      ApiEndpoints.stockDocIssueReverse(id),
+      ApiEndpoints.stockDocApproveAndIssue(id),
       body: {'lines': lines, 'idempotencyKey': idempotencyKey},
+    ),
+  );
+
+  /// DRAW 取消出库：对称回退尚未进入生产执行的已出库量，原因必填。
+  Future<StockDocDetail> reverseIssue(
+    String id,
+    List<Map<String, dynamic>> lines,
+    String idempotencyKey,
+    String reason,
+  ) async => StockDocDetail.fromJson(
+    await api.post(
+      ApiEndpoints.stockDocIssueReverse(id),
+      body: {
+        'lines': lines,
+        'idempotencyKey': idempotencyKey,
+        'reason': reason,
+      },
     ),
   );
 

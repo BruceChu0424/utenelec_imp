@@ -1125,7 +1125,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
               key: const ValueKey('finance-receipt-exchange-rate'),
               label: '当前批次实际汇率',
               controller: _rate,
-              helperMessage: '最多 6 位小数；同一收款批次的全部 AR 分配共用该汇率',
+              info: '最多 6 位小数；同一收款批次的全部 AR 分配共用该汇率',
               onChanged: (_) {},
             ),
             _dropdown(
@@ -1152,15 +1152,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
               key: const ValueKey('finance-receipt-account-amount'),
               label: '真实账户实际入账($accountCurrency)',
               controller: _accountAmount,
-              helperMessage: '必须与银行流水一致；扣费时填扣费后的净入，另付时填本批毛额',
+              info: '必须与银行流水一致；扣费时填扣费后的净入，另付时填本批毛额',
               onChanged: (_) {},
             ),
             TextField(
               key: const ValueKey('finance-receipt-bank-reference'),
               controller: _bankReference,
-              decoration: const InputDecoration(
-                labelText: '银行入账流水号',
-                helper: UtenFieldMessage.helper('用于银行对账和审计追溯'),
+              decoration: InputDecoration(
+                label: fieldLabel('银行入账流水号', theme, info: '用于银行对账和审计追溯'),
               ),
             ),
             if (_settlementChannel == _settlementChannelAgent)
@@ -1683,8 +1682,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                       ),
                                       label: '本批预收原币金额',
                                       controller: _amountOriginal,
-                                      helperMessage:
-                                          '最多 4 位小数；该金额是客户本批实际支付的订单原币',
+                                      info: '最多 4 位小数；该金额是客户本批实际支付的订单原币',
                                       onChanged: (_) {},
                                     ),
                                   ],
@@ -2153,7 +2151,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     required String label,
     required TextEditingController controller,
     required ValueChanged<String> onChanged,
-    String? helperMessage,
+    String? info,
     String? errorMessage,
   }) {
     final theme = Theme.of(context);
@@ -2166,13 +2164,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         onChanged: onChanged,
         decoration: applyRequiredEmpty(
           InputDecoration(
-            label: requiredLabel(
+            label: fieldLabel(
               label,
               theme,
               required: true,
+              info: info,
               base: theme.inputDecorationTheme.labelStyle,
             ),
-            helper: utenFieldHelper(helperMessage),
             error: utenFieldError(errorMessage),
           ),
           theme,

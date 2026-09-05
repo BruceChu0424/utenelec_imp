@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -114,6 +113,25 @@ class _WarehouseQualityResultsPageState
   void initState() {
     super.initState();
     // 默认不选分类：进页面不发列表请求，等用户选来源+状态（或历史+时间）。
+    // 但状态小类徽章与列表加载解耦（与父类 type-counts provider 同口径）：
+    // 进页面即拉一次全来源计数，选中来源后重拉——否则徽章要等点中某个小类
+    // 才随列表加载出现（ADR-066 双选门控的回归）。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshStatusCounts());
+  }
+
+  /// 状态小类计数（后端全量口径；null = 尚未返回，分段按钮显示 '—'）。
+  /// 独立于列表加载：进页面（全来源）/ 切换来源时主动刷新，列表加载时联动刷新。
+  void _refreshStatusCounts() {
+    ref
+        .read(warehouseQualityResultRepositoryProvider)
+        .statusCounts(
+          receiptType: _receiptType,
+          keyword: _keyword.isEmpty ? null : _keyword,
+        )
+        .then((counts) {
+          if (mounted) setState(() => _statusCounts = counts);
+        })
+        .catchError((_) {});
   }
 
   void _selectStatus(_QStatusSeg seg) {
@@ -133,7 +151,10 @@ class _WarehouseQualityResultsPageState
       _receiptType = type;
       _statusSeg = null;
       _historyTime = const UtenHistoryTimeValue.none();
+      // 切换来源后旧计数口径失效，清空待新值（避免显示上一来源的数字）。
+      _statusCounts = null;
     });
+    _refreshStatusCounts();
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {
@@ -169,12 +190,7 @@ class _WarehouseQualityResultsPageState
         dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
       );
       // 状态计数失败不阻断列表（分段按钮降级为 '—'）。
-      repo
-          .statusCounts(receiptType: _receiptType, keyword: _keyword)
-          .then((counts) {
-            if (mounted) setState(() => _statusCounts = counts);
-          })
-          .catchError((_) {});
+      _refreshStatusCounts();
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
@@ -724,16 +740,8 @@ class _BatchStockInDialogState extends ConsumerState<_BatchStockInDialog> {
         ),
       );
     }
-    final approved = await showUtenReviewerConfirmDialog(
-      context,
-      title: '批量确认 IQC 合格品入库',
-      actionLabel: '仓库批量入库确认',
-      confirmLabel: '确认批量入库',
-      message:
-          '将按 ${entries.length} 张收货单 / ${selected.length} 条放行切片确认实收数量'
-          '与实际库位；整批同事务提交，任一单冲突时全部回滚。',
-    );
-    if (!approved || !mounted) return;
+    // 2026-09-04 用户口径：本弹窗即唯一确认（表内可改数量/库位），不再叠加
+    // 第二层确认弹窗；成功直接入库不弹结果，只有失败才弹失败结果弹窗。
     setState(() {
       _saving = true;
       _error = null;
@@ -745,23 +753,46 @@ class _BatchStockInDialogState extends ConsumerState<_BatchStockInDialog> {
       if (!mounted) return;
       context.appSuccess(
         '已批量入库 ${result.confirmedReceipts} 张收货单 / '
-        '${result.confirmedItemCount} 条明细',
+        '${result.confirmedItemCount} 条明细，库存已更新',
       );
       Navigator.of(context).pop(true);
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(
-        () => _error = error.code == 'CONFLICT'
+      await _showFailureDialog(
+        error.code == 'CONFLICT'
             ? '${error.message}（整批已回滚，未产生任何入库；请刷新后重新核对）'
             : error.message,
       );
     } catch (_) {
       if (mounted) {
-        setState(() => _error = '批量入库失败，请稍后重试');
+        await _showFailureDialog('批量入库失败，请稍后重试');
       }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// 失败结果弹窗：确认后关闭批量表回到列表（整批已回滚，回列表重新核对再试）。
+  Future<void> _showFailureDialog(String message) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('批量入库失败'),
+        content: _MessagePanel(
+          message: message,
+          icon: Icons.error_outline_rounded,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          UtenButton(
+            size: UtenButtonSize.large,
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override

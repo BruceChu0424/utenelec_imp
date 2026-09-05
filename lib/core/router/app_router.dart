@@ -83,6 +83,7 @@ import '../../features/warehouse/config/warehouse_document_history_config.dart';
 import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
 import '../../features/warehouse/pages/procurement_return_task_pages.dart';
 import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
+import '../../features/warehouse/pages/warehouse_arrival_expectation_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_arrival_receipt_page.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
 import '../../features/warehouse/pages/warehouse_quality_results_page.dart';
@@ -777,9 +778,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             redirect: _rejectUnknownPurchaseDoc,
             builder: (_, s) => PurchaseDocEditPage(
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
-              receiptPrefill: s.extra is ProcurementReceiptPrefill
-                  ? s.extra! as ProcurementReceiptPrefill
-                  : null,
             ),
           ),
           GoRoute(
@@ -915,6 +913,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouseInboundExpectations,
             name: 'warehouse-inbound-expectations',
             builder: (_, _) => const WarehouseInboundExpectationsPage(),
+          ),
+          GoRoute(
+            // 预计到货任务详情页（2026-09-04 双击行直达，替代居中详情弹窗）；
+            // extra 带当前 InboundExpectation，深链冷启动按 id 在列表里找回。
+            path: '${RouteName.warehouseInboundExpectations}/:expectationId',
+            name: 'warehouse-arrival-expectation-detail',
+            builder: (_, state) => WarehouseArrivalExpectationDetailPage(
+              expectationId: state.pathParameters['expectationId'] ?? '',
+              initial: state.extra is InboundExpectation
+                  ? state.extra as InboundExpectation
+                  : null,
+            ),
           ),
           GoRoute(
             path: RouteName.warehouseArrivalExceptions,

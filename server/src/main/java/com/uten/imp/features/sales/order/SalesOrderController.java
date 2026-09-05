@@ -88,6 +88,17 @@ public class SalesOrderController {
         return service.shippableLines();
     }
 
+    /**
+     * 客户 → 最近一次销售订货条款（新建单「学习预填」：选客户后自动带出上次的
+     * 结账方式/发运策略/币种，与采购/委外 /last-terms 同一学习模式、按客户维度）。
+     * 无历史订单返回空 body。
+     */
+    @GetMapping("/last-terms")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public SalesOrderService.LastTermsForClient lastTerms(@RequestParam UUID clientId) {
+        return service.lastTermsForClient(clientId);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_order:view')")
     public OrderDetail detail(@PathVariable UUID id) {

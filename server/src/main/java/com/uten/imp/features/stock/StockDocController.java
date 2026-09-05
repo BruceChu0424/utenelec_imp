@@ -135,6 +135,15 @@ public class StockDocController {
         return service.reverse(id);
     }
 
+    /** Draft DRAW one-step action: approval and first physical issue share one transaction. */
+    @PostMapping("/{id}/approve-and-issue")
+    @PreAuthorize("hasAuthority('stock_doc:approve') and hasAuthority('stock_doc:issue')")
+    public StockDocDetail approveAndIssue(
+            @PathVariable UUID id,
+            @Valid @RequestBody StockDocIssueRequest req) {
+        return service.approveAndIssue(id, req);
+    }
+
     /** DRAW 分轮出库（部分出库）：按行扣剩余可出量并写库存流水。 */
     @PostMapping("/{id}/issue")
     @PreAuthorize("hasAuthority('stock_doc:issue')")
@@ -142,7 +151,7 @@ public class StockDocController {
         return service.issue(id, req);
     }
 
-    /** DRAW 反出库：对称回退已出库量（红冲前须全部反出库）。 */
+    /** DRAW 取消出库：兼容路径下对称回退已出库量（红冲前须全部取消）。 */
     @PostMapping("/{id}/issue/reverse")
     @PreAuthorize("hasAuthority('stock_doc:reverse_issue')")
     public StockDocDetail reverseIssue(@PathVariable UUID id, @Valid @RequestBody StockDocIssueRequest req) {

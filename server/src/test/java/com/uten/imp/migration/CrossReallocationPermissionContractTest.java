@@ -17,7 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CrossReallocationPermissionContractTest {
 
     private static final String AUTHORITY =
-            "hasAuthority('production_material_analysis:cross_reallocate')";
+            "hasAuthority('production_material_analysis:view') and "
+                    + "hasAuthority('production_material_analysis:cross_reallocate')";
     private static final Path V135 = migration("V135__authorization_versioning.sql");
     private static final Path V311 = migration(
             "V311__preplan_reallocation_authority_and_lifecycle.sql");

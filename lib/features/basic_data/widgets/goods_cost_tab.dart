@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -397,12 +398,13 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       validator: (value) => _validateCostField(f, value),
       errorBuilder: utenTextFieldErrorBuilder,
       decoration: InputDecoration(
-        labelText: f.percent ? '${f.label}(%)' : f.label,
-        helper: f.derived
-            ? null
-            : UtenFieldMessage.helper(
-                f.percent ? '0% 到 100%，最多 4 位小数' : '非负金额，最多 4 位小数',
-              ),
+        label: fieldLabel(
+          f.percent ? '${f.label}(%)' : f.label,
+          theme,
+          info: f.derived
+              ? null
+              : (f.percent ? '0% 到 100%，最多 4 位小数' : '非负金额，最多 4 位小数'),
+        ),
         border: const OutlineInputBorder(),
         isDense: true,
         // 派生字段浅底色，提示"自动计算"。

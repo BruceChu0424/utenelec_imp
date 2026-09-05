@@ -34,6 +34,8 @@ String workbenchRouteFor(String? sourceEvent) => switch (sourceEvent) {
   'PROCUREMENT_FINANCE_SUBMITTED' => '/finance/procurement-approvals',
   'PROCUREMENT_IQC_PENDING' => RouteName.qualityTaskCenter,
   'SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP' => RouteName.salesOrderProgress,
+  'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' =>
+    RouteName.productionWorkshopTasks,
   // 未注册事件兜底：待审收件台按域聚合展示全部待审。
   _ => RouteName.reviewsInbox,
 };
@@ -279,7 +281,7 @@ class _Header extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '待办审核',
+                  '待办提醒',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -314,6 +316,8 @@ IconData _eventIcon(String? sourceEvent) => switch (sourceEvent) {
   'PROCUREMENT_FINANCE_SUBMITTED' => Icons.approval_outlined,
   'PROCUREMENT_IQC_PENDING' => Icons.science_outlined,
   'SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP' => Icons.local_shipping_outlined,
+  'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' =>
+    Icons.precision_manufacturing_outlined,
   _ => Icons.fact_check_outlined,
 };
 

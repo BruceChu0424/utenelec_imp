@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/production_material_analysis.dart';
 
@@ -203,11 +204,13 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                 ),
                 onChanged: (_) => setState(() => _qtyError = null),
                 decoration: InputDecoration(
-                  labelText: '调拨数量(件)',
-                  // uten-field-message-exception: raw-message - AlertDialog intrinsic sizing does not support LayoutBuilder.
-                  helperText: target == null
-                      ? '先选择调给哪个产品'
-                      : '最多 ${widget.qtyText(_maxQty)} 件',
+                  label: fieldLabel(
+                    '调拨数量(件)',
+                    theme,
+                    info: target == null
+                        ? '先选择调给哪个产品'
+                        : '最多 ${widget.qtyText(_maxQty)} 件',
+                  ),
                   // uten-field-message-exception: raw-message - AlertDialog intrinsic sizing does not support LayoutBuilder.
                   errorText: _qtyError,
                 ),
@@ -218,10 +221,12 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
                 controller: _reasonController,
                 minLines: 2,
                 maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: '调拨原因(必填)',
-                  // uten-field-message-exception: raw-message - AlertDialog intrinsic sizing does not support LayoutBuilder.
-                  helperText: '会写入审计记录，例如"客户 X 加急，先保这单"。',
+                decoration: InputDecoration(
+                  label: fieldLabel(
+                    '调拨原因(必填)',
+                    theme,
+                    info: '会写入审计记录，例如"客户 X 加急，先保这单"。',
+                  ),
                 ),
               ),
               if (target != null && qty != null && qty > 0) ...[

@@ -47,7 +47,7 @@ dependencies:
   path_provider: ^2.1.5
 
   # 文件/图片选择（报销附件上传：发票照片/PDF 等）
-  file_picker: ^8.1.7
+  file_picker: ^11.0.3
 
   # 图片重编码（附件上传客户端压缩：JPEG 编码器；解码走 dart:ui 原生解码器）
   image: ^4.9.1
